@@ -19,6 +19,23 @@ S:Module{
 
 -- off needs a reload to give Blizzard's look back
 S:Row{ key = "cdm.skin", section = "cdm.look", path = "cooldownmanager.skin", reload = true, disabled = BlizzardOff }
+-- the Tracked Bars' colour, in Blizzard's colour picker; Cancel gives the colour before back
+local function SetBarColor(r, g, b)
+    S:SetPath("cooldownmanager.barColor", { r, g, b })
+    Refresh()
+    if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
+end
+S:Row{ key = "cdm.barColor", section = "cdm.look", kind = "button", buttonText = L["Pick Colour"],
+    disabled = function() return BlizzardOff() or not S:GetPath("cooldownmanager.skin") end,
+    apply = function()
+        if not (ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow) then return end
+        local before = S:GetPath("cooldownmanager.barColor")
+        ColorPickerFrame:SetupColorPickerAndShow({
+            r = before[1], g = before[2], b = before[3], hasOpacity = false,
+            swatchFunc = function() SetBarColor(ColorPickerFrame:GetColorRGB()) end,
+            cancelFunc = function() SetBarColor(before[1], before[2], before[3]) end,
+        })
+    end }
 
 -- with Skin Cooldown Manager on; Auto keeps Blizzard's size
 S:FontRows{ module = "cdm", tab = "fonts", section = "cdm.fonts", apply = Refresh,

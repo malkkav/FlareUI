@@ -21,7 +21,7 @@ local CreateFrame = CreateFrame
 local issecretvalue = issecretvalue
 
 local OVERLAY = "UI-HUD-CoolDownManager-IconOverlay"
-local BAR_COLOR, BAR_BORDER = { 1, 0.5, 0.25 }, "FlareUI Thin"
+local BAR_BORDER = "FlareUI Thin"
 local BUTTON_BORDER, BUTTON_EDGE, BUTTON_SIZE = "FlareUI Frames", 16, 50   -- (Essential's icon size)
 
 local pieces = setmetatable({}, { __mode = "k" })
@@ -115,7 +115,8 @@ local function StyleBar(item)
     local p = Pieces(item)
     local texture = K.GetBarTexture(player and player.texture)
     bar:SetStatusBarTexture(texture)
-    bar:SetStatusBarColor(BAR_COLOR[1], BAR_COLOR[2], BAR_COLOR[3])
+    local color = GetDb().barColor
+    bar:SetStatusBarColor(color[1], color[2], color[3])
     if bar.BarBG then bar.BarBG:SetAlpha(0) end
     if bar.Pip then bar.Pip:SetAlpha(0) end
     if not p.bg then

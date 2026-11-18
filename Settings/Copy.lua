@@ -963,6 +963,12 @@ ns.Copy = {
             section = "br.where",
             tip = L["On Mouseover keeps the icons hidden until you point at the reminder row."],
         },
+        ["cdm.barColor"] = {
+            desc = L["The colour of the Tracked Bars, with Skin Cooldown Manager on."],
+            label = L["Bar Colour"],
+            section = "cdm.look",
+            tags = { "tracked bars color colour" },
+        },
         ["cdm.font.bar"] = {
             desc = L["The name and time on the Tracked Bars."],
             label = L["Bar Text"],
