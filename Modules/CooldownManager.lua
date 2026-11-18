@@ -188,11 +188,57 @@ local VIEWERS = { BuffBarCooldownViewer = StyleBar, BuffIconCooldownViewer = Sty
                   EssentialCooldownViewer = StyleIcon, UtilityCooldownViewer = StyleIcon }
 
 --------------------------------------------------
--- 2. APPLYING
+-- 2. ACTIVE OVERLAY
+-- Soften Active Overlay, for the Essential and Utility icons. While an ability's effect runs (Serpent
+-- Sting on the target), Blizzard shows the effect's time on the icon under a strong yellow swipe
+-- (CooldownViewerConstants.ITEM_AURA_COLOR). Only the swipe's strength changes: the time, the edge and
+-- the colour stay Blizzard's, and a cooldown's own swipe is never touched.
+--------------------------------------------------
+local SOFT_VIEWERS = { EssentialCooldownViewer = true, UtilityCooldownViewer = true }
+local SOFT_ALPHA = 0.2
+
+local function Soften(item)
+    local p = Pieces(item)
+    local db = GetDb()
+    local wanted = db and db.softOverlay and On()
+    if not wanted and not p.soft then return end
+    local constants = _G.CooldownViewerConstants
+    local cooldown = item.Cooldown
+    local active, idle = constants and constants.ITEM_AURA_COLOR, constants and constants.ITEM_COOLDOWN_COLOR
+    if not (cooldown and cooldown.SetSwipeColor and active and idle) then return end
+    local fromAura = item.wasSetFromAura
+    -- unreadable: the swipe stays as it is, FlareUI cannot tell what the icon shows
+    if fromAura ~= nil and not Readable(fromAura) then return end
+    fromAura = fromAura and true or false
+    if wanted and fromAura then
+        p.soft = true
+        cooldown:SetSwipeColor(active.r, active.g, active.b, SOFT_ALPHA)
+    elseif p.soft then
+        -- FlareUI's faint swipe goes: Blizzard's colour for what the icon shows now
+        p.soft = nil
+        local color = fromAura and active or idle
+        cooldown:SetSwipeColor(color.r, color.g, color.b, color.a)
+    end
+end
+
+-- (after each pass of Blizzard's over the icon's cooldown, where it paints the swipe again)
+local function HookSoften(item)
+    local p = Pieces(item)
+    if p.softHooked or not item.RefreshSpellCooldownInfo then return end
+    p.softHooked = true
+    hooksecurefunc(item, "RefreshSpellCooldownInfo", Soften)
+end
+
+--------------------------------------------------
+-- 3. APPLYING
 --------------------------------------------------
 local function ApplyItem(name, item)
     local db = GetDb()
     if db.skin then VIEWERS[name](item) end
+    if SOFT_VIEWERS[name] then
+        if db.softOverlay then HookSoften(item) end
+        Soften(item)
+    end
 end
 
 local function ApplyViewer(name)

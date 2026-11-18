@@ -808,6 +808,7 @@ end
 
 -- Blizzard's Cooldown Manager (its own page): four cooldown icons over a Tracked Bar, in Blizzard's look
 -- until the page and its skin are on. The second icon is on cooldown, the fourth has a stack.
+-- The third runs one cast in a loop: its effect, then the rest of its cooldown.
 function R.cdm(c)
     Heading(c, L["Cooldown Manager"])
     local on = Get('cooldownmanager.enabled', false)
@@ -861,7 +862,13 @@ function R.cdm(c)
     local LOOP = 14
     local timer, timerText = Swipe(2), Time('cdmTime', 2)
     timer:SetSwipeColor(0, 0, 0, 0.7)
+    -- the third icon's cast: a moment before it (its key held), its effect, the rest of its cooldown
+    local HOLD, EFFECT, COOLDOWN = 0.5, 8, 12
+    local aura = CooldownViewerConstants and CooldownViewerConstants.ITEM_AURA_COLOR or { r = 1, g = 0.95, b = 0.57, a = 0.7 }
+    local soft = on and Get('cooldownmanager.softOverlay', false)
+    local cast, castText = Swipe(3), Time('cdmActive', 3)
     local lap
+    local phase
     -- (kept on the canvas: pointing at another row doesn't start the loop again)
     local function Update(dt)
         local t = ((c.cdmTime or 3) + dt) % LOOP
@@ -869,6 +876,22 @@ function R.cdm(c)
         if not lap or t < lap then timer:SetCooldown(GetTime() - t, LOOP) end
         lap = t
         timerText:SetText(math.ceil(LOOP - t))
+        local e = t - HOLD
+        local now = e < 0 and 'hold' or e < EFFECT and 'effect' or e < COOLDOWN and 'cooldown' or 'ready'
+        if now ~= phase then
+            phase = now
+            if now == 'effect' then
+                -- Blizzard's yellow swipe, faint with Soften Active Overlay
+                cast:SetSwipeColor(aura.r, aura.g, aura.b, soft and 0.2 or aura.a)
+                cast:SetCooldown(GetTime() - e, EFFECT)
+            elseif now == 'cooldown' then
+                cast:SetSwipeColor(0, 0, 0, 0.7)
+                cast:SetCooldown(GetTime() - e, COOLDOWN)
+            else
+                cast:Clear()
+            end
+        end
+        castText:SetText(now == 'effect' and math.ceil(EFFECT - e) or now == 'cooldown' and math.ceil(COOLDOWN - e) or '')
     end
     Update(0)
     c:Animate(function(_, dt) Update(dt) end)
