@@ -584,7 +584,7 @@ local function CVarKnown(name)
     return ok and value ~= nil
 end
 
-local function SaveSync()
+local function SaveSync(event)
     local db = GetDb()
     if not (db and db.syncUI) or InCombatLockdown() then return end
     local account = GetSyncStore()
@@ -644,24 +644,30 @@ local function SaveSync()
         }
     end
 
-    -- Bag flags
-    store.bags = {
-        sortRightToLeft = C_Container.GetSortBagsRightToLeft(),
-        insertLeftToRight = C_Container.GetInsertItemsLeftToRight(),
-        bankAutosortDisabled = C_Container.GetBankAutosortDisabled(),
-        backpackSellJunkDisabled = C_Container.GetBackpackSellJunkDisabled(),
-        backpackAutosortDisabled = C_Container.GetBackpackAutosortDisabled(),
-    }
+    -- At a real logout GetSortBagsRightToLeft already returns false while the setting is still true
+    -- (it reads true again after the relog), and that false went to every other character: the
+    -- last snapshot's bag values are kept there, and the next login reads the real ones.
+    if event == "PLAYER_LOGOUT" then
+        store.bags, store.bagFlags = old.bags, old.bagFlags
+    else
+        store.bags = {
+            sortRightToLeft = C_Container.GetSortBagsRightToLeft(),
+            insertLeftToRight = C_Container.GetInsertItemsLeftToRight(),
+            bankAutosortDisabled = C_Container.GetBankAutosortDisabled(),
+            backpackSellJunkDisabled = C_Container.GetBackpackSellJunkDisabled(),
+            backpackAutosortDisabled = C_Container.GetBackpackAutosortDisabled(),
+        }
 
-    -- each bag slot's flags (Assign To, Ignore This Bag, junk selling), slot onto slot
-    store.bagFlags = {}
-    for bag = 1, NUM_BAG_SLOTS do
-        local flags = {}
-        for _, flag in pairs(Enum.BagSlotFlags) do
-            local ok, set = pcall(C_Container.GetBagSlotFlag, bag, flag)
-            if ok and type(set) == "boolean" then flags[flag] = set end
+        -- each bag slot's flags (Assign To, Ignore This Bag, junk selling), slot onto slot
+        store.bagFlags = {}
+        for bag = 1, NUM_BAG_SLOTS do
+            local flags = {}
+            for _, flag in pairs(Enum.BagSlotFlags) do
+                local ok, set = pcall(C_Container.GetBagSlotFlag, bag, flag)
+                if ok and type(set) == "boolean" then flags[flag] = set end
+            end
+            store.bagFlags[bag] = flags
         end
-        store.bagFlags[bag] = flags
     end
 
     -- Social > Block Guild Invites. Server-side, per character.
