@@ -121,12 +121,16 @@ local ELEMENTS = {
     { key = "threat", threat = true, module = "damagemeter", instance = true, defaultShow = "meter" },
     -- Blizzard's Cooldown Manager viewers (CooldownManager.lua), behind its switch. keepAlpha: Blizzard's dialog has an
     -- Opacity of its own, so on Always the alpha is left alone unless FlareUI faded the viewer this session.
+    -- cdmShape: an Icon Shape in a Layout section above Fading (CooldownManager.ShapeSetting)
     { key = "cdm_essential", page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
-      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
+      cdmShape = "essential" },
     { key = "cdm_utility", page = "cdm", frame = "UtilityCooldownViewer", system = "CooldownViewer", index = "Utility",
-      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
+      cdmShape = "utility" },
     { key = "cdm_buffs", page = "cdm", frame = "BuffIconCooldownViewer", system = "CooldownViewer", index = "BuffIcon",
-      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
+      indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
+      cdmShape = "buffs" },
     { key = "cdm_bars", page = "cdm", frame = "BuffBarCooldownViewer", system = "CooldownViewer", index = "BuffBar",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true },
 }
@@ -1225,7 +1229,17 @@ local function AddEditModeSettings()
                 end
                 if e.external then rows = MeterRowsInChat(rows) end
                 -- a Fading section that opens and closes, starting closed, like every other
-                rows = ns.EditSection("Fading", rows)
+                local CM = ns.CooldownManager
+                local layout = {}
+                if e.cdmShape and CM and CM.ShapeSetting then layout[#layout + 1] = CM.ShapeSetting(e.cdmShape) end
+                if #layout > 0 then
+                    local Section, settings = ns.EditSections()
+                    Section("Layout", layout)
+                    Section("Fading", rows)
+                    rows = settings
+                else
+                    rows = ns.EditSection("Fading", rows)
+                end
                 -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
                 if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
                     table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())

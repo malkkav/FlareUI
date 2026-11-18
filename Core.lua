@@ -783,6 +783,8 @@ local defaults = {
             stackFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             cooldownFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             barFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            -- Icon Shape in each icon viewer's Edit Mode dialog: blizzard | rect
+            shape = { essential = "blizzard", utility = "blizzard", buffs = "blizzard" },
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
@@ -2066,7 +2068,7 @@ do
     -- (tools/enus.js reads L["..."] literals)
     ns.EDIT_SECTION_TITLES = function()
         return ns.L["Size"], ns.L["Text"], ns.L["Look"], ns.L["Behaviour"], ns.L["Cast Bar"], ns.L["Auras"],
-            ns.L["Icons"], ns.L["Fading"], ns.L["Pets & Targets"], ns.L["Main Tanks"]
+            ns.L["Icons"], ns.L["Fading"], ns.L["Pets & Targets"], ns.L["Main Tanks"], ns.L["Layout"]
     end
     local partOf
     function ns.SplitFrameItems(items)
