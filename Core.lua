@@ -811,6 +811,10 @@ local defaults = {
         cooldownmanager = {
             enabled = false,            -- the Cooldown Manager page's switch: everything below
             skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
+            -- size 0: Auto, the size Blizzard gave the text
+            stackFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            cooldownFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            barFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)

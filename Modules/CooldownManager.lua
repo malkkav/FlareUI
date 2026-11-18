@@ -4,7 +4,7 @@ local _, ns = ...
 -- COOLDOWN MANAGER
 -- Blizzard's Cooldown Manager in FlareUI's look. The Tracked Bars as FlareUI's cast bars (the unit
 -- frames' bar texture, a thin bronze border), their icons as FlareUI's buffs, the Essential / Utility /
--- Tracked Buffs icons with the action buttons' FlareUI Borders. Blizzard
+-- Tracked Buffs icons with the action buttons' FlareUI Borders, all with the Fonts tab's fonts. Blizzard
 -- keeps driving its own pooled frames; it sets only values, text and the spark after a frame is made, so
 -- each one is styled once as it is acquired. Its aura data is kept from addons
 -- (CooldownViewerSecure.lua): nothing here reads it, re-parents its frames or calls their layout.
@@ -66,6 +66,26 @@ local function ActiveItems(name)
     return Nothing
 end
 
+-- A font of the Fonts tab on one of Blizzard's texts. Size Auto (0) keeps the size Blizzard gave it,
+-- read once before FlareUI first sets it.
+local function SetFont(fontString, font)
+    if not (fontString and fontString.GetFont and font) then return end
+    local p = Pieces(fontString)
+    if not p.size then
+        local _, size = fontString:GetFont()
+        p.size = Readable(size) and type(size) == "number" and size > 0 and size or 12
+    end
+    local flags = font.flags or "OUTLINE"
+    if flags == "NONE" then flags = "" end
+    local face = ns.GetFontPath(font.face or ns.GLOBAL_FONT)
+    if (font.size or 0) > 0 then
+        ns.SetFont(fontString, face, font.size, flags)
+    else
+        ns.SetFontUnscaled(fontString, face, p.size, flags)
+    end
+    ns.ApplyShadow(fontString, font)
+end
+
 -- Blizzard's own Cooldown Manager switch (Options): with it off FlareUI leaves the manager alone
 function CM.BlizzardOn()
     return (C_CooldownViewer and GetCVarBool("cooldownViewerEnabled")) and true or false
@@ -120,11 +140,15 @@ local function StyleBar(item)
     p.barBorder:ClearAllPoints()
     p.barBorder:SetAllPoints(p.backdrop)
     K.ApplyBorderStyle(p.barBorder, edgeFile, height + 2 * K.INSET)
+    -- Bar Text (Fonts tab)
+    local db = GetDb()
+    SetFont(bar.Name, db.barFont)
+    SetFont(bar.Duration, db.barFont)
     local icon = item.Icon
     local AU = ns.Auras
     if icon and icon.Icon and AU and AU.StyleIcon then
         AU.StyleIcon(icon, icon.Icon, Pieces(icon), false)
-        if icon.Applications and AU.StackFont then AU.StackFont(icon.Applications) end
+        SetFont(icon.Applications, db.stackFont)
     end
 end
 
@@ -133,6 +157,7 @@ end
 -- icon's edge, the rest Blizzard's
 local function StyleIcon(item)
     if Styled(item) then return end
+    local db = GetDb()
     local p = Pieces(item)
     for _, region in ipairs({ item:GetRegions() }) do
         if region.GetAtlas and region:GetAtlas() == OVERLAY then region:SetAlpha(0) end
@@ -151,17 +176,14 @@ local function StyleIcon(item)
     b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
     -- over the cooldown swipe
     b:SetFrameLevel(item:GetFrameLevel() + 2)
+    -- Stack Count and Cooldown Numbers (Fonts tab)
+    SetFont(item.Applications and item.Applications.Applications, db.stackFont)
+    SetFont(item.ChargeCount and item.ChargeCount.Current, db.stackFont)
+    local cooldown = item.Cooldown
+    if cooldown and cooldown.GetCountdownFontString then SetFont(cooldown:GetCountdownFontString(), db.cooldownFont) end
 end
 
--- Tracked Buffs: the cooldown icons' border, with the Buffs frame's stack font
-local function StyleBuffIcon(item)
-    StyleIcon(item)
-    local count = item.Applications and item.Applications.Applications
-    local AU = ns.Auras
-    if count and AU and AU.StackFont then AU.StackFont(count) end
-end
-
-local VIEWERS = { BuffBarCooldownViewer = StyleBar, BuffIconCooldownViewer = StyleBuffIcon,
+local VIEWERS = { BuffBarCooldownViewer = StyleBar, BuffIconCooldownViewer = StyleIcon,
                   EssentialCooldownViewer = StyleIcon, UtilityCooldownViewer = StyleIcon }
 
 --------------------------------------------------
