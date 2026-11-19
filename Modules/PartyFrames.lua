@@ -1326,8 +1326,9 @@ local EDGE_GAP = K and K.AURA_GAP or 2   -- above and below it, as on the unit f
 -- the room the cast bar takes on its side (Cast Bar > Position: Above or Below) while it shows, else nil:
 -- the auras on that side move past it, as on every frame with a cast bar
 function PF.CastRoom(f, top)
-    if not (f.Cast and f.Cast:IsShown() and f.Cast.isEnabled()) then return nil end
     local st = TS(f)
+    -- with Keep Auras in Place, the hidden cast bar still takes its room
+    if not (f.Cast and (f.Cast:IsShown() or (st and st.castRoom)) and f.Cast.isEnabled()) then return nil end
     if (st.castbarPosition == "TOP") ~= top then return nil end
     -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
     return (st.castHeight or 16) + 2 * K.CAST_GAP
@@ -1616,7 +1617,7 @@ local function ConfigureAuras(f)
     -- rebuilt only when what shapes the groups changes: the places and sizes, plus the lanes and a
     -- look as computed, so a new aura rule or look setting can't be missed here
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
-        ns.AuraGroups.Sig(K.Font(PF.FontKey(f), "auras")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
+        ns.AuraGroups.Sig(K.Font(PF.FontKey(f), "auras")), st.castbar, st.castHeight, st.castRoom, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
         st.buffAmount, st.debuffAmount, PF.TileAmountDefault(), st.auraOuter, f:GetWidth(),
         ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false, f)))
     if f.auraSignature == sig then return end
@@ -3850,6 +3851,9 @@ local function BuildSettings()
         { name = L["Only Dispellable Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("dispellableOnly")() and true or false end, set = setS("dispellableOnly"),
           desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
+        { name = L["Keep Auras in Place"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return getS("castRoom")() == true end, set = setS("castRoom"), hidden = noCast,
+          desc = L["Auras next to the cast bar always leave room for it and don't move when a cast starts or ends."] },
         -- a dispel icon per type you can dispel, on the portrait (or the health bar's middle)
         -- a place in both styles, as the buffs and debuffs: the portrait grid (default) or a line
         -- anywhere else

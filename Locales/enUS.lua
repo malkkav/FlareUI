@@ -269,6 +269,7 @@ L["Aura timers turn yellow under 10 seconds and red under 5, on every unit frame
 L["Aura timers turn yellow under 10 seconds and red under 5."] = true
 L["Aura to Cast"] = true
 L["Auras"] = true
+L["Auras next to the cast bar always leave room for it and don't move when a cast starts or ends."] = true
 L["Auto"] = true
 L["Auto Accept"] = true
 L["Auto Accept Quests"] = true
@@ -1122,6 +1123,7 @@ L["Its spot stays empty while it's hidden. The global cooldown doesn't count."] 
 L["Junk"] = true
 L["Junk Coin"] = true
 L["Keep"] = true
+L["Keep Auras in Place"] = true
 L["Keep It On"] = true
 L["Keep Messages Shown"] = true
 L["Keep Page 1"] = true

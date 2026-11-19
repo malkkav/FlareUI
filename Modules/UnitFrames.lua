@@ -3289,7 +3289,9 @@ function AURA.Placement(f, corner)
     local x = isLeft and INSET or -INSET
     local y = isTop and AURA_GAP or -AURA_GAP
     local udb = GetUnitDb(f.fuiUnit)
-    if f.Cast and f.Cast:IsShown() and udb and UNITS[f.fuiUnit].castbar and (udb.castbarPosition == "TOP") == isTop then
+    -- with Keep Auras in Place, the hidden cast bar still takes its room
+    local castThere = f.Cast and (f.Cast:IsShown() or (udb and udb.castRoom and IsCastEnabled(f.Cast)))
+    if castThere and udb and UNITS[f.fuiUnit].castbar and (udb.castbarPosition == "TOP") == isTop then
         -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
         local reach = (udb.castHeight or CAST_HEIGHT) + 2 * CAST_GAP
         y = isTop and reach or -reach
@@ -7213,6 +7215,12 @@ local function BuildSettings(unit)
         -- debuff your own pet, so it only emptied the list, 11-26)
         if unit ~= "player" and unit ~= "pet" then
             auraItems[#auraItems + 1] = { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
+        end
+        if info.castbar then
+            auraItems[#auraItems + 1] = { name = L["Keep Auras in Place"], kind = LEM.SettingType.Checkbox, default = false,
+                get = function() local u = GetUnitDb(unit); return u and u.castRoom == true or false end, set = set("castRoom"),
+                hidden = function() local u = GetUnitDb(unit); return u and u.castbar == false or false end,
+                desc = L["Auras next to the cast bar always leave room for it and don't move when a cast starts or ends."] }
         end
         Section("Auras", ns.AuraOrder.With(auraItems, get, set))
     end

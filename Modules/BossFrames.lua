@@ -515,6 +515,9 @@ local function BuildSettings()
         PF.AmountSetting(get, set, true),
         { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = D.onlyMyDebuffs ~= false,
           get = function() return get("onlyMyDebuffs")() ~= false end, set = set("onlyMyDebuffs") },
+        { name = L["Keep Auras in Place"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return get("castRoom")() == true end, set = set("castRoom"), hidden = noCast,
+          desc = L["Auras next to the cast bar always leave room for it and don't move when a cast starts or ends."] },
     }, get, set))
 
     Section("Icons", {
