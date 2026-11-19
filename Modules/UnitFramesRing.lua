@@ -160,7 +160,7 @@ local LEVEL_SCALE = 0.94
 -- are shared. So is every option of the settings page's Unit Frames section: those are general.
 local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, styleProfiles = true, editSections = true,
                       raid = true, resource = true, styleStart = true, tileStyle = true, plateTiles = true,
-                      simplePet = true, simpleTargetOf = true, palette = true, visibility = true, classColor = true, fullNames = true,
+                      simplePet = true, simpleTargetOf = true, levelSize = true, palette = true, visibility = true, classColor = true, fullNames = true,
                       auraStyle = true, auraTimer = true, font = true, fontPower = true, fontCast = true, auraFont = true,
                       auraCountFont = true, auraCountFontSeeded = true, styleSavesThin = true,
                       -- (frameFonts, each frame's fonts, is NOT shared: every style keeps its own)
@@ -1092,11 +1092,14 @@ function Ring.LayoutLevel(f, g)
     g = g or Geometry(f)
     local e = BLIZZ[Kind(f)].level
     local placed = PlaceRegion(f, g, ring.Disc, e)
+    -- Level Badge Size (the settings page, every ring frame)
+    local db = GetDb()
+    local size = math.min(1, math.max(0.5, tonumber(db and db.levelSize) or 1))
     -- a little under its atlas size, round the same centre
     local w, h = ring.Disc:GetSize()
-    ring.Disc:SetSize(w * LEVEL_SCALE, h * LEVEL_SCALE)
+    ring.Disc:SetSize(w * LEVEL_SCALE * size, h * LEVEL_SCALE * size)
     -- the skull and the number at the disc's own scale
-    local k = g.D / BLIZZ[e.frame or Kind(f)].D * LEVEL_SCALE
+    local k = g.D / BLIZZ[e.frame or Kind(f)].D * LEVEL_SCALE * size
     if SetAtlasSafe(ring.Skull, SKULL) then
         local info = C_Texture.GetAtlasInfo(SKULL)
         ring.Skull:SetSize(info.width * k, info.height * k)
@@ -1104,10 +1107,10 @@ function Ring.LayoutLevel(f, g)
     -- Show Level: the disc goes with the number
     local udb = Db(f)
     ring.Disc:SetShown(udb and udb.showLevel and true or false)
-    SetDiscHole(f, ring, placed and ring.Disc:IsShown(), w * LEVEL_SCALE)
+    SetDiscHole(f, ring, placed and ring.Disc:IsShown(), w * LEVEL_SCALE * size)
     local dx, dy, dw, dh = Place(f, g, e)
     if ring.DiscHit then
-        if dx then SetHit(ring.DiscHit, ring.Disc:IsShown(), f, g, dx, dy, dw, dh)
+        if dx then SetHit(ring.DiscHit, ring.Disc:IsShown(), f, g, dx, dy, dw * size, dh * size)
         else SetHit(ring.DiscHit, false) end
     end
     f.Level:SetParent(ring.Disc)

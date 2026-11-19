@@ -2550,6 +2550,12 @@ ns.Copy = {
             section = "uf.frameStyleSection",
             tip = L["Each style keeps its own setup."],
         },
+        ["uf.levelSize"] = {
+            desc = L["The size of the level badge on the portrait ring. FlareUI and Forever Style only."],
+            label = L["Level Badge Size"],
+            section = "uf.look",
+            tags = { "level circle", "level disc", "level badge" },
+        },
         ["uf.main"] = {
             desc = L["Your player, pet, target and focus frames."],
             label = L["Main Frames"],
