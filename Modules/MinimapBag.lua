@@ -147,9 +147,33 @@ local function Kept(name) return Left("ldb:" .. name) end
 -- the drawer takes this LibDBIcon button (Minimap.lua leaves its place alone)
 function Bag.Holds(name) return Bag:IsOn() and not Kept(name) end
 
+-- EnhanceQoL's button sink keeps its own list and can move a button again during a later layout.
+-- Forget only buttons the drawer actually takes, without changing EnhanceQoL's saved settings.
+local function ReleaseEnhanceQoL(frame)
+    local addon = _G.EnhanceQoL
+    local vars = type(addon) == "table" and addon.variables
+    if not (Bag.initialized and Bag:IsOn() and type(addon) == "table" and type(addon.db) == "table"
+        and addon.db.enableMinimapButtonBin and type(vars) == "table" and type(vars.bagButtons) == "table") then return false end
+    local released = false
+    for name, button in pairs(vars.bagButtons) do
+        if button == frame then
+            vars.bagButtons[name] = nil
+            if type(vars.bagButtonState) == "table" then vars.bagButtonState[name] = nil end
+            if type(vars.bagButtonPoint) == "table" then vars.bagButtonPoint[name] = nil end
+            released = true
+        end
+    end
+    return released
+end
+
 -- A LibDBIcon button off the minimap, without touching LibDBIcon's settings
 local function ParkIcon(frame, name)
-    if not frame or parked[frame] or (name and Kept(name)) then return end
+    if not frame or (name and Kept(name)) then return end
+    local released = ReleaseEnhanceQoL(frame)
+    if parked[frame] then
+        if released and frame:GetParent() ~= hiddenParent then frame:SetParent(hiddenParent) end
+        return
+    end
     parked[frame] = true
     frame:SetParent(hiddenParent)
 end
@@ -371,8 +395,13 @@ local function CollectEntries()
     -- taken. One its addon or player has hidden waits on the minimap until it's shown
     local found = {}
     local sets = PinSets()
-    -- (the button holder: left-out buttons Minimap.lua lifted above the border)
-    for _, parent in ipairs({ Minimap, MinimapBackdrop, MinimapCluster, ns.Minimap and ns.Minimap.ButtonHolder }) do
+    -- Also look in EnhanceQoL's sink: it may have collected the buttons before this drawer started.
+    local addon = _G.EnhanceQoL
+    local sink = Bag.initialized and Bag:IsOn() and type(addon) == "table" and type(addon.db) == "table"
+        and addon.db.enableMinimapButtonBin and type(addon.variables) == "table" and addon.variables.buttonSink
+    -- The button holder has left-out buttons Minimap.lua lifted above the border.
+    for _, parent in ipairs({ Minimap or false, MinimapBackdrop or false, MinimapCluster or false,
+        (ns.Minimap and ns.Minimap.ButtonHolder) or false, sink or false }) do
         for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
             if not adopted[child] and IsForeignButton(child, sets) then found[#found + 1] = child end
         end
@@ -380,7 +409,10 @@ local function CollectEntries()
     if #found <= C.MAX_FOREIGN then
         for _, child in ipairs(found) do
             known["frame:" .. FrameId(child)] = FrameLabel(child)
-            if child:IsShown() and not Left("frame:" .. FrameId(child)) then adopted[child] = true end
+            if child:IsShown() and not Left("frame:" .. FrameId(child)) then
+                adopted[child] = true
+                ReleaseEnhanceQoL(child)
+            end
         end
     end
     for frame in pairs(adopted) do
@@ -1008,10 +1040,32 @@ function Bag:Init()
     if lib and lib.RegisterCallback then
         lib.RegisterCallback(Bag, "LibDBIcon_IconCreated", function(_, button, name) ParkIcon(button, name) end)
     end
-    local function Sweep()
+    local sweepPending, hookedEnhanceQoL = false, nil
+    local Sweep
+    local function HookEnhanceQoL()
+        local addon = _G.EnhanceQoL
+        local functions = type(addon) == "table" and addon.functions
+        if type(functions) ~= "table" or functions == hookedEnhanceQoL
+            or type(functions.gatherMinimapButtons) ~= "function" then return end
+        hookedEnhanceQoL = functions
+        hooksecurefunc(functions, "gatherMinimapButtons", function()
+            if sweepPending or not self:IsOn() or type(addon.db) ~= "table" or not addon.db.enableMinimapButtonBin then return end
+            sweepPending = true
+            C_Timer.After(0, function()
+                sweepPending = false
+                if self:IsOn() then Sweep() end
+            end)
+        end)
+    end
+    Sweep = function()
+        HookEnhanceQoL()
         ParkAllIcons()
-        CollectEntries()
-        KeepAdoptedInBag()
+        if panel and panel:IsShown() then
+            self:Layout()
+        else
+            CollectEntries()
+            KeepAdoptedInBag()
+        end
         Bag.UpdateCount()
     end
     Sweep()
