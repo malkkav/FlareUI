@@ -337,6 +337,18 @@ local function WatchBackpackClick(proxy, slotWanted)
     end)
 end
 
+local function ConfigureBackpackClick(proxy, slot, backpack)
+    proxy:Hide()
+    proxy:SetAllPoints(slot)
+    proxy:SetHitRectInsets(slot:GetHitRectInsets())
+    proxy:SetMouseClickEnabled(true)
+    proxy:SetPassThroughButtons("MiddleButton", "Button4", "Button5")
+    proxy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    proxy:SetAttribute("useOnKeyDown", false)
+    proxy:SetAttribute("type", "click")
+    proxy:SetAttribute("clickbutton", backpack)
+end
+
 local keyringClickProxy, keyringClickActive
 
 local function RefreshKeyringClickProxy()
@@ -360,16 +372,8 @@ local function RefreshKeyringClickProxy()
 
     if not keyringClickProxy then
         local proxy = CreateFrame("Button", "FlareUIKeyringBackpackClick", keyring, "SecureActionButtonTemplate")
-        proxy:Hide()
-        proxy:SetAllPoints(keyring)
-        proxy:SetHitRectInsets(keyring:GetHitRectInsets())
-        proxy:SetMouseClickEnabled(true)
+        ConfigureBackpackClick(proxy, keyring, backpack)
         proxy:SetMouseMotionEnabled(false)
-        proxy:SetPassThroughButtons("MiddleButton", "Button4", "Button5")
-        proxy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        proxy:SetAttribute("useOnKeyDown", false)
-        proxy:SetAttribute("type", "click")
-        proxy:SetAttribute("clickbutton", backpack)
         WatchBackpackClick(proxy, KeyringWanted)
         keyringClickProxy = proxy
     end
@@ -412,17 +416,9 @@ local function RefreshReagentClickProxy()
     if not reagentClickProxy then
         local proxy = CreateFrame("Button", "FlareUIReagentBackpackClick", reagent,
             "SecureActionButtonTemplate, SecureHandlerDragTemplate")
-        proxy:Hide()
-        proxy:SetAllPoints(reagent)
-        proxy:SetHitRectInsets(reagent:GetHitRectInsets())
-        proxy:SetMouseClickEnabled(true)
+        ConfigureBackpackClick(proxy, reagent, backpack)
         proxy:SetMouseMotionEnabled(true)
         proxy:SetPropagateMouseMotion(true)
-        proxy:SetPassThroughButtons("MiddleButton", "Button4", "Button5")
-        proxy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        proxy:SetAttribute("useOnKeyDown", false)
-        proxy:SetAttribute("type", "click")
-        proxy:SetAttribute("clickbutton", backpack)
         -- Blizzard's drag action takes the equipment slot, not the container ID (5).
         proxy:SetID(reagent:GetID())
         proxy:RegisterForDrag("LeftButton")
