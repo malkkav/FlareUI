@@ -23,9 +23,9 @@ jobs:
           persist-credentials: false
 
       - name: Install LuaJIT
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends luajit
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "luajit-2.1"
 
       - name: Run tests
         shell: bash
