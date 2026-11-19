@@ -924,9 +924,32 @@ local function CreateBadgeButton()
     badgeButton:SetAllPoints(badge)
     badgeButton:SetFrameLevel(badge:GetFrameLevel() + 2)
     badgeButton:RegisterForClicks("LeftButtonUp")
+    badgeButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    badgeButton:GetHighlightTexture():SetAlpha(0.65)
+    local function HideTooltip(self)
+        if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    end
     -- with Open on Mouseover a click still toggles it (a quick close, or a second look)
-    badgeButton:SetScript("OnClick", function() Bag:Toggle() end)
-    badgeButton:SetScript("OnEnter", OpenOnHover)
+    badgeButton:SetScript("OnClick", function(self)
+        HideTooltip(self)
+        Bag:Toggle()
+    end)
+    badgeButton:SetScript("OnEnter", function(self)
+        OpenOnHover()
+        if panel:IsShown() then return end
+        AnchorTooltip(self)
+        GameTooltip:AddLine(L["Addon Button Drawer"])
+        GameTooltip:AddLine(L["Every addon's minimap button in one drawer. Click the day/night badge to open it."], 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    badgeButton:SetScript("OnLeave", HideTooltip)
+    badgeButton:SetScript("OnHide", HideTooltip)
+    -- Keep the same highlight while the drawer is open, however it was opened or closed.
+    panel:HookScript("OnShow", function()
+        badgeButton:LockHighlight()
+        HideTooltip(badgeButton)
+    end)
+    panel:HookScript("OnHide", function() badgeButton:UnlockHighlight() end)
 end
 
 -- Blizzard style: Blizzard's addon compartment button as it looks (its atlas, its count
