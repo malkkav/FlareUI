@@ -80,9 +80,9 @@ function Bag:IsOn()
 end
 
 -- Drawer Button Size: 100..150 percent of C.BUTTON; the panel grows to fit
-function Bag.ButtonSize()
+function Bag.ButtonSize(percent)
     local db = GetDb()
-    local pct = tonumber(db and db.bagButtonSize) or 100
+    local pct = tonumber(percent) or tonumber(db and db.bagButtonSize) or 100
     pct = math.max(100, math.min(150, pct))
     return math.floor(C.BUTTON * pct / 100 + 0.5)
 end
@@ -489,6 +489,14 @@ local FLARE_ID = "compartment:FlareUI"   -- (the TOC title, as the compartment l
 function Bag.FlareOn()
     local db = GetDb()
     return db ~= nil and db.flareButton ~= false
+end
+-- Preview the saved membership even before a pending reload creates the drawer.
+function Bag.FlareSelected()
+    local db = GetDb()
+    if not db then return false end
+    local left, kept = db.bagLeave, db.bagKeep
+    return not ((type(left) == "table" and left[FLARE_ID])
+        or (type(kept) == "table" and kept[FLARE_ID] ~= nil))
 end
 -- FlareUI in the drawer right now
 function Bag.FlareIn()
@@ -1035,6 +1043,7 @@ end
 --------------------------------------------------
 local SAMPLE_ICONS = { "Interface\\Icons\\INV_Misc_Bag_08", "Interface\\Icons\\INV_Misc_Book_09",
                        "Interface\\Icons\\INV_Misc_Map_01", "Interface\\Icons\\INV_Misc_Gear_01" }
+local FLARE_ICON = "Interface\\AddOns\\FlareUI\\Media\\Art\\Icon.png"
 
 function Bag.CreateSample(parent)
     local f = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -1050,22 +1059,31 @@ function Bag.CreateSample(parent)
     return f
 end
 
-function Bag.DrawSample(f)
+function Bag.DrawSample(f, preview)
     local objects = {}
+    local showFlare = preview and preview.flareIn
+    local limit = showFlare and C.COLUMNS - 1 or C.COLUMNS
     local lib, ldb = LibDBIcon(), LibDataBroker()
     if lib and ldb then
         for _, name in ipairs(lib:GetButtonList() or {}) do
             local object = ldb:GetDataObjectByName(name)
-            if object and object.icon then objects[#objects + 1] = object end
-            if #objects >= C.COLUMNS then break end
+            if object and object.icon then
+                local isFlare = preview and (name == "FlareUI" or object.icon == FLARE_ICON
+                    or StripText(object.label or object.text) == "FlareUI")
+                if not isFlare then objects[#objects + 1] = object end
+            end
+            if #objects >= limit then break end
         end
     end
-    local count = #objects > 0 and #objects or #SAMPLE_ICONS
-    local step = C.BUTTON + C.SPACING
+    local count = (#objects > 0 and #objects or #SAMPLE_ICONS) + (showFlare and 1 or 0)
+    local size = preview and preview.buttonSize or C.BUTTON
+    local step = size + C.SPACING
     for i, b in ipairs(f.icons) do
         if i <= count then
             local object = objects[i]
-            SetIcon(b.icon, object and object.icon or SAMPLE_ICONS[i], object)
+            local icon = showFlare and i == count and FLARE_ICON or (object and object.icon or SAMPLE_ICONS[i])
+            SetIcon(b.icon, icon, object)
+            Bag.SizeIconButton(b, size)
             b:ClearAllPoints()
             b:SetPoint("TOPLEFT", f, "TOPLEFT", C.PAD + (i - 1) * step, -C.PAD)
             b:Show()
@@ -1073,8 +1091,20 @@ function Bag.DrawSample(f)
             b:Hide()
         end
     end
-    local width, height = C.PAD * 2 + count * step - C.SPACING, C.PAD * 2 + C.BUTTON
+    local width, height = C.PAD * 2 + count * step - C.SPACING, C.PAD * 2 + size
     f:SetSize(width, height)
     f:Show()
-    return width, height
+    if not preview then return width, height end
+    if Bag.initialized then
+        -- The compartment counter covers the entire drawer, including additional rows.
+        count = #entries
+        for _, e in ipairs(entries) do
+            if e.label == "FlareUI" or e.name == "FlareUI" then
+                count = count - 1
+                break
+            end
+        end
+        if showFlare then count = count + 1 end
+    end
+    return width, height, count
 end
