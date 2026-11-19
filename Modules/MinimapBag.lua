@@ -147,11 +147,59 @@ local function Kept(name) return Left("ldb:" .. name) end
 -- the drawer takes this LibDBIcon button (Minimap.lua leaves its place alone)
 function Bag.Holds(name) return Bag:IsOn() and not Kept(name) end
 
+-- EnhanceQoL's button sink keeps its own list and can move a button again during a later layout.
+-- Forget only buttons the drawer actually takes, without changing EnhanceQoL's saved settings.
+local function ReleaseEnhanceQoL(frame)
+    local addon = _G.EnhanceQoL
+    local vars = type(addon) == "table" and addon.variables
+    if not (Bag.initialized and Bag:IsOn() and type(addon) == "table" and type(addon.db) == "table"
+        and addon.db.enableMinimapButtonBin and type(vars) == "table" and type(vars.bagButtons) == "table") then return false end
+    local released = false
+    for name, button in pairs(vars.bagButtons) do
+        if button == frame then
+            vars.bagButtons[name] = nil
+            if type(vars.bagButtonState) == "table" then vars.bagButtonState[name] = nil end
+            if type(vars.bagButtonPoint) == "table" then vars.bagButtonPoint[name] = nil end
+            released = true
+        end
+    end
+    return released
+end
+
+-- HidingBar replaces button methods while it owns them. Use its release function so those methods
+-- and the original placement are restored before the drawer moves the button.
+local function ReleaseHidingBar(frame)
+    local bar = _G.HidingBarAddon
+    if type(bar) ~= "table" or type(bar.btnParams) ~= "table" or not bar.btnParams[frame] then return false, false end
+    local params = bar.btnParams[frame]
+    if not (Bag.initialized and Bag:IsOn() and type(params) == "table" and params.isShown
+        and type(bar.removeMButton) == "function") or (type(bar.manuallyButtons) == "table" and bar.manuallyButtons[frame])
+        or frame:IsForbidden() or frame:IsProtected() then return false, true end
+    if InCombatLockdown() then Bag.hidingBarPending = true; return false, true end
+    local parent = frame:GetParent()
+    bar:removeMButton(frame, parent and type(parent.applyLayout) == "function")
+    return true, true
+end
+
+-- A collector may still be using a button. Take it only after every known owner releases it.
+local function ReleaseCollectors(frame)
+    local released, owned = ReleaseHidingBar(frame)
+    if owned and not released then return false, false end
+    return true, ReleaseEnhanceQoL(frame) or released
+end
+
 -- A LibDBIcon button off the minimap, without touching LibDBIcon's settings
 local function ParkIcon(frame, name)
-    if not frame or parked[frame] or (name and Kept(name)) then return end
+    if not frame or (name and Kept(name)) then return false end
+    local available, released = ReleaseCollectors(frame)
+    if not available then return false end
+    if parked[frame] then
+        if released and frame:GetParent() ~= hiddenParent then frame:SetParent(hiddenParent) end
+        return true
+    end
     parked[frame] = true
     frame:SetParent(hiddenParent)
+    return true
 end
 
 local function ParkAllIcons()
@@ -357,8 +405,7 @@ local function CollectEntries()
                     if ns.Minimap and ns.Minimap.PullButtonsIn then ns.Minimap.PullButtonsIn() end
                 end
                 -- (left alone: still "seen", so its compartment entry doesn't slip into the drawer)
-                if not Kept(name) then
-                    ParkIcon(frame, name)
+                if not Kept(name) and ParkIcon(frame, name) then
                     entries[#entries + 1] = { kind = "ldb", name = name, label = label, object = object, frame = frame }
                 end
                 seen[name:lower()] = true
@@ -369,18 +416,44 @@ local function CollectEntries()
 
     -- other addons' buttons; a flood of them, hidden ones included, is some addon's pins, so none are
     -- taken. One its addon or player has hidden waits on the minimap until it's shown
-    local found = {}
+    local found, seenFrames = {}, {}
     local sets = PinSets()
-    -- (the button holder: left-out buttons Minimap.lua lifted above the border)
-    for _, parent in ipairs({ Minimap, MinimapBackdrop, MinimapCluster, ns.Minimap and ns.Minimap.ButtonHolder }) do
+    local function Consider(child)
+        if not seenFrames[child] and not adopted[child] and IsForeignButton(child, sets) then
+            seenFrames[child] = true
+            found[#found + 1] = child
+        end
+    end
+    -- Also look in EnhanceQoL's sink: it may have collected the buttons before this drawer started.
+    local addon = _G.EnhanceQoL
+    local sink = Bag.initialized and Bag:IsOn() and type(addon) == "table" and type(addon.db) == "table"
+        and addon.db.enableMinimapButtonBin and type(addon.variables) == "table" and addon.variables.buttonSink
+    if sink and type(sink.GetChildren) ~= "function" then sink = nil end
+    -- The button holder has left-out buttons Minimap.lua lifted above the border.
+    for _, parent in ipairs({ Minimap or false, MinimapBackdrop or false, MinimapCluster or false,
+        (ns.Minimap and ns.Minimap.ButtonHolder) or false, sink or false }) do
         for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
-            if not adopted[child] and IsForeignButton(child, sets) then found[#found + 1] = child end
+            Consider(child)
+        end
+    end
+    -- HidingBar keeps its own button list, including buttons whose methods it has temporarily replaced.
+    -- Only consider buttons it originally found on the minimap, not its manually grabbed UI frames.
+    local bar = _G.HidingBarAddon
+    if Bag.initialized and Bag:IsOn() and type(bar) == "table" and type(bar.minimapButtons) == "table"
+        and type(bar.btnParams) == "table" then
+        for _, child in ipairs(bar.minimapButtons) do
+            local params = bar.btnParams[child]
+            local parent = type(params) == "table" and params.parent
+            if parent and (parent == Minimap or parent == MinimapBackdrop or parent == MinimapCluster
+                or (ns.Minimap and parent == ns.Minimap.ButtonHolder)) then Consider(child) end
         end
     end
     if #found <= C.MAX_FOREIGN then
         for _, child in ipairs(found) do
             known["frame:" .. FrameId(child)] = FrameLabel(child)
-            if child:IsShown() and not Left("frame:" .. FrameId(child)) then adopted[child] = true end
+            if child:IsShown() and not Left("frame:" .. FrameId(child)) then
+                if ReleaseCollectors(child) then adopted[child] = true end
+            end
         end
     end
     for frame in pairs(adopted) do
@@ -1008,10 +1081,41 @@ function Bag:Init()
     if lib and lib.RegisterCallback then
         lib.RegisterCallback(Bag, "LibDBIcon_IconCreated", function(_, button, name) ParkIcon(button, name) end)
     end
-    local function Sweep()
+    local sweepPending, hookedEnhanceQoL, hookedHidingBar = false, nil, nil
+    local Sweep
+    local function QueueSweep()
+        if sweepPending or not self:IsOn() then return end
+        sweepPending = true
+        C_Timer.After(0, function()
+            sweepPending = false
+            if self:IsOn() then Sweep() end
+        end)
+    end
+    local function HookCollectors()
+        local addon = _G.EnhanceQoL
+        local functions = type(addon) == "table" and addon.functions
+        if type(functions) == "table" and functions ~= hookedEnhanceQoL
+            and type(functions.gatherMinimapButtons) == "function" then
+            hookedEnhanceQoL = functions
+            hooksecurefunc(functions, "gatherMinimapButtons", function()
+                if type(addon.db) == "table" and addon.db.enableMinimapButtonBin then QueueSweep() end
+            end)
+        end
+        local bar = _G.HidingBarAddon
+        if type(bar) == "table" and bar ~= hookedHidingBar and type(bar.addMButton) == "function" then
+            hookedHidingBar = bar
+            hooksecurefunc(bar, "addMButton", QueueSweep)
+        end
+    end
+    Sweep = function()
+        HookCollectors()
         ParkAllIcons()
-        CollectEntries()
-        KeepAdoptedInBag()
+        if panel and panel:IsShown() then
+            self:Layout()
+        else
+            CollectEntries()
+            KeepAdoptedInBag()
+        end
         Bag.UpdateCount()
     end
     Sweep()
@@ -1021,7 +1125,12 @@ function Bag:Init()
     local loads = CreateFrame("Frame")
     local pending = false
     loads:RegisterEvent("ADDON_LOADED")
-    loads:SetScript("OnEvent", function()
+    loads:RegisterEvent("PLAYER_REGEN_ENABLED")
+    loads:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            if not self.hidingBarPending then return end
+            self.hidingBarPending = nil
+        end
         if pending then return end
         pending = true
         C_Timer.After(0.5, function() pending = false; Sweep() end)
