@@ -1,8 +1,9 @@
--- Run from the repository root: luajit tools/tests/minimap-eqol.lua
--- Exercise the real drawer with minimap and EnhanceQoL frame doubles.
+-- Run from the repository root: luajit tools/tests/minimap-collectors.lua
+-- Exercise the real drawer with minimap and collector frame doubles.
 local function setup(options)
     options = options or {}
-    local now, timers, frames = 0, {}, {}
+    local now, timers, frames, combat = 0, {}, {}, false
+    function InCombatLockdown() return combat end
     C_Timer = { After = function(delay, fn) timers[#timers + 1] = { time = now + delay, fn = fn } end }
     local function advance(seconds)
         local limit = now + seconds
@@ -90,6 +91,7 @@ local function setup(options)
         GetAddOnTitle = function() return nil end }
     _G.OneForAllDB = options.oneForAll and { qol = { mmCollect = true } } or nil
     _G.EnhanceQoL = nil
+    _G.HidingBarAddon = nil
 
     local iconFrames, objects = {}, {}
     local ldb = { GetDataObjectByName = function(_, name) return objects[name] end }
@@ -139,6 +141,28 @@ local function setup(options)
         _G.EnhanceQoL = eq
         return eq
     end
+    local function hidingBar()
+        local hb = { minimapButtons = {}, btnParams = {}, manuallyButtons = {}, bar = CreateFrame('Frame') }
+        function hb:addMButton(frame, manual)
+            self.btnParams[frame] = { parent = frame:GetParent(), isShown = frame:IsShown() }
+            self.minimapButtons[#self.minimapButtons + 1] = frame
+            if manual then self.manuallyButtons[frame] = true end
+            frame:SetParent(self.bar)
+            -- HidingBar blocks SetParent on captured buttons until removeMButton restores it.
+            frame.SetParent = function() end
+        end
+        function hb:removeMButton(frame)
+            local params = assert(self.btnParams[frame])
+            for i, button in ipairs(self.minimapButtons) do
+                if frame == button then table.remove(self.minimapButtons, i); break end
+            end
+            frame.SetParent = nil
+            frame:SetParent(params.parent)
+            self.btnParams[frame] = nil
+        end
+        _G.HidingBarAddon = hb
+        return hb
+    end
     local function load()
         assert(loadfile('Modules/MinimapBag.lua'))('FlareUI', ns)
         ns.MinimapBag:Init()
@@ -153,8 +177,8 @@ local function setup(options)
         for _, choice in ipairs(bag.AddonChoices()) do if choice[2] == label then return true end end
         return false
     end
-    return { advance = advance, button = button, icon = icon, enhance = enhance, load = load,
-        event = event, hasChoice = hasChoice, ns = ns }
+    return { advance = advance, button = button, icon = icon, enhance = enhance, hidingBar = hidingBar, load = load,
+        event = event, hasChoice = hasChoice, ns = ns, setCombat = function(value) combat = value end }
 end
 
 -- EnhanceQoL loaded first and already gathered the buttons, including a LibDBIcon.
@@ -207,6 +231,43 @@ do
     assert(late:GetParent() == _G.FlareUI_MinimapBag, 'later layouts must leave the transferred button alone')
 end
 
+-- HidingBar uses a different ownership mechanism: it blocks frame methods until it releases a button.
+do
+    local s = setup({ leave = { ['frame:ExcludedButton'] = true } })
+    local hb = s.hidingBar()
+    local ordinary = s.button('AnotherAddonMinimapButton')
+    local libIcon = s.icon('AnotherLib')
+    local excluded = s.button('ExcludedButton')
+    local manual = s.button('ManuallyCapturedButton')
+    local otherUI = s.button('OtherUIControl', UIParent)
+    local hidden = s.button('HiddenButton'); hidden:Hide()
+    hb:addMButton(ordinary); hb:addMButton(libIcon); hb:addMButton(excluded); hb:addMButton(manual, true)
+    hb:addMButton(otherUI); hb:addMButton(hidden)
+    local bag = s.load()
+    assert(ordinary:GetParent() == _G.FlareUI_MinimapBag and s.hasChoice(bag, 'AnotherAddonMinimapButton'),
+        'buttons captured by another collector must be released into the FlareUI drawer')
+    assert(libIcon:GetParent() ~= hb.bar, 'a collected LibDBIcon must also be released into FlareUI')
+    assert(excluded:GetParent() == hb.bar and manual:GetParent() == hb.bar and otherUI:GetParent() == hb.bar
+        and hidden:GetParent() == hb.bar and not hidden:IsShown(),
+        'excluded, manually captured, hidden and non-minimap buttons must remain with the other collector')
+    assert(not hb.btnParams[ordinary] and not hb.btnParams[libIcon], 'released buttons must no longer be controlled by HidingBar')
+end
+
+do
+    local s = setup()
+    local bag = s.load()
+    s.advance(5)
+    local hb = s.hidingBar()
+    s.event('ADDON_LOADED'); s.advance(0.5)
+    local late = s.button('LateOtherButton')
+    s.setCombat(true)
+    hb:addMButton(late); s.advance(0)
+    assert(late:GetParent() == hb.bar, 'handoff from HidingBar must wait until combat ends')
+    s.setCombat(false); s.event('PLAYER_REGEN_ENABLED'); s.advance(0.5)
+    assert(late:GetParent() == _G.FlareUI_MinimapBag and s.hasChoice(bag, 'LateOtherButton'),
+        'a late collector must release its buttons after combat')
+end
+
 -- The compatibility behavior is inactive when the drawer is off or OneForAll owns buttons.
 for _, options in ipairs({ { enabled = false }, { oneForAll = true } }) do
     local s = setup(options)
@@ -218,4 +279,4 @@ for _, options in ipairs({ { enabled = false }, { oneForAll = true } }) do
     assert(other:GetParent() == eq.variables.buttonSink, 'other collectors must keep their buttons when FlareUI does not take them')
 end
 
-print('PASS: EnhanceQoL and the FlareUI drawer share minimap buttons without changing saved settings')
+print('PASS: collectors hand minimap buttons to the FlareUI drawer without changing saved settings')
