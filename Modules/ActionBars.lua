@@ -285,9 +285,11 @@ local function SkinBorder(button, on)
         if not (iw and iw > 0) and button.GetSize then iw, ih = button:GetSize() end
         -- The border's band reaches about 5.5 px into the icon, the same on every size: on the 30 px
         -- icons (stance, pet, possess, totem) it hid a third more of the picture than on the 45 px
-        -- main bars. A smaller icon's border sits further out, so the same share of the icon shows.
-        local out = FLARE_BORDER_OUT
-        if iw and iw > 0 and iw < 44 then out = out + math.floor(5.5 * (45 - iw) / 45 + 0.5) end
+        -- main bars. A smaller icon's border is thinner in proportion, so the same share of the icon
+        -- shows and the border stays on the icon's edge (further out, neighbours' borders overlapped).
+        local out, edge = FLARE_BORDER_OUT, FLARE_BORDER_EDGE
+        if iw and iw > 0 and iw < 44 then edge = edge * iw / 45 end
+        b.fuiEdge = edge
         -- round the icon, not the button: the pet bar's icon is larger than its 30 px button and would
         -- show past a border fitted to the button
         b:SetPoint("TOPLEFT", icon, "TOPLEFT", -out, out)
@@ -295,7 +297,7 @@ local function SkinBorder(button, on)
         local LSM = LibStub("LibSharedMedia-3.0")
         -- FlareUI Frames, the chat and meter windows' border (FlareUI Thin is too faint here)
         local file = LSM:Fetch("border", "FlareUI Frames")
-        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, edge) })
         local c = ns.BORDER_COLOR
         b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
         -- over the cooldown swipe, under the texts' frame
@@ -333,12 +335,12 @@ local function SkinBorder(button, on)
         button.NormalTexture:SetAlpha(0)
         -- the 30 px buttons (stance, pet, possess) keep Blizzard's 45 px icon mask
         -- (SmallActionButtonMixin_OnLoad), so the icon's own edge would show as a second, inner border
-        -- once Blizzard's frame is hidden: the mask takes the border's box, so its rounded corners
-        -- follow the border's as they do on the main bars
+        -- once Blizzard's frame is hidden: the mask takes the main bars' share of the border's box
+        -- (a 64 px mask on a 45 px icon), so its rounded corners follow the border's as they do there
         local mask = button.IconMask
         if mask and iw and iw > 0 and iw < 44 then
             if not button.FlareUI_MaskW then button.FlareUI_MaskW, button.FlareUI_MaskH = mask:GetSize() end
-            mask:SetSize(iw + 2 * out, ih + 2 * out)
+            mask:SetSize((iw + 2 * out) * 64 / 45, (ih + 2 * out) * 64 / 45)
         end
         ActionBars.FitStateArt(button, true)
         button.FlareUI_Bordered = true
@@ -534,7 +536,7 @@ local function UpdateActive(button, state)
     if button.FlareUI_Bordered then
         local LSM = LibStub("LibSharedMedia-3.0")
         local file = LSM:Fetch("border", "FlareUI Frames")
-        ov:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+        ov:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, button.FlareUI_Border.fuiEdge or FLARE_BORDER_EDGE) })
         ov:SetBackdropBorderColor(c[1], c[2], c[3], 1)
         ov.frame:Hide()
     else
@@ -652,7 +654,7 @@ function ActionBars.PetAutoCastEdge(overlay)
     edge:SetAllPoints(border)
     local LSM = LibStub("LibSharedMedia-3.0")
     local file = LSM:Fetch("border", "FlareUI Frames")
-    edge:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+    edge:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, border.fuiEdge or FLARE_BORDER_EDGE) })
     edge:SetBackdropBorderColor(c[1], c[2], c[3], 1)
     edge.frame:Hide()
     edge:Show()
