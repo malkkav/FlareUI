@@ -16,6 +16,9 @@ jobs:
     name: Lua tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: tests-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+      cancel-in-progress: true
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -30,12 +33,17 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          status=0
+          failed=()
           for test in tools/tests/*.lua; do
             if [[ "$test" == tools/tests/perf-helpers.lua ]]; then
               continue
             fi
             printf '\nRunning %s\n' "$test"
-            luajit "$test" || status=1
+            luajit "$test" || failed+=("$test")
           done
-          exit "$status"
+          if (( ${#failed[@]} > 0 )); then
+            printf '\nFailed tests:\n'
+            printf '  %s\n' "${failed[@]}"
+            printf '::error title=Lua test failed::%s\n' "${failed[@]}"
+            exit 1
+          fi
