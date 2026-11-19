@@ -277,28 +277,106 @@ local function CloseParkedReagentWindow()
     if reagent and parked[reagent] ~= nil and ReagentWanted() then CloseBag(reagentID) end
 end
 
-local function RouteEmbeddedBagClick(button, wantsSection)
-    local onClick = button and button:GetScript("OnClick")
-    if not onClick then return end
+-- A native backpack click opens only the combined frame. With bag 5 equipped,
+-- Blizzard's Open All Bags key would close it and immediately reopen both bags.
+local closeKeyOwner, openedBy
+local closeKeys = {}
 
-    button:SetScript("OnClick", function(self, mouseButton, down)
-        local backpack = Combined()
-        if down or (mouseButton ~= "LeftButton" and mouseButton ~= "RightButton")
-            or GetCursorInfo() or IsModifiedClick() or KeybindFrames_InQuickKeybindMode()
-            or not (backpack and Bags:IsCombined() and LayoutWanted() and wantsSection()) then
-            return onClick(self, mouseButton, down)
+local function ReleaseCloseKeys()
+    if not openedBy then return end
+    openedBy = nil
+    for key in pairs(closeKeys) do closeKeys[key] = nil end
+    if not InCombatLockdown() then ClearOverrideBindings(closeKeyOwner) end
+end
+
+local function RefreshCloseKeys()
+    if not openedBy or InCombatLockdown() then return end
+    if not (ns.BagModuleOn() and Bags:IsCombined() and LayoutWanted() and openedBy() and ReagentWanted())
+        or KeybindFrames_InQuickKeybindMode() or ContainerFrameUtil_GetShownFrameForID(ReagentID())
+        or ContainerFrameUtil_GetShownFrameForID(KeyringID()) then
+        ReleaseCloseKeys()
+        return
+    end
+    for key in pairs(closeKeys) do
+        if GetBindingAction(key) ~= "OPENALLBAGS" then
+            closeKeys[key] = nil
+            SetOverrideBinding(closeKeyOwner, false, key, nil)
         end
-        if not ContainerFrame_AllowedToOpenBags() then return end
+    end
+    for _, key in ipairs({ GetBindingKey("OPENALLBAGS") }) do
+        if GetBindingAction(key, true) == "OPENALLBAGS" then
+            closeKeys[key] = true
+            SetOverrideBinding(closeKeyOwner, false, key, "TOGGLEBACKPACK")
+        end
+    end
+end
 
-        if backpack:IsShown() then
-            CloseParkedReagentWindow()
-            CloseBackpack()
-        else
-            OpenBackpack()
-            -- Keep the embedded reagent window in Blizzard's count of open bags.
-            if backpack:IsShown() and ReagentWanted() then OpenBag(ReagentID()) end
+local function WatchBackpackClick(proxy, slotWanted)
+    local combined = Combined()
+    if not closeKeyOwner then
+        closeKeyOwner = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
+        -- The binding owner can release its keys even if combat starts with the window open.
+        closeKeyOwner:SetAttribute("_onstate-combat", [[if newstate == "combat" then self:ClearBindings() end]])
+        RegisterStateDriver(closeKeyOwner, "combat", "[combat] combat; peace")
+        closeKeyOwner:RegisterEvent("UPDATE_BINDINGS")
+        closeKeyOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
+        closeKeyOwner:SetScript("OnEvent", RefreshCloseKeys)
+        combined:HookScript("OnHide", ReleaseCloseKeys)
+        EventRegistry:RegisterCallback("ContainerFrame.OpenBag", function(_, frame)
+            if frame ~= combined then ReleaseCloseKeys() end
+        end, closeKeyOwner)
+    end
+
+    local wasClosed
+    proxy:HookScript("PreClick", function() wasClosed = not combined:IsShown() end)
+    proxy:HookScript("PostClick", function()
+        if wasClosed and combined:IsShown() then
+            openedBy = slotWanted
+            RefreshCloseKeys()
         end
     end)
+end
+
+local keyringClickProxy, keyringClickActive
+
+local function RefreshKeyringClickProxy()
+    if InCombatLockdown() then return end
+
+    local keyring, backpack = _G.KeyRingButton, _G.MainMenuBarBackpackButton
+    local scriptedInput = Enum.ForbiddenAspect and Enum.ForbiddenAspect.ScriptedInput
+    local enabled = keyring and backpack and scriptedInput and not GetCursorInfo()
+        and not KeybindFrames_InQuickKeybindMode() and ns.BagModuleOn()
+        and Combined() and Bags:IsCombined() and LayoutWanted() and KeyringWanted()
+        and not backpack:HasAccessConstraints() and not backpack:HasAnyForbiddenAspects(scriptedInput)
+    if not enabled then
+        if keyringClickActive then
+            UnregisterStateDriver(keyringClickProxy, "visibility")
+            keyringClickProxy:Hide()
+            keyringClickActive = false
+        end
+        return
+    end
+    if keyringClickActive then return end
+
+    if not keyringClickProxy then
+        local proxy = CreateFrame("Button", "FlareUIKeyringBackpackClick", keyring, "SecureActionButtonTemplate")
+        proxy:Hide()
+        proxy:SetAllPoints(keyring)
+        proxy:SetHitRectInsets(keyring:GetHitRectInsets())
+        proxy:SetMouseClickEnabled(true)
+        proxy:SetMouseMotionEnabled(false)
+        proxy:SetPassThroughButtons("MiddleButton", "Button4", "Button5")
+        proxy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        proxy:SetAttribute("useOnKeyDown", false)
+        proxy:SetAttribute("type", "click")
+        proxy:SetAttribute("clickbutton", backpack)
+        WatchBackpackClick(proxy, KeyringWanted)
+        keyringClickProxy = proxy
+    end
+    -- The native keyring receives drops and clicks with an item on the cursor.
+    -- In combat its native handler must stay available as the cursor changes.
+    RegisterStateDriver(keyringClickProxy, "visibility", "[combat][mod] hide; show")
+    keyringClickActive = true
 end
 
 local reagentClickProxy
@@ -313,34 +391,53 @@ local function RefreshReagentClickProxy()
     local enabled = reagent and backpack and scriptedInput
         and ns.BagModuleOn() and Combined() and Bags:IsCombined() and LayoutWanted() and ReagentWanted()
         and not backpack:HasAccessConstraints() and not backpack:HasAnyForbiddenAspects(scriptedInput)
-    if not enabled then
-        if reagentClickDriver then
-            UnregisterStateDriver(reagentClickProxy, "visibility")
-            reagentClickProxy:Hide()
-            reagentClickDriver = false
+    local driver
+    if enabled then
+        -- With an item on the cursor the native slot handles both clicks and drops.
+        -- Keep the existing backpack shortcut in combat.
+        if GetCursorInfo() or KeybindFrames_InQuickKeybindMode() then
+            driver = "[combat] show; hide"
+        else
+            driver = "[combat] show; [mod] hide; show"
         end
+    end
+    if driver == reagentClickDriver then return end
+    if not driver then
+        UnregisterStateDriver(reagentClickProxy, "visibility")
+        reagentClickProxy:Hide()
+        reagentClickDriver = nil
         return
     end
-    if reagentClickDriver then return end
 
     if not reagentClickProxy then
-        -- The real mouse click runs the stock backpack handler through Blizzard's secure template.
-        -- Use it in combat only so the native reagent slot keeps its normal drag handling out of combat.
-        local proxy = CreateFrame("Button", "FlareUIReagentBackpackClick", reagent, "SecureActionButtonTemplate")
+        local proxy = CreateFrame("Button", "FlareUIReagentBackpackClick", reagent,
+            "SecureActionButtonTemplate, SecureHandlerDragTemplate")
         proxy:Hide()
         proxy:SetAllPoints(reagent)
         proxy:SetHitRectInsets(reagent:GetHitRectInsets())
         proxy:SetMouseClickEnabled(true)
-        proxy:SetMouseMotionEnabled(false)
+        proxy:SetMouseMotionEnabled(true)
+        proxy:SetPropagateMouseMotion(true)
         proxy:SetPassThroughButtons("MiddleButton", "Button4", "Button5")
         proxy:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         proxy:SetAttribute("useOnKeyDown", false)
         proxy:SetAttribute("type", "click")
         proxy:SetAttribute("clickbutton", backpack)
+        -- Blizzard's drag action takes the equipment slot, not the container ID (5).
+        proxy:SetID(reagent:GetID())
+        proxy:RegisterForDrag("LeftButton")
+        proxy:SetAttribute("_ondragstart", "if not kind and not PlayerInCombat() then return 'bag', self:GetID() end")
+        WatchBackpackClick(proxy, ReagentWanted)
         reagentClickProxy = proxy
     end
-    RegisterStateDriver(reagentClickProxy, "visibility", "[combat] show; hide")
-    reagentClickDriver = true
+    RegisterStateDriver(reagentClickProxy, "visibility", driver)
+    reagentClickDriver = driver
+end
+
+local function RefreshBagClickProxies()
+    RefreshReagentClickProxy()
+    RefreshKeyringClickProxy()
+    RefreshCloseKeys()
 end
 
 --------------------------------------------------
@@ -1607,9 +1704,9 @@ function Bags:Init()
     self.initialized = true
     -- Init runs synchronously on PLAYER_LOGIN, which can still be outside lockdown on a combat reload.
     WarmExtraButtons()
-    RouteEmbeddedBagClick(_G.KeyRingButton, KeyringWanted)
-    RouteEmbeddedBagClick(_G.CharacterReagentBag0Slot, ReagentWanted)
-    RefreshReagentClickProxy()
+    RefreshBagClickProxies()
+    EventRegistry:RegisterCallback("QuickKeybindFrame.QuickKeybindModeEnabled", RefreshBagClickProxies, self)
+    EventRegistry:RegisterCallback("QuickKeybindFrame.QuickKeybindModeDisabled", RefreshBagClickProxies, self)
     Bags.FollowWindows()   -- section 4c
     Bags.Sort.Hook()       -- section 4d
     Bags.StyleFreeSlots()
@@ -1696,14 +1793,16 @@ function Bags:Init()
     local bagEvents = CreateFrame("Frame")
     bagEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
     bagEvents:RegisterEvent("CVAR_UPDATE")
+    bagEvents:RegisterEvent("CURSOR_CHANGED")
+    bagEvents:RegisterEvent("GAME_PAD_ACTIVE_CHANGED")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_NEW_ITEMS_UPDATED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
                              "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
     bagEvents:SetScript("OnEvent", function(self, event, bagID, slotID)
-        if event == "CVAR_UPDATE" then
-            RefreshReagentClickProxy()
+        if event == "CURSOR_CHANGED" or event == "GAME_PAD_ACTIVE_CHANGED" or event == "CVAR_UPDATE" then
+            RefreshBagClickProxies()
             return
         end
         if event == "QUEST_LOG_UPDATE" then
@@ -1736,7 +1835,7 @@ function Bags:Init()
             or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
         if refreshLayout then
             WarmExtraButtons()
-            RefreshReagentClickProxy()
+            RefreshBagClickProxies()
         end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
@@ -1777,7 +1876,7 @@ end
 function Bags:Refresh()
     if not self.initialized then return end
     WarmExtraButtons()
-    RefreshReagentClickProxy()
+    RefreshBagClickProxies()
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
     for _, frame in ipairs(BagFrames()) do
@@ -1793,9 +1892,9 @@ end
 
 --------------------------------------------------
 -- 4c. BAGS WITH OTHER WINDOWS
--- Forever's bank and guild bank don't open the bags as the vendor and mailbox do: with this module
--- on they always do. The character window does with Open with Character Window (off). Blizzard's own
--- OpenAllBags / CloseAllBags(frame): bags that were open already stay open when the window closes.
+-- The personal bank already opens and closes bags through Blizzard's own handlers.
+-- FlareUI uses the same APIs for the guild bank and, optionally, the character window.
+-- Bags opened by the player stay open when the window closes.
 -- Not in the Gamepad UI, whose bags are its own.
 --------------------------------------------------
 local function OpenWith(frame)
@@ -1818,7 +1917,6 @@ local function Follow(frame, wanted)
 end
 
 function Bags.FollowWindows()
-    Follow(_G.BankFrame)
     Follow(_G.CharacterFrame, function()
         local db = GetDb()
         return db and db.bagWithCharacter
