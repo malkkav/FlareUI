@@ -50,7 +50,13 @@ local ICON_COLOR = { r = 0.61, g = 0.48, b = 0.29, a = 1 }
 local RS = (Enum and Enum.EncounterLootDropRollState)
     or { NeedMainSpec = 0, NeedOffSpec = 1, Transmog = 2, Greed = 3, NoRoll = 4, Pass = 5 }
 local TYPE = { [RS.NeedMainSpec] = 1, [RS.NeedOffSpec] = 1, [RS.Greed] = 2, [RS.Transmog] = 4, [RS.Pass] = 0 }
-local LABEL = { [0] = _G.PASS, [1] = _G.NEED, [2] = _G.GREED, [4] = _G.TRANSMOGRIFICATION }
+-- the client's own words, unless FlareUI's language has words of its own (Hungarian has no client)
+local LABEL = {
+    [0] = L["Pass"] ~= "Pass" and L["Pass"] or _G.PASS,
+    [1] = L["Need"] ~= "Need" and L["Need"] or _G.NEED,
+    [2] = L["Greed"] ~= "Greed" and L["Greed"] or _G.GREED,
+    [4] = L["Transmog"] ~= "Transmog" and L["Transmog"] or _G.TRANSMOGRIFICATION,
+}
 local BUTTON_ATLAS = { [0] = "pass", [1] = "need", [2] = "greed", [4] = "transmog" }
 local RANK = { [1] = 1, [4] = 2, [2] = 3, [0] = 4 }
 

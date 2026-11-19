@@ -40,6 +40,7 @@ Locales\deDE.lua
 Locales\esES.lua
 Locales\esMX.lua
 Locales\frFR.lua
+Locales\huHU.lua
 Locales\itIT.lua
 Locales\koKR.lua
 Locales\nlNL.lua
