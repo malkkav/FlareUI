@@ -826,9 +826,10 @@ function Bar.Place()
     -- no plates or dividers, the text alone
     local db = GetDb()
     local box = not (db and db.infoBarBox == false)
+    local px = ns.PixelSize(f)
     for i, line in ipairs(Bar.lines) do
         line:ClearAllPoints()
-        line:SetSize(1, Bar.height - 8)
+        line:SetSize(px, Bar.height - 8)
         line:SetPoint("CENTER", f, "LEFT", center[i] + width[i] / 2, 0)
         line:SetShown(box and used[i] and used[i + 1] or false)
     end
