@@ -130,6 +130,22 @@ local KINDS = {
                 { "unusable", L["Unusable"] }, { "cooldown", L["On Cooldown"] } } } }
         end,
     },
+    -- the Cooldown Manager's Tracked Bars (CooldownManager.lua CM.COLORS): FlareUI's or yours
+    cdm = {
+        title = function() return L["Cooldown Manager"] end,
+        store = function()
+            local db = ns.db.profile.cooldownmanager
+            db.customColors = db.customColors or {}
+            return db.customColors
+        end,
+        color = function(key) return ns.CooldownManager.Color(key) end,
+        palette = function() return ns.CooldownManager.Palette() end,
+        base = function() return "flareui" end,
+        setPalette = function(p) ns.db.profile.cooldownmanager.palette = p ~= "flareui" and p or nil end,
+        palettes = { "flareui", "custom" },
+        apply = function() if ns.CooldownManager and ns.CooldownManager.Refresh then ns.CooldownManager:Refresh() end end,
+        rows = function() return { { L["Tracked Bars"], { { "bar", L["Bar"] } } } } end,
+    },
     -- the Nameplates module's colours (Nameplates.lua C.COLORS): FlareUI's or yours
     np = {
         title = function() return L["Nameplates"] end,
@@ -485,10 +501,23 @@ local function DrawNameplatePreviews()
     LayRows({ Row({ items[1], items[2] }, 1, 1.6), Row({ items[3], items[4] }, 1, 1.6) })
 end
 
+-- the Cooldown Manager window: one Tracked Bar, skinned as the module skins Blizzard's
+local function DrawCooldownPreviews()
+    local CM = ns.CooldownManager
+    if not (CM and CM.CreateSample) then return end
+    local f = samples["cdm"]
+    if not f then f = CM.CreateSample(window.preview); samples["cdm"] = f end
+    f:SetScale(1)
+    CM.DrawSample(f)
+    f:Show()
+    LayRows({ Row({ Item(f) }, 0.9, 2) })
+end
+
 local function DrawPreviews()
     for _, s in pairs(samples) do s:Hide() end
     local draw = (kindNow == "rb" and DrawResourcePreviews) or (kindNow == "ab" and DrawActionPreviews)
-        or (kindNow == "xp" and DrawXPPreviews) or (kindNow == "np" and DrawNameplatePreviews) or DrawUnitPreviews
+        or (kindNow == "xp" and DrawXPPreviews) or (kindNow == "np" and DrawNameplatePreviews)
+        or (kindNow == "cdm" and DrawCooldownPreviews) or DrawUnitPreviews
     local ok, err = pcall(draw)
     if not ok and geterrorhandler then geterrorhandler()(err) end
 end
@@ -825,7 +854,7 @@ local function Build()
     return f
 end
 
--- kind: "uf", "rb", "ab" or "xp"
+-- kind: "uf", "rb", "ab", "xp", "np" or "cdm"
 function CP.Open(kind)
     if not KINDS[kind] then return end
     window = window or Build()

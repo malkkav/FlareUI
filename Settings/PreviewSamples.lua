@@ -806,6 +806,132 @@ function R.font(c, spec)
     c.used = text:GetStringHeight() + 32
 end
 
+-- Blizzard's Cooldown Manager (its own page): four cooldown icons over a Tracked Bar, in Blizzard's look
+-- until the page and its skin are on. The second icon is on cooldown, the fourth has a stack.
+-- The third runs one cast in a loop: its effect, then the rest of its cooldown.
+function R.cdm(c)
+    Heading(c, L["Cooldown Manager"])
+    local on = Get('cooldownmanager.enabled', false)
+    local skin = on and Get('cooldownmanager.skin', false)
+    -- Auto (0) keeps Blizzard's size: the sample's own
+    local function Sized(path, auto)
+        local cfg, copy = Font(path), {}
+        for k, v in pairs(cfg) do copy[k] = v end
+        if not skin then copy.face, copy.flags = nil, 'OUTLINE' end
+        if not skin or (copy.size or 0) == 0 then copy.size = auto end
+        return copy
+    end
+    local icons = { 'INV_Sword_04', 'Ability_DualWield', 'Ability_Hunter_Quickshot', 'Spell_Holy_WordFortitude' }
+    local size, gap, top = 40, 10, 36
+    local left = math.floor((c.width - (#icons * size + (#icons - 1) * gap)) / 2)
+    local timeFont = Sized('cooldownmanager.cooldownFont', 16)
+    -- the swipe as Blizzard's Cooldown Manager draws it
+    local function Swipe(i)
+        local cd = c:Object('cdmSwipe' .. i, 'Cooldown', 'CooldownFrameTemplate')
+        cd:SetPoint('TOPLEFT', left + (i - 1) * (size + gap), -top)
+        cd:SetSize(size, size)
+        cd:SetSwipeTexture('Interface\\HUD\\UI-HUD-CoolDownManager-Icon-Swipe')
+        cd:SetDrawEdge(false)
+        cd:SetDrawBling(false)
+        cd:SetHideCountdownNumbers(true)
+        cd.FlareUI_Cooldown = cd
+        return cd
+    end
+    local function Time(id, i)
+        local text = c:Text(id, '', left + (i - 1) * (size + gap), top + 12, size, timeFont)
+        text:SetJustifyH('CENTER')
+        return text
+    end
+    for i, name in ipairs(icons) do
+        local x = left + (i - 1) * (size + gap)
+        local icon = c:Texture('cdmIcon' .. i, 'Interface\\Icons\\' .. name, x, top, size, size)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if i == 2 then
+            icon:SetDesaturated(true)
+        elseif i == 4 then
+            c:Text('cdmStack', '3', x, top + size - 14, size - 3, Sized('cooldownmanager.stackFont', 12)):SetJustifyH('RIGHT')
+        end
+        if on and Get('cooldownmanager.keybinds', false) then
+            local font = Font('cooldownmanager.keybindFont')
+            local copy = {}
+            for k, v in pairs(font) do copy[k] = v end
+            if (copy.size or 0) == 0 then copy.size = 12 end
+            c:Text('cdmKey' .. i, tostring(i), x, top + 2, size - 2, copy):SetJustifyH('RIGHT')
+        end
+        if skin then
+            -- (over the swipe, as in game)
+            c:Box('cdmEdge' .. i, x - 3, top - 3, size + 6, size + 6, 'FlareUI Frames', 0):SetFrameLevel(c.frame:GetFrameLevel() + 2)
+        else
+            local ring = c:Texture('cdmRing' .. i, nil, x - 4, top - 4, size + 8, size + 8, true)
+            if C_Texture.GetAtlasInfo('UI-HUD-CoolDownManager-IconOverlay') then ring:SetAtlas('UI-HUD-CoolDownManager-IconOverlay') end
+        end
+    end
+    local LOOP = 14
+    local timer, timerText = Swipe(2), Time('cdmTime', 2)
+    timer:SetSwipeColor(0, 0, 0, 0.7)
+    -- the third icon's cast: a moment before it (its key held), its effect, the rest of its cooldown
+    local HOLD, EFFECT, COOLDOWN = 0.5, 8, 12
+    local aura = CooldownViewerConstants and CooldownViewerConstants.ITEM_AURA_COLOR or { r = 1, g = 0.95, b = 0.57, a = 0.7 }
+    local soft = on and Get('cooldownmanager.softOverlay', false)
+    local cast, castText = Swipe(3), Time('cdmActive', 3)
+    local corner
+    if on and Get('cooldownmanager.effectCooldown', false) then
+        -- (always this small, whatever the Cooldown Numbers size)
+        local font = Sized('cooldownmanager.cooldownFont', 11)
+        font.size = 11
+        corner = c:Text('cdmEffect', '', left + 2 * (size + gap) + 2, top + size - 13, size, font)
+    end
+    local push
+    if on and Get('cooldownmanager.press', false) then
+        -- the action buttons' pushed frame
+        push = c:Texture('cdmPush', nil, left + 2 * (size + gap), top, size, size, true)
+        if C_Texture.GetAtlasInfo('UI-HUD-ActionBar-IconFrame-Down') then push:SetAtlas('UI-HUD-ActionBar-IconFrame-Down') end
+    end
+    local lap
+    local phase
+    -- (kept on the canvas: pointing at another row doesn't start the loop again)
+    local function Update(dt)
+        local t = ((c.cdmTime or 3) + dt) % LOOP
+        c.cdmTime = t
+        if not lap or t < lap then timer:SetCooldown(GetTime() - t, LOOP) end
+        lap = t
+        timerText:SetText(math.ceil(LOOP - t))
+        local e = t - HOLD
+        local now = e < 0 and 'hold' or e < EFFECT and 'effect' or e < COOLDOWN and 'cooldown' or 'ready'
+        if now ~= phase then
+            phase = now
+            if now == 'effect' then
+                -- Blizzard's yellow swipe, faint with Soften Active Overlay
+                cast:SetSwipeColor(aura.r, aura.g, aura.b, soft and 0.2 or aura.a)
+                cast:SetCooldown(GetTime() - e, EFFECT)
+            elseif now == 'cooldown' then
+                cast:SetSwipeColor(0, 0, 0, 0.7)
+                cast:SetCooldown(GetTime() - e, COOLDOWN)
+            else
+                cast:Clear()
+            end
+            if push then push:SetShown(now == 'hold') end
+        end
+        castText:SetText(now == 'effect' and math.ceil(EFFECT - e) or now == 'cooldown' and math.ceil(COOLDOWN - e) or '')
+        if corner then corner:SetText(now == 'effect' and math.ceil(COOLDOWN - e) or '') end
+    end
+    Update(0)
+    c:Animate(function(_, dt) Update(dt) end)
+    local barTop, barLeft, barWidth = top + size + 16, left + 30, #icons * size + (#icons - 1) * gap - 30
+    Icon(c, 'cdmBarIcon', 'Spell_Holy_WordFortitude', left, barTop, 20)
+    if skin then
+        c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, (ns.CooldownManager and ns.CooldownManager.Color and ns.CooldownManager.Color('bar') or { 1, 0.5, 0.25 }), Get('unitframes.units.player.texture'))
+        c:Box('cdmBarEdge', barLeft - 3, barTop - 3, barWidth + 6, 25, 'FlareUI Thin', 0)
+        c:Box('cdmBarIconEdge', left - 3, barTop - 3, 26, 26, 'FlareUI Thin', 0)
+    else
+        c:Bar('cdmBar', barLeft, barTop, barWidth, 19, 0.6, { 0.9, 0.6, 0.1 }, 'Blizzard')
+    end
+    local font = Sized('cooldownmanager.barFont', 11)
+    c:Text('cdmBarName', L["Spell"], barLeft + 5, barTop + 4, barWidth - 10, font)
+    c:Text('cdmBarTime', '8', barLeft + 5, barTop + 4, barWidth - 10, font):SetJustifyH('RIGHT')
+    c.used = barTop + 32
+end
+
 
 -- Examples only: no protected actions or live settings are used.
 function R.reminders(c, spec)
