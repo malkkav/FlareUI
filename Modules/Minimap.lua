@@ -2035,6 +2035,11 @@ function MM.LiftMapButtons()
     local want = MinimapFrame:GetFrameLevel() + 2
     if art:GetFrameLevel() ~= want then art:SetFrameLevel(want) end
     local strata = art:GetFrameStrata()
+    -- the strata one above the border's, for the buttons on MM.ButtonHolder (below)
+    local above = strata
+    for name, rank in pairs(STRATA_RANK) do
+        if rank == (STRATA_RANK[strata] or 0) + 1 then above = name end
+    end
     local sets = MM.PinSets()
     for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop }) do
         for _, child in ipairs(parent and { parent:GetChildren() } or {}) do LiftButton(child, strata, want, sets) end
@@ -2046,10 +2051,6 @@ function MM.LiftMapButtons()
     -- above the border, still anchored to the map where LibDBIcon puts them.
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
     if lib and lib.GetButtonList then
-        local above = strata
-        for name, rank in pairs(STRATA_RANK) do
-            if rank == (STRATA_RANK[strata] or 0) + 1 then above = name end
-        end
         for _, name in ipairs(lib:GetButtonList() or {}) do
             local button = lib:GetMinimapButton(name)
             -- (one in the addon drawer is parked off the map)
@@ -2064,10 +2065,6 @@ function MM.LiftMapButtons()
     -- anchors to the map stay; one that runs its own round drag keeps it (it ignores the map's shape).
     local holder, Bag = MM.ButtonHolder, ns.MinimapBag
     if holder and Bag and Bag.ForeignButtons then
-        local above = strata
-        for name, rank in pairs(STRATA_RANK) do
-            if rank == (STRATA_RANK[strata] or 0) + 1 then above = name end
-        end
         for _, button in ipairs(Bag.ForeignButtons(MinimapFrame, sets)) do
             if button:IsShown() and not (InCombatLockdown() and button:IsProtected()) then
                 if button.HasFixedFrameStrata and button:HasFixedFrameStrata() then button:SetFixedFrameStrata(false) end

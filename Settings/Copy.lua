@@ -119,7 +119,7 @@ ns.Copy = {
             desc = L["Player, target, focus, pet and party frames in FlareUI's style."],
             editButton = L["Edit Frames in Edit Mode"],
             editNote = L["Size, health text, portrait, auras and icons are set in Edit Mode."],
-            offCard = L["* Player, target, focus, pet, party, raid and boss frames\n* Three styles: FlareUI, Forever and Addon\n* Size, text, auras and fading for each frame in Edit Mode"],
+            offCard = L["* Player, target, focus, pet, party, raid and boss frames\n* Three styles: FlareUI, Forever and Modern\n* Size, text, auras and fading for each frame in Edit Mode"],
             tabs = { L["Settings"], L["Fonts"] },
             title = L["Unit Frames"],
         },
@@ -144,7 +144,7 @@ ns.Copy = {
             tip = L["For example: one group for your bottom bars, another for your side bars."],
         },
         ["ab.bar.show"] = {
-            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"] },
+            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
             desc = L["When this bar shows. Any ticked condition shows it."],
             label = L["Visibility"],
             tags = { "show condition", "show", "view conditions", "show when" },
@@ -182,49 +182,49 @@ ns.Copy = {
             tags = { "equipped items", "trinkets", "quality colour", "rarity", "green border" },
         },
         ["ab.fcmBar1"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 1"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar2"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 2"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar3"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 3"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar4"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 4"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar5"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 5"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar6"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 6"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar7"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 7"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
         },
         ["ab.fcmBar8"] = {
-            desc = L["Turns this bar into part of a cooldown display:\n* Not clickable\n* Shows only by the Fake CM Visibility"],
+            desc = L["Makes this bar part of Fake CM:\n* Not clickable\n* Shows only when the Fake CM Visibility says"],
             label = L["Action Bar 8"],
             section = "ab.fakeCooldownManager",
             tip = L["No bar picked: Fake CM is off."],
@@ -243,7 +243,7 @@ ns.Copy = {
             tip = L["`/fui cm` does the same. A reload ends it."],
         },
         ["ab.fcmShow"] = {
-            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"] },
+            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
             desc = L["When the Fake CM bars show. Any ticked condition shows them."],
             label = L["Visibility"],
             section = "ab.fakeCooldownManager",
@@ -628,13 +628,13 @@ ns.Copy = {
             desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Point at one to highlight its items"],
             label = L["Integrated Bag Buttons"],
             section = "bl.bagWindow",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+            tip = L["Needs Combined Backpack on."],
         },
         ["bl.bagColumns"] = {
             desc = L["Slots per row in the combined backpack. Default keeps Blizzard's 10."],
             label = L["Columns"],
             section = "bl.bagWindow",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+            tip = L["Needs Combined Backpack on."],
         },
         ["bl.bagCombineEmpty"] = {
             desc = L["Your empty slots show as one, after your items, with the number of free slots on it."],
@@ -654,7 +654,7 @@ ns.Copy = {
             desc = L["Each bag starts a new row in the combined backpack, with a gap above it."],
             label = L["Gaps Between Bags"],
             section = "bl.bagWindow",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+            tip = L["Needs Combined Backpack on."],
         },
         ["bl.bagItemLevel"] = {
             desc = L["In your bags and on the character sheet, weapons and armour show their item level in the bottom left corner, in their quality colour."],
@@ -671,7 +671,7 @@ ns.Copy = {
             desc = L["Your keys sit at the bottom of the combined backpack instead of in a keyring window."],
             label = L["Keyring in Backpack"],
             section = "bl.bagWindow",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls). Shows once you've had a key."],
+            tip = L["Needs Combined Backpack on. Shows once you've had a key."],
         },
         ["bl.bagPlainEmpty"] = {
             desc = L["Every empty slot in the combined backpack looks the same, instead of showing its bag's picture."],
@@ -683,7 +683,7 @@ ns.Copy = {
             desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
             label = L["Crafting Bag in Backpack"],
             section = "bl.bagWindow",
-            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+            tip = L["Needs Combined Backpack on."],
         },
         ["bl.bagSkinSlots"] = {
             choices = { L["Off"], L["Thin Borders"], L["Thick Borders"], L["Colour by Rarity"] },
@@ -700,7 +700,7 @@ ns.Copy = {
         },
         ["bl.bagView"] = {
             choices = { L["All Items"], L["Category Filters"], L["Category Rows"], L["Category Rows + Sets"] },
-            desc = L["How your bags show your items.\n* Category Filters: buttons for Quest Items, Equipment, Materials and Consumables. Pick one and everything else dims\n* Category Rows: the combined backpack in sections: Quest Items, Equipment, Materials, Consumables, Junk and Other\n* Category Rows + Sets: a section for each of your equipment sets too, after Equipment"],
+            desc = L["How your bags show your items:\n* Category Filters: buttons for Quest Items, Equipment, Materials and Consumables. Pick one and everything else dims\n* Category Rows: the combined backpack in sections: Quest Items, Equipment, Materials, Consumables, Junk and Other\n* Category Rows + Sets: a section for each of your equipment sets too, after Equipment"],
             label = L["Bag View"],
             section = "bl.bagWindow",
             tags = { "category filters", "bag filter", "bag categories", "sections", "quest items", "materials", "junk", "equipment sets", "gear sets", "drawer" },
@@ -791,7 +791,7 @@ ns.Copy = {
         },
         ["bl.lootFeedAlign"] = {
             choices = { L["Left"], L["Centre"], L["Right"] },
-            desc = L["How the lines line up:\n* Left: icon, then the text\n* Center: icon and text centred (at the cursor: right above it)\n* Right: the text, then the icon, lined up on the right (at the cursor: to its left)"],
+            desc = L["How the lines line up:\n* Left: icon, then the text\n* Centre: icon and text centred (at the cursor: right above it)\n* Right: the text, then the icon, lined up on the right (at the cursor: to its left)"],
             label = L["Alignment"],
             section = "bl.lootFeedSection",
         },
@@ -984,7 +984,7 @@ ns.Copy = {
             desc = L["Where reminders show for weapon buffs: poisons, imbues, stones and oils."],
             label = L["Weapon Buffs"],
             section = "br.where",
-            tip = L["On Mouseover keeps the icons hidden until you point at the reminder row."],
+            tip = L["Mouseover keeps the icons hidden until you point at the reminder row."],
         },
         ["cdm.barColor"] = {
             desc = L["The colour of the Tracked Bars."],
@@ -1235,7 +1235,7 @@ ns.Copy = {
             label = L["Tab Sets Channel"],
             section = "ch.tweaks",
             tags = { "chat type", "channel", "tab", "guild", "party", "raid", "say", "talk", "edit box" },
-            tip = L["A tab that shows several kinds keeps your current one. Party or Raid when you're not in one: Say."],
+            tip = L["A tab that shows several kinds keeps your current one. A Party or Raid tab sets Say while you're not in one."],
         },
         ["ch.timestamps"] = {
             desc = L["A short time in blue before each message, like <12:30>."],
@@ -1244,11 +1244,11 @@ ns.Copy = {
         },
         ["ch.unreadGlow"] = {
             choices = { L["None"], L["Say"], L["Yell"], L["Party"], L["Raid"], L["Guild"], L["Whispers"], L["Channels"] },
-            desc = L["Which messages make a chat tab glow when you're on another tab."],
+            desc = L["Which messages make a chat tab glow when you're on another tab. The glow takes the colour of the newest message: green for guild, blue for party and so on."],
             label = L["Tab Glow"],
             section = "ch.notifications",
             tags = { "unread", "new message", "tab glow", "highlight", "flash", "mute tab", "notification", "colour", "color" },
-            tip = L["None turns the glow off. The glow takes the colour of the newest message: green for guild, blue for party and so on. Right-click a tab and pick Mute Tab to keep just that tab from glowing."],
+            tip = L["Right-click a tab and pick Mute Tab to stop only that tab glowing."],
         },
         ["ch.whisperMarkers"] = {
             desc = L["A green \">\" before whispers you get and a red \"<\" before ones you send, instead of \"whispers:\" and \"To\"."],
@@ -1276,7 +1276,7 @@ ns.Copy = {
         },
         ["dm.chatTab"] = {
             choices = { L["Off"], L["Open When Clicked"], L["Open in Combat"], L["Open in a Group"], L["Open at Login"] },
-            desc = L["A Meter tab beside your chat tabs shows the meter inside the chat window. Pick when it opens on its own; tick as many as you like:\n* Open When Clicked: only when you click it\n* Open In Combat: during fights, back to the chat after\n* Open In a Group: while you're in a group\n* Open At Login: it starts open"],
+            desc = L["A Meter tab beside your chat tabs shows the meter inside the chat window. Pick when it opens on its own; tick as many as you like:\n* Open When Clicked: only when you click it\n* Open in Combat: during fights, back to the chat after\n* Open in a Group: while you're in a group\n* Open at Login: it starts open"],
             label = L["Meter Tab in the Chat"],
             section = "dm.meterTab",
             tags = { "meter tab", "open the meter tab", "damage in chat" },
@@ -1466,7 +1466,7 @@ ns.Copy = {
             label = L["Addons in the Drawer"],
             section = "mm.addonButtons",
             tags = { "minimap buttons", "addon buttons", "keep on minimap", "addon button drawer", "button bag" },
-            tip = L["Drag buttons in the drawer to reorder them. Changes apply after a reload. New addons go in the drawer. While OneForAll's \"Collect minimap buttons\" is on, its bar takes the minimap buttons: only the Addon Compartment entries are listed here."],
+            tip = L["* Drag buttons in the drawer to reorder them\n* Changes apply after a reload\n* New addons go in the drawer\n* While OneForAll's \"Collect minimap buttons\" is on, its bar takes the minimap buttons: only the Addon Compartment entries are listed here"],
         },
         ["mm.bagButtonSize"] = {
             desc = L["Makes the buttons in the drawer bigger. The drawer grows to fit them."],
@@ -1529,7 +1529,7 @@ ns.Copy = {
             tip = L["Off greys the other options in this section. Changing it reloads the interface."],
         },
         ["mm.flareButton"] = {
-            desc = L["FlareUI's own button, for opening these settings. With the Addon Button Drawer on, it sits in the drawer."],
+            desc = L["FlareUI's own button, for opening these settings. While Drawer Style isn't Off, it sits in the drawer."],
             label = L["FlareUI Minimap Button"],
             section = "mm.addonButtons",
             tip = L["Right-click the button to hide it. Untick FlareUI in Addons in the Drawer to keep it on the minimap."],
@@ -1613,7 +1613,7 @@ ns.Copy = {
         },
         ["np.barEffects"] = {
             choices = { L["None"], L["Bar Animations"], L["Bar Edge Glow"], L["Damage Trail"] },
-            desc = L["The unit frames' bar effects, as many as you like:\n* Animations: health glides to its new value\n* Edge Glow: a glow at the front of the bar\n* Damage Trail: lost health fades away behind the bar"],
+            desc = L["The unit frames' bar effects, as many as you like:\n* Bar Animations: health glides to its new value\n* Bar Edge Glow: a glow at the front of the bar\n* Damage Trail: lost health fades away behind the bar"],
             label = L["Bar Effects"],
             section = "np.look",
             tags = { "smooth", "smooth bars", "animation", "edge glow", "damage trail" },
@@ -1762,11 +1762,11 @@ ns.Copy = {
         },
         ["np.enemyShow"] = {
             choices = { L["Off"], L["Always"], L["In Combat"] },
-            desc = L["Whether enemies get a plate:\n* Always: whenever they're in view\n* Only in Combat: only during fights"],
+            desc = L["Whether enemies get a plate:\n* Always: whenever they're in view\n* In Combat: only during fights"],
             label = L["Show Enemy Plates"],
             section = "np.which",
             tags = { "enemy nameplates", "combat only", "combat enemy plates" },
-            tip = L["Only in Combat keeps your own setting and gives it back when you pick another choice."],
+            tip = L["In Combat keeps your own setting and gives it back when you pick another choice."],
         },
         ["np.enemyTypes"] = {
             choices = { L["None"], L["Players"], L["NPCs"], L["Minions"], L["Minor Enemies"] },
@@ -1774,15 +1774,15 @@ ns.Copy = {
             label = L["Enemy Types"],
             section = "np.which",
             tags = { "enemy players", "enemy npcs", "enemy minions", "pets", "totems", "minor enemies" },
-            tip = L["Players and NPCs hide FlareUI's own plates. With the Enemy type on Blizzard's plates, they always show."],
+            tip = L["Players and NPCs only hide FlareUI's own plates. An Enemy Player or Enemy NPC set to Blizzard's plates always shows."],
         },
         ["np.execute"] = {
             choices = { L["Off"], L["Automatic"], L["20%"], L["25%"], L["30%"], L["35%"] },
-            desc = L["Below this much health, the bar turns the execute colour. A thin line marks where it starts.\n* Auto: your class's own, such as a warrior's Execute or a paladin's Hammer of Wrath"],
+            desc = L["Below this much health, the bar turns the execute colour. A thin line marks where it starts. Automatic uses your class's own, such as a warrior's Execute or a paladin's Hammer of Wrath."],
             label = L["Execute Range"],
             section = "np.specialColors",
             tags = { "execute", "low health", "kill range", "hammer of wrath" },
-            tip = L["Auto does nothing for classes without one."],
+            tip = L["Automatic does nothing for classes without one."],
         },
         ["np.font.cast"] = {
             desc = L["The spell name, its time and its target."],
@@ -1806,11 +1806,11 @@ ns.Copy = {
         },
         ["np.friendlyShow"] = {
             choices = { L["Off"], L["Always"], L["In Combat"] },
-            desc = L["Whether friends get a plate:\n* Always: whenever they're in view\n* Only in Combat: only during fights, so you see who is low without them cluttering the world"],
+            desc = L["Whether friends get a plate:\n* Always: whenever they're in view\n* In Combat: only during fights, so you see who is low without them cluttering the world"],
             label = L["Show Friendly Plates"],
             section = "np.which",
             tags = { "friendly nameplates", "combat only", "combat friendly plates" },
-            tip = L["Only in Combat keeps your own setting and gives it back when you pick another choice."],
+            tip = L["In Combat keeps your own setting and gives it back when you pick another choice."],
         },
         ["np.friendlyTypes"] = {
             choices = { L["None"], L["Players"], L["NPCs"], L["Minions"] },
@@ -1885,7 +1885,7 @@ ns.Copy = {
             section = "np.specialColors",
         },
         ["np.nameOnlyMode"] = {
-            desc = L["This unit's plates show only the name: no bar, cast bar or auras. The other options for this unit grey out, as they don't apply."],
+            desc = L["This unit's plates show only the name: no bar, cast bar or auras. This unit's other options grey out."],
             label = L["Name Only Mode"],
             section = "np.nameOnlySection",
             tags = { "name only", "names only", "no bar" },
@@ -2003,7 +2003,7 @@ ns.Copy = {
             label = L["Scale"],
             section = "np.scaleSection",
             tags = { "scale", "size", "target scale", "target size", "zoom" },
-            tip = L["The game's own target zoom is turned off while FlareUI draws the plates, so Targeted is the only one."],
+            tip = L["The game's own target zoom stays off while FlareUI draws the plates, so this is the only plate scaling."],
         },
         ["np.targetArrowSide"] = {
             choices = { L["Both Sides"], L["Left"], L["Right"], L["Top"] },
@@ -2043,7 +2043,7 @@ ns.Copy = {
         },
         ["np.threat"] = {
             choices = { L["Off"], L["In a Group"], L["Always"] },
-            desc = L["Health bars change colour with threat:\n* In Groups: only in a party or raid. On your own, every mob attacks you anyway\n* Always: solo too"],
+            desc = L["Health bars change colour with threat:\n* In a Group: only in a party or raid. On your own, every mob attacks you anyway\n* Always: solo too"],
             label = L["Colour by Threat"],
             section = "np.threatSection",
             tags = { "aggro", "threat", "tank colours" },
@@ -2067,7 +2067,7 @@ ns.Copy = {
             label = L["Threat Scale"],
             section = "np.threatSection",
             tags = { "threat size", "tank", "aggro" },
-            tip = L["Needs Threat Colours on. Another tank's mobs keep their size."],
+            tip = L["Needs Colour by Threat on. Another tank's mobs keep their size."],
         },
         ["np.width"] = {
             desc = L["How wide each plate's health bar is."],
@@ -2079,7 +2079,7 @@ ns.Copy = {
             label = L["Accept Resurrections"],
             section = "qol.other",
             tags = { "auto accept res", "resurrect", "rez" },
-            tip = L["Never while you or the one casting it is in a fight: then the choice stays yours."],
+            tip = L["Not while you or the caster is in a fight. Then you choose."],
         },
         ["qol.acceptSummon"] = {
             desc = L["Summons are taken for you after 10 seconds. A small window says where to, so you can cancel or go at once."],
@@ -2255,7 +2255,7 @@ ns.Copy = {
             label = L["Combat Friendly Plates"],
             section = "qol.nameplates",
             tags = { "friendly nameplates", "friends", "health bars", "combat only" },
-            tip = L["Out of combat your own setting comes back when you turn this off."],
+            tip = L["Turning it off restores your own setting."],
         },
         ["qol.npCombo"] = {
             desc = L["Combo point gems under your target's nameplate."],
@@ -2421,7 +2421,7 @@ ns.Copy = {
             tip = L["The Blizzard frame style always uses Blizzard's colours. Difficulty, complete and focus colours keep their meaning in both."],
         },
         ["qt.completeTag"] = {
-            desc = L["Finished quests get a green \"(Complete)\" after their name. Turn it off to drop the tag."],
+            desc = L["Finished quests get a green \"(Complete)\" after their name."],
             label = L["Show Complete Tag"],
             section = "qt.display",
             tags = { "complete", "finished", "green", "ready to turn in" },
@@ -2528,7 +2528,7 @@ ns.Copy = {
         },
         ["qt.sort"] = {
             choices = { L["By Zone"], L["By Distance"], L["By Level"], L["By Progress"] },
-            desc = L["How quests are ordered.\n* By zone: your zone first\n* By distance: nearest first\n* By level: lowest first\n* By progress: furthest along first"],
+            desc = L["How quests are ordered:\n* By Zone: your zone first\n* By Distance: nearest first\n* By Level: lowest first\n* By Progress: furthest along first"],
             label = L["Sort By"],
             section = "qt.quests",
             tags = { "objective sorting" },
@@ -2554,11 +2554,11 @@ ns.Copy = {
             label = L["Width"],
         },
         ["qt.zoneHeaders"] = {
-            desc = L["Quests grouped under their zone's name. Click a heading to fold its quests."],
+            desc = L["Quests grouped under their zone's name. Click a heading to hide that zone's quests."],
             label = L["Zone Headings"],
             section = "qt.display",
             tags = { "collapsible zones", "fold", "collapse", "expand", "zone heading" },
-            tip = L["Shift-click a heading to fold all its quests. Folded zones are saved for each character."],
+            tip = L["Shift-click a heading to fold each of its quests down to its title. Folded zones are saved for each character."],
         },
         ["rb.*.fsr"] = {
             desc = L["A spark crosses the bar for five seconds after you spend mana. Spirit regeneration starts again when it ends."],
@@ -2569,7 +2569,7 @@ ns.Copy = {
             label = L["Height"],
         },
         ["rb.*.show"] = {
-            choices = { L["Always"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"] },
+            choices = { L["Always"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
             desc = L["When the bar shows. Any ticked condition shows it."],
             label = L["Visibility"],
             tags = { "show condition", "show", "view conditions", "show when" },
@@ -2771,7 +2771,7 @@ ns.Copy = {
         },
         ["rm.targetMouseover"] = {
             choices = { L["Off"], L["Always"], L["Shift"], L["Ctrl"], L["Alt"] },
-            desc = L["Opening a radial with its key targets the unit under your mouse first:\n* Enabled: every time\n* Shift, Ctrl or Alt: only with that key held. Alt+3 targets and opens, plain 3 just opens"],
+            desc = L["Opening a radial with its key targets the unit under your mouse first:\n* Always: every time\n* Shift, Ctrl or Alt: only with that key held. Alt+3 targets and opens, plain 3 only opens"],
             label = L["Target Mouseover"],
             section = "rm.opening",
             tip = L["The key you pick can't be part of a radial key. Radial keys that use it stop working until you change this. Controllers and radial macros never target."],
@@ -2794,7 +2794,7 @@ ns.Copy = {
         },
         ["tt.corner"] = {
             choices = { L["Automatic"], L["Bottom Right"], L["Bottom Left"], L["Top Right"], L["Top Left"] },
-            desc = L["Which corner of the HUD Tooltip box the tooltip grows from. Auto: Blizzard picks the nearest one, so the tooltip can switch sides when you move the box."],
+            desc = L["Which corner of the HUD Tooltip box the tooltip grows from. Automatic: Blizzard picks the nearest one, so the tooltip can switch sides when you move the box."],
             label = L["Tooltip Corner"],
             section = "tt.mouseoverSection",
             tags = { "anchor", "tooltip position", "hud tooltip", "grow" },
@@ -3101,7 +3101,7 @@ ns.Copy = {
             tip = L["Each frame style keeps its own fonts."],
         },
         ["uf.font.combatText"] = {
-            desc = L["The damage and heals on the portrait (Show Combat Text). Auto sizes it to the portrait. Crits show half again as big."],
+            desc = L["The damage and heals on the portrait (Show Combat Text). Auto sizes it to the portrait. Crits show 50% bigger."],
             label = L["Combat Text"],
             section = "uf.fontsPlayer",
             tip = L["Each frame style keeps its own fonts."],

@@ -602,14 +602,14 @@ end
 
 -- A bar's spell under every name an icon may know it by: the bar may hold another form or rank of
 -- the icon's spell. An entry already there stays.
+local function NoteOne(t, spell, value)
+    if Readable(spell) and t[spell] == nil then t[spell] = value end
+end
 local function NoteSpell(t, id, value)
-    local function Note(spell)
-        if Readable(spell) and t[spell] == nil then t[spell] = value end
-    end
-    Note(id)
-    if C_SpellBook and C_SpellBook.FindBaseSpellByID then Note(C_SpellBook.FindBaseSpellByID(id)) end
-    if C_Spell.GetOverrideSpell then Note(C_Spell.GetOverrideSpell(id)) end
-    Note(SpellName(id))
+    NoteOne(t, id, value)
+    if C_SpellBook and C_SpellBook.FindBaseSpellByID then NoteOne(t, C_SpellBook.FindBaseSpellByID(id), value) end
+    if C_Spell.GetOverrideSpell then NoteOne(t, C_Spell.GetOverrideSpell(id), value) end
+    NoteOne(t, SpellName(id), value)
 end
 
 local function ItemValue(item, t)
@@ -690,16 +690,17 @@ local function WatchKeys()
     if not keyWatch then
         keyWatch = CreateFrame("Frame")
         -- (the bar events come in bursts: one pass on the next frame)
+        local function Flush()
+            keysQueued = false
+            if On() and GetDb().keybinds then
+                for name in pairs(ABILITY_VIEWERS) do UpdateKeys(name) end
+            end
+        end
         keyWatch:SetScript("OnEvent", function()
             keysStale = true
             if keysQueued then return end
             keysQueued = true
-            C_Timer.After(0, function()
-                keysQueued = false
-                if On() and GetDb().keybinds then
-                    for name in pairs(ABILITY_VIEWERS) do UpdateKeys(name) end
-                end
-            end)
+            C_Timer.After(0, Flush)
         end)
     end
     for _, event in ipairs(KEY_EVENTS) do keyWatch:RegisterEvent(event) end

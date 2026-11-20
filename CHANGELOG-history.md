@@ -1,6 +1,18 @@
 # FlareUI changelog history
 
-Versions 6.10 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 6.10.1 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 6.10.1
+
+A quick fix for the error spam some of you hit after 6.10, mostly in Gnomeregan.
+
+## Fixed
+- Party and raid frames: the **Dispel Highlight** pulse no longer floods the error log in fights.
+  - It came from debuffs the game keeps hidden from addons, as on some Gnomeregan mobs.
+- Buffs & Debuffs: the weapon enchant row no longer causes errors in combat.
+  - When the game hides your buffs from addons, the row stays where it was.
+- Quest tracker: focusing a quest in combat no longer causes a blocked-action error.
+  - The new focus is set as soon as the fight ends.
 
 # FlareUI 6.10
 

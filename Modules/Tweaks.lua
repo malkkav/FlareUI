@@ -1844,10 +1844,10 @@ local function StretchHealthBar(unitFrame)
     -- level box's width too, which would leave a gap with the box hidden
     local auras = unitFrame.AurasFrame
     if auras and not auras:IsForbidden() then
-        for _, key in ipairs({ "CrowdControlListFrame", "LossOfControlFrame" }) do
-            local list = auras[key]
-            if list and not list:IsForbidden() then pcall(list.SetPoint, list, "LEFT", container, "RIGHT", 5, 0) end
-        end
+        -- (no list table: this runs on every layout of every plate)
+        local cc, loc = auras.CrowdControlListFrame, auras.LossOfControlFrame
+        if cc and not cc:IsForbidden() then pcall(cc.SetPoint, cc, "LEFT", container, "RIGHT", 5, 0) end
+        if loc and not loc:IsForbidden() then pcall(loc.SetPoint, loc, "LEFT", container, "RIGHT", 5, 0) end
     end
 end
 

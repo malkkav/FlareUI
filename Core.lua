@@ -987,7 +987,7 @@ local defaults = {
             layouts = {},
         },
 
-        -- [[ NAMEPLATES MODULE ]] (Modules/Nameplates.lua): FlareUI's own enemy plates; a reload turns it on or off
+        -- [[ NAMEPLATES MODULE ]] (Modules/Nameplates.lua): FlareUI's own plates (enemy and friendly); a reload turns it on or off
         nameplates = {
             enabled = false,
             width = 160, height = 16,   -- the health bar (tall enough for the name inside it)
@@ -1005,8 +1005,8 @@ local defaults = {
             colorFocus = false, groupColor = false,
             execute = "off",            -- Execute Range: off | auto | 20 | 25 | 30 | 35
             threatScale = false,        -- Threat Scale (tanks): lost mobs grow, held ones shrink a little
-            nameOnlySize = 100,
-            combatPlates = "none",      -- Show Plates in Combat (Name Only Mode): types that leave Name Only in a fight         -- Name Only Size (per type): the name on a Name Only plate, in % of the Names font
+            nameOnlySize = 100,         -- Name Only Size (per type): the name on a Name Only plate, in % of the Names font
+            combatPlates = "none",      -- Show Plates in Combat (Name Only Mode): types that leave Name Only in a fight
             threatPercent = false,      -- Threat Percentage: your threat % in the bar's middle, coloured as the unit frames' Threat Text
             peacefulNames = false,      -- Name Only While Unattackable: enemy NPCs you can't attack show only their name
             enemyPlayers = true, enemyNpcs = true,   -- Enemy Types: FlareUI's plates for enemy players / NPCs
@@ -1019,9 +1019,9 @@ local defaults = {
             targetBorder = true, targetBarColor = true, targetGlow = false,
             targetArrows = "off",       -- off | npe | npeGlow | chevron | hook | big | red (Blizzard's art)
             targetArrowSide = "both",   -- both | left | right | top
-            castKickMark = false,
+            castKickMark = false,       -- Kick Ready Mark: where on the cast your interrupt will be ready
             clampTarget = true,         -- Keep Target on Screen (the game's own setting, set while on)
-            -- obscuredAlpha = 0.4 once picked: Out of Sight opacity (the game's own; untouched until then)       -- Kick Ready Mark: where on the cast your interrupt will be ready
+            -- obscuredAlpha = 0.4 once picked: Out of Sight opacity (the game's own; untouched until then)
             plate = "bar",              -- Plate: blizzard | bar | name (Name Only) | hidden; per type below
             rarityIcon = true,          -- Rarity Icon: the gold elite / silver rare dragon on the bar's end
             castTargetedFlash = false, threatGlow = false, aggroFlash = false,
@@ -1029,7 +1029,7 @@ local defaults = {
             clickThrough = false,       -- Click-Through (per type)
             -- Plate types (Nameplates.lua C.TYPE_KEYS): types[kind] = { preset = full | compact | tiny |
             -- name | custom, custom = { the type's own values } }; presets are C.PRESETS over the values
-            -- here (Enemy Players and NPCs Full, Friendly Name Only, Minions Compact, Minor Tiny)
+            -- here (Enemy Player / NPC Full, Friendly Player / NPC Name Only, Minor Full: C.DEFAULT_PRESET)
             types = {},
             -- palette = "custom" + customColors = { [key] = { r, g, b } } once picked (Pick Your Colours)
             level = "box",              -- Level: off | box | disc | name (Follow Name)
@@ -2491,9 +2491,9 @@ do
     -- single choices from before the toggles each meant "in combat, or ...".
     -- In an Instance on every Visibility list, under In a Group
     -- In a Capital City last on every list (11-20), under Not Mounted
-    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }
+    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
     -- the faded elements' and Fake CM's: Mouseover is a condition ticked with the others
-    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }
+    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
     C.BAR_LEGACY = { target = "combat,hastarget", harm = "combat,attackable", nomount = "combat,unmounted", group = "combat,ingroup" }
 end
 
@@ -2554,6 +2554,7 @@ do
     local MELEE = { ROGUE = { 6603, 1752 } } -- Auto Attack, Sinister Strike
     local AUTO_ATTACK = { 6603 }
     local RANGED_OTHER = { 75, 5019 }        -- Auto Shot, Shoot (classes not listed above)
+    local playerClass
     -- a readable true or false, else nil (an "and v or nil" would lose false)
     local function Answer(v)
         if canaccessvalue(v) and type(v) == "boolean" then return v end
@@ -2573,7 +2574,9 @@ do
             local ok, v = pcall(C_SwingTimer.IsTargetWithinSwingRange, swingType)
             if ok and Answer(v) ~= nil then return v end
         end
-        local _, class = UnitClass("player")
+        -- (asked four times a second per swing bar: the class is read once)
+        if not playerClass then playerClass = select(2, UnitClass("player")) end
+        local class = playerClass
         local list = ranged and (RANGED[class] or RANGED_OTHER) or (MELEE[class] or AUTO_ATTACK)
         for _, id in ipairs(list) do
             if id == 6603 or ns.IsPlayerSpell(id) then

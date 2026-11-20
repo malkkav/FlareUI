@@ -3999,7 +3999,7 @@ function Chat:RefreshForEditMode()
     end)
 end
 
--- Settings > Chat open: the windows stay fully shown (Frame Opacity can be seen); afterwards they
+-- Settings > Chat open: the windows stay fully shown (Background Opacity can be seen); afterwards they
 -- fade on their usual timer
 function Chat:SetSettingsPreview(on)
     on = on and true or false

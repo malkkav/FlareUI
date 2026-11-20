@@ -236,7 +236,7 @@ end
 -- at full health through a curve on the text's alpha (its amount can't be compared when secret); with
 -- other numbers it shows only when it can be read and isn't 0.
 --   src: { cur, max, percent, lost } read from the unit (percent 0-100), or numbers for samples.
--- (two buffers reused by every call: this runs on every health and power tick of every frame)
+-- (buffers reused by every call: this runs on every health and power tick of every frame)
 BT.fmtBuf, BT.argBuf, BT.orderBuf = {}, {}, {}
 function BT.Fill(fs, set, src, prefix)
     local fmt, args, n = BT.fmtBuf, BT.argBuf, 0

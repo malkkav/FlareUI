@@ -349,9 +349,10 @@ local function PlaceSoon()
     C_Timer.After(0, Place)
 end
 
--- Faded with the map (Visibility.lua fades MinimapCluster)
+-- Faded with the map (Visibility.lua fades MinimapCluster, a SetAlpha every frame of a fade). Only
+-- while shown: UpdateShown fades it as it shows it
 local function Fade()
-    button:SetAlpha(MinimapCluster:GetAlpha())
+    if button:IsShown() then button:SetAlpha(MinimapCluster:GetAlpha()) end
 end
 
 local function UpdateShown()

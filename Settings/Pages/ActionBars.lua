@@ -161,7 +161,7 @@ S:Row{
     -- toggles as on the bars (ns.Conditions), Mouseover one of them: nothing ticked is Always
     key = "ab.fcmShow", kind = "dropdown", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
     -- (In an Instance was missing here, so the names after In a Group were one off until 11-20)
-    choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }, apply = Refresh,
+    choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }, apply = Refresh,
     toggles = { exclusive = { "always" }, tokens = ns.Conditions.MOUSE_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
     -- above the bar switches: as a dropdown it leads, the bars and Setup Mode follow
 }

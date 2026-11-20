@@ -1340,12 +1340,13 @@ local function UpdateHealth(f, glide)
         return
     end
 
+    local poll = UNITS[unit].poll
     bar:SetMinMaxValues(0, UnitHealthMax(unit))
     -- a corpse gets no more health ticks, so a glide could stop short of empty
-    ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not UNITS[unit].poll and not UnitIsDead(unit))
-    UF.SetDamageTrail(f.DamageTrail, unit, glide, not UNITS[unit].poll and UF.DamageTrailOn(udb and udb.damageTrail))
+    ns.SetBarValue(bar, UnitHealth(unit), glide and udb and udb.smoothBars and not poll and not UnitIsDead(unit))
+    UF.SetDamageTrail(f.DamageTrail, unit, glide, not poll and UF.DamageTrailOn(udb and udb.damageTrail))
     -- (the polled frames update on a timer: no change to bump the edge glow for)
-    UF.BarLookUpdate(bar, unit, glide and not UNITS[unit].poll)
+    UF.BarLookUpdate(bar, unit, glide and not poll)
     -- A connected player's colour only follows the class (readable), the palette and Class Colours, so a
     -- health tick keeps it unless one changed since it was set. A new unit comes as an update without
     -- glide and an offline one is set on every tick, so both set it again.
@@ -5469,7 +5470,7 @@ function UF.RangeReport()
     end
 end
 
--- target and focus re-check five times a second while shown (range has no event for them)
+-- target, focus and pet re-check five times a second while shown (range has no event for them)
 UF.RANGE_UNITS = { "target", "focus", "pet" }   -- (the pet since 11-20, off by default)
 function UF.UpdateFrameRanges()
     for _, unit in ipairs(UF.RANGE_UNITS) do
@@ -6857,7 +6858,7 @@ function UF:Init()
     HookExtras()
     if frames.player then InitFsrSpark(); UF.Gcd.Init() end
     self.initialized = true
-    -- out of range fading on target and focus (no event for their range); a new spellbook re-picks
+    -- out of range fading on target, focus and pet (no event for their range); a new spellbook re-picks
     -- the spells it measures with
     C_Timer.NewTicker(0.2, UF.UpdateFrameRanges)
     local spells = CreateFrame("Frame")

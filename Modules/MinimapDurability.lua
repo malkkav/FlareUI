@@ -122,8 +122,9 @@ local function Place()
     button:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / own, y / own)
 end
 
+-- (only while shown: Update sets the alpha as it shows it)
 local function Fade()
-    button:SetAlpha(MinimapCluster:GetAlpha())
+    if button:IsShown() then button:SetAlpha(MinimapCluster:GetAlpha()) end
 end
 
 local function Update()
@@ -134,7 +135,7 @@ local function Update()
     button.level = level > 0 and level or 1
     if show then
         Colour(button.level)
-        Fade()
+        button:SetAlpha(MinimapCluster:GetAlpha())   -- (before it shows: Fade skips a hidden button)
         Place()
     end
     button:SetShown(show and true or false)

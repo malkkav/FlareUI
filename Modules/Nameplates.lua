@@ -3,7 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- NAMEPLATES (Settings > Nameplates, off; a reload turns it on or off)
--- FlareUI's own enemy plates, drawn on top of Blizzard's nameplate frames. Blizzard keeps its plate
+-- FlareUI's own plates, drawn on top of Blizzard's nameplate frames. Blizzard keeps its plate
 -- (position, stacking, clicks, occlusion fading); only its unit frame goes invisible, and ours sits
 -- on the plate in its place.
 --
@@ -21,8 +21,8 @@ local L = ns.L
 -- Secret values: health, class, casts, auras and names only ever go into Blizzard's widgets
 -- (SetValue, SetText, SetTimerDuration, the "from boolean" helpers, colour curves, aura containers).
 -- Threat between you and a nameplate is readable on Forever; when the client says it is hidden, the
--- plate keeps its usual colour. Friendly plates stay Blizzard's (inside instances they are forbidden
--- to addons anyway).
+-- plate keeps its usual colour. Inside instances friendly plates stay Blizzard's (they are forbidden
+-- to addons there).
 --------------------------------------------------
 
 ns.Nameplates = ns.Nameplates or {}
@@ -96,7 +96,7 @@ local C = {
     WHITE = "Interface\\Buttons\\WHITE8x8",
     TARGETED_RGB = { 1, 0.15, 0.1 },   -- Flash When Targeted
     IMPORTANT_GLOW = 0.8,     -- Highlight Important Casts: its soft glow's strength
-    IMPORTANT_SIZE = 7,       -- and its size (the plate glow's is GLOW_SIZE)             -- what sits beside the plate (crowd control, defensives, quest mark): as the level box
+    IMPORTANT_SIZE = 7,       -- and its size (the plate glow's is GLOW_SIZE)
     ELITE_IN = 0.25,          -- Rare/Elite Icon: its centre this share of its size inside the top right corner
     -- spells that make you a tank: Defensive Stance, Righteous Fury
     DEFENSIVE_STANCE = 71, RIGHTEOUS_FURY = 25780,
@@ -114,6 +114,7 @@ local C = {
         DRUID = { 5176, 8921 }, DRUID_MELEE = { 1082, 779 },
     },
     MELEE_FORMS = { [1] = true, [5] = true, [8] = true },   -- Cat, Bear, Dire Bear (form IDs)
+    RANGE_NAMES = {},         -- spell ID -> name, filled as NP.UpdateRange asks
     -- folder names of other nameplate addons: the module stands down while one is loaded (the
     -- runtime check in Claim catches the rest)
     OTHER_ADDONS = { "Plater", "Kui_Nameplates", "TidyPlates_ThreatPlates", "TidyPlates", "NeatPlates",
@@ -155,7 +156,8 @@ local state = { role = "damage", tanks = {}, inGroup = false, mouseover = nil }
 
 local function DB() return ns.db and ns.db.profile and ns.db.profile.nameplates end
 
--- PLATE TYPES: Enemy, Friendly, Minions (pets, totems, guardians) and Minor mobs.
+-- PLATE TYPES: enemyPlayer, enemyNpc, friendlyPlayer, friendlyNpc and minor (pets, totems, guardians
+-- and minor mobs).
 -- Each type keeps its own value of these settings (nameplates.types[kind]); every other setting is
 -- shared. A type's view reads its own value first, then the shared one.
 -- (11-20, Malkkav: open PvP is big on Forever, so players and NPCs are split again on both sides;
@@ -433,9 +435,13 @@ function NP.PaintImportantGlow(g, c)
     g.color = c
     if g.edge:GetBackdrop() then
         g.edge:SetBackdropBorderColor(c[1], c[2], c[3], 1)
-        -- (added over the border, not laid on it: brighter than the colour alone)
-        for _, region in ipairs({ g.edge:GetRegions() }) do
-            if region.SetBlendMode then region:SetBlendMode("ADD") end
+        -- (added over the border, not laid on it: brighter than the colour alone; once per backdrop,
+        -- NP.LayoutPulseBorder clears the mark)
+        if not g.edge.addBlend then
+            g.edge.addBlend = true
+            for _, region in ipairs({ g.edge:GetRegions() }) do
+                if region.SetBlendMode then region:SetBlendMode("ADD") end
+            end
         end
     end
     for _, t in ipairs(g.soft.parts) do t:SetVertexColor(c[1], c[2], c[3], C.IMPORTANT_GLOW) end
@@ -443,6 +449,7 @@ end
 -- its border: the frame's own (border, a BackdropTemplate frame), or a 1 px line round "to" without one
 function NP.LayoutPulseBorder(g, border, to, edgeFile)
     g:ClearAllPoints()
+    g.edge.addBlend = nil
     if edgeFile then
         g:SetAllPoints(border)
         g.edge:SetBackdrop(border:GetBackdrop())
@@ -1196,7 +1203,7 @@ function NP.NameRoom() return 0 end
 function NP.Layout(p)
     local db = PDB(p)
     if not db then return end
-    local look, textureName, borderName = Look(db)
+    local _, textureName, borderName = Look(db)
     local w, h = db.width, db.height
     local edgeFile, edge, pad = NP.Edge(db)
 
@@ -1554,9 +1561,9 @@ end
 
 function NP.PaintGlow(p)
     local r, g, b = p.barR or 1, p.barG or 1, p.barB or 1
-    for _, glow in ipairs({ p.targetGlow, p.levelGlow, p.discGlow }) do
-        for _, t in ipairs(glow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
-    end
+    for _, t in ipairs(p.targetGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
+    for _, t in ipairs(p.levelGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
+    for _, t in ipairs(p.discGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
 end
 
 -- THREAT PERCENTAGE (11-20, Malkkav; Extras > Threat, off): your threat on the unit as a number, in
@@ -1600,7 +1607,6 @@ end
 function NP.UpdateColor(p)
     local db, unit = PDB(p), p.unit
     if not (db and unit) then return end
-    local health = p.health
     local tapped = Readable(UnitIsTapDenied(unit))
     if tapped then local c = NP.Color("tapped") NP.BarColor(p, c[1], c[2], c[3]) return end
     local r, g, b, threatKey = ThreatRGB(unit, db)
@@ -1611,7 +1617,14 @@ function NP.UpdateColor(p)
         -- Aggro Flash: it turned on you (damage / healer) or away from you (tank)
         if db.aggroFlash and before and (threatKey == "aggro" or threatKey == "lost") then p.flashAnim:Stop() p.flashAnim:Play() end
     end
-    p.threatRGB = r and { r, g, b } or nil
+    -- (one table per plate, filled again: PaintBorder tells it apart from the target colour by identity)
+    if r then
+        local t = p.threatBuf or {}
+        t[1], t[2], t[3] = r, g, b
+        p.threatBuf, p.threatRGB = t, t
+    else
+        p.threatRGB = nil
+    end
     NP.UpdateThreatText(p, db)
     NP.PaintBorder(p)
     if r then NP.BarColor(p, r, g, b) return end
@@ -1781,10 +1794,13 @@ function NP.PaintBorder(p)
     -- the level disc takes the same colour (the box's border below, with the plate's)
     if c then p.levelArt:SetVertexColor(c[1], c[2], c[3]) else p.levelArt:SetVertexColor(1, 1, 1) end
     if not p.edgeFile then return end
-    local b = ns.BORDER_COLOR
-    for _, frame in ipairs({ p.border, p.levelBorder }) do
-        if c then frame:SetBackdropBorderColor(c[1], c[2], c[3], 1)
-        else frame:SetBackdropBorderColor(b.r, b.g, b.b, b.a) end
+    if c then
+        p.border:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+        p.levelBorder:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+    else
+        local b = ns.BORDER_COLOR
+        p.border:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+        p.levelBorder:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
     end
 end
 
@@ -2129,7 +2145,12 @@ function NP.UpdateRange(p)
     if not list then p.holder:SetAlpha(1) return end
     local out, hasSecret, secret = false, false, nil
     for _, id in ipairs(list) do
-        local name = C_Spell.GetSpellName(id)
+        -- (spell names by ID never change: looked up once)
+        local name = C.RANGE_NAMES[id]
+        if not name then
+            name = C_Spell.GetSpellName(id)
+            C.RANGE_NAMES[id] = name
+        end
         local ok, r = false, nil
         if name then ok, r = pcall(C_Spell.IsSpellInRange, name, p.unit) end
         if ok then
@@ -2181,7 +2202,7 @@ local function OnUnitEvent(self, event)
     elseif event == "UNIT_ABSORB_AMOUNT_CHANGED" or event == "UNIT_HEAL_ABSORB_AMOUNT_CHANGED" or event == "UNIT_HEAL_PREDICTION" then
         NP.UpdateHeals(p)
     elseif event == "UNIT_FACTION" then
-        -- turned friendly: the plate goes back to Blizzard
+        -- its type changed (turned friendly or hostile): claimed again as the new type, or back to Blizzard
         local want, kind = NP.WantsPlate(p.unit)
         if not want or kind ~= p.kind then
             local unit = p.unit
@@ -2316,15 +2337,15 @@ local function RegisterUnit(p, unit)
     ev:SetScript("OnEvent", OnCastEvent)
 end
 
--- Which units get our plate: enemies and anything you can attack; friends too with Friendly Plates
--- on FlareUI (in the open world: inside instances the game keeps them Blizzard's). Second return:
--- the game couldn't say yet (a plate far away can arrive before its unit's reaction).
+-- A unit's plate type: enemyPlayer, enemyNpc, friendlyPlayer, friendlyNpc or minor (NP.WantsPlate
+-- checks the type's Plate). nil: the game couldn't say yet (a plate far away can arrive before its
+-- unit's reaction).
 function NP.Kind(unit)
     local canAttack = Readable(UnitCanAttack("player", unit))
     local friend = Readable(UnitIsFriend("player", unit))
     if canAttack == nil and friend == nil then return nil end
     local player = Readable(UnitIsPlayer(unit))
-    -- (pets, totems and guardians are Minions on either side: the game's own check, as Blizzard's
+    -- (pets, totems and guardians are Minor on either side: the game's own check, as Blizzard's
     -- plates use; a mob under Mind Control stays what it is)
     local minion
     if not player then
@@ -2495,7 +2516,7 @@ NP.ReleasePlate = Release
 
 function NP.ReleaseUnit(unit)
     if not canaccessvalue(unit) then return end
-    for plate, p in pairs(byPlate) do
+    for _, p in pairs(byPlate) do
         if p.unit == unit then Release(p) end
     end
 end

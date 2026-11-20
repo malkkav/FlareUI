@@ -57,11 +57,13 @@ local function Scan(trigger)
             for key in pairs(t) do
                 if type(key) == "string" then
                     local secure, blamed = issecurevariable(t, key)
-                    local id = name .. "." .. key
-                    if not secure and not seen[id] then
-                        seen[id] = true
-                        Note(("%s is tainted (by %s)%s"):format(id, tostring(blamed or "?"),
-                            trigger and (", after " .. trigger) or ""))
+                    if not secure then
+                        local id = name .. "." .. key   -- (built only for an insecure field)
+                        if not seen[id] then
+                            seen[id] = true
+                            Note(("%s is tainted (by %s)%s"):format(id, tostring(blamed or "?"),
+                                trigger and (", after " .. trigger) or ""))
+                        end
                     end
                 end
             end

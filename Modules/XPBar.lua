@@ -758,12 +758,13 @@ local function BuildFlare()
 
     -- events come in bursts; one update per frame
     local queued = false
+    local function Flush() queued = false; UpdateFlare() end
     flare:SetScript("OnEvent", function(_, event, cvar)
         if event == "CVAR_UPDATE" and cvar ~= "showHonorAsExperience" then return end
         if QUEST_XP_EVENTS[event] then questXPStale = true end
         if queued then return end
         queued = true
-        C_Timer.After(0, function() queued = false; UpdateFlare() end)
+        C_Timer.After(0, Flush)
     end)
     for _, event in ipairs(FLARE_EVENTS) do pcall(flare.RegisterEvent, flare, event) end
     -- the new level can land after PLAYER_LEVEL_UP's update (Blizzard re-checks on UNIT_LEVEL too)

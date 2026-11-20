@@ -807,7 +807,7 @@ local CAP_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- the chat's New Messages (right under Mouseover); the meter's Never and In an Instance; the threat
 -- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
-Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "chatonly", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" },
+Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "chatonly", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" },
                          legacy = SHOW_SPEC.legacy, empty = "always" }
 Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
                           legacy = SHOW_SPEC.legacy, empty = "always" }
@@ -839,6 +839,8 @@ local function EvaluateShowRule(show)
     if set.ingroup and IsInGroup() then return true end
     if set.unmounted and not Riding() then return true end
     if set.city and Visibility.InCapital() then return true end
+    -- Not in a Capital City (11-20, Discord): the reverse, for a frame that should fade in capitals
+    if set.notcity and not Visibility.InCapital() then return true end
     -- the meter's and the threat window's: dungeons, raids, battlegrounds and arenas
     if set.instance and IsInInstance() then return true end
     return false
@@ -1011,7 +1013,7 @@ end
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
 -- Always clears the rest; the conditions after the line (Mouseover first) are toggles
-local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }
+local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)

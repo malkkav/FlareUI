@@ -496,10 +496,10 @@ function FC:Init()
     for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnGlobalEvent") end
     -- a carrier changing hands with no event: a new readable GUID repaints
     C_Timer.NewTicker(0.25, function()
-        if not holder:IsShown() then return end
+        if not holder:IsShown() or IsEditing() then return end
         for _, f in ipairs(tiles) do
             if f.fuiUnit and f:IsVisible() then
-                local guid = not IsEditing() and UnitGUID(f.fuiUnit)
+                local guid = UnitGUID(f.fuiUnit)
                 if canaccessvalue(guid) and guid and guid ~= f.carrierGuid then
                     f.carrierGuid = guid
                     Tile.UpdateAll(f)

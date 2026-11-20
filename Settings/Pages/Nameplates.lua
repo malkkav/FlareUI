@@ -28,7 +28,7 @@ local KINDS = { { "enemyPlayer", L["Enemy Player"] }, { "enemyNpc", L["Enemy NPC
 local PRESETS = { { "full", L["Full"] }, { "compact", L["Simple"] }, { "tiny", L["Minimal"] }, { "name", L["Name Only"] },
                   { "custom", L["Custom"] } }
 local function Named(list, key) for _, e in ipairs(list) do if e[1] == key then return e[2] end end return key end
--- a preset's name; each type's own Custom says whose it is (11-20): "Custom Enemy"
+-- a preset's name; each type's own Custom says whose it is (11-20): "Custom Enemy NPC"
 local function PresetName(key, kind)
     if key == "custom" then return L["Custom %s"]:format(Named(KINDS, kind or PIN.kind)) end
     return Named(PRESETS, key)

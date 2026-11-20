@@ -550,18 +550,6 @@ function BF:Refresh()
     Refresh()
 end
 
--- The boss frames' default spot and their holder's height, for frames that start where they do
--- (FlagCarriers.lua); works with the boss frames off too
-function BF.DefaultSpot()
-    local base = RingStyle() and ns.UFRing.TilePosition("boss") or BASE_POSITION
-    local h = holder and holder:GetHeight()
-    if not (h and h > 1) and K and Tile then
-        local ok, _, step = pcall(Step)
-        if ok and step then h = MAX_BOSSES * step - (view.spacing or 14) end
-    end
-    return base.point, base.x, base.y, h
-end
-
 function BF:ShouldLoad()
     local db = K and K.GetDb()
     return db and db.enabled and db.boss and db.boss.enabled and Tile and true or false
@@ -634,12 +622,13 @@ function BF:Init()
     -- out of range fading: no event covers a boss's range
     C_Timer.NewTicker(0.25, function()
         if not holder:IsShown() then return end
+        local editing = IsEditing()
         for _, f in ipairs(tiles) do
             if f.fuiUnit and f:IsVisible() then
                 Tile.UpdateRange(f)
                 -- a boss slot can change hands with no event (an add takes boss2, the old boss2
                 -- moves to boss3): a new readable GUID repaints the tile, name and auras included
-                local guid = not IsEditing() and UnitGUID(f.fuiUnit)
+                local guid = not editing and UnitGUID(f.fuiUnit)
                 if canaccessvalue(guid) and guid and guid ~= f.bossGuid then
                     f.bossGuid = guid
                     Tile.UpdateAll(f)

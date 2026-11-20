@@ -333,7 +333,7 @@ local function Auras(c, unit, spec)
             c.objects.aura3:SetAlpha(progress)
             c.objects.aura3:ClearAllPoints(); c.objects.aura3:SetPoint('TOPLEFT', (c.width - (2 * 66 + 46)) / 2 + 2 * 66, -16 + (1 - progress) * 12)
         end
-        for i = 1, 3 do c.objects['aura' .. i].FlareUI_PreviewTimer:SetText(math.max(1, math.ceil(12 - ((elapsed + i * 2) % 12))) .. 's') end
+        for i = 1, 3 do c.objects['aura' .. i].FlareUI_PreviewTimer:SetFormattedText('%ds', math.max(1, math.ceil(12 - ((elapsed + i * 2) % 12)))) end
         if elapsed < 12 then return end
         elapsed = 0
         for i = 1, 3 do c.objects['aura' .. i].FlareUI_Cooldown:SetCooldown(GetTime() - i * 2, 12) end

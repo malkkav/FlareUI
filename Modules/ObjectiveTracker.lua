@@ -507,6 +507,7 @@ local function CollectQuests(db)
     -- Show Untracked Quests: the quests of the zone you are in that you don't track are listed too
     -- (dimmed, after the tracked ones; with no zone headings, after every tracked quest). Tracking is never changed here
     local showUntracked = db.showUntracked
+    local byDistance = OT.SortsByDistance(db)
     state.untrackedShown = false
     for _, info in ipairs(logBuf) do
         local questID = info.questID
@@ -521,7 +522,6 @@ local function CollectQuests(db)
         if info.isHeader then
             header = info.title
         elseif info.ftWatched or loose then
-            local byDistance = OT.SortsByDistance(db)
             local distance = byDistance and Distance(info.questID) or 0
             -- every watched quest, listed or not: one coming into its zone has moved nearer too
             if byDistance then
@@ -544,7 +544,7 @@ local function CollectQuests(db)
             end
         end
     end
-    state.sortCount = OT.SortsByDistance(db) and watched or nil
+    state.sortCount = byDistance and watched or nil
     state.sortRanksReady = nil   -- CollectQuests replaced the distance snapshot
 
     -- a group's place: current zone, then its nearest quest, then log order
@@ -1928,6 +1928,10 @@ end
 function Build.PaintFocusDot(b, focused)
     b.icon:SetTexture(focused and "Interface\\Common\\Indicator-Yellow" or "Interface\\Common\\Indicator-Gray")
 end
+-- its click (one function for every dot, not a new one each render)
+function Build.OnFocusClick(self)
+    if self.questID and not state.editMode then ToggleFocus(self.questID) end
+end
 
 -- the focused quest is blue only while no Quest Icon or Focus Button shows which one it is
 function Build.TitleColor(db, level, questID, focus, done)
@@ -2048,14 +2052,14 @@ function Build.ArtInfo(atlas)
     return info or nil
 end
 -- Frame Style: "blizzard" (strips, no background, border or scroll bar), "flareui" (strips on FlareUI's
--- frame, the default) or "custom" (no strips; the Frame Opacity and Border chosen)
+-- frame, the default) or "custom" (the Modern style: no strips; the Background Opacity and Border chosen)
 function Build.FrameStyle(db)
     local style = db and db.frameStyle
     if style == "blizzard" or style == "custom" then return style end
     return "flareui"
 end
 function Build.HeaderArtOn(db) return Build.FrameStyle(db) ~= "custom" end
--- the scroll bar: never in the Blizzard style; Hide Scroll Bar (FlareUI and Custom) drops it. The thumb sits
+-- the scroll bar: never in the Blizzard style; Hide Scroll Bar (FlareUI and Modern) drops it. The thumb sits
 -- in the list's margin, so the text keeps its width either way; the mouse wheel always scrolls.
 function Build.ScrollBarShown(db)
     return Build.FrameStyle(db) ~= "blizzard" and not (db and db.hideScrollBar)
@@ -2295,9 +2299,7 @@ function OT:Render()
             local b = LineButton(line, "focusButton")
             b.questID = questID
             Build.PaintFocusDot(b, isFocused)
-            b:SetScript("OnClick", function(self)
-                if self.questID and not state.editMode then ToggleFocus(self.questID) end
-            end)
+            b:SetScript("OnClick", Build.OnFocusClick)
             b:ClearAllPoints()
             b:SetPoint("TOPRIGHT", line, "TOPLEFT", x, 0)
             b:Show()
@@ -3570,7 +3572,7 @@ end
 function OT:Init()
     if self.initialized then return end
     self.initialized = true
-    -- the Header Art switch became Frame Style: off was the plain frame, now Custom (once)
+    -- the Header Art switch became Frame Style: off was the plain frame, now Modern ("custom", once)
     local db = GetDb()
     -- Quest Icon and Focus Button both focus a quest: one of them, the icon if both were saved
     if db and db.questIcons and db.focusButtons then db.focusButtons = false end

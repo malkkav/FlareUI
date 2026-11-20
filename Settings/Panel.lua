@@ -452,41 +452,6 @@ local GOLD = { 1, 0.84, 0.50 }   -- palette goldHighlight
 local TITLE_YELLOW = { 1, 0.82, 0 }
 Panel.TITLE_YELLOW = TITLE_YELLOW
 
--- A pill of the disc: two half discs and a stretched middle, so the ends stay round at any width.
--- height is the frame's; inset draws it that much inside (a fill inside its rim).
-local function Pill(parent, layer, sub, inset, height)
-    local half = (height - 2 * inset) / 2
-    local p = {}
-    p.l = parent:CreateTexture(nil, layer, nil, sub)
-    p.l:SetTexture(CIRCLE)
-    p.l:SetTexCoord(0, 0.5, 0, 1)
-    p.l:SetPoint("TOPLEFT", inset, -inset)
-    p.l:SetPoint("BOTTOMLEFT", inset, inset)
-    p.l:SetWidth(half)
-    p.r = parent:CreateTexture(nil, layer, nil, sub)
-    p.r:SetTexture(CIRCLE)
-    p.r:SetTexCoord(0.5, 1, 0, 1)
-    p.r:SetPoint("TOPRIGHT", -inset, -inset)
-    p.r:SetPoint("BOTTOMRIGHT", -inset, inset)
-    p.r:SetWidth(half)
-    p.m = parent:CreateTexture(nil, layer, nil, sub)
-    p.m:SetTexture(CIRCLE)
-    p.m:SetTexCoord(0.49, 0.51, 0, 1)
-    p.m:SetPoint("TOPLEFT", p.l, "TOPRIGHT")
-    p.m:SetPoint("BOTTOMRIGHT", p.r, "BOTTOMLEFT")
-    function p:SetColor(r, g, b, a)
-        for _, t in ipairs({ self.l, self.m, self.r }) do t:SetVertexColor(r, g, b, a or 1) end
-    end
-    -- top and bottom colours, { r, g, b }
-    function p:SetGradient(top, bottom)
-        for _, t in ipairs({ self.l, self.m, self.r }) do
-            t:SetGradient("VERTICAL", CreateColor(bottom[1], bottom[2], bottom[3], 1), CreateColor(top[1], top[2], top[3], 1))
-        end
-    end
-    return p
-end
-Panel.Pill = Pill
-
 -- The toggles: Blizzard's checkbox with its gold checkmark. A plain CheckButton (SetChecked /
 -- GetChecked / Click) with the art of Blizzard's own settings checkbox (SettingsCheckboxTemplate): the
 -- bronze-rimmed box and its tick, by atlas (the template's mixin wants Blizzard's setting data)
@@ -773,14 +738,6 @@ local function ShowRowPreview(row, value)
         title = row.section and ns.Copy and ns.Copy.sections and ns.Copy.sections[row.section]
     end
     ShowPreview(title, row:Description(), row:Tip())
-end
-
--- for custom tabs' own controls
-function Panel:ShowPreview(title, desc, tip)
-    if preview.picture then ShowVisual(nil); ShowPreview(title, desc, tip) end
-end
-function Panel:ShowModulePreview()
-    if preview.picture then ShowModulePreview() end
 end
 
 --------------------------------------------------

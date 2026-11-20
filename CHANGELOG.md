@@ -1,3 +1,74 @@
+# FlareUI 7.0
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+FlareUI now draws its own nameplates. Every kind of unit gets its own look: enemy players and NPCs, friendly players and NPCs, and minor mobs with pets and totems. Open-world PvP gets full plates, quest givers get a clean name, and you can tweak every one of them with a live preview at your side. The chat also learned a few tricks, and unit frames can show the name above the frame.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Chat:** a popped-out chat window now fades on its own. It comes back for its own messages only, not for every line in every window.
+- **Visibility Never:** a frame set to Never no longer shows tooltips when you point where it is.
+- **Radial Menus:** the **Mounts** catalog is now **Collections**, with your mounts and your toys.
+
+## Highlights
+- **Nameplates:** FlareUI's own nameplates, with a setup for each unit type.
+- **Name Above Plates:** the name above any unit frame, so the bars stay clean.
+- **Chat:** fade old lines one by one, and quiet loot and skill-ups.
+
+## New
+
+### Nameplates (new page, off)
+- First in the Combat list. A /reload turns it on or off.
+- **Unit types**, each with its own setup: **Enemy Player**, **Enemy NPC**, **Friendly Player**, **Friendly NPC** and **Minor** (minor mobs, pets, totems and guardians).
+- **Presets** for each unit: **Full**, **Simple**, **Minimal**, **Name Only**. Change any setting and it becomes that unit's own Custom.
+  - Friendly players and NPCs start on Name Only.
+- **Live Preview** beside the settings, and **Test in Game** to put the look on the plates around you.
+- **Plate:** size, **Background Opacity**, **Bar Texture**, **Border**, **Level**, **Bar Effects**, **Colour By**, **Health Text**.
+  - **Name Only Mode**: just the name, with **Name Only Size**.
+  - **Show Plates in Combat**: picked units leave Name Only in a fight.
+- **Extras:**
+  - Icons: **Elite & Rare**, **Combo Points**, **Quest Objective**, **Quest Progress**.
+  - Threat: **Colour by Threat**, **Role**, **Threat Glow**, **Aggro Flash**, **Threat Scale**, **Threat Percentage**.
+  - Colours: **Execute Range**, **Colour Mob Types**, **Party Colour**, **Raid Colour**.
+- **Cast Bar:** icon, timer and target, **Kick Ready Colour**, **Kick Ready Mark**, **Flash When Targeted**, **Highlight Important Casts**.
+- **Auras:** buffs, debuffs, **Defensives** and **Crowd Control**, each with size and count.
+- **Targeting** (all plates): target and non-target scale and opacity, **Out of Range** and **Out of Sight** fading, target **Arrow**, **Border**, **Bar Colour**, **Outer Glow** and **Focus Colour**.
+- **Visibility** (all plates):
+  - Which enemies and friends get a plate, **Stacking**, **Keep Target on Screen**, **Click-Through**.
+  - **Name Only While Unattackable** (off): enemy NPCs you can't attack yet show only their name.
+  - The game's names over heads: **NPC Names**, **Player Names**, **Minion Names**.
+- **Nameplate Colours** in FlareUI's colour window, and a Fonts tab.
+- `/fui plates` prints what the module sees, for bug reports.
+
+### Unit Frames
+- **Name Above Plates** (Off), in the Text section in Edit Mode: First Name or Full Name above the frame, on the left, centre or right.
+  - Auras and a cast bar above the frame move up to make room.
+  - On the player, target, focus, pet, target of target, target of focus, party, boss and flag carrier frames. Not on Forever Style, which has its name box.
+
+### Chat
+- **Only Chat Messages**: a new Visibility choice. Only lines people write bring the chat back; loot, skill-ups and XP stay quiet.
+- **Fade Old Lines** (off), under Fading in Edit Mode: lines fade one by one, oldest first. Pointing at the chat or typing brings them back.
+
+### Visibility
+- **Not in a Capital City**: last on every Visibility list, the reverse of In a Capital City.
+- **Fade Delay** goes up to 1 minute (chat and meter).
+
+### Radial Menus
+- **Collections** catalog: mounts, then toys.
+- Small titles split the catalog's lists: Mounts and Toys, Spells and Pet Spells, Target and World Markers, General and Character Macros, Professions and Profession Spells.
+
+### Other
+- **XP Bar:** **Show Tooltip** (off) brings the bar's tooltip back.
+- `/fui buff` opens the Buff Reminders settings.
+
+## Changed
+- Settings text: clearer descriptions and tips, using the options' real names.
+- Faster in several places: nameplate colours, buff reminder aura checks, resource bar text and the heal bars on party frames.
+- French: the 6.14 phrases. By Brainc3ll.
+
+## Fixed
+- Chat: the mouse wheel scrolls the chat again, also when the game's own chat scroll setting is off.
+
 # FlareUI 6.14
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.
@@ -482,15 +553,3 @@ Some things look different even if you change nothing:
 - Unit Frames: **Bar Edge Glow** no longer shows on a full health bar.
 - Forever Style: the portrait ring no longer bends when Power Height changes.
 - Edit Mode: the boss frames' sample buffs show right after a reload.
-
-# FlareUI 6.10.1
-
-A quick fix for the error spam some of you hit after 6.10, mostly in Gnomeregan.
-
-## Fixed
-- Party and raid frames: the **Dispel Highlight** pulse no longer floods the error log in fights.
-  - It came from debuffs the game keeps hidden from addons, as on some Gnomeregan mobs.
-- Buffs & Debuffs: the weapon enchant row no longer causes errors in combat.
-  - When the game hides your buffs from addons, the row stays where it was.
-- Quest tracker: focusing a quest in combat no longer causes a blocked-action error.
-  - The new focus is set as soon as the fight ends.

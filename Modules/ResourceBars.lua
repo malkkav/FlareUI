@@ -374,15 +374,21 @@ function RB.SlotTexts(holder)
 end
 -- runs on every health and power tick: the texts and slots are kept per holder, the slots read again
 -- after each layout (LayoutBar) or for another profile's settings
-function RB.FillSlots(holder, src, status)
+-- (nil: a bar without text slots)
+function RB.Slots(holder)
     local bar = RB.SLOT_BARS[holder.key]
-    if not (bar and holder.TextLeft) then return end
+    if not (bar and holder.TextLeft) then return nil end
     local cfg = Cfg(holder.key)
     if not holder.btSlots or holder.btCfg ~= cfg then
         holder.btSlots, holder.btCfg = ns.BarText.Slots(cfg, bar, "bar", nil, "text"), cfg
     end
+    return holder.btSlots
+end
+function RB.FillSlots(holder, src, status)
+    local slots = RB.Slots(holder)
+    if not slots then return end
     holder.slotTexts = holder.slotTexts or RB.SlotTexts(holder)
-    ns.BarText.FillAll(holder.slotTexts, holder.btSlots, src, status)
+    ns.BarText.FillAll(holder.slotTexts, slots, src, status)
 end
 local function UpdateHealPrediction(holder)
     local heal, absorb = holder.HealBar, holder.AbsorbBar
@@ -401,8 +407,11 @@ local function UpdateHealPrediction(holder)
         return
     end
     K.HideShieldGlow(holder.ShieldGlow)
-    pcall(function() heal:SetValue(UnitGetIncomingHeals("player")) end)
-    pcall(function() absorb:SetValue(UnitGetTotalAbsorbs("player")) end)
+    -- (no closures per tick: each step guarded on its own, as UnitFrames.lua)
+    local okH, incoming = pcall(UnitGetIncomingHeals, "player")
+    if okH then pcall(heal.SetValue, heal, incoming) end
+    local okA, absorbs = pcall(UnitGetTotalAbsorbs, "player")
+    if okA then pcall(absorb.SetValue, absorb, absorbs) end
 end
 
 -- Max and colour are set by the full updates below (UNIT_MAXHEALTH, UNIT_MAXPOWER, a show, a
@@ -418,7 +427,9 @@ local function UpdateHealthValue(holder, glide)
     if UnitIsDeadOrGhost("player") then
         RB.FillSlots(holder, nil, UnitIsGhost("player") and K.GHOST_TEXT or K.DEAD_TEXT)
     else
-        RB.FillSlots(holder, K.HealthSource("player"))
+        -- (only the numbers the slots show are read)
+        local slots = RB.Slots(holder)
+        if slots then RB.FillSlots(holder, K.HealthSource("player", slots)) end
     end
     UpdateHealPrediction(holder)   -- the amounts are clamped by the health missing
     local low = holder.LowHealth
@@ -465,7 +476,8 @@ local function SetPowerValue(holder, powerType, glide, full)
     end
     holder.valueTime, holder.valueType, holder.lastValue = now, t, v
     ns.SetBarValue(holder.Bar, value, glide and cfg and cfg.smoothBars)
-    RB.FillSlots(holder, K.PowerSource("player", powerType))
+    local slots = RB.Slots(holder)
+    if slots then RB.FillSlots(holder, K.PowerSource("player", powerType, slots)) end
 end
 
 -- holder.powerType: the type the max and colour were set for, so a tick that finds another type

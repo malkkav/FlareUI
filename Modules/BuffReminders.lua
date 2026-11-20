@@ -993,6 +993,7 @@ end
 -- hides or doesn't give (?? or secret) and a learn level it can't tell both count as able.
 BR.learnLevel = {}   -- [spellID] = level the rank is learned at (spell data doesn't change)
 BR.lowRank = {}      -- [spellID] = true: a known rank below the top known one (cast by ID, not name)
+BR.auraUnits = {}   -- [unit token] = whether its UNIT_AURA is looked at (the event handler in Init)
 function BR.RankFor(list, unit)
     if type(list) == "table" and list.def then list = list.def.cast
     elseif type(list) == "table" and list.cast then list = list.cast end
@@ -1707,7 +1708,7 @@ local function Check(entry, before)
             if not ok or not Readable(aura) or aura then return 0, 1 end
         end
         local fine, running, left = HasBuff("player", entry.names, before, def.own)
-        -- food: the last food you ate that gave the buff is remembered (BR.FoodEaten)
+        -- food: the last food you ate that gave the buff is remembered (BR.pendingFood; BR.ConfirmFood)
         if def.key == "food" then
             local pending = BR.pendingFood
             if fine and pending and GetTime() - pending.at < 90 then
@@ -2123,19 +2124,20 @@ function BR.TimeText(b)
     end
 end
 local timeWatch
+function BR.TimeTick(self, elapsed)
+    self.elapsed = self.elapsed + elapsed
+    if self.elapsed < 0.5 then return end
+    self.elapsed = 0
+    for _, b in ipairs(icons) do if b:IsShown() and b.expires then BR.TimeText(b) end end
+end
 function BR.WatchTimes()
     local any = false
-    for _, b in ipairs(icons) do if b:IsShown() and b.expires and not b.charges then any = true end end
+    for _, b in ipairs(icons) do if b:IsShown() and b.expires and not b.charges then any = true break end end
     if not timeWatch then
         timeWatch = CreateFrame("Frame")
         timeWatch.elapsed = 0
     end
-    timeWatch:SetScript("OnUpdate", any and function(self, elapsed)
-        self.elapsed = self.elapsed + elapsed
-        if self.elapsed < 0.5 then return end
-        self.elapsed = 0
-        for _, b in ipairs(icons) do if b:IsShown() and b.expires then BR.TimeText(b) end end
-    end or nil)
+    timeWatch:SetScript("OnUpdate", any and BR.TimeTick or nil)
 end
 
 -- a settings preview's row: Edit Mode's samples (Fortitude missing on 2 of 5, Arcane Intellect running
@@ -2760,8 +2762,16 @@ function BR:Init()
             end
             return
         end
-        -- (party1..4 and raid1..40 only: their pets are never checked)
-        if event == "UNIT_AURA" and unit and not (unit == "player" or unit == "pet" or unit:find("^party%d") or unit:find("^raid%d")) then return end
+        -- (party1..4 and raid1..40 only: their pets are never checked; each token's answer is kept,
+        -- as nameplate units send many of these)
+        if event == "UNIT_AURA" and unit then
+            local watched = BR.auraUnits[unit]
+            if watched == nil then
+                watched = (unit == "player" or unit == "pet" or unit:find("^party%d") or unit:find("^raid%d")) and true or false
+                BR.auraUnits[unit] = watched
+            end
+            if not watched then return end
+        end
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
         if event == "UNIT_AURA" and unit == "player" and BR.pendingFood then BR.ConfirmFood() end
         if event == "UNIT_AURA" then Soon(unit) else Soon() end

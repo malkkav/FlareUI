@@ -396,8 +396,9 @@ local function Build()
     end)
     local elapsed = 0
     listener:SetScript("OnUpdate", function(_, dt)
-        if repeatKey and GetTime() >= nextRepeat then
-            nextRepeat = GetTime() + REPEAT_RATE
+        local now = repeatKey and GetTime()
+        if now and now >= nextRepeat then
+            nextRepeat = now + REPEAT_RATE
             Press(repeatKey)
         end
         elapsed = elapsed + dt

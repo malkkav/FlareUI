@@ -45,25 +45,12 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["bl.bagView"] = "6.14",
-    ["cdm.barColor"] = "6.14",
-    ["cdm.blizzard"] = "6.14",
-    ["cdm.blizzardSettings"] = "6.14",
-    ["cdm.effectCooldown"] = "6.14",
-    ["cdm.em.fadeIn"] = "6.14",
-    ["cdm.em.fadeOut"] = "6.14",
-    ["cdm.em.grow"] = "6.14",
-    ["cdm.em.minAlpha"] = "6.14",
-    ["cdm.em.shape"] = "6.14",
-    ["cdm.em.show"] = "6.14",
-    ["cdm.font.bar"] = "6.14",
-    ["cdm.font.cooldown"] = "6.14",
-    ["cdm.font.keybinds"] = "6.14",
-    ["cdm.font.stacks"] = "6.14",
-    ["cdm.keybinds"] = "6.14",
-    ["cdm.press"] = "6.14",
-    ["cdm.skin"] = "6.14",
-    ["cdm.softOverlay"] = "6.14",
+    ["ab.xpTooltip"] = "7.0",
+    ["np.combatPlates"] = "7.0",
+    ["np.nameOnlyMode"] = "7.0",
+    ["np.nameOnlySize"] = "7.0",
+    ["np.peacefulNames"] = "7.0",
+    ["np.threatPercent"] = "7.0",
 }
 
 --------------------------------------------------

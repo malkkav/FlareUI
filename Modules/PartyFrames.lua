@@ -574,8 +574,11 @@ local function UpdateHealPrediction(f)
         end
     end
     K.HideShieldGlow(f.ShieldGlow)
-    pcall(function() heal:SetValue(UnitGetIncomingHeals(unit)) end)
-    pcall(function() absorb:SetValue(UnitGetTotalAbsorbs(unit)) end)
+    -- (no closures per tick: each step guarded on its own, as UnitFrames.lua)
+    local okH, incoming = pcall(UnitGetIncomingHeals, unit)
+    if okH then pcall(heal.SetValue, heal, incoming) end
+    local okA, absorbs = pcall(UnitGetTotalAbsorbs, unit)
+    if okA then pcall(absorb.SetValue, absorb, absorbs) end
 end
 
 -- GetRaidTargetIndex is secret to addon code; a secret is never nil, and the texture setter takes it
@@ -3751,7 +3754,7 @@ function PF:OnGlobalEvent(event, ...)
         local unit = ...
         if canaccessvalue(unit) then
             local ours = false
-            for i = 0, MAX_MEMBERS do if SLOT_UNITS[i] == unit then ours = true end end
+            for i = 0, MAX_MEMBERS do if SLOT_UNITS[i] == unit then ours = true break end end
             if not ours then return end
         end
     end

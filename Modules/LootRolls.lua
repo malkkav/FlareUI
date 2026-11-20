@@ -438,7 +438,7 @@ local function Panel(frame)
         shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
         frame.skin = { rock, wash, glow, shade }
     end
-    -- Frame Opacity (Bags & Looting, tweaks.lootRollsOpacity), as on the chat and meter
+    -- Background Opacity (Bags & Looting, tweaks.lootRollsOpacity), as on the chat and meter
     local db = GetDb()
     local opacity = (db and tonumber(db.lootRollsOpacity)) or 1
     for _, texture in ipairs(frame.skin) do texture:SetAlpha(opacity) end
@@ -1364,7 +1364,7 @@ function LR.StyleTitle()
     title:SetTextColor(c.r, c.g, c.b, c.a or 1)
 end
 
--- Frame Opacity, live
+-- Background Opacity, live
 function LR:ApplyOpacity()
     if win then Panel(win) end
 end
