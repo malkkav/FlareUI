@@ -14,12 +14,39 @@ local function Refresh() if CM() and CM().Refresh then CM():Refresh() end end
 local function BlizzardOff() return not (CM() and CM().BlizzardOn()) end
 
 S:Module{
-    key = "cdm", group = "combat", order = 15, enabled = "cooldownmanager.enabled",
+    -- above Action Bars (10); Nameplates, on its branch, is 5 (first in Combat)
+    key = "cdm", group = "combat", order = 8, enabled = "cooldownmanager.enabled",
     tabs = { { key = "settings" }, { key = "fonts" } },
     -- Blizzard's viewers: no FlareUI frame to select, so plain Edit Mode
     editMode = function() return nil end,
     editSystems = function() return ns.Visibility and ns.Visibility.EditSystems and ns.Visibility:EditSystems("cdm") or {} end,
 }
+
+-- COOLDOWN MANAGER: Blizzard's own switch (Options > Advanced, the cooldownViewerEnabled CVar), as
+-- Combined Backpack is Blizzard's bag option. Blizzard turns its viewers on and off live; the rows
+-- below follow (CooldownManager.lua watches CVAR_UPDATE and refreshes the panel). Not in a fight.
+S:Row{ key = "cdm.blizzard", section = "cdm.manager",
+    get = function() return CM() and CM().BlizzardOn() or false end,
+    set = function(on)
+        if InCombatLockdown() then return end
+        SetCVar("cooldownViewerEnabled", on and 1 or 0)
+    end,
+    apply = function()
+        C_Timer.After(0, function()
+            if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+        end)
+    end }
+
+-- Blizzard's Cooldown Settings window (what each bar tracks), as its /cdm and key binding open it;
+-- FlareUI's window closes so Blizzard's isn't under it. Greyed with Blizzard's manager off.
+S:Row{ key = "cdm.blizzardSettings", section = "cdm.manager", kind = "button", buttonText = L["Open"],
+    disabled = function() return BlizzardOff() or not _G.CooldownViewerSettings end,
+    apply = function()
+        local panel = _G.CooldownViewerSettings
+        if not panel or InCombatLockdown() then return end
+        if ns.SettingsPanel and ns.SettingsPanel.Hide then ns.SettingsPanel:Hide() end
+        panel:ShowUIPanel()
+    end }
 
 -- LOOK: the skin (its master, on top) and its colour. Off needs a reload to give Blizzard's look back.
 S:Row{ key = "cdm.skin", section = "cdm.look", path = "cooldownmanager.skin", lead = true, reload = true, half = true,

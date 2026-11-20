@@ -394,14 +394,7 @@ local function onMouseDown(self) -- replacement for EditModeSystemMixin:SelectSy
 			internal.dialog:Reset()
 		end
 
-		internal.dialog:Update(self)
-		-- (FlareUI) next to the selected frame, once it has its size
-		if newSelection then
-			local selection = self
-			C_Timer.After(0, function()
-				if internal.dialog.selection == selection then internal.PlaceNear(internal.dialog, selection.parent, 0) end
-			end)
-		end
+		internal.dialog:Update(self)   -- (FlareUI) at the dialogs' one spot: Reset placed it (extension.lua PlaceSaved)
 		fireSelect(self.parent)
 	end
 end
@@ -584,14 +577,18 @@ do -- deal with hooks and events
 			if isKnownSystem or isKnownSubSystem then
 				internal.extension:Update(systemID, isKnownSubSystem and subSystemID or nil)
 			end
-			-- (FlareUI) Blizzard's dialog (and FlareUI's box under it) next to the selected frame,
-			-- once both have their size
+			-- (FlareUI) Blizzard's dialog (and FlareUI's box under it) at the dialogs' one spot, after
+			-- Blizzard's own anchoring; dragged, it saves the spot too (hooked once, below)
 			C_Timer.After(0, function()
 				if EditModeSystemSettingsDialog.attachedToSystem ~= systemFrame then return end
+				internal.PlaceSaved(EditModeSystemSettingsDialog)
 				local ext = internal.extension
-				local below = (ext and ext:IsShown()) and ext:GetHeight() * ext:GetEffectiveScale() or 0
-				internal.PlaceNear(EditModeSystemSettingsDialog, systemFrame, below)
+				if ext and ext:IsShown() and ext.PlaceSoon then ext:PlaceSoon() end
 			end)
+			if not internal.blizzardDragHooked then
+				internal.blizzardDragHooked = true
+				EditModeSystemSettingsDialog:HookScript('OnDragStop', function(self) internal.SaveDialogPos(self) end)
+			end
 		end
 	end)
 

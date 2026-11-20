@@ -285,7 +285,7 @@ function CM.ShapeSetting(key)
             return { { text = L["Square"], value = "blizzard", isRadio = true },
                      { text = L["Rectangle"], value = "rect", isRadio = true } }
         end,
-        desc = L["The shape of this bar's icons. Square is Blizzard's. Rectangle is a quarter less tall, the art cut to fit."],
+        desc = L["Square is Blizzard's. Rectangle is shorter, with the art cut to fit."],
         get = function()
             local db = GetDb()
             return db and db.shape and db.shape[key] or "blizzard"
@@ -446,7 +446,7 @@ function CM.GrowSetting(key)
             if key == "buffs" then values[#values + 1] = { text = L["From the Middle"], value = "CENTER", isRadio = true } end
             return values
         end,
-        desc = L["How the shown ones line up:\n* Blizzard: a fixed place for each, with gaps for the ones not showing\n* The others: packed together, growing that way"],
+        desc = L["How the shown icons line up:\n* Blizzard: a fixed spot for each, with gaps\n* The others: packed together, growing that way"],
         get = function() return Grow(name) end,
         set = function(_, value)
             local db = GetDb()

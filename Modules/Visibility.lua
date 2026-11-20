@@ -736,6 +736,14 @@ local function Riding()
     return form ~= nil and TRAVEL_FORMS[form] == true
 end
 
+-- In a Capital City: the six capitals' maps (the uiMapIDs Forever's addons use: Stormwind 1453 to
+-- Undercity 1458). The map can't be asked in some places: then not in a city.
+Visibility.CAPITALS = { [1453] = true, [1454] = true, [1455] = true, [1456] = true, [1457] = true, [1458] = true }
+function Visibility.InCapital()
+    local ok, map = pcall(C_Map.GetBestMapForUnit, "player")
+    return ok and map ~= nil and Visibility.CAPITALS[map] == true or false
+end
+
 -- a spell flyout opened from one of this bar's buttons, with the mouse on it: Blizzard parents the
 -- popup to the button, outside the bar's own rectangle
 local function FlyoutOver(bar)
@@ -774,7 +782,7 @@ local CAP_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- the chat's New Messages (right under Mouseover); the meter's Never and In an Instance; the threat
 -- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
-Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" },
+Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" },
                          legacy = SHOW_SPEC.legacy, empty = "always" }
 Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
                           legacy = SHOW_SPEC.legacy, empty = "always" }
@@ -805,6 +813,7 @@ local function EvaluateShowRule(show)
     if set.attackable and TargetIsHostile() then return true end
     if set.ingroup and IsInGroup() then return true end
     if set.unmounted and not Riding() then return true end
+    if set.city and Visibility.InCapital() then return true end
     -- the meter's and the threat window's: dungeons, raids, battlegrounds and arenas
     if set.instance and IsInInstance() then return true end
     return false
@@ -977,7 +986,7 @@ end
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
 -- Always clears the rest; the conditions after the line (Mouseover first) are toggles
-local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" }
+local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)
@@ -1594,6 +1603,10 @@ function Visibility:Refresh()
                     local editingNow = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
                     pcall(button.EnableMouse, button, show ~= "never" or editingNow or false)
                 end
+                -- the quest tracker on Never is hidden, not only faded: its lines would still show tooltips
+                if key == "quest" and ns.ObjectiveTracker and ns.ObjectiveTracker.SetNever then
+                    ns.ObjectiveTracker:SetNever(show == "never")
+                end
                 if show == "never" then
                     -- out for good; Edit Mode still shows it, to be found and set back
                     local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
@@ -1679,6 +1692,8 @@ function Visibility:Init()
     -- the Not mounted and In a group Show conditions
     self:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED", "OnVisibilityStateChange")
     self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnVisibilityStateChange")
+    -- In a Capital City: entering or leaving one
+    self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "OnVisibilityStateChange")
     -- bars show while the spellbook is open (Blizzard_PlayerSpells loads on demand)
     EventUtil.ContinueOnAddOnLoaded("Blizzard_PlayerSpells", function()
         local book = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.SpellBookFrame

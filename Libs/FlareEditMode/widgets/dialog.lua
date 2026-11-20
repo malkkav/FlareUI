@@ -245,8 +245,7 @@ end
 
 function dialogMixin:Reset()
 	self.selection = nil
-	self:ClearAllPoints()
-	self:SetPoint('BOTTOMRIGHT', UIParent, -250, 250)
+	internal.PlaceSaved(self)   -- (FlareUI) the dialogs' one spot (extension.lua)
 end
 
 local function closeEnough(a, b)
@@ -388,7 +387,10 @@ function internal:CreateDialog()
 	dialog:SetDontSavePosition(true)
 	dialog:RegisterForDrag('LeftButton')
 	dialog:SetScript('OnDragStart', dialog.StartMoving)
-	dialog:SetScript('OnDragStop', dialog.StopMovingOrSizing)
+	dialog:SetScript('OnDragStop', function(self)
+		self:StopMovingOrSizing()
+		internal.SaveDialogPos(self)   -- (FlareUI) the next dialog opens here
+	end)
 	dialog:SetScript('OnKeyDown', dialog.OnKeyDown)
 
 	local dialogTitle = dialog:CreateFontString(nil, nil, 'GameFontHighlightLarge')

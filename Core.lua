@@ -1146,6 +1146,10 @@ local defaults = {
 --------------------------------------------------
 -- Caught errors: the last 20 are kept (account-wide) for bug reports, shown with /fui errors. Nothing
 -- is printed when one is caught.
+-- Edit Mode's settings dialogs open where the player last dragged one, account-wide
+-- (Libs/FlareEditMode/widgets/extension.lua PlaceSaved; global.editDialogPos)
+LibStub("FlareEditMode").GetDialogStore = function() return ns.db and ns.db.global end
+
 ns.ERRORS_KEPT = 20
 function ns.LogError(where, err)
     local global = ns.db and ns.db.global
@@ -2480,9 +2484,10 @@ do
     -- The bars' conditions (action bars and the frames faded with them, Fake CM, resource bars). The
     -- single choices from before the toggles each meant "in combat, or ...".
     -- In an Instance on every Visibility list, under In a Group
-    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" }
+    -- In a Capital City last on every list (11-20), under Not Mounted
+    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }
     -- the faded elements' and Fake CM's: Mouseover is a condition ticked with the others
-    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" }
+    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" }
     C.BAR_LEGACY = { target = "combat,hastarget", harm = "combat,attackable", nomount = "combat,unmounted", group = "combat,ingroup" }
 end
 

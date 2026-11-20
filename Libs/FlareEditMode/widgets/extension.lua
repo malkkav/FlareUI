@@ -157,6 +157,42 @@ end
 -- (FlareUI) an Edit Mode dialog next to the frame it belongs to: to its right when there is
 -- room, else to its left, else above or below it; its top level with the frame's; the whole of it on
 -- screen. below: screen pixels that hang under the dialog (FlareUI's box under Blizzard's).
+-- (FlareUI 11-20) One spot for every settings dialog, FlareUI's and Blizzard's: a fixed start at the
+-- top right, then wherever the player last dragged one. Kept in screen pixels (each dialog has its own
+-- scale) in the table lib.GetDialogStore() hands over (FlareUI: the account-wide saved variables).
+-- Dialogs used to open beside the selected frame, so a dialog dragged away came back each time.
+local DEFAULT_RIGHT, DEFAULT_TOP = 250, 150
+local function DialogStore()
+	local get = lib.GetDialogStore
+	local ok, store = pcall(get or function() end)
+	return ok and type(store) == 'table' and store or nil
+end
+function internal.PlaceSaved(panel)
+	if not panel then return end
+	local ps = panel:GetEffectiveScale()
+	local store = DialogStore()
+	local pos = store and store.editDialogPos
+	panel:ClearAllPoints()
+	if pos and pos.left and pos.top then
+		local us = UIParent:GetEffectiveScale()
+		local sw, sh = UIParent:GetWidth() * us, UIParent:GetHeight() * us
+		-- (a smaller screen since: kept on it)
+		local left = math.max(0, math.min(pos.left, sw - 100 * us))
+		local top = math.max(100 * us, math.min(pos.top, sh))
+		panel:SetPoint('TOPLEFT', UIParent, 'BOTTOMLEFT', left / ps, top / ps)
+	else
+		panel:SetPoint('TOPRIGHT', UIParent, 'TOPRIGHT', -DEFAULT_RIGHT, -DEFAULT_TOP)
+	end
+end
+function internal.SaveDialogPos(panel)
+	local store = DialogStore()
+	if not (store and panel) then return end
+	local ps = panel:GetEffectiveScale()
+	local left, top = panel:GetLeft(), panel:GetTop()
+	if not (left and top) then return end
+	store.editDialogPos = { left = left * ps, top = top * ps }
+end
+
 function internal.PlaceNear(panel, target, below)
 	if not (panel and target and panel:IsShown()) then return end
 	local ts, ps = target:GetEffectiveScale(), panel:GetEffectiveScale()

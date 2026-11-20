@@ -2609,7 +2609,8 @@ function OT:Render()
         or (db.showRecipes and C_TradeSkillUI and C_TradeSkillUI.GetRecipesTracked
             and #C_TradeSkillUI.GetRecipesTracked(false) > 0)
     -- nothing tracked: no tracker
-    local hide = not tracked and not state.editMode and not state.preview
+    -- Visibility Never (OT:SetNever): hidden, not just faded, so its lines take no mouse or tooltips
+    local hide = (not tracked or state.never) and not state.editMode and not state.preview
     holder:SetShown(not lone and not hide)
     if miniButton then
         miniButton:ClearAllPoints()
@@ -2875,6 +2876,15 @@ function OT:IsSettingsPreview() return state.preview or false end
 
 -- for Visibility: the window, and the pieces it fades with it that sit outside it
 function OT:GetFrame() return holder end
+
+-- Visibility Never: the window is hidden outright (Render), not left at 0% where its lines would still
+-- show tooltips and take clicks; Edit Mode and the settings page still show it
+function OT:SetNever(on)
+    on = on and true or false
+    if state.never == on then return end
+    state.never = on
+    if holder then self:Render() end
+end
 
 function OT:SetFadeAlpha(alpha)
     self.fadeAlpha = alpha
