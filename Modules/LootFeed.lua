@@ -76,6 +76,12 @@ local function NewLine(parent)
     line.icon:SetSize(ICON, ICON)
     line.icon:SetPoint("LEFT")
     line.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- (11-20) a border in the item's quality colour, square or round as the auras' (Loot Feed: Square
+    -- Icons / Round Icons); the icon clipped to its shape
+    line.mask = line:CreateMaskTexture()
+    line.mask:SetAllPoints(line.icon)
+    line.icon:AddMaskTexture(line.mask)
+    line.border = line:CreateTexture(nil, "OVERLAY")
     -- a font object first: SetText errors on a font string with no font yet
     line.text = line:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     line.text:SetPoint("LEFT", line.icon, "RIGHT", 5, 0)
@@ -135,6 +141,26 @@ local function Fill(line, icon, text, r, g, b)
     ns.SetFont(line.text, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 14, flags)
     ns.ApplyShadow(line.text, font)
     if r then line.text:SetTextColor(r, g, b) end
+    -- the border: the shape picked, in the line's colour (an item's quality, a skill's blue)
+    local db = GetDb()
+    local round = db and db.lootFeedIcons == "round"
+    local border, mask = line.border, line.mask
+    border:ClearAllPoints()
+    if round then
+        mask:SetAtlas("talents-node-circle-mask", TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        border:SetAtlas("talents-node-circle-gray", TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
+        border:SetPoint("TOPLEFT", line.icon, "TOPLEFT", -2, 2)
+        border:SetPoint("BOTTOMRIGHT", line.icon, "BOTTOMRIGHT", 2, -2)
+    else
+        mask:SetTexture("Interface\\AddOns\\FlareUI\\Media\\Auras\\IconMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        border:SetTexture("Interface\\AddOns\\FlareUI\\Media\\Auras\\IconBorder")
+        -- the bevel's opening is 6/128 in from its edge: the icon fills it
+        local out = ICON * (6 / 116)
+        border:SetPoint("TOPLEFT", line.icon, "TOPLEFT", -out, out)
+        border:SetPoint("BOTTOMRIGHT", line.icon, "BOTTOMRIGHT", out, -out)
+    end
+    if r then border:SetVertexColor(r, g, b) end
+    border:SetShown(line.icon:IsShown())
 end
 
 local function Release(i)
@@ -449,6 +475,22 @@ function LF:Init()
     holder:SetClampedToScreen(true)
     ApplyPosition()
     LEM:AddFrame(holder, OnMoved, DEFAULTS, L["FlareUI Loot Feed"])
+    -- Scale (11-20), as Loot Rolls and Toasts: tweaks.lootFeedScale, 1 unset; at the cursor too
+    local function ApplyScale()
+        local db = GetDb()
+        holder:SetScale(db and tonumber(db.lootFeedScale) or 1)
+    end
+    ApplyScale()
+    LEM:AddFrameSettings(holder, ns.EditSection("Frame", {
+        { name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+          get = function() local db = GetDb(); return math_floor((db and tonumber(db.lootFeedScale) or 1) * 100 + 0.5) end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              db.lootFeedScale = value ~= 100 and value / 100 or nil
+              ApplyScale()
+          end },
+    }))
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
     -- At the Cursor: nothing to place, so Edit Mode leaves the frame out
     LEM:RegisterCallback("enter", function()

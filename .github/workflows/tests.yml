@@ -23,19 +23,24 @@ jobs:
           persist-credentials: false
 
       - name: Install LuaJIT
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends luajit
+        uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "luajit-2.1"
 
       - name: Run tests
         shell: bash
         run: |
-          status=0
+          failed=()
           for test in tools/tests/*.lua; do
             if [[ "$test" == tools/tests/perf-helpers.lua ]]; then
               continue
             fi
             printf '\nRunning %s\n' "$test"
-            luajit "$test" || status=1
+            luajit "$test" || failed+=("$test")
           done
-          exit "$status"
+          if (( ${#failed[@]} > 0 )); then
+            printf '\nFailed tests:\n'
+            printf '  %s\n' "${failed[@]}"
+            printf '::error title=Lua test failed::%s\n' "${failed[@]}"
+            exit 1
+          fi

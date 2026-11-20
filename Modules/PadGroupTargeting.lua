@@ -36,7 +36,7 @@ PGT.DIRECTIONS = {
     { click = "PadDown",  slot = 4, dpad = "PADDDOWN",  face = "PAD1" },
 }
 
-PGT.HIGHLIGHT_COLOR = { 0.3, 0.7, 1, 1 }
+PGT.HIGHLIGHT_COLOR = { 0.25, 0.60, 1, 1 }   -- the palette's blue (Edit Mode's selection blue)
 PGT.HIGHLIGHT_SIZE = 2
 
 --------------------------------------------------

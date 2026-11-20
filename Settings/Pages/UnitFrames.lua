@@ -53,9 +53,9 @@ Frame("castbar", "unitframes.playerCastbar.enabled", "FlareUI_UF_PlayerCastBar")
 -- two columns: Main | Player Cast Bar, Party | Raid, Boss | Target of Target, Target of Focus | Flag Carriers
 Frame("party", "unitframes.party.enabled", "FlareUI_Party")
 Frame("raid", "unitframes.raid.enabled", "FlareUI_Raid")
-Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 Frame("tot", "unitframes.units.targettarget.enabled", "FlareUI_UF_TargetOfTarget")
 Frame("tof", "unitframes.units.focustarget.enabled", "FlareUI_UF_TargetOfFocus")
+Frame("boss", "unitframes.boss.enabled", "FlareUI_Boss")
 -- Blizzard's battleground flag carrier frames, moved in Edit Mode (FlagCarriers.lua)
 Frame("flagCarriers", "unitframes.flagCarriers.enabled", "FlareUI_FlagCarriers")
 
@@ -71,13 +71,17 @@ S:Row{
 -- the row is only Pick Your Colours, always shown; the
 -- palettes (FlareUI, Blizzard) are picked in its window (Settings/ColorPicker.lua)
 S:Row{
-    key = "uf.pickColors", kind = "button", buttonText = L["Pick Your Colours"],
+    -- (lead: first in Look, above the slider and the switches)
+    key = "uf.pickColors", kind = "button", buttonText = L["Pick Your Colours"], lead = true,
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("uf") end end,
 }
 -- (each frame's fading is in its Edit Mode dialog: Visibility.lua, UnitFrames.lua section 14)
 -- frames are made at login: the pet's style applies on reload
-S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
-S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
+-- (two columns: Simple Pet Frame | Simple Target of Target; hidden in Modern, where every frame is plain)
+local function ModernStyle() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end
+S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true, half = true, hidden = ModernStyle }
+S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true, half = true, hidden = ModernStyle }
+-- (Level Disc Size: each frame's Edit Mode Text section since 11-20)
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (Off first in every dropdown)
@@ -151,7 +155,7 @@ for _, frame in ipairs(FONT_FRAMES) do
     local fonts = {}
     for _, element in ipairs(UFM.FontElements(key)) do
         fonts[#fonts + 1] = {
-            key = element, autoSize = element == "auras" or element == "auraCount",
+            key = element, autoSize = element == "auras" or element == "auraCount" or element == "combatText",
             -- the level has no size of its own: the name's in Addon Style, the level disc's in the ring styles
             noSize = element == "level",
             font = function() return UFM.FontDb(key, element) end,

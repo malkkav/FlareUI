@@ -212,7 +212,7 @@ function RB.ApplyPalette()
     for _, key in ipairs({ "health", "classHealth", "low", "mana", "rage", "energy", "druidMana", "combo",
                            "swingMain", "swingOff", "swingRanged", "outOfRange", "waiting", "zone",
                            "queueHeroic", "queueCleave", "queueMaul", "queueRaptor",
-                           "heal", "absorb", "flight", "timerBreath", "timerFatigue", "timerFeign",
+                           "heal", "absorb", "trail", "flight", "timerBreath", "timerFatigue", "timerFeign",
                            "sealRighteousness", "sealCrusader", "sealCommand", "sealJustice", "sealLight", "sealWisdom", "sealFury", "sealMartyrdom" }) do
         local own = custom and custom[key]
         local c = (type(own) == "table" and own[1]) and own or RB.PaletteColor(key, base)
@@ -962,7 +962,7 @@ local function LayoutBar(holder)
         -- the shield with no room after the health, over it (UnitFrames.lua UF.CreateOverAbsorb)
         K.PlaceOverAbsorb(holder.OverAbsorb, bar, width, false, K.GetBarTexture(absorbTex))
         -- the Damage Trail takes the bar's texture (set above) and fills the same way
-        K.PlaceDamageTrail(holder.DamageTrail, false)
+        K.PlaceDamageTrail(holder.DamageTrail, false, RBC.trail)
         -- Bar Edge Glow (UnitFrames.lua UF.BarLook): the bar fills left to right
         K.BarLook(bar, false, cfg and cfg.barEdgeGlow)
     end
@@ -1264,7 +1264,7 @@ local function BuildSettings(key)
     local function add(item) frameItems[#frameItems + 1] = item end
     if info.kind == "combo" then
         -- Style: the gems or the bar, whatever the frame style (FlareUI Style's target has the same)
-        table.insert(frameItems, 1, { name = L["Style"], kind = LEM.SettingType.Dropdown,
+        table.insert(frameItems, 1, { name = L["Combo Points"], kind = LEM.SettingType.Dropdown,
             default = (ns.UFRing and ns.UFRing.On()) and "classic" or "modern",
             values = {
                 { text = L["Classic"], value = "classic", isRadio = true },
@@ -1314,7 +1314,7 @@ local function BuildSettings(key)
     -- the swing, flight, seal and duration bars' two texts, each on its own. In Frame: what a bar
     -- tells you belongs with the bar, not with its look.
     if info.kind == "swing" or info.kind == "flight" or info.kind == "seal" or info.kind == "timer" then
-        add({ name = L["Bar Text"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
+        add({ name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = get("showLabel", true), set = set("showLabel"),
               desc = info.kind == "flight" and L["Where you're flying, on the left of the bar."]
                   or info.kind == "seal" and L["The seal's name on the left of the bar."]
                   or info.kind == "timer" and L["The timer's name on the left of the bar."] or L["The swing's name on the left of the bar."] })

@@ -285,9 +285,11 @@ local function SkinBorder(button, on)
         if not (iw and iw > 0) and button.GetSize then iw, ih = button:GetSize() end
         -- The border's band reaches about 5.5 px into the icon, the same on every size: on the 30 px
         -- icons (stance, pet, possess, totem) it hid a third more of the picture than on the 45 px
-        -- main bars. A smaller icon's border sits further out, so the same share of the icon shows.
-        local out = FLARE_BORDER_OUT
-        if iw and iw > 0 and iw < 44 then out = out + math.floor(5.5 * (45 - iw) / 45 + 0.5) end
+        -- main bars. A smaller icon's border is thinner in proportion, so the same share of the icon
+        -- shows and the border stays on the icon's edge (further out, neighbours' borders overlapped).
+        local out, edge = FLARE_BORDER_OUT, FLARE_BORDER_EDGE
+        if iw and iw > 0 and iw < 44 then edge = edge * iw / 45 end
+        b.fuiEdge = edge
         -- round the icon, not the button: the pet bar's icon is larger than its 30 px button and would
         -- show past a border fitted to the button
         b:SetPoint("TOPLEFT", icon, "TOPLEFT", -out, out)
@@ -295,7 +297,7 @@ local function SkinBorder(button, on)
         local LSM = LibStub("LibSharedMedia-3.0")
         -- FlareUI Frames, the chat and meter windows' border (FlareUI Thin is too faint here)
         local file = LSM:Fetch("border", "FlareUI Frames")
-        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+        b:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, edge) })
         local c = ns.BORDER_COLOR
         b:SetBackdropBorderColor(c.r, c.g, c.b, c.a or 1)
         -- over the cooldown swipe, under the texts' frame
@@ -333,12 +335,12 @@ local function SkinBorder(button, on)
         button.NormalTexture:SetAlpha(0)
         -- the 30 px buttons (stance, pet, possess) keep Blizzard's 45 px icon mask
         -- (SmallActionButtonMixin_OnLoad), so the icon's own edge would show as a second, inner border
-        -- once Blizzard's frame is hidden: the mask takes the border's box, so its rounded corners
-        -- follow the border's as they do on the main bars
+        -- once Blizzard's frame is hidden: the mask takes the main bars' share of the border's box
+        -- (a 64 px mask on a 45 px icon), so its rounded corners follow the border's as they do there
         local mask = button.IconMask
         if mask and iw and iw > 0 and iw < 44 then
             if not button.FlareUI_MaskW then button.FlareUI_MaskW, button.FlareUI_MaskH = mask:GetSize() end
-            mask:SetSize(iw + 2 * out, ih + 2 * out)
+            mask:SetSize((iw + 2 * out) * 64 / 45, (ih + 2 * out) * 64 / 45)
         end
         ActionBars.FitStateArt(button, true)
         button.FlareUI_Bordered = true
@@ -534,7 +536,7 @@ local function UpdateActive(button, state)
     if button.FlareUI_Bordered then
         local LSM = LibStub("LibSharedMedia-3.0")
         local file = LSM:Fetch("border", "FlareUI Frames")
-        ov:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+        ov:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, button.FlareUI_Border.fuiEdge or FLARE_BORDER_EDGE) })
         ov:SetBackdropBorderColor(c[1], c[2], c[3], 1)
         ov.frame:Hide()
     else
@@ -652,7 +654,7 @@ function ActionBars.PetAutoCastEdge(overlay)
     edge:SetAllPoints(border)
     local LSM = LibStub("LibSharedMedia-3.0")
     local file = LSM:Fetch("border", "FlareUI Frames")
-    edge:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, FLARE_BORDER_EDGE) })
+    edge:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, border.fuiEdge or FLARE_BORDER_EDGE) })
     edge:SetBackdropBorderColor(c[1], c[2], c[3], 1)
     edge.frame:Hide()
     edge:Show()
@@ -955,15 +957,24 @@ local function UpdateHotkeyText(button)
     -- larger keybind font isn't cut off. One line inside the border, as Blizzard's own box, so a long
     -- name ("Middle Mouse") is cut short instead of wrapping over the icon
     hotkey:SetWordWrap(false)
-    hotkey:SetSize(math.max(1, button:GetWidth() - (clean and 2 or 8)), 0)
+    -- (a button not sized yet: the text's own width, not a 1 px box that shows nothing)
+    local width = button:GetWidth() - (clean and 2 or 8)
+    hotkey:SetSize(width > 8 and width or 0, 0)
 end
 
-local function UpdateButtonText(button)
+-- redraw: the size changed once and back, so the text is drawn anew. The same font again does
+-- nothing, and a key drawn at login before its font file loaded stays blank until a real change
+-- (a Button Scale change brought the keys back, TheHusky's report 11-19)
+local function UpdateButtonText(button, redraw)
     if not button then return end
     local db = GetBarConfig()
     if not db then return end
 
     if button.HotKey then
+        if redraw then
+            local path, size, flags = FontArgs(db.hotkeyFont)
+            if size then ns.SetFont(button.HotKey, path, size + 1, flags) end
+        end
         ns.SetFont(button.HotKey, FontArgs(db.hotkeyFont))
         ns.ApplyShadow(button.HotKey, db.hotkeyFont)
         UpdateHotkeyText(button)
@@ -2010,6 +2021,7 @@ function ActionBars:Refresh(event)
 
     UpdateGryphonLayer(db)
     if ActionBars.ApplyTotemScale then ActionBars.ApplyTotemScale() end   -- a profile's totem bar Size
+    ActionBars.ApplyCapScales()   -- the gryphons' Size
     ActionBars.ApplyMenuBags()
     UpdateButtonArtAll()
     UpdateBordersAll()
@@ -2072,7 +2084,7 @@ ActionBars.ApplyTotemScale = ApplyTotemScale
 function ActionBars.TotemSizeSetting()
     local LEM = LibStub("FlareEditMode")
     return {
-        name = L["Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
         formatter = function(value) return value end,   -- plain: "100%" clips the value box
         get = function() local db = GetBarConfig(); return db and db.totemScale or 100 end,
         set = function(_, value)
@@ -2081,6 +2093,50 @@ function ActionBars.TotemSizeSetting()
             db.totemScale = value ~= 100 and value or nil
             ApplyTotemScale()
         end,
+        -- (with Action Bars off nothing applies it: hidden, as the gryphons' and bag bar's Scale)
+        hidden = function() local db = GetBarConfig(); return not (db and db.enabled) end,
+    }
+end
+
+--------------------------------------------------
+-- 13b2. GRYPHON SIZE (Ravenesque 11-20)
+-- Each gryphon is its own Edit Mode system with no Size of its own: FlareUI adds one to each dialog
+-- (Visibility.lua, above Fading), 50-200%, on top of bar 1's scale (they sit inside it). 100% never
+-- touches a gryphon; out of a fight only.
+--------------------------------------------------
+ActionBars.CAP_FRAMES = { capLeft = "LeftEndCap", capRight = "RightEndCap" }
+function ActionBars.ApplyCapScales()
+    local db = GetBarConfig()
+    local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
+    if not (db and db.enabled and caps) then return end
+    if InCombatLockdown() then ActionBars._pendingCapScale = true return end
+    ActionBars._pendingCapScale = nil
+    local sizes = db.capScale or {}
+    for key, field in pairs(ActionBars.CAP_FRAMES) do
+        local cap = caps[field]
+        local scale = (sizes[key] or 100) / 100
+        if cap and not cap:IsForbidden() and (scale ~= 1 or cap.FlareUI_Scaled) then
+            local setScale = cap.SetScaleBase or cap.SetScale
+            setScale(cap, scale)
+            cap.FlareUI_Scaled = scale ~= 1 or nil
+        end
+    end
+end
+
+function ActionBars.CapSizeSetting(key)
+    local LEM = LibStub("FlareEditMode")
+    return {
+        name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        formatter = function(value) return value end,   -- plain: "100%" clips the value box
+        get = function() local db = GetBarConfig(); return db and db.capScale and db.capScale[key] or 100 end,
+        set = function(_, value)
+            local db = GetBarConfig()
+            if not db then return end
+            db.capScale = db.capScale or {}
+            db.capScale[key] = value ~= 100 and value or nil
+            ActionBars.ApplyCapScales()
+        end,
+        hidden = function() local db = GetBarConfig(); return not (db and db.enabled) end,
     }
 end
 
@@ -2180,7 +2236,7 @@ function ActionBars:OnEnteringWorld(event)
         C_Timer.After(delay, function()
             local db = GetBarConfig()
             if not (db and db.enabled) then return end
-            for _, btn in ipairs(GetAllActionButtons()) do UpdateButtonText(btn) end
+            for _, btn in ipairs(GetAllActionButtons()) do UpdateButtonText(btn, true) end
         end)
     end
 end
@@ -2191,6 +2247,7 @@ function ActionBars:OnCombatEnd()
     end
     if #pendingRanks > 0 then FlushRanks() end
     if self._pendingTotemScale then ApplyTotemScale() end
+    if self._pendingCapScale then ActionBars.ApplyCapScales() end
     if self._pendingBagSize then ApplyBagBarSize() end
 end
 

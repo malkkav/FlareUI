@@ -22,7 +22,7 @@ local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for sear
 -- kinds drawn on a plate (text blocks, legends, style cards and headings are not)
 local PLATED = { toggle = true, choice = true, dropdown = true, range = true, frame = true, button = true,
     keybind = true, buttons = true, editmode = true }
-local INDENT = 18
+local INDENT = 0   -- dependent rows sit flush with the rest (Malkkav 11-16: no indented child rows; they grey instead)
 -- a choice or dropdown box (the choices lost their arrows; one width for both kinds)
 local BOX_W, BOX_HALF_W = 200, 150
 -- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
@@ -35,7 +35,7 @@ local LOGO = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Art\\Icon.png"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local PICTURE = "Interface\\AddOns\\FlareUI\\Media\\Art\\Banner.png"
 
-local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
+local BRONZE_MUTED = { 0.65, 0.49, 0.27 }   -- palette bronze3
 
 -- Blizzard's NEW label, smaller and with its text at the frame's left. Its glow reaches 20 px past the
 -- text: tightened, so it stays inside tabs and clear of checkboxes.
@@ -335,7 +335,7 @@ end
 -- FlareUI Thin (8 px edge) for every box, button and tab in the window
 local THIN = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Borders\\FlareUI-Thin.tga"
 local THIN_EDGE, THIN_INSET = 8, 4   -- fills start 4 px in: under the border's rounded corners
-local EDGE_COLOR = { 0.55, 0.42, 0.24 }       -- resting
+local EDGE_COLOR = { 0.65, 0.49, 0.27 }   -- palette bronze3       -- resting
 local EDGE_HOVER = { 0.98, 0.74, 0.36 }      -- under the pointer
 local function ThinBackdrop(f, withFill)
     f:SetBackdrop({ bgFile = withFill and WHITE or nil, edgeFile = THIN, edgeSize = THIN_EDGE,
@@ -444,7 +444,7 @@ Panel.Plate = Plate
 
 -- The controls kit, drawn from one smooth disc (tools/panelart.js)
 local CIRCLE = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Circle.tga"
-local GOLD = { 0.91, 0.77, 0.42 }
+local GOLD = { 1, 0.84, 0.50 }   -- palette goldHighlight
 -- titles in WoW's own yellow (NORMAL_FONT_COLOR): the window's name,
 -- page titles, section headers and the Info Panel's titles; buttons and sliders keep the bronze gold
 local TITLE_YELLOW = { 1, 0.82, 0 }
@@ -626,8 +626,63 @@ local function IsRowHovered(rowKey)
     return false
 end
 
+-- A module that draws its own lower Info panel (module.sidePanel = { top, show(host), hover(rowKey) };
+-- Nameplates): the text keeps the top part, the module's frame the rest. Not in search results, nor
+-- while the module is off.
+local function SidePanel()
+    if searchText ~= "" then return nil end
+    local module = S.modules[current]
+    local side = module and module.sidePanel
+    if not side or (module.enabled and not module:IsOn()) then return nil end
+    return side
+end
+Panel.SidePanel = SidePanel
+
+-- With a side panel the right column's own box steps aside: the text gets a box of its own above
+-- the module's (top: where the module's part starts); off, the column's box comes back
+local function SideBoxes(on, top)
+    local right = Panel.rightBox
+    if not right then return end
+    if on then
+        if not right.sideSaved then right.sideSaved = { { right:GetBackdropColor() }, { right:GetBackdropBorderColor() } } end
+        right:SetBackdropColor(0, 0, 0, 0)
+        right:SetBackdropBorderColor(0, 0, 0, 0)
+        if not preview.textBox then
+            -- (on the column's parent, under it: the column's text draws on top)
+            preview.textBox = CreateFrame("Frame", nil, right:GetParent(), "BackdropTemplate")
+            Box(preview.textBox, 0.40)
+            preview.textBox:SetFrameLevel(math.max(0, right:GetFrameLevel() - 1))
+        end
+        preview.textBox:ClearAllPoints()
+        preview.textBox:SetPoint("TOPLEFT", right, "TOPLEFT")
+        preview.textBox:SetPoint("BOTTOMRIGHT", right, "TOPRIGHT", 0, -(top - GAP))
+        preview.textBox:Show()
+    else
+        if right.sideSaved then
+            right:SetBackdropColor(unpack(right.sideSaved[1]))
+            right:SetBackdropBorderColor(unpack(right.sideSaved[2]))
+            right.sideSaved = nil
+        end
+        if preview.textBox then preview.textBox:Hide() end
+    end
+end
+
+-- a picture shows the current settings; only the minimap drawer rows try a value on (value)
 local function ShowVisual(row, value)
     if not preview.canvas then return end
+    local side = SidePanel()
+    if side then
+        preview.canvas.frame:Hide()
+        preview.picture:Hide()
+        preview.title:ClearAllPoints()
+        preview.title:SetPoint("TOPLEFT", PAD, -PAD)
+        preview.title:SetPoint("RIGHT", -PAD, 0)
+        if side.hover then
+            local ok, err = pcall(side.hover, row and row.key)
+            if not ok and geterrorhandler then geterrorhandler()(err) end
+        end
+        return
+    end
     if preview.module ~= current or preview.tab ~= currentTab[current] then
         preview.spec = nil; preview.helpRow = nil; preview.module = current; preview.tab = currentTab[current]
     end
@@ -638,7 +693,7 @@ local function ShowVisual(row, value)
     local spec
     if row then spec = ns.SettingsPreview.Resolve(row) or PageSpec()
     else spec = preview.spec or PageSpec() end
-    if spec and spec.key == "ch.linkIcons" and not IsRowHovered(spec.key) then
+    if spec and spec.key == "ch.icons" and not IsRowHovered(spec.key) then
         spec = PageSpec()
     end
     if spec and spec.kind == 'minimapDrawer' and value ~= nil then
@@ -691,6 +746,12 @@ local function ShowModulePreview()
         ShowPreview(title, help:Description(), help:Tip())
         return
     end
+    -- a page with its own lower Info panel: its how-to (module.sidePanel.idle = { title, text })
+    local side = SidePanel()
+    if side and side.idle then
+        ShowPreview(side.idle[1], side.idle[2])
+        return
+    end
     -- About: a word for the players
     if current == "about" then
         ShowPreview(L["Thank You!"], L["To everyone who downloaded FlareUI, sent feedback, reported bugs or helped a friend set it up: thank you. FlareUI gets better every week because of you."])
@@ -735,6 +796,12 @@ end
 
 local function RowLeave(self)
     self.hover:Hide()
+    -- a page with its own lower Info panel goes back to its how-to (and its preview's own states)
+    if SidePanel() then
+        preview.helpRow = nil
+        ShowModulePreview()
+        return
+    end
     -- Keep a visual row visible after hover; cards revert from the hovered variant to the saved
     -- selection. Behaviour-only rows retain the existing explanation/picture behaviour.
     if self.row and ns.SettingsPreview.Resolve(self.row) then ShowRowPreview(self.row)
@@ -759,7 +826,7 @@ local function NewRowFrame(parent, kind)
         f.hover:SetTextureSliceMargins(8, 8, 8, 8)
         if Enum.UITextureSliceMode then f.hover:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched) end
     end
-    f.hover:SetVertexColor(0.98, 0.70, 0.30, 0.26)   -- (bright bronze)
+    f.hover:SetVertexColor(1, 0.84, 0.50, 0.26)   -- (palette goldHighlight)
     f.hover:Hide()
     -- a click anywhere on a switch's row flips it (the switch takes its own clicks)
     f:SetScript("OnMouseUp", function(self, button)
@@ -833,10 +900,40 @@ local function SetupChoiceMenu(dropdown, f)
     dropdown:RegisterCallback(DropdownButtonMixin.Event.OnMenuClose, function()
         if f.row then ShowRowPreview(f.row) end
     end, f)
-    dropdown:SetupMenu(function(_, root)
+    dropdown:SetupMenu(function(owner, root)
         local row = f.row
         if not row then return end
         local choices = row:Choices()
+        -- (pooled boxes: a summary set by the last row would stick)
+        owner.disableSelectionText = nil
+        -- a row with slots (row.slots = { { key, text } }): one submenu of ticks per slot, the
+        -- same choices in each, the tick's place beside it; the box shows row.boxText()
+        if row.slots then
+            for _, s in ipairs(row.slots) do
+                local sub = root:CreateButton(s.text)
+                for _, c in ipairs(choices) do
+                    if c.divider then
+                        sub:CreateDivider()
+                    else
+                        local slot, value, label = s.key, c.value, c.text
+                        local box = sub:CreateCheckbox(label, function() return row.slotTicked(slot, value) end, function()
+                            Panel.toggleHold = true
+                            row:Set(row.slotToggle(slot, value))
+                            Panel.toggleHold = nil
+                        end)
+                        if row.slotPlace and box and box.AddInitializer then
+                            box:AddInitializer(function(button)
+                                if not button.fontString then return end
+                                local place = row.slotPlace(slot, value)
+                                button.fontString:SetText(place and (label .. "  |cffffd100" .. place .. "|r") or label)
+                            end)
+                        end
+                    end
+                end
+            end
+            if row.boxText then owner:OverrideText(row.boxText()) end
+            return
+        end
         -- a long list (font packs bring hundreds of fonts) scrolls, 20 entries tall: without it the
         -- menu runs off the screen with no way to reach the rest
         if #choices > 20 and root.SetScrollMode then root:SetScrollMode(20 * 20) end
@@ -851,6 +948,30 @@ local function SetupChoiceMenu(dropdown, f)
                 local option = root:CreateRadio(c.text, IsChoice, PickChoice, c)
                 option:SetOnEnter(function() ShowRowPreview(row, c.value) end)
                 option:SetOnLeave(function() ShowRowPreview(row) end)
+                -- a choice with a picture (c.icon = { atlas, rotation }), at the entry's right
+                if c.icon and option.AddInitializer then
+                    option:AddInitializer(function(button)
+                        local t = button.AttachTexture and button:AttachTexture() or button:CreateTexture(nil, "OVERLAY")
+                        t:SetSize(16, 16)
+                        t:SetPoint("RIGHT", button, "RIGHT", -2, 0)
+                        t:SetAtlas(c.icon[1])
+                        t:SetRotation(c.icon[2] or 0)
+                        if button.fontString then button.fontString:SetPoint("RIGHT", t, "LEFT", -4, 0) end
+                    end)
+                end
+                -- a sound choice (row.soundPreview): a speaker at the entry's right plays it without picking it
+                if row.soundPreview and c.value ~= "off" and option.AddInitializer and MenuTemplates and MenuTemplates.AttachBasicButton then
+                    option:AddInitializer(function(button)
+                        local play = MenuTemplates.AttachBasicButton(button, 16, 16)
+                        play:SetPoint("RIGHT", button, "RIGHT", -2, 0)
+                        local t = button:AttachTexture()
+                        t:SetDrawLayer("OVERLAY")
+                        t:SetAllPoints(play)
+                        t:SetAtlas("voicechat-icon-speaker")
+                        play:SetScript("OnClick", function() row.soundPreview(c.value) end)
+                        if button.fontString then button.fontString:SetPoint("RIGHT", play, "LEFT", -4, 0) end
+                    end)
+                end
                 if row.previewFont and row.key:match('%.face$') then
                     option:AddInitializer(function(button)
                         if button.fontString then
@@ -866,6 +987,25 @@ local function SetupChoiceMenu(dropdown, f)
         ns.PadNav.GuardDropdown(dropdown, function()
             local row, entries = f.row, {}
             if not row then return entries end
+            -- slots: one flat list, "Left: Health Value"
+            if row.slots then
+                for i, s in ipairs(row.slots) do
+                    if i > 1 then entries[#entries + 1] = { divider = true } end
+                    for _, c in ipairs(row:Choices()) do
+                        if not c.divider then
+                            local slot, value = s.key, c.value
+                            entries[#entries + 1] = { text = s.text .. ": " .. c.text, multi = true,
+                                checked = function() return row.slotTicked(slot, value) end,
+                                pick = function()
+                                    Panel.toggleHold = true
+                                    row:Set(row.slotToggle(slot, value))
+                                    Panel.toggleHold = nil
+                                end }
+                        end
+                    end
+                end
+                return entries
+            end
             for _, c in ipairs(row:Choices()) do
                 if c.divider then
                     entries[#entries + 1] = { divider = true }
@@ -934,6 +1074,7 @@ local function BoxArrow(dd)
     dd:HookScript("OnDisable", Paint)
     Paint(dd)
 end
+Panel.BoxArrow = BoxArrow   -- (the rows' dropdown look, for pages' own dropdowns)
 
 -- choice: Blizzard's dropdown box alone, as a dropdown row (the stepper's two arrows
 -- took room for little use; the box reads better and can be narrower). Same list and preview on hover.
@@ -1141,6 +1282,35 @@ local function SideButton(f, side)
     end
     return f[key]
 end
+-- row.sideMenu = { width, choices = { { value, text }, ... }, get(), set(value) }: a second, small
+-- dropdown left of the row's own (Aura Filters' Hide / Show)
+local function SideMenu(f)
+    if not f.sideMenu then
+        local dd = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")
+        BoxArrow(dd)
+        ForwardHover(dd, f)
+        local function Def() return f.row and f.row.sideMenu end
+        dd:SetupMenu(function(_, root)
+            local def = Def()
+            if not def then return end
+            for _, c in ipairs(def.choices) do
+                root:CreateRadio(c[2], function() return def.get() == c[1] end, function() def.set(c[1]) end)
+            end
+        end)
+        if ns.PadNav and ns.PadNav.GuardDropdown then
+            ns.PadNav.GuardDropdown(dd, function()
+                local def, entries = Def(), {}
+                for _, c in ipairs(def and def.choices or {}) do
+                    entries[#entries + 1] = { text = c[2],
+                        checked = function() return def.get() == c[1] end, pick = function() def.set(c[1]) end }
+                end
+                return entries
+            end, function() end)
+        end
+        f.sideMenu = dd
+    end
+    return f.sideMenu
+end
 Build.dropdown = function(f)
     -- Blizzard's own box (WowStyle2), unskinned, the same as a choice row's
     local dd = CreateFrame("DropdownButton", nil, f, "WowStyle2DropdownTemplate")
@@ -1178,6 +1348,16 @@ local function PlaceSideButtons(f, row)
         dd:SetPoint("RIGHT", -6, 0)
     end
     if sides.left then f.leftButton:SetPoint("RIGHT", dd, "LEFT", -8, 0) end
+    local menu = (row.sideMenu or f.sideMenu) and SideMenu(f)
+    if row.sideMenu then
+        menu:SetWidth(row.sideMenu.width or 100)
+        menu:ClearAllPoints()
+        menu:SetPoint("RIGHT", sides.left and f.leftButton or dd, "LEFT", -8, 0)
+        menu:Show()
+        menu:GenerateMenu()
+    elseif menu then
+        menu:Hide()
+    end
 end
 Fill.dropdown = function(f, row)
     PlaceSideButtons(f, row)
@@ -1615,7 +1795,9 @@ local function RowLabelSpace(f, row)
     if row.kind == "styles" then return f:GetWidth() - 24 end
     -- Use the first visible control, not the width of its container.
     local control = f.control or f.edit
-    if row.kind == "dropdown" and row.sideButtons and row.sideButtons.left then
+    if row.kind == "dropdown" and row.sideMenu and f.sideMenu then
+        control = f.sideMenu
+    elseif row.kind == "dropdown" and row.sideButtons and row.sideButtons.left then
         control = f.leftButton
     elseif row.kind == "buttons" and row.buttons and #row.buttons > 0 then
         control = f.buttons[1]
@@ -1680,7 +1862,7 @@ local function FlashRow(f)
     if not f.flashAnim then
         f.flash = f:CreateTexture(nil, "BACKGROUND", nil, 1)
         f.flash:SetAllPoints()
-        f.flash:SetColorTexture(1, 0.72, 0.12, 0.3)
+        f.flash:SetColorTexture(1, 0.82, 0.25, 0.3)
         f.flash:SetAlpha(0)
         f.flashAnim = f.flash:CreateAnimationGroup()
         for i, step in ipairs(FLASH_STEPS) do
@@ -1880,13 +2062,17 @@ end
 -- ring, tinted bronze, as Auras.lua's round style)
 local GAME_ICONS = {
     about = "INV_Misc_Book_09", adv = "INV_Scroll_03", language = "Trade_Engineering",
-    ab = "INV_Sword_04", uf = "INV_Misc_Head_Human_01", rb = "INV_Potion_54", au = "Spell_Holy_WordFortitude",
-    mm = "INV_Misc_Map_01", qt = "INV_Misc_Note_06",
-    ch = "INV_Letter_15", dm = "Ability_DualWield", tt = "INV_Misc_Spyglass_03", rm = "INV_Misc_Orb_05", qol = "INV_Misc_Wrench_01",
+    -- (a number: a file ID, as the Radial micro menu's Character and Quest Log icons)
+    ab = "Ability_DualWield", uf = 136047, rb = "Spell_Holy_SealOfSacrifice", au = "Spell_Holy_WordFortitude",
+    mm = "INV_Misc_Map_01", qt = 8197102,
+    ch = "INV_Misc_Note_06", dm = "INV_Misc_Ribbon_01", tt = "INV_Misc_Spyglass_02", rm = "INV_Misc_Orb_05", qol = "INV_Drink_04",
     bl = "INV_Misc_Bag_08",   -- Bags & Looting
-    br = "INV_Misc_PocketWatch_01",   -- Buff Reminders, its own page
+    br = "Ability_Warrior_BattleShout",   -- Buff Reminders, its own page: a shout for the buffs you lack
+    np = "Ability_Hunter_SniperShot",   -- Nameplates: Hunter's Mark, a target in the crosshairs
 }
-local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.72, 0.56, 0.38 }
+-- an icon name under Interface\Icons, or a file ID as it is
+function Panel.IconPath(icon) return type(icon) == "number" and icon or ("Interface\\Icons\\" .. icon) end
+local RING_MASK, RING_ART, RING_TINT = "talents-node-circle-mask", "talents-node-circle-gray", { 0.80, 0.60, 0.34 }   -- as the aura borders (palette bronze4)
 local function GameIcons()
     -- (clears the retired line-icons switch)
     if ns.db and ns.db.global then ns.db.global.panelLineIcons = nil end
@@ -1911,7 +2097,7 @@ end
 Panel.ModuleIcon = function(parent, key, size)
     local tex = parent:CreateTexture(nil, "ARTWORK")
     tex:SetSize(size, size)
-    tex:SetTexture("Interface\\Icons\\" .. (GAME_ICONS[key] or "INV_Misc_QuestionMark"))
+    tex:SetTexture(Panel.IconPath(GAME_ICONS[key] or "INV_Misc_QuestionMark"))
     RingIcon(tex, parent)
     return tex
 end
@@ -1922,9 +2108,14 @@ local function UpdateHeader(module)
     -- what is set in Edit Mode, in grey under the description, while the module is on
     local desc, note = module:Description() or "", S:ModuleText(module.key, "editNote")
     if note and module:IsOn() then desc = desc .. "\n" .. GRAY_FONT_COLOR:WrapTextInColorCode(note) end
+    -- a module's own line in its place while it's on (Nameplates: the unit type and preset being edited)
+    if module.subtitle and module:IsOn() then
+        local ok, text = pcall(module.subtitle)
+        if ok and text then desc = text end
+    end
     page.desc:SetText(desc)
     page.plateIcon:SetTexture(module.navIcon or LOGO)
-    if module.navIconTint then page.plateIcon:SetVertexColor(1, 0.83, 0.47) else page.plateIcon:SetVertexColor(1, 1, 1) end
+    if module.navIconTint then page.plateIcon:SetVertexColor(1, 0.84, 0.50) else page.plateIcon:SetVertexColor(1, 1, 1) end
     -- the game's icons: round and ringed on a plate of their own size, the square plate's edge hidden
     local ring = module.navIconRound == "ring"
     if ring then
@@ -2003,6 +2194,15 @@ local function UpdateHeader(module)
         page.banner:SetPoint("RIGHT", page.header, "RIGHT")
         page.banner:Show()
         height = height + bannerHeight + 6
+    end
+    -- a pinned preview strip sits in the header, above the tabs: switching tabs keeps it in view
+    local pin = module.pinnedPreview
+    if pin and page.pinned and page.pinned:IsShown() and module:IsOn() then
+        page.pinned:ClearAllPoints()
+        page.pinned:SetPoint("TOPLEFT", page.header, "TOPLEFT", 0, -height)
+        page.pinned:SetPoint("RIGHT", page.header, "RIGHT")
+        page.pinned:SetFrameLevel(page.header:GetFrameLevel() + 2)
+        height = height + (pin.height or 160) + 6
     end
     -- tabs along the bottom of the header
     local names = module.tabs and S:ModuleText(module.key, "tabs") or {}
@@ -2137,6 +2337,8 @@ function Panel:Refresh()
     end
     page.offCard:Hide()
     page.scroll:Show()
+    if preview.side then preview.side:Hide() end
+    SideBoxes(false)
     if searchText ~= "" then
         S:EndNewVisit()
         newVisit = nil
@@ -2176,7 +2378,41 @@ function Panel:Refresh()
         page.header:Show()
         page.scroll:SetPoint("TOPLEFT", page.header, "BOTTOMLEFT", 0, -10)
         local module = S.modules[current]
+        if page.pinned then page.pinned:Hide() end
         if not module then return end
+        -- the module's own lower Info panel (SidePanel above), drawn again on every refresh
+        local side = SidePanel()
+        if side then
+            if not preview.side then
+                preview.side = CreateFrame("Frame", nil, page.right)
+                preview.side:SetFrameLevel(page.right:GetFrameLevel() + 5)
+            end
+            local host = preview.side
+            host:ClearAllPoints()
+            -- where the module's part starts: from its height (the text box gets the rest), or a top
+            local top = side.top or 200
+            if type(top) == "function" then top = top(page.right) or 200 end
+            if side.height then top = math.max(120, math.floor((page.right:GetHeight() or 600) - side.height)) end
+            host:SetPoint("TOPLEFT", page.right, "TOPLEFT", 0, -top)
+            host:SetPoint("BOTTOMRIGHT", page.right, "BOTTOMRIGHT", 0, 0)
+            host:Show()
+            -- the column in boxes, as the Radial page: the text in its own, the module draws the rest
+            SideBoxes(true, top)
+            local ok, err = pcall(side.show, host, module)
+            if not ok and geterrorhandler then geterrorhandler()(err) end
+        end
+        -- a module's preview strip pinned under the header (Nameplates: module.pinnedPreview =
+        -- { height, show(host) }); the rows scroll under it. Drawn again on every refresh.
+        local pin = module.pinnedPreview
+        if pin and not (module.enabled and not module:IsOn()) then
+            if not page.pinned then page.pinned = CreateFrame("Frame", nil, page.root) end
+            local host = page.pinned
+            -- (placed inside the header, above the tabs, by UpdateHeader)
+            host:SetHeight(pin.height or 160)
+            host:Show()
+            local ok, err = pcall(pin.show, host, module)
+            if not ok and geterrorhandler then geterrorhandler()(err) end
+        end
         -- leaving a page or tab takes its seen badges away
         local activeTab = self:ActiveTab(module)
         local visit = module.key .. "/" .. (activeTab and activeTab.key or "")
@@ -2266,15 +2502,15 @@ function UpdateNav()
             end
             b.dot:SetDesaturated(false)
             if not module.navIconTint then b.dot:SetVertexColor(1, 1, 1)
-            elseif selected then b.dot:SetVertexColor(1, 0.83, 0.47)
-            elseif on then b.dot:SetVertexColor(0.69, 0.54, 0.31)
+            elseif selected then b.dot:SetVertexColor(1, 0.84, 0.50)
+            elseif on then b.dot:SetVertexColor(0.65, 0.49, 0.27)
             else b.dot:SetVertexColor(0.45, 0.42, 0.38) end
             b.dot:Show()
         else
             b.dot:SetShown(module.enabled ~= nil)
             b.dot:SetVertexColor(on and 0.35 or 0.4, on and 0.85 or 0.4, on and 0.35 or 0.4)
         end
-        if selected then b.text:SetTextColor(1, 0.89, 0.63)
+        if selected then b.text:SetTextColor(1, 0.84, 0.50)
         elseif on then b.text:SetTextColor(0.85, 0.80, 0.70)
         else b.text:SetTextColor(GRAY_FONT_COLOR:GetRGB()) end
         local showNew = on and module:HasNew()
@@ -2372,7 +2608,7 @@ local function BuildNav(left)
             local icons = { about=true, adv=true, language=true, ab=true, uf=true, rb=true, au=true, dm=true,
                 mm=true, qt=true, ch=true, tt=true, rm=true, qol=true, bl=true }
             if GameIcons() and GAME_ICONS[module.key] then
-                module.navIcon = "Interface\\Icons\\" .. GAME_ICONS[module.key]
+                module.navIcon = Panel.IconPath(GAME_ICONS[module.key])
                 module.navIconRound = "ring"
                 module.navIconTint = false
             elseif icons[module.key] then
@@ -2390,14 +2626,14 @@ local function BuildNav(left)
             b.selected:SetPoint("TOPLEFT", THIN_INSET, -THIN_INSET)
             b.selected:SetPoint("BOTTOMRIGHT", -THIN_INSET, THIN_INSET)
             Rounded(b.selected)
-            b.selected:SetGradient("HORIZONTAL", CreateColor(0.80, 0.54, 0.22, 0.75), CreateColor(0.46, 0.30, 0.11, 0.40))
+            b.selected:SetGradient("HORIZONTAL", CreateColor(0.80, 0.60, 0.34, 0.75), CreateColor(0.32, 0.24, 0.13, 0.40))
             b.bar = b:CreateTexture(nil, "ARTWORK")
-            b.bar:SetColorTexture(1, 0.80, 0.38)
+            b.bar:SetColorTexture(1, 0.84, 0.50)
             b.bar:SetPoint("TOPLEFT", 0, -5)
             b.bar:SetPoint("BOTTOMLEFT", 0, 5)
             b.bar:SetWidth(3)
             b:SetHighlightTexture(ROUND_RECT)
-            Rounded(b:GetHighlightTexture(), 0.98, 0.70, 0.30, 0.22)
+            Rounded(b:GetHighlightTexture(), 1, 0.84, 0.50, 0.22)
             b.dot = b:CreateTexture(nil, "ARTWORK")
             b.dot:SetTexture("Interface\\COMMON\\Indicator-Green")
             b.dot:SetDesaturated(true)
@@ -2587,7 +2823,7 @@ function Panel.RimPicture(parent, tex, pad)
     rim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")
     rim:SetPoint("CENTER", tex, "CENTER")
     rim:SetSize(w + pad, h + pad)
-    rim:SetVertexColor(0.78, 0.6, 0.34)
+    rim:SetVertexColor(0.80, 0.60, 0.34)
     local shade = parent:CreateTexture(nil, "ARTWORK", nil, -3)
     shade:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureShade.tga")
     shade:SetPoint("CENTER", tex, "CENTER")
@@ -2771,7 +3007,7 @@ local function BuildWindow()
     logoRim:SetTexture(CIRCLE)
     logoRim:SetSize(44, 44)
     logoRim:SetPoint("CENTER", logo)
-    logoRim:SetVertexColor(0.78, 0.6, 0.34)
+    logoRim:SetVertexColor(0.80, 0.60, 0.34)
     local logoShade = frame:CreateTexture(nil, "ARTWORK", nil, 0)
     logoShade:SetTexture(CIRCLE)
     logoShade:SetSize(46, 46)
@@ -3032,7 +3268,7 @@ local function BuildWindow()
 
     -- module tabs
     page.tabButtons = {}
-    for i = 1, 5 do
+    for i = 1, 8 do   -- (Nameplates has 8)
         local b = Plate(header, "GameFontHighlight")
         b:SetHeight(26)
         if i == 1 then b:SetPoint("BOTTOMLEFT", 4, 0) else b:SetPoint("BOTTOMLEFT", page.tabButtons[i - 1], "BOTTOMRIGHT", 4, 0) end   -- (first +4, as the top tabs)
@@ -3047,7 +3283,7 @@ local function BuildWindow()
         page.tabButtons[i] = b
     end
     page.tabLine = Line(header)
-    page.tabLine:SetColorTexture(0.47, 0.36, 0.22, 1)
+    page.tabLine:SetColorTexture(0.50, 0.38, 0.21, 1)
     page.tabLine:SetPoint("BOTTOMLEFT", 0, 0)
     page.tabLine:SetPoint("BOTTOMRIGHT", 0, 0)
     page.tabLine:Hide()
@@ -3117,7 +3353,7 @@ local function BuildWindow()
     pictureRim:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureRim.tga")
     pictureRim:SetPoint("CENTER", preview.picture, "CENTER")
     pictureRim:SetSize(RIGHT_W - 2 * PAD - 2, RIGHT_W - 2 * PAD - 2)   -- about 5 px of bronze past the art
-    pictureRim:SetVertexColor(0.78, 0.6, 0.34)
+    pictureRim:SetVertexColor(0.80, 0.60, 0.34)
     local pictureShade = right:CreateTexture(nil, "ARTWORK", nil, -3)
     pictureShade:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\PictureShade.tga")
     pictureShade:SetPoint("CENTER", preview.picture, "CENTER")

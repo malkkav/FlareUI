@@ -970,6 +970,16 @@ end
 -- false only when the game says the spell can't reach the unit from here (out of its range); any
 -- other answer (in range, can't tell, kept secret) is true. Picks who a click buffs, so one member
 -- out of range doesn't hold up the rest.
+-- a spell cooling down for longer than the global cooldown (an unreadable answer counts as ready)
+function BR.OnCooldown(spellID)
+    if not (spellID and C_Spell and C_Spell.GetSpellCooldown) then return false end
+    local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+    if not (ok and type(info) == "table") then return false end
+    local start, duration = info.startTime, info.duration
+    if not (Readable(start) and Readable(duration) and start and duration) then return false end
+    return start > 0 and duration > 1.5
+end
+
 function BR.SpellReaches(castID, unit)
     if not (castID and C_Spell and C_Spell.IsSpellInRange) or InCombatLockdown() then return true end
     local ok, inRange = pcall(C_Spell.IsSpellInRange, castID, unit)
@@ -1697,7 +1707,21 @@ local function Check(entry, before)
             if not ok or not Readable(aura) or aura then return 0, 1 end
         end
         local fine, running, left = HasBuff("player", entry.names, before, def.own)
+        -- food: the last food you ate that gave the buff is remembered (BR.FoodEaten)
+        if def.key == "food" then
+            local pending = BR.pendingFood
+            if fine and pending and GetTime() - pending.at < 90 then
+                ns.CharDB().buffFood = pending.item
+                BR.pendingFood = nil
+            end
+        end
         if fine then return 0, 1 end
+        -- food: a click eats that one again while you have it (Bill's and Tride's idea 11-19)
+        local food = def.key == "food" and ns.CharDB().buffFood
+        if food and ItemCount(food) > 0 then
+            return 1, 1, "player", nil, ItemIcon(food), running, { item = "item:" .. food, tipItem = food },
+                running and left or nil
+        end
         -- a flask: a click drinks the one in your bags
         local item = def.items and ElixirInBags(def)
         if item then
@@ -1906,7 +1930,7 @@ function BR.Menu(owner)
         elseif entry.def.pick == "thorns" then
             root:CreateDivider()
             root:CreateTitle(L["Keep It On"])
-            Radio(L["Tanks Only"], "thorns", "tank")
+            Radio(L["Only Tanks"], "thorns", "tank")
             Radio(L["Only Me"], "thorns", "self")
             Radio(L["Everyone"], "thorns", "all")
         end
@@ -2216,6 +2240,9 @@ function BR.Update(context)
                     if missing == 0 then snoozed[snoozeKey] = nil end
                     missing = 0
                 end
+                -- its spell on cooldown (Fear Ward): nothing to do yet, back when it's ready (the
+                -- ticker checks again). loraethil's idea 11-19
+                if missing > 0 and BR.OnCooldown(castID or entry.castID) then missing = 0 end
                 if missing > 0 then
                     local s = Entry(#shows + 1)
                     s.entry, s.missing, s.total, s.unit = entry, missing, total, unit
@@ -2537,14 +2564,29 @@ local function BuildSettings()
     local function SetBool(key)
         return function(_, value) local db = GetDb(); if db then db[key] = value and true or false end; Redraw() end
     end
-    Section("Alerts", {
-        { name = L["Glow When Missing"], kind = LEM.SettingType.Checkbox, default = false,
-          desc = L["A gold glow round a missing buff."], get = Bool("glowMissing", false), set = SetBool("glowMissing") },
-        { name = L["Glow When Running Out"], kind = LEM.SettingType.Checkbox, default = false,
-          desc = L["An orange glow round a buff about to run out."], get = Bool("glowExpiring", false), set = SetBool("glowExpiring") },
-        { name = L["Time Left"], kind = LEM.SettingType.Checkbox, default = true,
-          desc = L["The time left on a buff about to run out, at the top of its icon."],
-          get = Bool("timeLeft", true), set = SetBool("timeLeft") },
+    -- Look: Icon Alerts, one dropdown of toggles (11-20, was three switches in an "Alerts" section)
+    local ALERTS = { { "glowMissing", false }, { "glowExpiring", false }, { "timeLeft", true } }
+    Section("Look", {
+        { name = L["Icon Alerts"], kind = LEM.SettingType.Dropdown, multiple = true,
+          values = { { text = L["Glow When Missing"], value = "glowMissing" }, { text = L["Glow When Running Out"], value = "glowExpiring" },
+                     { text = L["Time Left"], value = "timeLeft" } },
+          desc = L["What the icons show:\n* Glow When Missing: a gold glow round a missing buff\n* Glow When Running Out: an orange glow round a buff about to run out\n* Time Left: the time left on a buff about to run out, at the top of its icon"],
+          get = function()
+              local list = {}
+              for _, a in ipairs(ALERTS) do if Bool(a[1], a[2])() then list[#list + 1] = a[1] end end
+              return list
+          end,
+          set = function(_, value, fromReset)
+              for _, a in ipairs(ALERTS) do
+                  -- (Reset Settings: each back to its default)
+                  if fromReset then SetBool(a[1])(nil, a[2])
+                  elseif a[1] == value then SetBool(a[1])(nil, not Bool(a[1], a[2])()) end
+              end
+          end },
+        -- the whole frame's opacity (out of Fading: it isn't a faded state)
+        { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
+          -- plain numbers, as Faded Opacity: "100%" runs past the dialog's edge
+          get = get("alpha", 100), set = set("alpha") },
     })
     Section("Fading", {
         { name = L["Visibility"], kind = LEM.SettingType.Dropdown, multiple = true,
@@ -2556,11 +2598,13 @@ local function BuildSettings()
               for _, s in ipairs(SHOW) do if On(s[2]) then list[#list + 1] = s[1] end end
               return list
           end,
-          set = function(_, value)
+          set = function(_, value, fromReset)
               local db = GetDb()
               if not db then return end
               for _, s in ipairs(SHOW) do
-                  if s[1] == value then db[s[2]] = not On(s[2]) end
+                  -- (Reset Settings: shown solo, in a party and in a raid, the default)
+                  if fromReset then db[s[2]] = true
+                  elseif s[1] == value then db[s[2]] = not On(s[2]) end
               end
               Redraw()
           end },
@@ -2581,9 +2625,6 @@ local function BuildSettings()
                      { text = L["Slow"], value = "slow", isRadio = true } },
           desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
           get = function() return BR.FadeSpeed(GetDb(), "fadeOut") end, set = set("fadeOut") },
-        { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
-          -- plain numbers, as Faded Opacity: "100%" runs past the dialog's edge
-          get = get("alpha", 100), set = set("alpha") },
     })
     return settings
 end
@@ -2654,6 +2695,24 @@ function BR:Init()
     pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterEvent("UNIT_AURA")
+    -- food eaten from the bags or an action button: held for 90 s; if the food buff comes in that
+    -- time, the food reminder's click eats it next time (Check). Post-hooks only: nothing is tainted
+    local function NoteFood(itemID)
+        if type(itemID) ~= "number" then return end
+        local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+        if classID == 0 and subclassID == 5 then BR.pendingFood = { item = itemID, at = GetTime() } end
+    end
+    if C_Container and C_Container.UseContainerItem then
+        hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
+            NoteFood(C_Container.GetContainerItemID(bag, slot))
+        end)
+    end
+    if UseAction then
+        hooksecurefunc("UseAction", function(slot)
+            local kind, id = GetActionInfo(slot)
+            if kind == "item" then NoteFood(id) end
+        end)
+    end
     events:SetScript("OnEvent", function(_, event, unit, _, spellID)
         if event == "PLAYER_REGEN_ENABLED" and not holder:IsShown() then holder:Show() end
         -- Ready Check Alert: the row glows for 8 seconds and the sound plays once

@@ -34,7 +34,7 @@ local function UnitRows()
         { L["Cast Bars"], { { "cast", L["Cast"] }, { "castChannel", L["Channel"] }, { "castNoInterrupt", L["Uninterruptible"] },
             { "interrupted", L["Interrupted"] } } },
         { L["Your Cast Bar"], { { "playerCast", L["Your Cast"] }, { "playerChannel", L["Your Channel"] }, { "latency", L["Latency Zone"] } } },
-        { L["Heals and Shields"], { { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] } } },
+        { L["Heals and Shields"], { { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] }, { "trail", L["Damage Trail"] } } },
     }
 end
 
@@ -57,7 +57,7 @@ local function ResourceRows()
             end
             return list
         end)() },
-        { L["Heals and Shields"], { { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] } } },
+        { L["Heals and Shields"], { { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] }, { "trail", L["Damage Trail"] } } },
         { L["Paladin Seals"], (function()
             -- each seal by its own name (a seal this client lacks is left out)
             local list = {}
@@ -128,6 +128,36 @@ local KINDS = {
         rows = function()
             return { { L["Status Colouring"], { { "range", L["Out of Range"] }, { "mana", L["Out of Mana"] },
                 { "unusable", L["Unusable"] }, { "cooldown", L["On Cooldown"] } } } }
+        end,
+    },
+    -- the Nameplates module's colours (Nameplates.lua C.COLORS): FlareUI's or yours
+    np = {
+        title = function() return L["Nameplates"] end,
+        store = function()
+            local db = ns.db.profile.nameplates
+            db.customColors = db.customColors or {}
+            return db.customColors
+        end,
+        color = function(key) return ns.Nameplates.Color(key) end,
+        palette = function() return ns.Nameplates.Palette() end,
+        base = function() return "flareui" end,
+        setPalette = function(p) ns.db.profile.nameplates.palette = p ~= "flareui" and p or nil end,
+        palettes = { "flareui", "custom" },
+        apply = function() if ns.Nameplates and ns.Nameplates.Refresh then ns.Nameplates:Refresh() end end,
+        rows = function()
+            return {
+                { L["Reaction"], { { "hostile", L["Hostile"] }, { "neutral", L["Neutral"] }, { "friendly", L["Friendly"] },
+                    { "tapped", L["Tapped"] } } },
+                { L["Threat as a Tank"], { { "holding", L["You Hold It"] }, { "losing", L["Losing It"] }, { "lost", L["Lost It"] },
+                    { "offtank", L["Another Tank Has It"] } } },
+                { L["Threat as Damage or Healer"], { { "gaining", L["Above the Tank"] }, { "aggro", L["It's on You"] } } },
+                { L["Mob Types"], { { "boss", L["Boss"] }, { "elite", L["Elite"] }, { "caster", L["Caster"] }, { "trivial", L["Trivial"] } } },
+                { L["Cast Bar"], { { "cast", L["Cast"] }, { "channel", L["Channel"] }, { "castNoInterrupt", L["Uninterruptible"] },
+                    { "kickReady", L["Kick Ready"] }, { "important", L["Important Cast Glow"] } } },
+                { L["Your Target"], { { "target", L["Target Highlight"] } } },
+                { L["Plate"], { { "focus", L["Focus"] }, { "group", L["Party Members"] }, { "raid", L["Raid Members"] },
+                    { "execute", L["Execute Range"] }, { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] } } },
+            }
         end,
     },
     uf = {
@@ -438,10 +468,27 @@ local function DrawXPPreviews()
     LayRows({ Row({ Item(f) }, 0.9, 2) })
 end
 
+-- the Nameplates window: the module's own sample plates, as the colour list goes: an enemy, one
+-- holding threat, a cast you can't interrupt and your target
+local function DrawNameplatePreviews()
+    local NPM = ns.Nameplates
+    if not (NPM and NPM.CreateSample) then return end
+    local items = {}
+    for _, kind in ipairs({ "enemy", "threat", "nokick", "target" }) do
+        local f = samples["np:" .. kind]
+        if not f then f = NPM.CreateSample(window.preview); samples["np:" .. kind] = f end
+        f:SetScale(1)
+        NPM.DrawSample(f, kind)
+        f:Show()
+        items[#items + 1] = Item(f)
+    end
+    LayRows({ Row({ items[1], items[2] }, 1, 1.6), Row({ items[3], items[4] }, 1, 1.6) })
+end
+
 local function DrawPreviews()
     for _, s in pairs(samples) do s:Hide() end
     local draw = (kindNow == "rb" and DrawResourcePreviews) or (kindNow == "ab" and DrawActionPreviews)
-        or (kindNow == "xp" and DrawXPPreviews) or DrawUnitPreviews
+        or (kindNow == "xp" and DrawXPPreviews) or (kindNow == "np" and DrawNameplatePreviews) or DrawUnitPreviews
     local ok, err = pcall(draw)
     if not ok and geterrorhandler then geterrorhandler()(err) end
 end
@@ -608,7 +655,7 @@ local function BuildList()
         line:SetPoint("BOTTOMLEFT", 0, 0)
         line:SetPoint("BOTTOMRIGHT", 0, 0)
         line:SetHeight(1)
-        line:SetColorTexture(0.55, 0.42, 0.24, 0.6)
+        line:SetColorTexture(0.65, 0.49, 0.27, 0.6)
         window.rows[#window.rows + 1] = head
         y = y + ROW_H + 4
         for _, item in ipairs(group[2]) do
@@ -624,7 +671,7 @@ local function BuildList()
             local rim = row:CreateTexture(nil, "ARTWORK", nil, 1)
             rim:SetSize(18, 18)
             rim:SetPoint("LEFT", 6, 0)
-            rim:SetColorTexture(0.55, 0.42, 0.24)
+            rim:SetColorTexture(0.65, 0.49, 0.27)
             row.swatch = row:CreateTexture(nil, "ARTWORK", nil, 2)
             row.swatch:SetPoint("TOPLEFT", rim, "TOPLEFT", 2, -2)
             row.swatch:SetPoint("BOTTOMRIGHT", rim, "BOTTOMRIGHT", -2, 2)
@@ -637,7 +684,7 @@ local function BuildList()
             row.own = row:CreateTexture(nil, "OVERLAY")
             row.own:SetSize(6, 6)
             row.own:SetPoint("RIGHT", row.hex, "LEFT", -6, 0)
-            row.own:SetColorTexture(1, 0.83, 0.47)
+            row.own:SetColorTexture(1, 0.84, 0.50)
             row:SetScript("OnClick", function(self, button)
                 ns.ButtonSound()
                 if button == "RightButton" then SetColor(self.key, nil) else PickColor(self) end

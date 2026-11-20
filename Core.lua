@@ -21,6 +21,34 @@ local AceDB = LibStub("AceDB-3.0")
 -- Bronze tint of every FlareUI frame border
 ns.BORDER_COLOR = { r = 0.65, g = 0.49, b = 0.27, a = 1 }   -- #A67D45
 
+-- FlareUI's palette (colour audit 11-19): one bronze hue in even lightness steps, two golds, a warm
+-- grey, one warm ground and one blue. New colours come from here; the older constants move onto it
+-- module by module. Not for Blizzard's font colours, bar colours or class colours (Blizzard's own).
+ns.PALETTE = {
+    bronze1 = { 0.32, 0.24, 0.13 },   -- #523D21 shadow: scroll bars, deep edges
+    bronze2 = { 0.50, 0.38, 0.21 },   -- #806136 chrome: idle buttons and icons, dividers, the radial ring
+    bronze3 = { 0.65, 0.49, 0.27 },   -- #A67D45 frame: every border (= ns.BORDER_COLOR)
+    bronze4 = { 0.80, 0.60, 0.34 },   -- #CC9957 accent: active tab, window titles, hovered chrome
+    bronze5 = { 0.85, 0.68, 0.47 },   -- #D9AD78 light: hovered accent text
+    goldHighlight = { 1, 0.84, 0.50 },   -- #FFD680 hover rims, selected outlines
+    goldOn = { 1, 0.82, 0.25 },          -- #FFD140 switched-on states (Blizzard's yellow eased to bronze)
+    warmGrey = { 0.56, 0.51, 0.46 },     -- #8F8275 inactive tabs, disabled or lost things
+    ground = { 0.05, 0.04, 0.03 },       -- #0D0A08 every background FlareUI draws itself
+    infoBlue = { 0.25, 0.60, 1 },        -- #4099FF Edit Mode's selection blue: selection, controller targeting
+}
+
+-- A colour in FlareUI's softer tones (the FlareUI colour schemes of the quest tracker and minimap): its
+-- own hue, 35% less saturated and a quarter of the way to a warm light bronze. Green stays green,
+-- red stays red, only calmer next to the bronze.
+ns.SOFT = { DESAT = 0.35, MIX = 0.25, WARM = { 0.85, 0.70, 0.50 } }
+function ns.SoftColor(r, g, b)
+    local S = ns.SOFT
+    local avg = (r + g + b) / 3
+    r, g, b = r + (avg - r) * S.DESAT, g + (avg - g) * S.DESAT, b + (avg - b) * S.DESAT
+    local w, m = S.WARM, S.MIX
+    return r * (1 - m) + w[1] * m, g * (1 - m) + w[2] * m, b * (1 - m) + w[3] * m
+end
+
 -- FlareUI's windows: bronze edge, warm dark top fading to near black
 ns.WINDOW_STYLE = {
     border = { 0.80, 0.60, 0.34 },
@@ -391,6 +419,8 @@ do
         -- cast: the spell's name; castTime: its countdown
         names = Font(12), health = Font(12), level = Font(12), power = Font(10), cast = Font(12), castTime = Font(12),
         auras = Font(0), auraCount = Font(0),   -- 0: Auto, sized to the icon
+        -- Show Combat Text (player, pet): 0 Auto, sized to the portrait; thick outline as Blizzard's
+        combatText = { face = "__global", size = 0, flags = "THICKOUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
     }
     -- the raid frames' own: health and power one size smaller; the rest as above
     -- the pet frame's name and health two sizes smaller, its power two (8); every cast bar but
@@ -431,6 +461,7 @@ local defaults = {
             -- General
             hideCombatLog = false,
             saveHistory = true,
+            whisperSound = "off",       -- Whisper Sound: off | raidwarning | alarm | whisper
 
             copyButton = true,          -- the copy icon in each window's top right corner
             increaseLineHeight = false, -- a little more space between chat lines
@@ -447,6 +478,7 @@ local defaults = {
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
+            frameStyle = "modern",       -- Frame Style: modern | flareui (the quest tracker's look; Chat.lua Chat.ApplyFrameStyleArt)
             borderTexture = "FlareUI Frames",
             opacity = 0.75,
             unreadGlow = "say,yell,party,raid,guild,whisper,channel",  -- Tab Glow: kinds of lines that light an unseen tab ("none" = none)
@@ -506,7 +538,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Forever", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Dark", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -533,7 +565,9 @@ local defaults = {
             fadeDelay = 0,              -- Fade Delay: seconds it stays up before fading (0 = Instant)
 
             opacity = 0.75,
+            frameStyle = "modern",       -- Frame Style: modern | flareui (the chat's FlareUI look; Chat.lua Chat.ApplyFrameStyleArt)
             borderTexture = "FlareUI Frames",
+            barTexture = "",            -- Bar Texture: "" = Blizzard's own, else a unit frame bar texture
             barFont = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             -- the title row: Damage Meter / Threat, the session and its timer (in the header's gold)
             headerFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -592,6 +626,7 @@ local defaults = {
             enabled = false,
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
+            levelSize = 1,              -- Level Badge Size: the ring styles' level disc, 0.5-1 of its size (UnitFramesRing.lua LayoutLevel)
             fullNames = true,           -- (the retired Full Player Names switch: its saved "off" makes a setup's names start as First Name)
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
@@ -654,22 +689,22 @@ local defaults = {
                 classic = {
                     width = 240, height = 70, powerHeight = 12, spacing = 14, healthText = "percent", powerText = "value",
                     showLevel = true, portrait = "none",
-                    texture = "FlareUI Forever", border = "FlareUI Thick",
+                    texture = "FlareUI Dark", border = "FlareUI Thick",
                     absorbTexture = "FlareUI Striped",
                     debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", dispels = "PORTRAIT",
                     auraSize = 16, dispelHighlight = "mine",
-                    castbar = false, castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                    castbar = false, castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                     petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                     threatGlow = true,          -- Threat Glow (Look): the border pulses with aggro
                 },
                 raid = {
                     width = 200, height = 70, powerHeight = 6, spacing = 12, healthText = "none",
-                    texture = "FlareUI Forever", border = "FlareUI Thin",
+                    texture = "FlareUI Dark", border = "FlareUI Thin",
                     absorbTexture = "FlareUI Striped",
                     debuffs = "INSIDE_BOTTOMRIGHT", buffs = "INSIDE_BOTTOMLEFT", dispels = "PORTRAIT",
                     auraSize = 16, dispelHighlight = "mine",
-                    castbar = false, castHeight = 10, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
+                    castbar = false, castHeight = 10, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
                     petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
                     threatGlow = true,
@@ -689,7 +724,7 @@ local defaults = {
                 mainTanks = { enabled = false, w = 182, h = 60, spacing = 10,
                               buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
                               hideBuffs = "OFF", onlyMyBuffs = true, dispellableOnly = false },
-                powerHeight = 10, healthText = "none", texture = "FlareUI Forever", border = "FlareUI Thin",
+                powerHeight = 10, healthText = "none", texture = "FlareUI Dark", border = "FlareUI Thin",
                 debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
                 auraSize = 12, dispelHighlight = "mine",
                 icons = {},
@@ -702,9 +737,9 @@ local defaults = {
                 width = 240, height = 70, powerHeight = 12, grow = "DOWN", spacing = 14,
                 healthText = "percent", powerText = "value", showLevel = true, portrait = false, raidIcon = true,
                 mirror = true, onlyMyDebuffs = true, absorbTexture = "FlareUI Striped",
-                texture = "FlareUI Forever", border = "FlareUI Thick",
+                texture = "FlareUI Dark", border = "FlareUI Thick",
                 debuffs = "INSIDE_TOPRIGHT", buffs = "INSIDE_TOPLEFT", auraSize = 16, hideBuffs = "OFF",
-                castbar = true, castHeight = 14, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                castbar = true, castHeight = 14, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                 threatGlow = true,          -- Threat Glow (Look): the player's threat on the boss
             },
             -- Flag Carrier Frames (off; Modules/FlagCarriers.lua): the battleground flag carriers on
@@ -713,41 +748,41 @@ local defaults = {
                 enabled = false, layouts = {},
                 width = 180, height = 50, powerHeight = 8, grow = "DOWN", spacing = 10,
                 healthText = "percent", powerText = "value", showLevel = true,
-                mirror = true, absorbTexture = "FlareUI Striped", texture = "FlareUI Forever", border = "FlareUI Thin",
-                castbar = true, castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin",
+                mirror = true, absorbTexture = "FlareUI Striped", texture = "FlareUI Dark", border = "FlareUI Thin",
+                castbar = true, castHeight = 12, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin",
                 castIcon = true, castTimer = true,
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Forever", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false },
+            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Dark", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
-                                 texture = "FlareUI Forever", border = "FlareUI Thick",
+                                 texture = "FlareUI Dark", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  -- Cast Bar (off): a cast bar on the player frame, apart from the FlareUI Player Cast Bar
-                                 castbar = false, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 castbar = false, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  pushback = false,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24,
                                  combatGlow = true },   -- Combat Glow (Look)
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
-                                 texture = "FlareUI Forever", border = "FlareUI Thick",
+                                 texture = "FlareUI Dark", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
-                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true,
                                  threatGlow = true },   -- Threat Glow (Look)
                 targettarget = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
-                                 texture = "FlareUI Forever", border = "FlareUI Thin" },
+                                 texture = "FlareUI Dark", border = "FlareUI Thin" },
                 focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
-                                 texture = "FlareUI Forever", border = "FlareUI Thick",
+                                 texture = "FlareUI Dark", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
-                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true,
                                  threatGlow = true },   -- Threat Glow (Look)
                 focustarget  = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
-                                 texture = "FlareUI Forever", border = "FlareUI Thin" },
+                                 texture = "FlareUI Dark", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 30, powerHeight = 8, healthText = "none", powerText = "value", showLevel = false,
-                                 texture = "FlareUI Forever", border = "FlareUI Thin",
+                                 texture = "FlareUI Dark", border = "FlareUI Thin",
                                  absorbTexture = "FlareUI Striped",
-                                 castbar = false, castbarPosition = "BOTTOM", castHeight = 12, castTexture = "FlareUI Forever", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
+                                 castbar = false, castbarPosition = "BOTTOM", castHeight = 12, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "OFF", debuffs = "OFF", auraSize = 12, hideBuffs = "OFF",
                                  threatGlow = true },   -- Threat Glow (Look; the styled pet only)
             },
@@ -783,6 +818,7 @@ local defaults = {
             skinCDM = false,            -- (off by default) Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             hidden = {},                -- Hide Auras: [spellID] = the places it hides on, "auras,player,..." (ns.HiddenAuras)
+            shown = {},                 -- Always Show: [spellID] = the places it always shows on, "player,target,..."
             -- Buff Reminders (BuffReminders.lua): your class's missing buffs; Group Buffs all / party / self,
             -- Icon Size, Remind Before It Ends in minutes, set in Edit Mode
             reminders = false,
@@ -899,6 +935,8 @@ local defaults = {
             zoneHeaders = true,
             zoneFirst = true,           -- quests of the current zone first
             zoneOnly = false,           -- the header's Zone / All switch
+            headerFilter = true,        -- Header Buttons: the filter (Zone / All) button
+            headerSort = true,          -- Header Buttons: the sort button
             sortByDistance = true,
             sortByLevel = false,        -- the lowest level quest first (zones mixed, no zone headings)
             sortByProgress = false,     -- the furthest along first (zones mixed, no zone headings)
@@ -906,6 +944,7 @@ local defaults = {
             questGap = 9,               -- pixels between quests (Edit Mode)
             hideLevel = false,
             colorNames = false,         -- quest names in their difficulty colour (not complete or focused ones)
+            autoButtons = false,        -- Auto Quest Buttons: the header's "!" / "?" for Auto Accept / Turn-In Quests
             playButtons = false,        -- Quest Buttons > Voice Button: plays the quest's voice line, with the Spoken addon
             collapseCompleted = false,  -- finished and failed quests fold, unless a timer runs
             hideFinished = false,       -- finished objectives leave the list
@@ -915,16 +954,74 @@ local defaults = {
             showTags = true,
             showRecipes = true,
             showCompleteTag = true,     -- Show Complete Tag: green title + "(Complete)" on finished quests
-            frameStyle = "flareui",     -- Frame Style: blizzard | flareui | custom (ObjectiveTracker.lua Build.FrameStyle)
+            frameStyle = "custom",      -- Frame Style: blizzard | flareui | custom (Modern; the default since 11-20, older setups keep FlareUI: Core.lua audit1120) (ObjectiveTracker.lua Build.FrameStyle)
+            hideScrollBar = false,      -- Hide Scroll Bar (FlareUI and Custom styles): no thumb; the mouse wheel still scrolls
             questIcons = false,         -- Quest Buttons > Quest Icon: Blizzard's round quest button before each title; click focuses
             focusButtons = false,       -- Quest Buttons > Focus Button: a dot before each title; click focuses
             showUntracked = false,      -- Show Untracked Quests: with zone headings, this zone's untracked quests too (dimmed)
             -- on the way in, and open again on the way out: "minimize" or "none"
-            autoMinimize = { dungeon = "none", raid = "none", pvp = "none", arena = "none", combat = "none" },
+            autoMinimize = { dungeon = "none", raid = "none", pvp = "none", arena = "none", combat = "none", taxi = "none" },
             headerFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             titleFont = { face = "__global", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             objectiveFont = { face = "__global", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             layouts = {},
+        },
+
+        -- [[ NAMEPLATES MODULE ]] (Modules/Nameplates.lua): FlareUI's own enemy plates; a reload turns it on or off
+        nameplates = {
+            enabled = false,
+            width = 160, height = 16,   -- the health bar (tall enough for the name inside it)
+            texture = "FlareUI Light", -- Bar Texture (the unit frames' list)
+            border = "FlareUI Thick",   -- Border: "FlareUI Thick", "FlareUI Frames" (shown as FlareUI Thin), Shared Media, "None"
+            bgOpacity = 90,             -- the bar's background, in percent (the unit frames' value)
+            -- Bar Effects (the unit frames' three, all off): Animations (health glides), Edge Glow, Damage Trail
+            smoothBars = false, edgeGlow = false, damageTrail = false,
+            targetScale = 1.05,         -- your target's plate grows this much (the game's own zoom is set to 1: NP.PinZoom)
+            healthColor = "class",      -- Health Colour: off (Blizzard's) | reaction | class (Class & Reaction) | health
+            threat = "groups",          -- Threat Colours: off | groups | always
+            role = "auto",              -- Role: auto | tank | damage
+            -- Phase 2 (all off): mob type colours (instances only unless "everywhere"), focus, group members
+            colorBoss = false, colorElite = false, colorCaster = false, colorTrivial = false, mobTypesWhere = "instances",
+            colorFocus = false, groupColor = false,
+            execute = "off",            -- Execute Range: off | auto | 20 | 25 | 30 | 35
+            threatScale = false,        -- Threat Scale (tanks): lost mobs grow, held ones shrink a little
+            kickReady = false,          -- Kick Ready: interruptible casts in their own colour while your interrupt is ready
+            rangeAlpha = 1,             -- Out of Range Opacity (1 = off)
+            -- Targeting: size and opacity with no target, on your target, and on the others while you have one
+            noTargetScale = 1, noTargetAlpha = 1, targetAlpha = 1, notTargetScale = 1,
+            nonTargetAlpha = 1,         -- Not Targeted opacity (1 = off)
+            -- Target Highlight: border in the target colour (on), bar tint, outer glow, arrows (off)
+            targetBorder = true, targetBarColor = false, targetGlow = false,
+            targetArrows = "off",       -- off | npe | npeGlow | chevron | hook | big | red (Blizzard's art)
+            targetArrowSide = "both",   -- both | left | right | top
+            castKickMark = false,
+            clampTarget = true,         -- Keep Target on Screen (the game's own setting, set while on)
+            -- obscuredAlpha = 0.4 once picked: Out of Sight opacity (the game's own; untouched until then)       -- Kick Ready Mark: where on the cast your interrupt will be ready
+            plate = "bar",              -- Plate: blizzard | bar | name (Name Only) | hidden; per type below
+            rarityIcon = true,          -- Rarity Icon: the gold elite / silver rare dragon on the bar's end
+            castTargetedFlash = false, threatGlow = false, aggroFlash = false,
+            defensives = false,         -- Defensives row (big and external defensives), left of the plate
+            clickThrough = false,       -- Click-Through (per type)
+            -- Plate types (Nameplates.lua C.TYPE_KEYS): types[kind] = { preset = full | compact | tiny |
+            -- name | custom, custom = { the type's own values } }; presets are C.PRESETS over the values
+            -- here (Enemy Players and NPCs Full, Friendly Name Only, Minions Compact, Minor Tiny)
+            types = {},
+            -- palette = "custom" + customColors = { [key] = { r, g, b } } once picked (Pick Your Colours)
+            level = "box",              -- Level: off | box | disc | name (Follow Name)
+            levelSide = "left",         -- Level Side (box and discs): left | right
+            hideTextAtFull = false,     -- Hide Health Text at Full
+            -- barText.health = { left = { firstname = 1 }, middle = {}, right = Blizzard's default } once picked (BarText.lua slots)
+            castbar = true, castHeight = 10, castIcon = true, castTimer = true, castTarget = true, castImportant = true,
+            debuffs = "mine",           -- Debuffs: off | all, or toggles "mine,dispel" (Only Mine, Only Dispellable)
+            debuffSize = 20, debuffMax = 6,
+            buffs = "purge",            -- Buffs: off | all, or toggles "purge,important,mine"
+            hideBuffs = "OFF",          -- Hide Buffs: OFF | PERMANENT | longest full duration in seconds (as the unit frames)
+            buffSize = 16, buffMax = 3,
+            cc = true, ccSize = 28,     -- Crowd Control: one big icon right of the bar
+            nameFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            healthFont = { face = "__global", size = 9, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            levelFont = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            castFont = { face = "__global", size = 9, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
         },
 
         -- [[ TWEAKS MODULE ]]
@@ -1603,21 +1700,55 @@ do
                          or ((unit == "player" and udb.onlyMyBuffs) and "HELPFUL|PLAYER" or "HELPFUL"),
                      enemyFilter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE" or nil,
                      candidates = candidates }
-        return AP.ApplyHidden(lanes, unit)
+        return AP.ApplyHidden(lanes, unit, editing)
     end
 
     -- Hide Auras: the spell IDs hidden on this place (ns.HiddenAuras) join each lane's candidate
     -- filters, on a copy (lanes share their candidates). hiddenStamp: the list's version, so a
     -- module that caches its lanes' signature (ns.AuraGroups.Sig stops at depth 3) sees the change.
-    function AP.ApplyHidden(lanes, place)
-        local hidden = ns.HiddenAuras.For(place)
-        for _, lane in ipairs(lanes) do
-            lane.hiddenStamp = ns.HiddenAuras.stamp
-            if hidden then
+    -- Always Show (ns.HiddenAuras.ShownFor): the usual buff and debuff rows leave those spells out
+    -- too, and a row of only them follows the last row of that kind, in the same place, on plain rules
+    -- (no PLAYER filter, no Hide Buffs, no Blizzard raid rules). The purge row keeps them, with its
+    -- border: the always row then skips purgeable buffs as the plain buff row does. Not in Edit Mode
+    -- (Blizzard's samples). Debuffs on you or a friend: the client refuses spell ID lists there, so
+    -- the always row stays empty and the usual row still shows the aura.
+    function AP.ApplyHidden(lanes, place, editing)
+        local HA = ns.HiddenAuras
+        local hidden, leftOut = HA.For(place), HA.LeftOut(place)
+        local shown = not editing and HA.ShownFor(place) or nil
+        local last, purge = {}, nil
+        for i, lane in ipairs(lanes) do
+            lane.hiddenStamp = HA.stamp
+            local usual = lane.key == "buffs" or lane.key == "debuffs"
+            local exclude = (usual and shown) and leftOut or hidden
+            if exclude then
                 local candidates = lane.candidates and CopyTable(lane.candidates) or {}
-                candidates.excludeSpellIDs = hidden
+                candidates.excludeSpellIDs = exclude
                 lane.candidates = candidates
             end
+            if usual then last[lane.key] = i end
+            if lane.key == "purge" then purge = lane end
+        end
+        if not shown then return lanes end
+        -- the debuffs row first in the list, so insert from the back
+        local order = {}
+        for key, i in pairs(last) do order[#order + 1] = { key = key, i = i } end
+        table.sort(order, function(a, b) return a.i > b.i end)
+        for _, o in ipairs(order) do
+            local base = lanes[o.i]
+            local isDebuff = o.key == "debuffs"
+            local always = { key = isDebuff and "alwaysDebuffs" or "alwaysBuffs", kind = base.kind, place = base.place,
+                             isDebuff = isDebuff, policy = "none", joinPrevious = true, always = true,
+                             hiddenStamp = HA.stamp, filter = isDebuff and "HARMFUL" or "HELPFUL",
+                             candidates = { includeSpellIDs = shown } }
+            if purge and not isDebuff then
+                if purge.enemyOnly then
+                    always.enemyFilter = "HELPFUL|!RAID_PLAYER_DISPELLABLE"
+                else
+                    always.filter = "HELPFUL|!RAID_PLAYER_DISPELLABLE"
+                end
+            end
+            table.insert(lanes, o.i + 1, always)
         end
         return lanes
     end
@@ -1646,7 +1777,7 @@ do
             lanes[#lanes + 1] = { key = "buffs", kind = "buffs", place = st.buffs, isDebuff = false, policy = "none",
                                   joinPrevious = purge or nil,
                                   filter = purge and "HELPFUL|!RAID_PLAYER_DISPELLABLE" or "HELPFUL", candidates = candidates }
-            return AP.ApplyHidden(lanes, opts.place)
+            return AP.ApplyHidden(lanes, opts.place, opts.editing)
         end
         local dispelIcons = opts.dispelPlace and opts.dispelPlace ~= "OFF"
         -- Dispellable Debuffs Only: Blizzard's own rule (its raid frames' option), which keeps boss,
@@ -1681,7 +1812,7 @@ do
                 end
             end
         end
-        return AP.ApplyHidden(lanes, opts.place)
+        return AP.ApplyHidden(lanes, opts.place, opts.editing)
     end
 
     -- The Buffs & Debuffs frames (Modules/Auras.lua): the player's whole list, permanent buffs too
@@ -1813,49 +1944,120 @@ end
 -- aura containers drop them (the excludeSpellIDs candidate filter), so secret auras hide too. The
 -- client allows it for buffs on you, your pet and your group, and for debuffs on enemies; debuffs on
 -- you or a friend only when the spell is never secret (Sated, Exhaustion).
+-- ALWAYS SHOW, the other list (auras.shown[spellID] = places): those auras show even where Only My
+-- Buffs / Debuffs or Hide Buffs would drop them, in a row of their own after the frame's buffs or
+-- debuffs (the "only these spell IDs" candidate filter, so the same client limits apply). The Buffs &
+-- Debuffs frames show every aura already, so "auras" isn't one of its places. An aura sits on one list.
 ns.HiddenAuras = { stamp = 0 }
 do
     local HA = ns.HiddenAuras
     -- "auras": the Buffs & Debuffs frames
     HA.PLACES = { "auras", "player", "pet", "target", "focus", "party", "raid", "boss" }
     HA.ALL = table.concat(HA.PLACES, ",")
-    local cache, cachedFrom = {}, nil
+    HA.SHOW_PLACES = { "player", "pet", "target", "focus", "party", "raid", "boss" }
+    HA.SHOW_ALL = table.concat(HA.SHOW_PLACES, ",")
+    local cache, cachedFrom = { hidden = {}, shown = {}, both = {} }, nil
 
-    function HA.Saved()
+    -- list: "hidden" (default) or "shown"
+    function HA.Saved(list)
         local auras = ns.db and ns.db.profile and ns.db.profile.auras
-        return auras and auras.hidden
+        if not auras then return nil end
+        if list == "shown" then
+            auras.shown = auras.shown or {}
+            return auras.shown
+        end
+        return auras.hidden
     end
 
-    -- { [spellID] = true } for this place, or nil when nothing hides there
-    function HA.For(place)
-        if not place then return nil end
-        local saved = HA.Saved()
-        if saved ~= cachedFrom then wipe(cache) cachedFrom = saved end   -- another profile
-        local map = cache[place]
-        if map == nil then
-            map = false
-            for id, places in pairs(saved or {}) do
-                if type(id) == "number" and ns.Conditions.Has(places, place) then
-                    map = map or {}
-                    map[id] = true
-                end
+    local function Map(list, place)
+        local saved = HA.Saved(list)
+        local map = false
+        for id, places in pairs(saved or {}) do
+            if type(id) == "number" and ns.Conditions.Has(places, place) then
+                map = map or {}
+                map[id] = true
             end
-            cache[place] = map
+        end
+        return map
+    end
+
+    -- { [spellID] = true } for this place on that list ("hidden", "shown", or "both" = the two
+    -- together: what a frame's usual rows leave out), or nil when it's empty there
+    local function Cached(list, place)
+        if not place then return nil end
+        local from = HA.Saved()
+        if from ~= cachedFrom then   -- another profile
+            for _, t in pairs(cache) do wipe(t) end
+            cachedFrom = from
+        end
+        local map = cache[list][place]
+        if map == nil then
+            if list == "both" then
+                local hidden, shown = Cached("hidden", place), Cached("shown", place)
+                map = false
+                if hidden or shown then
+                    map = {}
+                    for id in pairs(hidden or {}) do map[id] = true end
+                    for id in pairs(shown or {}) do map[id] = true end
+                end
+            else
+                map = Map(list, place)
+            end
+            cache[list][place] = map
         end
         return map or nil
     end
+    function HA.For(place) return Cached("hidden", place) end
+    function HA.ShownFor(place) return Cached("shown", place) end
+    function HA.LeftOut(place) return Cached("both", place) end
 
-    -- a new one hides everywhere; the list's Hide On narrows it
-    function HA.Add(id)
-        local saved = HA.Saved()
+    -- which list holds this spell, or nil
+    function HA.ListOf(id)
+        local hidden, shown = HA.Saved(), HA.Saved("shown")
+        if hidden and hidden[id] then return "hidden" end
+        if shown and shown[id] then return "shown" end
+        return nil
+    end
+
+    -- a new one goes on every frame; the list's Hide On / Show On narrows it. Adding it to one list
+    -- takes it off the other.
+    function HA.Add(id, list)
+        list = list == "shown" and "shown" or "hidden"
+        local saved, other = HA.Saved(list), HA.Saved(list == "shown" and "hidden" or "shown")
         if not (saved and type(id) == "number") or saved[id] then return end
-        saved[id] = HA.ALL
+        if other then other[id] = nil end
+        saved[id] = list == "shown" and HA.SHOW_ALL or HA.ALL
         HA.Changed()
         if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
     end
 
-    function HA.Remove(id)
-        local saved = HA.Saved()
+    -- Aura Filters' Hide / Show: moves a listed spell to the other list, keeping its frames
+    -- (Buffs & Debuffs drops off when it becomes Show: those frames show every aura already; a Show
+    -- one that becomes Hide hides there too, as a new one does)
+    function HA.SetList(id, list)
+        list = list == "shown" and "shown" or "hidden"
+        local from = HA.ListOf(id)
+        if not from or from == list then return end
+        local source, target = HA.Saved(from), HA.Saved(list)
+        if not (source and target) then return end
+        local places = source[id] or ""
+        source[id] = nil
+        if list == "shown" then
+            local kept = {}
+            for _, token in ipairs(HA.SHOW_PLACES) do
+                if ns.Conditions.Has(places, token) then kept[#kept + 1] = token end
+            end
+            places = table.concat(kept, ",")
+        elseif places ~= "" and not ns.Conditions.Has(places, "auras") then
+            places = "auras," .. places
+        end
+        target[id] = places
+        HA.Changed()
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end
+
+    function HA.Remove(id, list)
+        local saved = HA.Saved(list)
         if not (saved and saved[id]) then return end
         saved[id] = nil
         HA.Changed()
@@ -1864,9 +2066,9 @@ do
 
     -- after a change to the list: every aura frame takes it
     function HA.Changed()
-        wipe(cache)
+        for _, t in pairs(cache) do wipe(t) end
         HA.stamp = HA.stamp + 1
-        for _, name in ipairs({ "Auras", "UnitFrames", "PartyFrames", "RaidFrames", "BossFrames" }) do
+        for _, name in ipairs({ "Auras", "UnitFrames", "PartyFrames", "RaidFrames", "BossFrames", "Nameplates" }) do
             local module = ns[name]
             if module and module.Refresh then
                 local ok, err = pcall(module.Refresh, module)
@@ -1924,35 +2126,39 @@ end
 do
     local CANON = {
         -- dropdowns
-        "Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
+        "Style", "Party Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
-        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Text", "Combo Points",
+        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Text",
+        "Tint Health", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         -- the Cast Bar section's rows have no prefix: placed by their canon names
         "@Cast Bar Position", "@Cast Bar Texture", "@Cast Bar Border",
         "Buffs", "Debuffs", "@Aura Sort By", "Hide Buffs", "Dispel Icons", "Dispel Highlight", "Aura Swipe", "Aura Timer",
-        "Happiness Position", "Pet Border", "Target Border",
+        "Pet Border", "Target Border",
         -- sliders
-        "Scale", "Size", "Width", "Height", "Max Height", "Power Height", "Portrait Size",
+        "Scale", "Size", "Width", "Height", "Portrait Scale", "Max Height", "Power Height",
         "Pet Frame Width", "Pet Frame Height", "Target Frame Width", "Target Frame Height",
         "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Frame Gap", "Group Gap", "Spacing", "Quest Spacing",
-        "Background", "@Cast Bar Background", "@Cast Bar Height", "Buff Size", "Debuff Size",
+        "Background", "@Cast Bar Background", "@Cast Bar Height", "Level Disc Size",
+        -- each aura kind's size, then how many (the Amount names until the Max Buffs / Max Debuffs rename)
+        "Buff Size", "Max Buffs", "Buff Amount", "Debuff Size", "Max Debuffs", "Debuff Amount",
         -- the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
         "Faded Opacity", "Fade Delay",
         -- switches
         -- first of their sections' switches: Range Check (Look) and Show Level (Frame)
         -- the resource bars' two texts right under the sliders, before Range Check
         "Bar Text", "Show Timer",
-        "Range Check", "Show Name", "Show Level",
-        "Sort by Role", "Show Player", "Show When Solo", "Hide Player Frame in a Party", "Group Numbers", "Main Tank Frames",
-        "Show Threat", "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Power Bar for Mana Users Only",
+        "Range Check", "Show Name", "Show Level", "Show Combat Text", "Show Threat", "Threat Text",
+        "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid",
+        "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
         "Show Icon", "Show Spell Timer", "Show Spell Pushback",
-        "Class Colours", "Threat Glow", "Combat Glow", "Low Health Colour", "Bar Animations", "Bar Edge Glow", "Damage Trail",
-        "Only My Buffs", "Only My Debuffs", "Reverse Order", "Your Auras First",
-        "Dispellable Debuffs Only",
+        "Class Colours", "Threat Glow", "Combat Glow", "Bar Animations", "Bar Edge Glow", "Damage Trail",
+        -- the aura filters together, then the sort switches
+        "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Dispellable Debuffs Only", "Show Weapon Enchants",
+        "Reverse Order", "Your Auras First",
     }
-    local LEAD = { "Cast Bar", "Cast Bars" }
+    local LEAD = { "Cast Bar" }
     -- "Name@switch": the place of a name that is a dropdown on some frames and a switch on others
     local canon, lead   -- localized name -> place, built on first use (the locale is loaded by then)
     local function KindRank(kind)
@@ -2008,6 +2214,12 @@ function ns.EditSections()
     end
     local settings = {}
     local function Section(key, items)
+        -- a unit frame's Portrait, Flip Portrait and Mirror Bars (ns.SplitFrameItems), first in Look
+        if key == "Look" and ns.lookCarry then
+            local carry = ns.lookCarry
+            ns.lookCarry = nil
+            for i = #carry, 1, -1 do table.insert(items, 1, carry[i]) end
+        end
         if #items == 0 then return end
         ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
         local own = {}
@@ -2046,9 +2258,12 @@ end
 -- Threat, Five-Second Rule, the swing timers' marks...).
 do
     local PARTS = {
-        size = { "Scale", "Width", "Height", "Power Height", "Portrait Size", "Portrait", "Size",
-                 "Power Bar for Mana Users Only" },
-        text = { "Health Text", "Power Text", "Druid Mana Text", "Text", "Show Name", "Show Level", "Bar Text", "Show Timer" },
+        size = { "Scale", "Width", "Height", "Portrait Scale", "Power Height", "Size",
+                 "Power Bar for Mana Users Only", "Only Mana Power Bars" },
+        -- the frame's look picks (11-20): first in its Look section (ns.EditSections takes them there)
+        look = { "Portrait", "Flip Portrait", "Mirror Bars" },
+        text = { "Health Text", "Power Text", "Druid Mana Text", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
+                 "Threat Text", "Bar Text", "Show Timer", "Level Disc Size", "Values on Mouseover" },
     }
     -- the section titles reach ns.L as variables (EditSections): listed here for the phrase list
     -- (tools/enus.js reads L["..."] literals)
@@ -2064,12 +2279,14 @@ do
                 for _, name in ipairs(names) do partOf[ns.L[name]] = part end
             end
         end
-        local size, text, behaviour = {}, {}, {}
+        local size, text, behaviour, look = {}, {}, {}, {}
         for _, item in ipairs(items) do
             local part = partOf[item.name]
-            local list = part == "size" and size or part == "text" and text or behaviour
+            local list = part == "size" and size or part == "text" and text or part == "look" and look or behaviour
             list[#list + 1] = item
         end
+        -- the next Look section built (the same dialog, straight after) puts these on top
+        ns.lookCarry = #look > 0 and look or nil
         return size, text, behaviour
     end
 end
@@ -2265,13 +2482,14 @@ function ns.Fade(frame, inset, top, bottom)
 end
 
 -- Header icons in struck bronze: a metal gradient over a dark copy 1 px down-right and a faint light
--- copy 1 px up; hovering lightens the gradient
+-- copy 1 px up; hovering lightens the gradient. (11-19: darker, TOP 1.38 -> 1.12 and BOTTOM 0.80 ->
+-- 0.68, to sit with the rest of the bronze; the chat, meter and loot roll icons alike)
 ns.BronzeIcon = {
-    TOP = 1.38,           -- colour multiplier at the top
-    BOTTOM = 0.80,        -- and at the bottom
+    TOP = 1.12,           -- colour multiplier at the top
+    BOTTOM = 0.68,        -- and at the bottom
     HOVER = 0.15,         -- added to both when hovered
     SHADOW = { 0, 0, 0, 0.85 },
-    LIGHT = { 1, 0.93, 0.75, 0.20 },
+    LIGHT = { 1, 0.93, 0.75, 0.16 },
 }
 
 function ns.BronzeIcon.Paint(icon, color, hover)
@@ -2741,7 +2959,7 @@ end
 ns.Dialogs = ns.Dialogs or {}
 
 ns.Dialogs["FLAREUI_SYNC_SOURCE"] = {
-    text = L["Make this character the Sync Blizz UI source?\n\nEvery other character will copy this character's interface settings the next time it logs in."],
+    text = L["Make this character the Sync Blizzard UI source?\n\nEvery other character will copy this character's interface settings the next time it logs in."],
     button1 = L["Make Source"],
     button2 = L["Cancel"],
     OnAccept = function()
@@ -2840,6 +3058,44 @@ f:SetScript("OnEvent", function(self, event, ...)
 
         ns.db = db
         ns.defaults = defaults
+
+        -- 11-19: the bar textures FlareUI Forever and FlareUI Forever (Light) became FlareUI Dark and
+        -- FlareUI Light: saved values in every profile are renamed once
+        if not db.global.barNames2 then
+            local RENAME = { ["FlareUI Forever"] = "FlareUI Dark", ["FlareUI Forever (Light)"] = "FlareUI Light" }
+            local seen = {}
+            local function Walk(t, depth)
+                if depth > 12 or seen[t] then return end
+                seen[t] = true
+                for k, v in pairs(t) do
+                    if type(v) == "string" and RENAME[v] then t[k] = RENAME[v]
+                    elseif type(v) == "table" then Walk(v, depth + 1) end
+                end
+            end
+            if type(db.sv) == "table" and type(db.sv.profiles) == "table" then pcall(Walk, db.sv.profiles, 0) end
+            db.global.barNames2 = true
+        end
+
+        -- 11-20 (settings audit), once for setups made before it; a new install or a full reset
+        -- starts with the flag unset and empty profiles, so it gets the new defaults:
+        -- * Quest Tracker Frame Style default became Modern ("custom"): a profile that never picked
+        --   one keeps FlareUI
+        -- * Addons in the Drawer "None" no longer turns the drawer off (Drawer Style Off does): a
+        --   saved None becomes Drawer Style Off
+        if not db.global.audit1120 then
+            local profiles = type(db.sv) == "table" and type(db.sv.profiles) == "table" and db.sv.profiles or {}
+            for _, profile in pairs(profiles) do
+                if type(profile) == "table" and next(profile) then
+                    profile.objectivetracker = profile.objectivetracker or {}
+                    if profile.objectivetracker.frameStyle == nil then profile.objectivetracker.frameStyle = "flareui" end
+                    local mm = profile.minimap
+                    if type(mm) == "table" and mm.buttonBag == false then
+                        mm.drawerStyle, mm.buttonBag = "disabled", nil
+                    end
+                end
+            end
+            db.global.audit1120 = true
+        end
 
         -- Text Scale: FlareUI's sizes and the game's font objects, before anything sets a font
         local textScale = tonumber(db.global.textScale)

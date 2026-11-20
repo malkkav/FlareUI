@@ -1,0 +1,11 @@
+local test = dofile('tools/tests/fixtures/embedded-bag-click.lua')
+test.bankScenario(test.reagent)
+
+local button = test.hit(test.reagent)
+assert(button.dragButton == 'LeftButton' and button.template:find('SecureHandlerDragTemplate', 1, true))
+local onDrag = assert(loadstring('return function(self, button, kind) ' .. button.attributes._ondragstart .. ' end'))
+local drag = setfenv(onDrag, {PlayerInCombat = function() return false end})()
+local action, inventorySlot = drag(button, 'LeftButton', nil)
+assert(action == 'bag' and inventorySlot == test.reagent:GetID(), 'drag must pick up the equipped reagent bag')
+test.checkItemOnCursor(test.reagent, 'herb')
+print('PASS: reagent bag toggles the native backpack across two bank visits and keeps slot interactions')

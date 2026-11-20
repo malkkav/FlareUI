@@ -50,7 +50,13 @@ local ICON_COLOR = { r = 0.61, g = 0.48, b = 0.29, a = 1 }
 local RS = (Enum and Enum.EncounterLootDropRollState)
     or { NeedMainSpec = 0, NeedOffSpec = 1, Transmog = 2, Greed = 3, NoRoll = 4, Pass = 5 }
 local TYPE = { [RS.NeedMainSpec] = 1, [RS.NeedOffSpec] = 1, [RS.Greed] = 2, [RS.Transmog] = 4, [RS.Pass] = 0 }
-local LABEL = { [0] = _G.PASS, [1] = _G.NEED, [2] = _G.GREED, [4] = _G.TRANSMOGRIFICATION }
+-- the client's own words, unless FlareUI's language has words of its own (Hungarian has no client)
+local LABEL = {
+    [0] = L["Pass"] ~= "Pass" and L["Pass"] or _G.PASS,
+    [1] = L["Need"] ~= "Need" and L["Need"] or _G.NEED,
+    [2] = L["Greed"] ~= "Greed" and L["Greed"] or _G.GREED,
+    [4] = L["Transmog"] ~= "Transmog" and L["Transmog"] or _G.TRANSMOGRIFICATION,
+}
 local BUTTON_ATLAS = { [0] = "pass", [1] = "need", [2] = "greed", [4] = "transmog" }
 local RANK = { [1] = 1, [4] = 2, [2] = 3, [0] = 4 }
 
@@ -601,7 +607,7 @@ end
 local function Timer(card, height)
     card.timer = CreateFrame("StatusBar", nil, card)
     card.timer:SetHeight(height)
-    card.timer:SetStatusBarTexture(LSM:Fetch("statusbar", "FlareUI Forever"))
+    card.timer:SetStatusBarTexture(LSM:Fetch("statusbar", "FlareUI Dark"))
     card.timer:SetMinMaxValues(0, 1)
     local bg = card.timer:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
@@ -961,7 +967,8 @@ local function FillRow(row, s)
     row.icon.texture:SetDesaturated(lost)
     if lost then
         row.name:SetTextColor(0.6, 0.6, 0.6)
-        row.icon.edge:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+        local grey = ns.PALETTE.warmGrey   -- a lost roll: the palette's warm grey, not a cold one
+        row.icon.edge:SetBackdropBorderColor(grey[1], grey[2], grey[3], 1)
     end
     row.name:SetWidth(ROW_W - ROW_PAD - BOX_PAD - ROW_ICON - 7 - mineW - (resultW + 14 + 12))
     row:SetAlpha(lost and 0.6 or 1)

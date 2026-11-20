@@ -45,16 +45,24 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["au.timerColor"] = "6.12",
-    ["mm.resetButtonMoves"] = "6.12",
-    ["mm.squareBorder"] = "6.12",
-    ["qol.autoTurnInQuests"] = "6.12",
-    ["qol.zoneLevels"] = "6.12",
-    ["qt.frameStyle"] = "6.12",
-    ["qt.questButtons"] = "6.12",
-    ["rm.targetMouseover"] = "6.12",
-    ["tt.showGuildRank"] = "6.12",
-    ["uf.auraTimerColor"] = "6.12",
+    ["ab.xpBorder"] = "6.13",
+    ["ab.xpTexture"] = "6.13",
+    ["au.totemSwipe"] = "6.13",
+    ["au.totemTimer"] = "6.13",
+    ["br.upkeepPick"] = "6.13",
+    ["ch.frameStyle"] = "6.13",
+    ["ch.headerButtons"] = "6.13",
+    ["ch.icons"] = "6.13",
+    ["ch.whisperSound"] = "6.13",
+    ["dm.barTexture"] = "6.13",
+    ["dm.frameStyle"] = "6.13",
+    ["dm.threatMode"] = "6.13",
+    ["mm.icons"] = "6.13",
+    ["qt.autoMinimize"] = "6.13",
+    ["qt.colorScheme"] = "6.13",
+    ["qt.headerButtons"] = "6.13",
+    ["qt.hideScrollBar"] = "6.13",
+    ["uf.font.combatText"] = "6.13",
 }
 
 --------------------------------------------------
@@ -457,8 +465,8 @@ end
 -- Frame Border choices: None, FlareUI's border, then other addons' borders; rebuilt on each open
 function Settings:BorderChoices()
     -- (Chat, Damage Meter and Quest Tracker only) FlareUI Frames and the Thick art share 16 px corners:
-    -- shown as FlareUI Frames Thin / Thick; "FlareUI Frames" stays the saved name
-    local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Frames Thin" }, { "FlareUI Thick", "FlareUI Frames Thick" } }
+    -- shown as FlareUI Thin / Thick (11-20, were "FlareUI Frames Thin / Thick"); "FlareUI Frames" stays the saved name
+    local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Thin" }, { "FlareUI Thick", "FlareUI Thick" } }
     local others = ns.AddonMedia("border")
     if #others > 0 then
         list[#list + 1] = { divider = true }
@@ -469,6 +477,15 @@ end
 
 -- Frame Opacity choices: 0% to 100% in tens, stored as 0..1
 -- every background opacity, in steps of 1%
+-- The alert sounds (Whisper Sound, Buff Reminders' Sound): one played on its own, for the dropdowns'
+-- speaker buttons (Panel.lua, row.soundPreview)
+Settings.ALERT_SOUNDS = { raidwarning = "RAID_WARNING", alarm = "ALARM_CLOCK_WARNING_3", whisper = "TELL_MESSAGE" }
+function Settings:PlayAlertSound(value)
+    local kit = self.ALERT_SOUNDS[value]
+    local id = kit and SOUNDKIT and SOUNDKIT[kit]
+    if id then PlaySound(id, "Master") end
+end
+
 function Settings:OpacityChoices()
     local list = {}
     for i = 0, 100 do list[#list + 1] = { i / 100, i .. "%" } end
@@ -488,9 +505,10 @@ function Row:Choices()
             list[i] = { divider = true }
         else
             n = n + 1
-            local value, text = choice, nil
-            if type(choice) == "table" then value, text = choice[1], choice[2] end
-            list[i] = { value = value, text = text or (names and names[n]) or tostring(value) }
+            local value, text, icon = choice, nil, nil
+            if type(choice) == "table" then value, text, icon = choice[1], choice[2], choice.icon end
+            -- icon = { atlas, rotation }: a picture on the menu entry (Panel.lua SetupChoiceMenu)
+            list[i] = { value = value, text = text or (names and names[n]) or tostring(value), icon = icon }
         end
     end
     return list
@@ -514,11 +532,11 @@ function Row:SearchText()
     return self.searchText
 end
 
--- A section's rows in one order (12-terminology.md, Ordering): copy text, then dropdowns, then
+-- A section's rows in one order (12-terminology.md, Ordering): copy text, then dropdowns, then sliders, then
 -- switches, then keybinds, buttons and legends. A row with a parent sits under it, among its siblings
 -- in the same order; lead = true keeps a row on top (a switch the others read the other way round);
 -- rank = n places a row by hand (Fake CM's Visibility: 3.5, between the bar switches and the button).
-local KIND_RANK = { text = 0, styles = 1, choice = 1, range = 1, dropdown = 1, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
+local KIND_RANK = { text = 0, styles = 1, choice = 1, dropdown = 1, range = 2, toggle = 3, frame = 3, keybind = 4, button = 4, buttons = 4,
                     editmode = 4, legend = 5, expander = 5 }
 -- A master, the row others name as parent, comes before the options it turns on: it moves up to
 -- the rank of its highest dependent (Combined Backpack over Columns), never further, so a master

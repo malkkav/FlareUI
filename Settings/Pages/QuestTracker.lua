@@ -24,13 +24,23 @@ end)
 -- Frame Style first: Blizzard (strips, no background or border), FlareUI (strips on FlareUI's frame,
 -- the default) or Custom (Frame Opacity and Border as chosen). Opacity hides with Blizzard, Border with
 -- both Blizzard and FlareUI.
-local function Style() return S:GetPath("objectivetracker.frameStyle") or "flareui" end
+local function Style() return S:GetPath("objectivetracker.frameStyle") or "custom" end
 S:Row{ key = "qt.frameStyle", kind = "choice", path = "objectivetracker.frameStyle",
     choices = { "blizzard", "flareui", "custom" }, apply = Refresh }
+-- Colour Scheme (11-20, Malkkav), under Frame Style: FlareUI and Custom only, FlareUI's by default;
+-- the Blizzard style always has Blizzard's (ObjectiveTracker.lua OT.ColorScheme)
+S:Row{ key = "qt.colorScheme", kind = "choice", choices = { "blizzard", "flareui" }, apply = Refresh,
+    get = function() return S:GetPath("objectivetracker.colorScheme") or "flareui" end,
+    set = function(value) S:SetPath("objectivetracker.colorScheme", value) end,
+    resetValue = function() return "flareui" end,
+    hidden = function() return Style() == "blizzard" end }
 S:Row{ key = "qt.opacity", kind = "range", path = "objectivetracker.opacity", choices = S:OpacityChoices(), apply = Refresh,
     hidden = function() return Style() == "blizzard" end }
 S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTexture", choices = S.BorderChoices,
     apply = Refresh, hidden = function() return Style() ~= "custom" end }
+-- Hide Scroll Bar (off), last in Frame: FlareUI and Custom only (Blizzard has none)
+S:Row{ key = "qt.hideScrollBar", path = "objectivetracker.hideScrollBar", apply = Refresh,
+    hidden = function() return Style() == "blizzard" end }
 
 -- one choice over four saved flags: zone (current zone first), distance, level, progress
 S:Row{
@@ -63,6 +73,35 @@ Display("tags", "showTags")
 Display("recipes", "showRecipes")
 -- on by default: off, finished quests look like any other
 Display("completeTag", "showCompleteTag")
+-- Header Buttons (11-19, Malkkav): the header's filter, sort and the "!" / "?" for Quality of Life's Auto
+-- Accept / Auto Turn-In Quests, each its own saved switch; above Quest Buttons. Filter unticked shows
+-- every quest again (no button left to switch Zone off).
+-- (11-20: Auto Accept and Auto Turn-In each their own; both start from the old shared autoButtons)
+local HEADER_BUTTONS = { { "filter", "headerFilter" }, { "sort", "headerSort" }, { "accept", "autoAcceptButton" }, { "turnin", "autoTurnInButton" } }
+S:Row{ key = "qt.headerButtons", kind = "dropdown", section = "qt.frame",   -- (in Frame, as on Chat)
+    choices = { "none", { divider = true }, "filter", "sort", "accept", "turnin" },
+    toggles = { exclusive = { "none" }, tokens = { "filter", "sort", "accept", "turnin" }, empty = "none" },
+    get = function()
+        local list = {}
+        for _, b in ipairs(HEADER_BUTTONS) do
+            local v = S:GetPath("objectivetracker." .. b[2])
+            if v == nil and (b[1] == "accept" or b[1] == "turnin") then v = S:GetPath("objectivetracker.autoButtons") == true end
+            if v == true or v == nil then list[#list + 1] = b[1] end
+        end
+        return #list > 0 and table.concat(list, ",") or "none"
+    end,
+    set = function(value)
+        local on = {}
+        for token in tostring(value or ""):gmatch("[^,]+") do on[token] = true end
+        for _, b in ipairs(HEADER_BUTTONS) do S:SetPath("objectivetracker." .. b[2], on[b[1]] and true or false) end
+        if not on.filter then S:SetPath("objectivetracker.zoneOnly", false) end
+    end,
+    resetValue = function() return "filter,sort" end,
+    apply = Refresh }
+-- those two switches changed on the Quality of Life page: the header buttons follow
+S:On("RowChanged", function(row)
+    if row and (row.key == "qol.autoAcceptQuests" or row.key == "qol.autoTurnInQuests") then Refresh() end
+end)
 -- Quest Buttons: the buttons before each title, as many as you like; each its own saved switch
 local QUEST_BUTTONS = { { "icon", "questIcons" }, { "focus", "focusButtons" }, { "voice", "playButtons" } }
 S:Row{ key = "qt.questButtons", kind = "dropdown", section = "qt.display",
@@ -94,13 +133,7 @@ Quests("completedLast", "completedLast")
 Quests("focusedFirst", "focusedFirst")
 Quests("collapseCompleted", "collapseCompleted")
 Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
--- Show Untracked Quests needs zone headings (none by level or by progress either).
-local function NoHeadings()
-    return not S:GetPath("objectivetracker.zoneHeaders") or S:GetPath("objectivetracker.sortByLevel")
-        or S:GetPath("objectivetracker.sortByProgress")
-end
-S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true, tab = "behaviour",
-    disabled = NoHeadings }
+S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true, tab = "behaviour" }
 -- (Archy) a newly accepted quest gives the focus back; paired with Show Untracked Quests
 Quests("keepFocus", "keepFocus")
 -- Minimize: one switch sets every instance type
@@ -110,19 +143,30 @@ S:Row{
     get = function() return S:GetPath("objectivetracker.minimizeStyle") == "button" end,
     set = function(on) S:SetPath("objectivetracker.minimizeStyle", on and "button" or "header") end,
 }
+-- Auto Minimize (11-20, was three switches): one dropdown of toggles over the same saved values,
+-- objectivetracker.autoMinimize.<place> = "minimize" / "none"; In Instances sets every instance type
+local MIN_PLACES = { "instances", "combat", "taxi" }
+local MIN_SPEC = { exclusive = { "none" }, tokens = MIN_PLACES, empty = "none" }
+local function MinOn(place)
+    local key = place == "instances" and "dungeon" or place
+    return S:GetPath("objectivetracker.autoMinimize." .. key) == "minimize"
+end
 S:Row{
-    key = "qt.minInstances", apply = Refresh, tab = "behaviour",
-    get = function() return S:GetPath("objectivetracker.autoMinimize.dungeon") == "minimize" end,
-    set = function(on)
-        for _, place in ipairs(INSTANCES) do
-            S:SetPath("objectivetracker.autoMinimize." .. place, on and "minimize" or "none")
-        end
+    key = "qt.autoMinimize", kind = "dropdown", apply = Refresh, tab = "behaviour", toggles = MIN_SPEC,
+    choices = { "none", { divider = true }, "instances", "combat", "taxi" },
+    get = function()
+        local on = {}
+        for _, place in ipairs(MIN_PLACES) do if MinOn(place) then on[#on + 1] = place end end
+        return #on > 0 and table.concat(on, ",") or "none"
     end,
-}
-S:Row{
-    key = "qt.minCombat", apply = Refresh, tab = "behaviour",
-    get = function() return S:GetPath("objectivetracker.autoMinimize.combat") == "minimize" end,
-    set = function(on) S:SetPath("objectivetracker.autoMinimize.combat", on and "minimize" or "none") end,
+    set = function(value)
+        local set = ns.Conditions.Set(value, MIN_SPEC)
+        for _, place in ipairs(INSTANCES) do
+            S:SetPath("objectivetracker.autoMinimize." .. place, set.instances and "minimize" or "none")
+        end
+        S:SetPath("objectivetracker.autoMinimize.combat", set.combat and "minimize" or "none")
+        S:SetPath("objectivetracker.autoMinimize.taxi", set.taxi and "minimize" or "none")
+    end,
 }
 
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")

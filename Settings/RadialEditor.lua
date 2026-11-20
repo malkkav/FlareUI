@@ -11,7 +11,7 @@ local L = ns.L
 local LSM = LibStub("LibSharedMedia-3.0")
 
 local BRONZE       = { 0.80, 0.60, 0.34 }
-local BRONZE_MUTED = { 0.61, 0.48, 0.29 }
+local BRONZE_MUTED = { 0.65, 0.49, 0.27 }   -- palette bronze3
 local FALLBACK_ICON = 134400
 
 -- the settings panel's gradient

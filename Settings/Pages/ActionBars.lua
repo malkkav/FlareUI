@@ -64,7 +64,7 @@ S:Row{ key = "ab.hideKeybinds", section = "ab.buttonAppearance",
     path = "actionbars.hideHotkeys", invert = true, apply = Refresh, half = true }
 S:Row{ key = "ab.hideMacroText", section = "ab.buttonAppearance", path = "actionbars.hideMacroText", invert = true, apply = Refresh, half = true }
 -- Status Colouring's colours and their strength, in the colour window
-S:Row{ key = "ab.statusPick", section = "ab.buttonAppearance", kind = "button", buttonText = L["Pick Your Colours"],
+S:Row{ key = "ab.statusPick", section = "ab.buttonAppearance", kind = "button", lead = true, buttonText = L["Pick Your Colours"],
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("ab") end end }
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
@@ -79,7 +79,7 @@ S:Row{ key = "ab.noStancePaging", section = "ab.spellBehavior", path = "actionba
 local function XPRefresh() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end
 local function XPOff() return S:GetPath("actionbars.xpbar.enabled") == false end
 local xpStartOff   -- Off at the session's start (the first change records it), for the reload footer
-S:Row{ key = "ab.xpBar", tab = "xp", kind = "choice", choices = { "off", "single", "split", "double" }, noReset = true,
+S:Row{ key = "ab.xpBar", tab = "xp", kind = "choice", lead = true, choices = { "off", "single", "split", "double" }, noReset = true,
     get = function()
         if XPOff() then return "off" end
         local v = S:GetPath("actionbars.xpbar.style")
@@ -126,8 +126,18 @@ S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10
     end,
     set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+-- Bar Texture and Border (11-20, from its Edit Mode dialog): the bar's fill and its frame
+S:Row{ key = "ab.xpTexture", tab = "xp", kind = "choice", path = "actionbars.xpbar.texture", disabled = XPOff,
+    choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("texture") or {} end,
+    resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_TEXTURE end,
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+S:Row{ key = "ab.xpBorder", tab = "xp", kind = "choice", path = "actionbars.xpbar.border", disabled = XPOff,
+    choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("border") or {} end,
+    resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_BORDER end,
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- every colour the XP bar paints, in the colour window
-S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", buttonText = L["Pick Your Colours"], disabled = XPOff,
+S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 0,   -- (right under FlareUI XP Bar, the section's master)
+    buttonText = L["Pick Your Colours"], disabled = XPOff,
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
 
 -- Hide Blizzard elements (also removed from Edit Mode)

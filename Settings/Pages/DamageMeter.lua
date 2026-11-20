@@ -49,6 +49,9 @@ S:On("PageShown", function(key)
     if ns.DamageMeter and ns.DamageMeter.SetSettingsPreview then ns.DamageMeter:SetSettingsPreview(key == "dm") end
 end)
 
+-- Frame Style (11-20, Malkkav): Modern (default) or FlareUI, as the chat's; first in Frame, Border hides with FlareUI
+S:Row{ key = "dm.frameStyle", kind = "choice", path = "damagemeter.frameStyle", choices = { "flareui", "modern" },
+    apply = Refresh, section = "dm.frame" }
 S:Row{ key = "dm.opacity", kind = "range", path = "damagemeter.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "dm.frame" }
 
 local function ApplyVisibility()
@@ -62,19 +65,33 @@ local function NotInChat() return not InChat() end
 
 -- (the meter's and the threat window's fading is set in their Edit Mode dialogs)
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
+    apply = Refresh, section = "dm.frame", hidden = function() return S:GetPath("damagemeter.frameStyle") == "flareui" end }
+-- Bar Texture: Blizzard's own bar first (the default), then the unit frames' list (Shuuberg's idea 11-19)
+local function BarTextures()
+    local list = { { "", L["Blizzard"] }, { divider = true } }
+    local values = ns.UnitFrames and ns.UnitFrames.Kit and ns.UnitFrames.Kit.BuildTextureValues
+    local made = values and values()
+    if type(made) == "function" then made = made() end
+    for _, v in ipairs(made or {}) do
+        if v.isDivider then list[#list + 1] = { divider = true }
+        elseif v.value then list[#list + 1] = { v.value, v.text } end
+    end
+    return list
+end
+S:Row{ key = "dm.barTexture", kind = "choice", path = "damagemeter.barTexture", choices = BarTextures,
     apply = Refresh, section = "dm.frame" }
 
-S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
-    hidden = ChatOff, disabled = InChat }
 S:Row{ key = "dm.resetOnInstance", path = "damagemeter.resetOnInstance", section = "dm.tweaks", half = true }
 S:Row{ key = "dm.resetOnGroupLeave", path = "damagemeter.resetOnGroupLeave", section = "dm.tweaks", half = true }
+S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
+    disabled = function() return ChatOff() or InChat() end }   -- (greyed with Chat off: turning Chat on makes it work)
 S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
 
 -- Meter Tab in the Chat: one dropdown of toggles over the old switch (chatTab) and Open the
 -- Meter Tab (chatTabOpen). Disable (the default) or Open When Clicked stand alone; In Combat, In a Group and
 -- At Login can be ticked together (DamageMeter.lua ApplyChatTab reads them as a set).
 local TAB_OPEN = { "combat", "group", "login" }
-S:Row{ key = "dm.chatTab", kind = "dropdown", section = "dm.meterTab", hidden = ChatOff,
+S:Row{ key = "dm.chatTab", kind = "dropdown", section = "dm.meterTab", disabled = ChatOff,
     choices = { "off", { divider = true }, "click", "combat", "group", "login" },
     toggles = { exclusive = { "off", "click" }, tokens = TAB_OPEN, empty = "off" },
     get = function()
@@ -90,7 +107,7 @@ S:Row{ key = "dm.chatTab", kind = "dropdown", section = "dm.meterTab", hidden = 
     apply = function() Refresh(); ApplyVisibility() end }
 -- greyed while the tab is off (no indent)
 S:Row{ key = "dm.chatTabIgnoreFade", path = "damagemeter.chatTabIgnoreFade", apply = Refresh, section = "dm.meterTab",
-    hidden = ChatOff, disabled = NotInChat }
+    disabled = function() return ChatOff() or NotInChat() end }
 
 -- Threat tab options: a change shows the Threat tab, with sample rows when nothing is targeted
 local function PreviewThreat()
@@ -101,17 +118,22 @@ end
 -- of their own: Tank's Lead | Pull Warning, Pull Aggro Line
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
     choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
--- switched on: the window appears right above or below the meter (DamageMeter.PlaceThreatWindow)
-S:Row{ key = "dm.threatWindow", path = "damagemeter.threatWindow", tab = "threat", section = "dm.threat", half = true,
-    apply = function(on)
-        if on then S:SetPath("damagemeter.autoThreat", false) end
+-- Threat Window (11-20, was two switches that turned each other off): one choice over
+-- damagemeter.threatWindow and damagemeter.autoThreat. Separate Window appears right above or below
+-- the meter (DamageMeter.PlaceThreatWindow)
+S:Row{ key = "dm.threatMode", kind = "choice", tab = "threat", section = "dm.threat", choices = { "off", "window", "combat" },
+    get = function()
+        if S:GetPath("damagemeter.threatWindow") then return "window" end
+        return S:GetPath("damagemeter.autoThreat") and "combat" or "off"
+    end,
+    set = function(value)
+        S:SetPath("damagemeter.threatWindow", value == "window")
+        S:SetPath("damagemeter.autoThreat", value == "combat")
+    end,
+    resetValue = function() return "off" end,
+    apply = function(value)
         Refresh()
-        if on and ns.DamageMeter and ns.DamageMeter.PlaceThreatWindow then ns.DamageMeter.PlaceThreatWindow() end
-    end }
-S:Row{ key = "dm.threatCombat", path = "damagemeter.autoThreat", tab = "threat", section = "dm.threat", half = true,
-    apply = function(on)
-        if on then S:SetPath("damagemeter.threatWindow", false) end
-        Refresh()
+        if value == "window" and ns.DamageMeter and ns.DamageMeter.PlaceThreatWindow then ns.DamageMeter.PlaceThreatWindow() end
     end }
 S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
 S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }

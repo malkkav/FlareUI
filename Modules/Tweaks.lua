@@ -1043,7 +1043,8 @@ LibStub("AceEvent-3.0"):Embed(Tweaks.VendorEvents)
 
 local function OnMerchantShow()
     local db = GetDb()
-    if not db or IsShiftKeyDown() then return end
+    -- (Vendor sits on Bags & Looting: it follows that page's switch)
+    if not db or IsShiftKeyDown() or not ns.BagModuleOn() then return end
     local selling = db.sellJunk and C_MerchantFrame.IsSellAllJunkEnabled() and C_MerchantFrame.GetNumJunkItems() > 0
     local repairing = db.autoRepair and CanMerchantRepair()
     local before, spent, repaired = GetMoney(), 0, not repairing
@@ -1115,7 +1116,7 @@ local function OnMerchantShow()
         -- bought back just now would be sold again)
         local open = MerchantFrame and MerchantFrame:IsShown() and MerchantFrame.selectedTab == 1
         local db = GetDb()
-        if open and db and db.sellJunk and not IsShiftKeyDown() and C_MerchantFrame.GetNumJunkItems() > 0 then
+        if open and db and db.sellJunk and ns.BagModuleOn() and not IsShiftKeyDown() and C_MerchantFrame.GetNumJunkItems() > 0 then
             sold = sold + C_MerchantFrame.GetNumJunkItems()
             C_MerchantFrame.SellAllJunkItems()
             C_Timer.After(1.5, Report)
@@ -1131,7 +1132,7 @@ local function InitVendor()
     if MerchantSellAllJunkButton then
         MerchantSellAllJunkButton:HookScript("OnShow", function(btn)
             local db = GetDb()
-            if db and db.sellJunk then btn:Hide() end
+            if db and db.sellJunk and ns.BagModuleOn() then btn:Hide() end
         end)
     end
 end
@@ -1449,24 +1450,50 @@ local NP_COMBO_FALLBACK = 5
 
 local npComboRow, npComboEvents
 
--- The combo points and quest tags stand down while a nameplate addon is loaded
+-- The combo points and quest tags stand down while a nameplate addon is loaded. FlareUI's own
+-- Nameplates module isn't one: they sit on its plates (NP.PartsFor).
 local NAMEPLATE_ADDONS = {
-    { "Platynator", "Platynator" }, { "Plater", "Plater" }, { "Kui_Nameplates", "KuiNameplates" },
+    { "Plater", "Plater" }, { "Kui_Nameplates", "KuiNameplates" },
     { "TidyPlates_ThreatPlates", "Threat Plates" }, { "TidyPlates", "Tidy Plates" },
     { "NeatPlates", "NeatPlates" }, { "BetterBlizzPlates", "BetterBlizzPlates" },
     { "EllesmereUINameplates", "EllesmereUI Nameplates" }, { "nPlates", "nPlates" },
+    { "DaylightUI_Nameplates", "DaylightUI Nameplates" },
 }
+
+-- Any other nameplate addon: one that took Blizzard's unit frame off its plate (FlareUI never moves
+-- that frame). Looked at no more than every 2 s while none is found; a find is kept.
+function Tweaks.PlatesTakenOver()
+    local now = GetTime()
+    if Tweaks.platesCheckedAt and now - Tweaks.platesCheckedAt < 2 then return false end
+    Tweaks.platesCheckedAt = now
+    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
+        local unitFrame = plate.UnitFrame
+        if unitFrame and not unitFrame:IsForbidden() and unitFrame:GetParent() ~= plate then return true end
+    end
+    return false
+end
 
 -- The name of the nameplate addon in charge, or nil. Asked on every nameplate update, so the answer is
 -- kept until the next addon loads (false: none).
 function Tweaks:GetNameplateAddon()
     local known = Tweaks.nameplateAddon
-    if known ~= nil then return known or nil end
+    if known then return known end
+    if known == false then
+        if Tweaks.PlatesTakenOver() then
+            Tweaks.nameplateAddon = L["Another nameplate addon"]
+            return Tweaks.nameplateAddon
+        end
+        return nil
+    end
     for _, entry in ipairs(NAMEPLATE_ADDONS) do
         if C_AddOns.IsAddOnLoaded(entry[1]) then
             Tweaks.nameplateAddon = entry[2]
             return entry[2]
         end
+    end
+    if Tweaks.PlatesTakenOver() then
+        Tweaks.nameplateAddon = L["Another nameplate addon"]
+        return Tweaks.nameplateAddon
     end
     -- a UI suite whose nameplates are a module that can be switched off: read each time, its
     -- settings may not be loaded yet on the first ask
@@ -1516,6 +1543,9 @@ end
 -- not (Blizzard's own widgets hang there too), so a cast never covers the points and they never
 -- jump. Then the health bar, then the plate itself.
 local function PlateAnchor(plate)
+    -- FlareUI's own plate (Nameplates.lua): centred under it, below its cast bar while one shows
+    local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
+    if own then return own.below or own.box end
     local unitFrame = plate.UnitFrame
     local casts = unitFrame and unitFrame.CastBarsContainer
     if casts and not casts:IsForbidden() then return casts end
@@ -1651,6 +1681,9 @@ end
 -- return is what sizes and layers it: the level box whenever there is one (with Hide Level it is only
 -- invisible, so the tag keeps its usual size and stays above the plate), otherwise the health bar.
 local function QuestTagAnchor(plate)
+    -- FlareUI's own plate: beside its bar's frame
+    local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
+    if own then return own.box, own.box end
     local unitFrame = plate.UnitFrame
     local level = unitFrame and unitFrame.PlayerLevelDiffFrame
     local db = GetDb()
@@ -1681,7 +1714,9 @@ function UpdateQuestTag(unit)
     if not canaccessvalue(unit) then return end
     local plate = C_NamePlate.GetNamePlateForUnit(unit)
     if not plate or plate:IsForbidden() then return end
-    if Tweaks:QuestieHasNameplateIcons() then
+    -- (FlareUI's own plates draw their quest mark themselves, with the progress: Nameplates.lua)
+    local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
+    if own or Tweaks:QuestieHasNameplateIcons() then
         if questTags[plate] then questTags[plate]:Hide() end
         return
     end
@@ -1766,6 +1801,23 @@ local function ApplyQuestTags()
         if unit and canaccessvalue(unit) then questUnits[unit] = true end
     end
     UpdateAllQuestTags()
+end
+
+-- FlareUI's Nameplates module took a plate or gave it back: the quest tag and the combo points move
+-- to the plate now drawn (they may have been placed before the module's own handler ran)
+function Tweaks.PlateChanged(unit)
+    local db = GetDb()
+    if not db or Tweaks:GetNameplateAddon() then return end
+    if db.nameplateQuest and unit and questUnits[unit] then
+        local plate = C_NamePlate.GetNamePlateForUnit(unit)
+        local tag = plate and questTags[plate]
+        if tag then tag.fuiAnchor = nil end
+        UpdateQuestTag(unit)
+    end
+    if db.nameplateCombo and npComboRow then
+        npComboRow:Hide()
+        UpdateNameplateCombo()
+    end
 end
 
 --------------------------------------------------
@@ -2437,9 +2489,24 @@ ns.Dialogs["FLAREUI_RESTORE_LAYOUT"] = {
     button1 = L["Restore"],
     button2 = L["Not Now"],
     macro = function(data) return "/run C_EditMode.SetActiveLayout(" .. data.index .. ")\n/reload" end,
+    -- Restore: noted, so a restore that didn't stick (the /run blocked) isn't offered again
+    OnMacro = function(data)
+        ns.CharDB().layoutRestoreTried = { name = data.name, layoutType = data.layoutType }
+    end,
+    -- Not Now: the layout in use becomes this mode's, so the question isn't asked at every login
+    OnCancel = function() Tweaks.AdoptActiveLayout() end,
     hideOnEscape = true,
     padSecure = true,
 }
+
+function Tweaks.AdoptActiveLayout()
+    local layout = ActiveLayout()
+    if not (layout and layout.layoutName) then return end
+    fallbackLayout = nil
+    local charDB = ns.CharDB()
+    charDB.layoutByMode = charDB.layoutByMode or {}
+    charDB.layoutByMode[ModeKey()] = { name = layout.layoutName, layoutType = layout.layoutType }
+end
 
 local function InitLayoutPerMode()
     sessionMode = ModeKey()
@@ -2449,12 +2516,20 @@ local function InitLayoutPerMode()
     local function Restore()
         restored = true
         local index, layout = RememberedIndex()
+        -- the last Restore of this layout reloaded without switching: keep the layout in use
+        local charDB = ns.CharDB()
+        local tried = charDB.layoutRestoreTried
+        charDB.layoutRestoreTried = nil
+        if index and tried and tried.name == layout.layoutName and tried.layoutType == layout.layoutType then
+            Tweaks.AdoptActiveLayout()
+            index = nil
+        end
         if index then
             local active = ActiveLayout()
             fallbackLayout = active and { name = active.layoutName, layoutType = active.layoutType }
             local mode = ns.IsGamepadUI() and L["gamepad"] or L["keyboard and mouse"]
             ns.ShowDialog("FLAREUI_RESTORE_LAYOUT", mode .. " (|cffffff00" .. layout.layoutName .. "|r)",
-                { index = index, name = layout.layoutName, mode = mode })
+                { index = index, name = layout.layoutName, layoutType = layout.layoutType, mode = mode })
         else
             RememberLayout()
         end
@@ -2783,7 +2858,7 @@ local function MarkKnownItems()
         SetItemButtonDesaturated(button, false)
         knownMarked[button] = nil
     end
-    if not (db and db.merchantKnown) or not (MerchantFrame and MerchantFrame.selectedTab == 1) then return end
+    if not (db and db.merchantKnown and ns.BagModuleOn()) or not (MerchantFrame and MerchantFrame.selectedTab == 1) then return end
     local perPage = MERCHANT_ITEMS_PER_PAGE or 10
     for i = 1, perPage do
         local index = (MerchantFrame.page - 1) * perPage + i
@@ -2929,7 +3004,7 @@ function Bulk.Init()
     if not MerchantItemButton_OnModifiedClick then return end
     hooksecurefunc("MerchantItemButton_OnModifiedClick", function(button)
         local db = GetDb()
-        if not (db and db.bulkBuy) or ns.IsGamepadUI() then return end
+        if not (db and db.bulkBuy and ns.BagModuleOn()) or ns.IsGamepadUI() then return end
         if MerchantFrame.selectedTab ~= 1 or not IsModifiedClick("SPLITSTACK") then return end
         local split = _G.StackSplitFrame
         if not split then return end
@@ -2979,7 +3054,7 @@ do
 
     function Wide.On()
         local db = GetDb()
-        return db and db.enabled ~= false and db.merchantWide and not ns.IsGamepadUI() or false
+        return db and db.enabled ~= false and db.merchantWide and ns.BagModuleOn() and not ns.IsGamepadUI() or false
     end
 
     local rightBorder
@@ -3329,7 +3404,7 @@ function Tweaks:Refresh()
     -- Blizzard's merchant update above shows the button again when Sell Junk goes off
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
-        if db and db.sellJunk then MerchantSellAllJunkButton:Hide() end
+        if db and db.sellJunk and ns.BagModuleOn() then MerchantSellAllJunkButton:Hide() end
     end
 end
 

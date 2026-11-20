@@ -44,7 +44,8 @@ local REACTION_COLORS = {
     [8] = { 0.35, 0.65, 0.38 },   -- exalted
 }
 local DEFAULT_BORDER_COLOR = { 0.80, 0.60, 0.34 }   -- #CC9957
-local BACKGROUND = { 0.05, 0.05, 0.06, 0.9 }
+-- the palette's warm ground (was a cool 0.05, 0.05, 0.06: a blue cast under the bronze border)
+local BACKGROUND = { ns.PALETTE.ground[1], ns.PALETTE.ground[2], ns.PALETTE.ground[3], 0.9 }
 local MUTE = 0.85                                   -- class / quality colour multiplier
 
 -- tooltips that follow the main one's scale and colours
@@ -179,11 +180,11 @@ local function ApplyScaleToAll()
     end
 end
 
--- FlareUI's look for the unit health bar: the FlareUI Forever texture in a thin FlareUI
+-- FlareUI's look for the unit health bar: the FlareUI Dark texture in a thin FlareUI
 -- border, on a dark back. Used on FlareUI's own bars only (the overlay below, the settings sample).
 function TIP.StyleHealthBar(bar)
     local LSM = LibStub("LibSharedMedia-3.0", true)
-    local tex = LSM and LSM:Fetch("statusbar", "FlareUI Forever", true)
+    local tex = LSM and LSM:Fetch("statusbar", "FlareUI Dark", true)
     if tex then bar:SetStatusBarTexture(tex) end
     if bar.fuiBack then return end
     bar.fuiBack = bar:CreateTexture(nil, "BACKGROUND")

@@ -104,6 +104,8 @@ local ctx = {
     ringKind = "boss",   -- the portrait ring in the ring styles (PartyFrames.lua RingKind)
     classIcon = true,    -- the Elite & Rare skull in Addon Style (PartyFrames.lua PF.UpdateClassIcon)
     fontKey = "boss",    -- the boss frames' fonts (PartyFrames.lua PF.FontKey)
+    -- the unit frames' Left / Middle / Right text slots (11-20, PartyFrames.lua PF.SlotOn)
+    barText = true, TextDb = function() return GetDb() end, textUnit = "boss",
 }
 -- for the settings previews' sample tiles
 BF.PreviewCtx, BF.PreviewSamples = ctx, SAMPLES
@@ -354,6 +356,12 @@ local function BuildSettings()
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 1, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
           hidden = onPlate },
+        -- Portrait Scale (11-20, FlareUI Style, as on the unit frames): the ring in proportion, apart from the height
+        { name = L["Portrait Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 150, valueStep = 5,
+          formatter = function(value) return value end,
+          get = function() return get("portraitScale")() or 100 end, set = set("portraitScale"),
+          hidden = function() return not (ns.UFRing and ns.UFRing.Style() == "flareui") end,
+          desc = L["The portrait ring in percent of its usual size. It keeps its shape, and the frame keeps its height."] },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
           hidden = onPlate },
@@ -365,11 +373,22 @@ local function BuildSettings()
                 db.platePower = value
                 Refresh()
             end, onPlate),
-        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
-        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "value", values = K.POWER_TEXT_MODES,
-          get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
-        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName") },
+        -- the unit frames' Left / Middle / Right text slots (11-20; an old choice converts once, BarText.lua)
+        ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "boss", db = GetDb, changed = Refresh,
+            style = function() return onPlate() and "plate" or "plain" end }),
+        ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "boss", db = GetDb, changed = Refresh,
+            style = function() return onPlate() and "plate" or "plain" end }),
+        -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
+        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
+          hidden = function() return not onPlate() end },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
+        K.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
+        -- Level Disc Size (11-20, per frame): the ring styles' level disc, with Show Level on
+        { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+          formatter = function(value) return value end,   -- plain: "100%" clips the value box
+          get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
+          set = function(layoutName, value) set("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
+          hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") or not (get("showLevel")() ~= false) end },
         -- Flip Portrait, as on target and focus: on, the portrait on the right (default);
         -- off, on the left (db.portraitRight); the ring styles only, as there
         { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = true,
@@ -427,12 +446,23 @@ local function BuildSettings()
           set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
         { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = get("castTexture"), set = set("castTexture"), hidden = noCast, },
-        { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = get("castBorderTexture"), set = set("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
-        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 30, valueStep = 1,
+        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 14, minValue = 8, maxValue = 40, valueStep = 1,
           get = get("castHeight"), set = set("castHeight"), hidden = noCast },
+        { name = L["Position"], canon = "Cast Bar Position", search = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = "BOTTOM",
+          values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
+          get = function() return get("castbarPosition")() or "BOTTOM" end, set = set("castbarPosition"), hidden = noCast },
+        (function()
+            -- the cast bar's own Background (11-20, as on the unit frames); unset, the frame's
+            local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
+                function() local v = get("castBgOpacity")(); if v == nil then v = get("bgOpacity")() end; if v == nil then return K.BAR_BG_OPACITY end; return v end,
+                set("castBgOpacity"))
+            item.canon, item.search, item.hidden = "Cast Bar Background", L["Cast Bar Background"], noCast
+            return item
+        end)(),
         { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return get("castIcon")() ~= false end,
           set = function(layoutName, value) set("castIcon")(layoutName, value and true or false) end,
@@ -469,9 +499,9 @@ local function BuildSettings()
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
           get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss. With Only My Debuffs, just yours."] },
         K.HideBuffsSetting("OFF", function() return get("hideBuffs")() or "OFF" end, set("hideBuffs")),
-        { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+        { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 8, maxValue = 48, valueStep = 1,
           get = function() return ns.AuraSize(GetDb(), false, D.auraSize) end, set = set("buffSize") },
-        { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 10, maxValue = 40, valueStep = 1,
+        { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 8, maxValue = 48, valueStep = 1,
           get = function() return ns.AuraSize(GetDb(), true, D.auraSize) end, set = set("debuffSize") },
         PF.AmountSetting(get, set, false),
         PF.AmountSetting(get, set, true),
@@ -484,6 +514,18 @@ local function BuildSettings()
         { name = L["Elite & Rare"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return get("classIcon")() ~= false end, set = set("classIcon"),
           hidden = RingStyle },
+        -- a "??" boss (10+ levels higher): the skull on the level disc, as on the target frame (ring styles)
+        { name = L["High Level Skull"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function() local db = GetDb(); local s = db and db.icons and db.icons.highSkull; return not (s and s.shown == false) end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              db.icons = db.icons or {}
+              db.icons.highSkull = db.icons.highSkull or {}
+              db.icons.highSkull.shown = value and true or false
+              Refresh()
+          end,
+          hidden = function() return not RingStyle() end },
         { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
     return settings

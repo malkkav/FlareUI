@@ -315,8 +315,8 @@ local function BuildPicker()
     f:EnableMouse(true)
     f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
                     edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    f:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
-    f:SetBackdropBorderColor(0.6, 0.5, 0.3, 1)
+    f:SetBackdropColor(0.05, 0.04, 0.03, 0.95)
+    f:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
     tinsert(UISpecialFrames, "FlareUI_ImportPicker")
 
     f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")

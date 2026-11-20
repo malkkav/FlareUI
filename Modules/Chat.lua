@@ -109,7 +109,8 @@ end
 
 -- The border picked in the options, or the default when LibSharedMedia does not know it
 local function GetBorderFile(db)
-    local name = db and db.borderTexture
+    -- Frame Style FlareUI: FlareUI Thick, as the quest tracker's (its Border choice hides)
+    local name = db and (db.frameStyle == "flareui" and "FlareUI Thick" or db.borderTexture)
     if name == "None" then return nil end   -- Frame Border: None
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
     return LSM:Fetch("border", name)
@@ -291,7 +292,6 @@ local function UpdateCopyButton(chatFrame, db)
             icon:SetDesaturated(false)
             icon:SetVertexColor(1, 1, 1)
         end)
-        btn:SetScript("OnClick", function() Chat:ShowCopyChat(chatFrame) end)
         chatFrame.FlareUI_CopyButton = btn
     end
     btn:SetFrameLevel((chatFrame:GetFrameLevel() or 0) + 3)
@@ -1867,8 +1867,13 @@ end
 function Chat:SetTabScroll(value)
     Chat.tabScroll = math_max(0, value or 0)
     for _, bar in ipairs(DockedTabBars()) do
-        local max = bar:GetHorizontalScrollRange() or 0
-        bar:SetHorizontalScroll(math_min(Chat.tabScroll, math_max(0, max)))
+        -- (the range can be secret while addon restrictions are on: then only back to the start)
+        local max = bar:GetHorizontalScrollRange()
+        if canaccessvalue(max) then
+            bar:SetHorizontalScroll(math_min(Chat.tabScroll, math_max(0, max or 0)))
+        elseif Chat.tabScroll == 0 then
+            bar:SetHorizontalScroll(0)
+        end
     end
 end
 
@@ -1881,9 +1886,11 @@ function Chat:ScrollTabIntoView(chatFrame)
     for _, btn in ipairs(bar.buttons or {}) do
         if btn.chatFrame == chatFrame and btn:IsShown() then
             local left, right, barLeft = btn:GetLeft(), btn:GetRight(), bar:GetLeft()
+            if not (canaccessvalue(left) and canaccessvalue(right) and canaccessvalue(barLeft)) then return end
             if not (left and right and barLeft) then return end
             local scroll = bar:GetHorizontalScroll()
             local width = bar:GetWidth()
+            if not (canaccessvalue(scroll) and canaccessvalue(width)) then return end
             local tabLeft, tabRight = left - barLeft + scroll, right - barLeft + scroll
             if tabRight > scroll + width then
                 Chat:SetTabScroll(tabRight - width + 10)
@@ -1915,6 +1922,7 @@ function Chat:CreateCustomTabBar(chatFrame)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
         local cur = self:GetHorizontalScroll()
         local max = self:GetHorizontalScrollRange()
+        if not (canaccessvalue(cur) and canaccessvalue(max)) then return end   -- (hidden under restrictions)
         local step = 30
         local new = cur - (delta * step)
         if new < 0 then new = 0 end
@@ -2407,10 +2415,20 @@ local function HitPreClick(self)
     self:SetAttribute("type1", TabSwitchAllowed(btn) and "click" or nil)
 end
 
+-- Middle-click on a whisper tab closes it (11-20, Blizzard's own tabs do nothing on it). Out of a fight:
+-- the dock's windows can be protected in one
+function TabHit.CloseWhisper(btn)
+    local frame = btn and btn.chatFrame
+    if not (frame and frame.isTemporary) or InCombatLockdown() then return end
+    if _G.FCF_Close then _G.FCF_Close(frame) end
+end
+
 local function HitPostClick(self, button)
     local btn = self.tab
     if not (btn and btn:IsVisible()) then return end
-    if button == "RightButton" then
+    if button == "MiddleButton" then
+        TabHit.CloseWhisper(btn)
+    elseif button == "RightButton" then
         Chat:OpenContextMenu(btn, btn.chatFrame)
     elseif self:GetAttribute("type1") == "click" and TabSwitchAllowed(btn) then
         AfterTabSwitch(btn)
@@ -2427,7 +2445,7 @@ local function HitFor(scrollFrame, index)
     local hit = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
     hit:SetFrameStrata(scrollFrame:GetFrameStrata())
     hit:SetFrameLevel(scrollFrame:GetFrameLevel() + 10)
-    hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    hit:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     hit:RegisterForDrag("LeftButton")
     hit:SetAttribute("useOnKeyDown", false)
     hit:SetScript("PreClick", HitPreClick)
@@ -2590,14 +2608,16 @@ function Chat:UpdateCustomTabs(chatFrame, db)
                 btn.Text = btn:CreateFontString(nil, "OVERLAY")
                 btn.Text:SetPoint("CENTER", 0, 0)
 
-                btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                btn:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
                 btn:RegisterForDrag("LeftButton")
                 btn.scrollFrame = scrollFrame
                 btn:SetScript("OnDragStart", OnTabDragStart)
                 btn:SetScript("OnDragStop", OnTabDragStop)
                 btn:SetScript("OnClick", function(self, button)
                     if not self.realTab or self.justDragged then return end
-                    if button == "RightButton" then
+                    if button == "MiddleButton" then
+                        TabHit.CloseWhisper(self)
+                    elseif button == "RightButton" then
                         Chat:OpenContextMenu(self, self.chatFrame)
                     -- a docked tab is clicked through its secure box (SECURE TAB CLICKS); this runs
                     -- only for a tab made in a fight, before its box exists. No switch on a popped
@@ -3306,6 +3326,82 @@ function Chat.WindowBackdrop(skin, db)
     skin:SetBackdropColor(1, 1, 1, db.opacity or 1)
     local border = ns.BORDER_COLOR
     skin:SetBackdropBorderColor(border.r, border.g, border.b, border.a)
+    Chat.ApplyFrameStyleArt(skin, db)
+end
+
+-- Frame Style (11-20, Malkkav; chat.frameStyle, Modern by default): FlareUI takes the quest tracker's
+-- FlareUI look: Blizzard's tracker title strip behind the tab row, its bottom line with the knobs along
+-- the bottom border, FlareUI Thick, and no line under the tabs. The strips are the tracker's own
+-- (ObjectiveTracker.lua Build.PlaceStrip), on two bands of the skin.
+-- TOP 3.75 and FOOT_Y 2.5: the knobs on the Thick border's curve (Malkkav 11-20, measured in game);
+-- the strips skip pixel snapping, though the game still draws whole pixels (steps under ~0.5 do not show)
+Chat.FRAME_ART = { INSET = 8, TOP = 3.75, FOOT_Y = 2.5 }   -- the bottom line at 2.5 from the frame's bottom edge, as approved 11-20 (its own number, not the tracker's)
+-- (also the meters' skins, DamageMeter.PaintSkin; off: none whatever the style, a meter inside the chat)
+function Chat.ApplyFrameStyleArt(skin, db, off)
+    local OT = ns.ObjectiveTracker
+    local B, TC = OT and OT.Build, OT and OT.C
+    if not (B and TC and B.PlaceStrip) then return end
+    local A = Chat.FRAME_ART
+    if not skin.FlareUI_Band then
+        local band = CreateFrame("Frame", nil, skin)
+        band:SetPoint("TOPLEFT", skin, "TOPLEFT", A.INSET, -A.TOP)
+        band:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -A.INSET, -A.TOP)
+        band:SetHeight(HEADER_HEIGHT)
+        local foot = CreateFrame("Frame", nil, skin)
+        foot:SetPoint("BOTTOMLEFT", skin, "BOTTOMLEFT", A.INSET, A.FOOT_Y)
+        foot:SetPoint("BOTTOMRIGHT", skin, "BOTTOMRIGHT", -A.INSET, A.FOOT_Y)
+        foot:SetHeight(1)
+        skin.FlareUI_Band, skin.FlareUI_Foot = band, foot
+    end
+    local flare = db and db.frameStyle == "flareui" and not off
+    if flare then
+        local reach = B.ArtReach(TC.ART_TITLE)
+        local leftOut = reach - TC.ART_KNOB_IN + TC.ART_TITLE_LEFT
+        local rightOut = reach + TC.ART_TITLE_RIGHT - TC.ART_KNOB_IN - TC.ART_TITLE_LEFT
+        B.PlaceStrip(skin.FlareUI_Band, TC.ART_TITLE, leftOut, rightOut)
+        B.PlaceStrip(skin.FlareUI_Foot, TC.ART_TITLE, leftOut, rightOut, TC.ART_FOOT_BAND)
+        for _, owner in ipairs({ skin.FlareUI_Band, skin.FlareUI_Foot }) do
+            for _, tex in pairs(owner.ftStrip or {}) do
+                tex:SetSnapToPixelGrid(false)
+                tex:SetTexelSnappingBias(0)
+            end
+        end
+    else
+        B.HideStrip(skin.FlareUI_Band)
+        B.HideStrip(skin.FlareUI_Foot)
+    end
+    if skin.Separator and not off then skin.Separator:SetShown(not flare) end
+end
+
+-- Details! in a chat tab (its "Tab Embed"): it sizes its windows from the window's Background, which
+-- FlareUI hides but which still reaches past FlareUI's panel, and in two-window mode only once, 5 s
+-- after login. With Details loaded, the (hidden) Background is the panel's inside, and Details fits
+-- its windows again whenever the window changes size. (valleyheart's report 11-19)
+function Chat.FitDetailsEmbed(chatFrame)
+    local details = _G.Details
+    if not (type(details) == "table" and type(details.chat_embed) == "table") then return end
+    local name = chatFrame and chatFrame:GetName()
+    local bg = name and _G[name .. "Background"]
+    if bg and bg.ClearAllPoints then
+        local pad = TEXT_PADDING - BORDER_INSET
+        bg:ClearAllPoints()
+        bg:SetPoint("TOPLEFT", chatFrame, "TOPLEFT", -pad, pad)
+        bg:SetPoint("BOTTOMRIGHT", chatFrame, "BOTTOMRIGHT", pad, -pad)
+    end
+    if chatFrame.FlareUI_DetailsHooked then return end
+    chatFrame.FlareUI_DetailsHooked = true
+    local pending = false
+    chatFrame:HookScript("OnSizeChanged", function(self)
+        if pending then return end
+        pending = true
+        C_Timer.After(0.2, function()
+            pending = false
+            local embed = details.chat_tab_embed
+            if InCombatLockdown() or not (type(embed) == "table" and embed.enabled)
+                or details.chat_tab_embed_onframe ~= self or details.chat_embed.startup then return end
+            pcall(details.chat_embed.DoEmbed, details.chat_embed)
+        end)
+    end)
 end
 
 local function CreateOrGetSkinFrame(chatFrame)
@@ -3407,6 +3503,7 @@ function Chat:StyleChatFrame(chatFrame, db)
 
     local skin = CreateOrGetSkinFrame(chatFrame)
     Chat.WindowBackdrop(skin, db)
+    Chat.FitDetailsEmbed(chatFrame)
 
     if not chatFrame.FlareUI_FontHooked then
         chatFrame.FlareUI_FontHooked = true
@@ -3978,7 +4075,25 @@ function Chat:ShouldLoad()
     return not other
 end
 
+-- Whisper Sound (Tweaks): a sound as a whisper comes in, the Buff Reminders' choices (Bill's idea 11-18)
+Chat.WHISPER_SOUNDS = { raidwarning = "RAID_WARNING", alarm = "ALARM_CLOCK_WARNING_3", whisper = "TELL_MESSAGE" }
+function Chat.PlayWhisperSound(always)
+    local db = GetDb()
+    local kit = db and Chat.WHISPER_SOUNDS[db.whisperSound or "off"]
+    local id = kit and SOUNDKIT and SOUNDKIT[kit]
+    if not id then return end
+    -- one sound for a burst of whispers
+    local now = GetTime()
+    if not always and Chat.lastWhisperSound and now - Chat.lastWhisperSound < 1 then return end
+    Chat.lastWhisperSound = now
+    PlaySound(id, "Master")
+end
+
 function Chat:Init()
+    local whispers = CreateFrame("Frame")
+    whispers:RegisterEvent("CHAT_MSG_WHISPER")
+    whispers:RegisterEvent("CHAT_MSG_BN_WHISPER")
+    whispers:SetScript("OnEvent", function() Chat.PlayWhisperSound() end)
     Chat:ApplyGamepadChatStyle()
     SetupGamepadTabHints()
     -- Blizzard's own fading is off per frame (StyleChatFrame); never blank the FCF_Fade* globals
@@ -4099,7 +4214,8 @@ function Chat:Init()
             local dock = _G.GeneralDockManager
             local selectedFrame = dock and FCFDock_GetSelectedWindow(dock)
             if selectedFrame and not selectedFrame:IsForbidden() then
-                selectedFrame:Show()
+                -- (ChatFrame1 is protected in a fight: Blizzard shows the selected window itself then)
+                if not (InCombatLockdown() and selectedFrame:IsProtected()) then selectedFrame:Show() end
                 if selectedFrame.isTemporary and not selectedFrame.FlareUI_Skin then
                     Chat:StyleChatFrame(selectedFrame, db)
                     Chat:StyleEditBox(selectedFrame, db)
@@ -4659,7 +4775,7 @@ function Chat.DrawSample(f)
     end
     local iconSize = Lines.IconSize(f.Lines[1])
     local preview = ns.SettingsPreview and ns.SettingsPreview.activeSpec
-    local specs = Chat.SampleLines(preview and preview.key == "ch.linkIcons")
+    local specs = Chat.SampleLines(preview and preview.key == "ch.icons")
     local used, prev = up, nil
     for i = #specs, 1, -1 do
         local fs, spec = f.Lines[i], specs[i]

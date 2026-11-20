@@ -251,6 +251,17 @@ TT.SNIPPET = [[
     if unit then target:SetAttribute("unit", unit .. "target") else target:SetAttribute("unit", nil) end
 ]]
 
+-- Target Frame Width / Height (11-20, as Party Targets): unset, the tank's width, and its height to
+-- the right or TT.HEIGHT below
+function TT.Size(w, hh)
+    local db = GetDb()
+    local mt = db and db.mainTanks
+    local place = TT.Place()
+    local width = mt and tonumber(mt.targetWidth) or w
+    local height = mt and tonumber(mt.targetHeight) or (place == "RIGHT" and hh or TT.HEIGHT)
+    return width, height
+end
+
 function TT.Place()
     local db = GetDb()
     local v = db and db.mainTanks and db.mainTanks.tankTargets
@@ -310,25 +321,26 @@ function TT.PlaceSample(f, w, hh)
         s.Health:SetMinMaxValues(0, 1)
         s.Health:SetValue(0.7)
         s.Health:SetStatusBarColor(0.8, 0.1, 0.1)
-        s.Name = s.Health:CreateFontString(nil, "OVERLAY")
+        s.Name = s.Health:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")   -- (a font from the start)
         s.Name:SetPoint("LEFT", 4, 0)
         s.Name:SetPoint("RIGHT", -4, 0)
         s.Name:SetJustifyH("LEFT")
         s.Name:SetWordWrap(false)
-        s.Name:SetText(L["Target"])
         f.SampleTarget = s
     end
     local db = GetDb()
     s.Health:SetStatusBarTexture(K.GetBarTexture(db and db.texture))
     K.ApplyFont(s.Name, K.Font("raid", "names"), -2)
+    -- the text after the font: a font string with no font yet errors on SetText ("Font not set"), and the
+    -- error stopped the raid preview's layout halfway, so Width and Height moved only the gaps (chiefdan)
+    s.Name:SetText(L["Target"])
     s:ClearAllPoints()
     if place == "RIGHT" then
         s:SetPoint("TOPLEFT", f, "TOPRIGHT", TT.GAP, 0)
-        s:SetSize(w, hh)
     else
         s:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -TT.GAP)
-        s:SetSize(w, TT.HEIGHT)
     end
+    s:SetSize(TT.Size(w, hh))
     s:Show()
 end
 
@@ -343,11 +355,10 @@ function TT.Layout()
         t:ClearAllPoints()
         if place == "RIGHT" then
             t:SetPoint("TOPLEFT", f, "TOPRIGHT", TT.GAP, 0)
-            t:SetSize(w, hh)
         else
             t:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -TT.GAP)
-            t:SetSize(w, TT.HEIGHT)
         end
+        t:SetSize(TT.Size(w, hh))
         t.Health:SetStatusBarTexture(tex)
         K.ApplyFont(t.Name, K.Font("raid", "names"), -2)
         local unit = f:GetAttribute("unit")
@@ -587,7 +598,7 @@ local function LayoutTanks()
     local w, hh = TankSize()
     local _, _, gap = Gaps(db)
     -- Tank Targets below the frames: the room for them between the tanks
-    if TT.Place() == "BOTTOM" then gap = gap + TT.HEIGHT + TT.GAP end
+    if TT.Place() == "BOTTOM" then gap = gap + select(2, TT.Size(0, 0)) + TT.GAP end
     local h = headers.tanks
     -- (hidden first in Edit Mode, as the groups' headers)
     if IsEditing() then h:Hide() end
@@ -699,7 +710,7 @@ local function PlacePreview()
     local tw, th = TankSize()
     local _, _, tgap = Gaps(db)
     -- Tank Targets below the frames take room between them, as live
-    if TT.Place() == "BOTTOM" then tgap = tgap + TT.HEIGHT + TT.GAP end
+    if TT.Place() == "BOTTOM" then tgap = tgap + select(2, TT.Size(0, 0)) + TT.GAP end
     local tanksUp = Rows() and Grow() == "UP"
     for i, f in ipairs(tankPreview) do
         f:ClearAllPoints()
@@ -826,7 +837,9 @@ local function Refresh()
         for _, list in ipairs({ previewTiles, tankPreview }) do
             for _, f in ipairs(list) do
                 if f:IsShown() then
-                    pcall(Tile.Layout, f)
+                    -- logged (/fui errors): a failed layout leaves the samples at their old size
+                    local ok, err = pcall(Tile.Layout, f)
+                    if not ok then ns.LogError("Raid preview layout", err) end
                     Tile.UpdateAll(f)
                 end
             end
@@ -888,7 +901,7 @@ local function AuraItems(get, set, d, view)
         { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = true,
           get = get("onlyMyBuffs", true), set = set("onlyMyBuffs"),
           desc = L["Only the buffs you cast (your heals over time, your blessings). Off: everyone's buffs."] },
-        { name = L["Dispellable Debuffs Only"], kind = LEM.SettingType.Checkbox, default = false,
+        { name = L["Only Dispellable Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("dispellableOnly", false), set = set("dispellableOnly"),
           desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
     }
@@ -937,7 +950,7 @@ local function BuildSettings()
           desc = L["Which way the raid grows as groups join. Rows grow down or up, columns right or left. The main tank frames follow rows."],
           get = get("grow", "CENTER"), set = set("grow") },
         -- ("Group Order": "Sort By" is the aura order everywhere else; found by "Sort By" too)
-        { name = L["Group Order"], search = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
+        { name = L["Sort By"], search = L["Group Order"], kind = LEM.SettingType.Dropdown, default = "GROUP",
           values = { { text = L["Group"], value = "GROUP", isRadio = true }, { text = L["Role"], value = "ROLE", isRadio = true },
                      { text = L["Class"], value = "CLASS", isRadio = true } },
           desc = L["Group keeps each raid group together. Role and Class fill rows of five, tanks or classes first."],
@@ -969,16 +982,16 @@ local function BuildSettings()
               Refresh()
           end,
           desc = L["The raid's main tanks in a small frame of their own (set by the raid leader)."] },
-        -- as the party frames' Hide Player Frame in a Party
-        { name = L["Hide Player Frame in a Raid"], kind = LEM.SettingType.Checkbox, default = false,
-          get = get("hidePlayerInRaid", false),
+        -- as the party frames' Show My Frame in a Party (saved the other way round: hidePlayerInRaid)
+        { name = L["Show My Frame in a Raid"], kind = LEM.SettingType.Checkbox, default = true,
+          get = function(...) return not get("hidePlayerInRaid", false)(...) end,
           set = function(_, value)
               local db = GetDb()
               if not db then return end
-              db.hidePlayerInRaid = value
+              db.hidePlayerInRaid = not value
               if ns.UnitFrames.RefreshPartyHide then ns.UnitFrames:RefreshPartyHide() end
           end,
-          desc = L["Your player and pet frames hide while you're in a raid, and come back solo and in a party."] },
+          desc = L["Your player and pet frames stay shown while you're in a raid. Off: they hide in a raid and come back solo and in a party."] },
     })
 
     -- the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
@@ -994,7 +1007,8 @@ local function BuildSettings()
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "none", values = K.POWER_TEXT_MODES,
           get = get("powerText", "none"), set = set("powerText") },
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName", true)() ~= false end, set = set("showName") },
-        { name = L["Power Bar for Mana Users Only"], kind = LEM.SettingType.Checkbox, default = false,
+        ns.UnitFrames.Kit.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
+        { name = L["Only Mana Power Bars"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("powerManaOnly", false), set = set("powerManaOnly"),
           desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."] },
         -- (in Frame: it changes how the frame behaves, not how it looks; main tanks follow it)
@@ -1086,10 +1100,21 @@ local function BuildTankSettings()
           desc = L["The gap between the bars. 0 makes them touch."] },
         { name = L["Tank Targets"], kind = LEM.SettingType.Dropdown, default = "OFF",
           values = { { text = L["Off"], value = "OFF", isRadio = true },
-                     { text = L["Bottom of the Frame"], value = "BOTTOM", isRadio = true },
+                     { text = L["Below the Frame"], value = "BOTTOM", isRadio = true },
                      { text = L["Right of the Frame"], value = "RIGHT", isRadio = true } },
           get = get("tankTargets", "OFF"), set = set("tankTargets"),
           desc = L["What each main tank is targeting, in a small frame below or right of theirs."] },
+        -- (11-20, as Party Targets) 0 = follow the tank's frame
+        { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 240, valueStep = 1,
+          formatter = function(value) return value == 0 and L["Auto"] or value end,
+          get = function() return get("targetWidth", 0)() or 0 end,
+          set = function(layoutName, value) set("targetWidth")(layoutName, value ~= 0 and value or nil) end,
+          hidden = function() return TT.Place() == "OFF" end },
+        { name = L["Target Frame Height"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 60, valueStep = 1,
+          formatter = function(value) return value == 0 and L["Auto"] or value end,
+          get = function() return get("targetHeight", 0)() or 0 end,
+          set = function(layoutName, value) set("targetHeight")(layoutName, value ~= 0 and value or nil) end,
+          hidden = function() return TT.Place() == "OFF" end },
     })
     Section("Size", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = 182, minValue = 40, maxValue = 240, valueStep = 1, get = get("w", 182), set = set("w") },
@@ -1192,10 +1217,13 @@ end
 -- tiles never interleave. Children keep the strata they were created with, hence the recursion.
 local GROUP_LAYERS = { FlareUI_Party = "MEDIUM", FlareUI_Raid = "LOW", FlareUI_RaidTanks = "LOW" }
 -- (frames and their siblings as varargs: no table per frame over thousands of tile parts)
+-- An aura container's buttons are locked while auras are secret (addon restrictions, instances): they
+-- are skipped, and keep the strata of the container they live in.
 local function SetLayer(strata, frame, ...)
     if not frame then return end
-    frame:SetFrameStrata(strata)
-    SetLayer(strata, frame:GetChildren())
+    if not frame:IsForbidden() and pcall(frame.SetFrameStrata, frame, strata) then
+        SetLayer(strata, frame:GetChildren())
+    end
     return SetLayer(strata, ...)
 end
 local function StackGroupFrames()

@@ -18,11 +18,15 @@ local MEDIA_PATH = "Interface/AddOns/" .. ADDON_NAME .. "/Media/"
 -- 2. CUSTOM ASSETS
 --------------------------------------------------
 local ASSETS = {
-    -- Forever: Blizzard's Forever health bar art, greyed so the bar colours tint it. Forever (Light):
-    -- the same art 1.25x brighter, as bright as Flat on average.
+    -- Dark: Blizzard's Forever health bar art, greyed so the bar colours tint it. Light: the same art
+    -- 1.25x brighter, as bright as Flat on average.
     statusbar = {
         ["FlareUI Flat"]    = "Bars/FlareUI-Flat.tga",
         ["FlareUI Striped"] = "Bars/FlareUI-Striped.tga",
+        ["FlareUI Dark"]    = "Bars/FlareUI-Forever.tga",
+        ["FlareUI Light"]   = "Bars/FlareUI-Forever-Bright.tga",
+        -- (their old names, 11-19: still registered so other addons and old saves find them; never
+        -- listed, as every "FlareUI " name is FlareUI's own. Saved values are renamed once: Core.lua)
         ["FlareUI Forever"] = "Bars/FlareUI-Forever.tga",
         ["FlareUI Forever (Light)"] = "Bars/FlareUI-Forever-Bright.tga",
     },

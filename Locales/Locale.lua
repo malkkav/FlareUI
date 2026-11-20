@@ -21,6 +21,7 @@ local languages = {
     { "esES", "Español (España)" },
     { "esMX", "Español (Latinoamérica)" },
     { "frFR", "Français" },
+    { "huHU", "Magyar" },
     { "itIT", "Italiano" },
     { "koKR", "한국어" },
     { "nlNL", "Nederlands" },

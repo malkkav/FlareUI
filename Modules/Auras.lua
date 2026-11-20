@@ -37,10 +37,10 @@ local SQUARE_BORDER = MEDIA .. "IconBorder"
 local SQUARE_INSET  = 6 / 128     -- the icon starts this far in, under the bevel's inner line
 local SQUARE_MASK   = MEDIA .. "IconMask"   -- the icon clipped to the bevel's 45 degree corners
 -- bronze, lifted as the tint multiplies the grey art
-local SQUARE_TINT   = { 0.72, 0.56, 0.38 }
+local SQUARE_TINT   = { 0.80, 0.60, 0.34 }   -- palette bronze4 (11-20, Malkkav; was 0.72, 0.56, 0.38)
 local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
-local ROUND_TINT    = { 0.72, 0.56, 0.38 }
+local ROUND_TINT    = { 0.80, 0.60, 0.34 }   -- palette bronze4
 -- Border swipe outlines: a swipe takes a file, not an atlas
 local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 5 px wider inward than the border art
 local SWIPE_ROUND   = MEDIA .. "BorderRoundThick"
@@ -1007,19 +1007,6 @@ local WRAP_VALUES = {
     { text = L["Down"], value = "DOWN", isRadio = true },
     { text = L["Up"],   value = "UP",   isRadio = true },
 }
-local SWIPE_VALUES = {
-    { text = L["Off"], value = "none", isRadio = true },
-    { text = L["Over the Icon"], value = "icon", isRadio = true },
-    { text = L["Around the Border"], value = "border", isRadio = true },
-    { text = L["Both"], value = "both", isRadio = true },
-}
-local TIMER_VALUES = {
-    { text = L["Off"], value = "none", isRadio = true },
-    { text = L["Under the Icon"], value = "below", isRadio = true },
-    { text = L["Bottom of the Icon"], value = "bottom", isRadio = true },
-    { text = L["Middle of the Icon"], value = "middle", isRadio = true },
-}
-
 local function BuildSettings(kind)
     local defaults = ns.defaults and ns.defaults.profile.auras[kind] or {}
     local function get(key) return function() local k = KindDb(kind); return k and k[key] end end
@@ -1030,15 +1017,6 @@ local function BuildSettings(kind)
             k[key] = value
             -- (a Reset Settings redraws once, after its last setting: LEM:Defer)
             if not LEM:Defer(LayoutKind, kind) then LayoutKind(kind) end
-        end
-    end
-    local function shared(key, default) return function() local db = GetDb(); return db and db[key] or default end end
-    local function setShared(key)
-        return function(_, value)
-            local db = GetDb()
-            if not db then return end
-            db[key] = value
-            if not LEM:Defer(AU.Refresh, AU) then AU:Refresh() end
         end
     end
     -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua). Fonts are
@@ -1057,11 +1035,7 @@ local function BuildSettings(kind)
           get = get("grow"), set = set("grow") },
         { name = L["Wrap"], kind = LEM.SettingType.Dropdown, default = defaults.wrap or "DOWN", values = WRAP_VALUES,
           get = get("wrap"), set = set("wrap") },
-        -- the look both bars share (Settings > Buffs & Debuffs too): the samples follow at once
-        { name = L["Aura Swipe"], kind = LEM.SettingType.Dropdown, default = "both", values = SWIPE_VALUES,
-          get = shared("swipe", "both"), set = setShared("swipe") },
-        { name = L["Aura Timer"], kind = LEM.SettingType.Dropdown, default = "below", values = TIMER_VALUES,
-          get = shared("timer", "below"), set = setShared("timer") },
+        -- (Aura Swipe and Aura Timer: Settings > Buffs & Debuffs only, 11-20)
     })
     return settings
 end

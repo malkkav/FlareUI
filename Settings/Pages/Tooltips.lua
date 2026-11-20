@@ -19,16 +19,18 @@ end
 
 S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabled", tabs = { { key = "settings" }, { key = "tweaks" }, { key = "fonts" } } }
 
--- SETTINGS TAB: Look, then Mouseover (where each kind sits), then Visibility (when each
+-- SETTINGS TAB: Look, then Position (where each kind sits), then Visibility (when each
 -- kind shows). The Tweaks tab holds the content switches.
 
--- LOOK: Tooltip Corner first (which corner of the HUD Tooltip box the tooltip grows from, ApplyAnchor)
-S:Row{ key = "tt.corner", kind = "choice", path = "tooltips.corner", apply = Refresh,
-    choices = { "auto", "BOTTOMRIGHT", "BOTTOMLEFT", "TOPRIGHT", "TOPLEFT" } }
+-- LOOK first (11-19, Malkkav: above Position)
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
 S:Row{ key = "tt.opacity", kind = "range", path = "tooltips.opacity", choices = S:OpacityChoices(), apply = Refresh }
+-- POSITION: Tooltip Corner (which corner of the HUD Tooltip box the tooltip grows from, ApplyAnchor),
+-- registered after Look so its section comes second
+S:Row{ key = "tt.corner", kind = "choice", path = "tooltips.corner", apply = Refresh,
+    choices = { "auto", "BOTTOMRIGHT", "BOTTOMLEFT", "TOPRIGHT", "TOPLEFT" } }
 -- (Health Bar is content: on the Content tab; see Tweak below)
 -- Off, Below the tooltip or Inside it: over hideHealthBar + healthBarPlace
 S:Row{ key = "tt.healthBar", kind = "choice", apply = Refresh, tab = "tweaks", choices = { "off", "below", "inside" },
@@ -47,7 +49,7 @@ S:Row{ key = "tt.healthBar", kind = "choice", apply = Refresh, tab = "tweaks", c
 local KINDS = { "world", "frames", "bars", "auras", "groupAuras", "other" }
 local MOUSE_SPEC = { exclusive = { "all", "none" }, tokens = KINDS, empty = "none" }
 S:Row{ key = "tt.mouseover", kind = "dropdown", apply = Refresh, toggles = MOUSE_SPEC,
-    choices = { "all", "none", { divider = true }, "world", "frames", "bars", "auras", "groupAuras", "other" },
+    choices = { "none", "all", { divider = true }, "world", "frames", "bars", "auras", "groupAuras", "other" },
     resetValue = function() return "none" end,
     get = function()
         local TIP = ns.Tooltips
@@ -67,22 +69,22 @@ S:Row{ key = "tt.mouseover", kind = "dropdown", apply = Refresh, toggles = MOUSE
         TIP.SetMouseover(false)
         for _, kind in ipairs(KINDS) do if set[kind] then TIP.SetKindMouseover(kind, true) end end
     end }
--- how far from the pointer a mouseover tooltip sits, in pixels (TIP.CursorOffset); rank: under the switches
+-- how far from the pointer a mouseover tooltip sits, in pixels (TIP.CursorOffset)
 local OFFSETS = {}
 for i = -50, 50, 2 do OFFSETS[#OFFSETS + 1] = { i, tostring(i) } end
--- hidden while Mouseover is None: no tooltip sits at the pointer then
+-- greyed while Mouseover is None: no tooltip sits at the pointer then
 local function NoMouseover()
     local TIP = ns.Tooltips
     if not (TIP and TIP.Mouseover) then return true end
     for _, kind in ipairs(KINDS) do if TIP.Mouseover(kind) then return false end end
     return true
 end
-S:Row{ key = "tt.cursorX", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorX", choices = OFFSETS, apply = Refresh, hidden = NoMouseover }
-S:Row{ key = "tt.cursorY", kind = "range", half = true, rank = 3.5, path = "tooltips.cursorY", choices = OFFSETS, apply = Refresh, hidden = NoMouseover }
+S:Row{ key = "tt.cursorX", kind = "range", half = true, path = "tooltips.cursorX", choices = OFFSETS, apply = Refresh, disabled = NoMouseover }
+S:Row{ key = "tt.cursorY", kind = "range", half = true, path = "tooltips.cursorY", choices = OFFSETS, apply = Refresh, disabled = NoMouseover }
 
 -- VISIBILITY: when each kind of tooltip shows; never greyed: Shift shows a hidden tooltip.
 -- Two columns, the same order as the Mouseover switches.
-local SHOW = { "always", "combat", "never" }
+local SHOW = { "never", "always", "combat" }   -- (Never first: Off first, 11-20)
 local function Show(key, path, apply)
     local row = { key = key, kind = "choice", half = true, choices = SHOW, apply = apply or Refresh }
     if type(path) == "table" then row.get, row.set = path.get, path.set else row.path = path end

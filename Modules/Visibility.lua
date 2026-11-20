@@ -57,19 +57,21 @@ local ELEMENTS = {
     { key = "stance", frame = "StanceBar", system = "ActionBar", index = "StanceBar" },
     -- Blizzard's shaman Totem Bar: fade groups, and a Size row (ActionBars.lua)
     { key = "totem", frame = "MultiCastActionBarFrame", system = "TotemActionBar" },
-    -- The gryphons: on Forever each is its own Edit Mode system and ignores bar 1's alpha. By default
-    -- each follows bar 1 (Same as Action Bar 1, "bar1"); any other choice, or a fade group, detaches it.
+    -- The gryphons: on Forever each is its own Edit Mode system; their Visibility is their own (they
+    -- ignore bar 1's alpha, Refresh). Same as Action Bar 1 was removed 11-20 (Malkkav): a fade group with
+    -- bar 1 does the same; saved "bar1" choices were moved once (Visibility.MigrateCapsBar1).
     { key = "capLeft", cap = "LeftEndCap", system = "MainActionBarEndCap", index = "EndCapLeft",
-      indices = "EditModeMainActionBarEndCapSystemIndices", defaultShow = "bar1" },
+      indices = "EditModeMainActionBarEndCapSystemIndices" },
     { key = "capRight", cap = "RightEndCap", system = "MainActionBarEndCap", index = "EndCapRight",
-      indices = "EditModeMainActionBarEndCapSystemIndices", defaultShow = "bar1" },
+      indices = "EditModeMainActionBarEndCapSystemIndices" },
     { key = "bags", frame = "BagsBar", system = "Bags" },
     { key = "menu", frame = "MicroMenuContainer", system = "MicroMenu" },
     { key = "xp" },   -- FlareUI's XP bar, its own Edit Mode frame
     { key = "minimap", frame = "MinimapCluster", needsMinimap = true },   -- with the Minimap module
     -- FlareUI's own Edit Mode frames, each with its module
-    { key = "buffs", module = "auras" },
-    { key = "debuffs", module = "auras" },
+    -- (never: Visibility > Never hides them for good, SeanWcom's report 11-19)
+    { key = "buffs", module = "auras", never = true },
+    { key = "debuffs", module = "auras", never = true },
     { key = "quest", module = "objectivetracker" },
     -- The unit frames (UnitFrames.lua section 14). own: the fader keeps the value and sets it through
     -- apply (an alpha left by the health curve can't be read back); health: Missing Health, from that unit
@@ -172,9 +174,6 @@ local function ForEachEndCap(func, ...)
     if caps.RightEndCap then func(caps.RightEndCap, ...) end
 end
 
--- the gryphons on Same as Action Bar 1, rebuilt by Refresh: cap frame -> true
-local capsFollowBar1 = {}
-local function SetFollowingCapAlpha(cap, alpha) if capsFollowBar1[cap] then cap:SetAlpha(alpha) end end
 
 -- The game draws the minimap's player arrow, quest marks and other blips itself, at full strength
 -- whatever the alpha, and has no API for them: only an empty mask or hiding removes them. So the map goes once
@@ -281,7 +280,6 @@ local function ApplyElementAlpha(frame, key, alpha)
         frame:SetAlpha(alpha)
     end
     if frame.actionButtons then SetBarBling(frame, alpha) end
-    if key == "bar1" then ForEachEndCap(SetFollowingCapAlpha, alpha) end
     if key == "minimap" then SetMinimapDrawn(alpha) end
     -- the tracker's lone "+" and its quest item buttons sit on UIParent, outside its frame
     if key == "quest" and ns.ObjectiveTracker.SetFadeAlpha then ns.ObjectiveTracker:SetFadeAlpha(alpha) end
@@ -449,6 +447,31 @@ function Visibility:GetGroup(key)
 end
 
 -- an element in a group takes the group's Show choice
+-- Same as Action Bar 1 (the gryphons' old default) is gone: once per profile, a gryphon on it joins bar
+-- 1's fade group, or takes bar 1's own choices when bar 1 has none, so it keeps fading as it did
+function Visibility.MigrateCapsBar1(db)
+    if not db or db.capsBar1Moved then return end
+    db.capsBar1Moved = true
+    db.elements = db.elements or {}
+    local bar1 = db.elements.bar1
+    local bar1Group = bar1 and bar1.group or 0
+    for _, key in ipairs({ "capLeft", "capRight" }) do
+        local cfg = db.elements[key]
+        local inGroup = cfg and cfg.group and cfg.group > 0
+        if not inGroup and (not cfg or cfg.show == nil or cfg.show == "bar1") then
+            cfg = cfg or {}
+            db.elements[key] = cfg
+            if bar1Group > 0 then
+                cfg.group, cfg.show = bar1Group, "always"
+            else
+                cfg.group = 0
+                cfg.show = (bar1 and bar1.show ~= "bar1" and bar1.show) or "always"
+                if bar1 then cfg.fadeIn, cfg.fadeOut, cfg.minAlpha = bar1.fadeIn, bar1.fadeOut, bar1.minAlpha end
+            end
+        end
+    end
+end
+
 function Visibility:GetShow(key)
     local db, cfg = GetDb(), ElementConfig(key)
     local e = ELEMENT_BY_KEY[key]
@@ -535,8 +558,6 @@ function Visibility:SetGroup(key, group)
     group = group or 0
     if group == (cfg.group or 0) then return end
     local show, fadeIn, fadeOut, minAlpha = self:GetShow(key), self:GetFadeIn(key), self:GetFadeOut(key), self:GetMinAlpha(key)
-    -- a gryphon on Same as Action Bar 1 brings bar 1's own choice: a group can't follow bar 1
-    if show == "bar1" then show = self:GetShow("bar1") end
     -- (the threat window on Same as Meter brings the meter's; the meter's Never can't lead a group)
     if show == "meter" then show = self:GetShow("meter") end
     if show == "never" and (key == "meter" or key == "threat") then show = "always" end
@@ -713,7 +734,7 @@ end
 -- ("mouseover,combat"): any one of them shows the element (ns.Conditions). Mouseover is one of those
 -- conditions: nothing shows under the pointer unless it is ticked. Nothing ticked is Always.
 local Conditions = ns.Conditions
-local SHOW_SPEC = { exclusive = { "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = Conditions.BAR_LEGACY, empty = "always" }
+local SHOW_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = Conditions.BAR_LEGACY, empty = "always" }
 -- the player and pet frames also show while their unit is missing health (section 6b)
 local HEALTH_TOKENS = { unpack(Conditions.MOUSE_TOKENS) }
 HEALTH_TOKENS[#HEALTH_TOKENS + 1] = "health"
@@ -727,18 +748,18 @@ MANA_TOKENS[#MANA_TOKENS + 1] = "mana"
 local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always",
                     rivals = { health = "mana", mana = "health" } }
 -- a swing bar's Only When In Use clears the rest, as Always does
-local INUSE_SPEC = { exclusive = { "always", "inuse" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
--- a gryphon's Same as Action Bar 1 clears the rest too
-local CAP_SPEC = { exclusive = { "bar1", "always" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
+local INUSE_SPEC = { exclusive = { "always", "inuse", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
+-- the gryphons: as every frame (Same as Action Bar 1 removed 11-20)
+local CAP_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- Never (the totems) clears the rest too: out for good, outside Edit Mode
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- the chat's New Messages (right under Mouseover); the meter's Never and In an Instance; the threat
 -- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
-Visibility.CHAT_SPEC = { exclusive = { "always" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" },
+Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted" },
                          legacy = SHOW_SPEC.legacy, empty = "always" }
 Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
                           legacy = SHOW_SPEC.legacy, empty = "always" }
-Visibility.THREAT_SPEC = { exclusive = { "meter", "always" }, tokens = Visibility.METER_SPEC.tokens, legacy = SHOW_SPEC.legacy, empty = "always" }
+Visibility.THREAT_SPEC = { exclusive = { "meter", "always", "never" }, tokens = Visibility.METER_SPEC.tokens, legacy = SHOW_SPEC.legacy, empty = "always" }
 local function SpecOf(key)
     local e = ELEMENT_BY_KEY[key]
     if e and e.chat then return Visibility.CHAT_SPEC end
@@ -991,9 +1012,9 @@ local function BuildElementSettings(key)
                 if e and e.health and e.mana then values[#values + 1] = { isDivider = true } end
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
                 if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
-                if e and e.never then table_insert(values, 2, { text = L["Never"], value = "never", isRadio = true }) end
-                if e and e.cap then table_insert(values, 1, { text = L["Same as Action Bar 1"], value = "bar1", isRadio = true }) end
                 if e and e.threat then table_insert(values, 1, { text = L["Same as Meter"], value = "meter", isRadio = true }) end
+                -- Never on every Visibility (Malkkav 11-19: hide whatever you like), first (11-20: Off first); Edit Mode still shows it
+                if e then table_insert(values, 1, { text = L["Never"], value = "never", isRadio = true }) end
                 -- the chat's New Messages, right under Mouseover
                 if e and e.messages then
                     for i, v in ipairs(values) do
@@ -1003,7 +1024,7 @@ local function BuildElementSettings(key)
                 if e and e.inuse then
                     -- with the two that clear the rest, above the line
                     for i, v in ipairs(values) do
-                        if v.isDivider then table_insert(values, i, { text = L["Only When In Use"], value = "inuse", isRadio = true }) break end
+                        if v.isDivider then table_insert(values, i, { text = L["Only When in Use"], value = "inuse", isRadio = true }) break end
                     end
                 end
                 return values
@@ -1109,11 +1130,11 @@ function Visibility:UnitFrameSettings(unit)
     return kept
 end
 
--- for the player cast bar's Fading section (UnitFrames.lua BuildPlayerCastSettings): Visibility and
+-- for the player cast bar's Fading section (UnitFrames.lua BuildPlayerCastSettings): Visibility, the speeds and
 -- Faded Opacity, hidden with Cinematic (it fades the bar itself)
 function Visibility:PlayerCastSettings()
     local rows = BuildElementSettings("uf_playercastbar")
-    local kept = { rows[2], rows[5] }   -- Visibility, Faded Opacity
+    local kept = { rows[2], rows[3], rows[4], rows[5] }   -- Visibility, Show Speed, Hide Speed, Faded Opacity (speeds 11-20)
     for _, row in ipairs(kept) do
         local own = row.hidden
         row.hidden = function(...)
@@ -1198,6 +1219,16 @@ local function AddEditModeSettings()
                 -- whatever Show says: a line says so while it's set to anything but Always
                 if e.system == "ActionBar" then
                     local key = e.key
+                    -- a Fake CM bar follows the Fake CM page's Visibility: its own Fading rows hide
+                    for _, row in ipairs(rows) do
+                        local own = row.hidden
+                        row.hidden = function(...)
+                            local fcm = ns.db and ns.db.profile and ns.db.profile.fcm
+                            if fcm and fcm.bars and fcm.bars[key] and fcm.bars[key].enabled then return true end
+                            if type(own) == "function" then return own(...) end
+                            return own and true or false
+                        end
+                    end
                     table_insert(rows, 1, {
                         name = "|cffff9933" .. L["Bar Visible above also hides this bar"] .. "|r",
                         kind = LEM.SettingType.Expander, static = true, hideArrow = true,
@@ -1215,6 +1246,10 @@ local function AddEditModeSettings()
                 -- the totem bar: Blizzard gives it no Size, FlareUI does (above Fading)
                 if e.key == "totem" and ns.ActionBars and ns.ActionBars.TotemSizeSetting then
                     table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
+                end
+                -- the gryphons: a Size each (Blizzard gives them none)
+                if e.cap and ns.ActionBars and ns.ActionBars.CapSizeSetting then
+                    table_insert(rows, 1, ns.ActionBars.CapSizeSetting(e.key))
                 end
                 -- the bag buttons: sizes below Blizzard's 75%
                 if e.key == "bags" and ns.ActionBars and ns.ActionBars.BagBarSizeSetting then
@@ -1472,7 +1507,7 @@ function Visibility:Refresh()
     local watchMana = false
 
     local fcm = ns.db.profile.fcm
-    capsFollowBar1 = {}
+    Visibility.MigrateCapsBar1(db)
     for _, e in ipairs(ELEMENTS) do
         local key = e.key
         local frame = GetFrame(key)
@@ -1480,12 +1515,12 @@ function Visibility:Refresh()
         if e.threat and ElementOn(e) and ns.DamageMeter and ns.DamageMeter.AttachThreatWindow then
             ns.DamageMeter.AttachThreatWindow(self:GetShow(key) == "meter")
         end
-        if e.cap and frame and ElementOn(e) and self:GetShow(key) == "bar1" then
-            capsFollowBar1[frame] = true
-            local bar1 = GetFrame("bar1")
-            local alpha = bar1 and (bar1.FlareUI_FadeAlpha or bar1:GetAlpha())
-            frame:SetAlpha(type(alpha) == "number" and canaccessvalue(alpha) and alpha or 1)
-        elseif e.threat and self:GetShow(key) == "meter" then
+        -- the gryphons are children of bar 1 (MainActionBar.EndCaps) and took its alpha on every choice
+        -- (Kelvan 11-20): they ignore it and fade on their own choice
+        if e.cap and frame and frame.SetIgnoreParentAlpha and not frame:IsForbidden() then
+            pcall(frame.SetIgnoreParentAlpha, frame, ElementOn(e) and true or false)
+        end
+        if e.threat and self:GetShow(key) == "meter" then
             -- a child of the meter: the meter's own fade is its fade
             if frame then frame:SetAlpha(1) end
         elseif e.external then
@@ -1520,6 +1555,12 @@ function Visibility:Refresh()
                 local linkPet = key == "uf_pet" and self:PetLinked() and ElementOn(ELEMENT_BY_KEY.uf_player)
                 local settingsKey = linkPet and "uf_player" or key
                 if linkPet then show = self:GetShow("uf_player") end
+                -- a unit frame on Never takes no clicks either (out of a fight: its button is secure)
+                local button = e.unit and ns.UnitFrames and ns.UnitFrames.GetUnitButton and ns.UnitFrames:GetUnitButton(e.unit)
+                if button and button.EnableMouse and not InCombatLockdown() then
+                    local editingNow = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+                    pcall(button.EnableMouse, button, show ~= "never" or editingNow or false)
+                end
                 if show == "never" then
                     -- out for good; Edit Mode still shows it, to be found and set back
                     local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
