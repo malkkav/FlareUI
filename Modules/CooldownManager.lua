@@ -55,7 +55,26 @@ local function GetDb()
             auras.skinCDM = nil
         end
     end
+    -- the first Bar Colour (a plain colour) becomes the colour window's Custom palette
+    if db and db.barColor then
+        db.customColors = db.customColors or {}
+        db.customColors.bar = db.barColor
+        db.palette, db.barColor = "custom", nil
+    end
     return db
+end
+
+-- Bar Colour (Settings > Cooldown Manager > Pick Your Colours, the colour window's "cdm" kind):
+-- FlareUI's colours, or the player's own (palette "custom")
+CM.COLORS = { bar = { 1, 0.5, 0.25 } }
+function CM.Palette()
+    local db = GetDb()
+    return db and db.palette == "custom" and "custom" or "flareui"
+end
+function CM.Color(key)
+    local db = GetDb()
+    local own = CM.Palette() == "custom" and db.customColors and db.customColors[key]
+    return own or CM.COLORS[key]
 end
 
 local function Readable(v) return v ~= nil and not (issecretvalue and issecretvalue(v)) end
@@ -125,7 +144,7 @@ local function StyleBar(item)
     local p = Pieces(item)
     local texture = K.GetBarTexture(player and player.texture)
     bar:SetStatusBarTexture(texture)
-    local color = GetDb().barColor
+    local color = CM.Color("bar")
     bar:SetStatusBarColor(color[1], color[2], color[3])
     if bar.BarBG then bar.BarBG:SetAlpha(0) end
     if bar.Pip then bar.Pip:SetAlpha(0) end
@@ -161,6 +180,39 @@ local function StyleBar(item)
         AU.StyleIcon(icon, icon.Icon, Pieces(icon), false)
         SetFont(icon.Applications, db.stackFont)
     end
+end
+
+-- The colour window's sample (Settings/ColorPicker.lua, kind "cdm"): a Tracked Bar built as Blizzard's
+-- (an icon, a bar with its name and time) and skinned by StyleBar, so it shows the bar as it will look
+function CM.CreateSample(parent)
+    local f = CreateFrame("Frame", nil, parent)
+    f.fuiSample = true
+    f:SetSize(240, 20)
+    f.Icon = CreateFrame("Frame", nil, f)
+    f.Icon:SetSize(20, 20)
+    f.Icon:SetPoint("LEFT")
+    f.Icon.Icon = f.Icon:CreateTexture(nil, "ARTWORK")
+    f.Icon.Icon:SetAllPoints()
+    f.Icon.Icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude")
+    f.Icon.Applications = f.Icon:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    f.Icon.Applications:SetPoint("BOTTOMRIGHT")
+    f.Bar = CreateFrame("StatusBar", nil, f)
+    f.Bar:SetPoint("TOPLEFT", f.Icon, "TOPRIGHT", 6, 0)
+    f.Bar:SetPoint("BOTTOMRIGHT")
+    f.Bar:SetMinMaxValues(0, 1)
+    f.Bar:SetValue(0.6)
+    f.Bar.Name = f.Bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.Bar.Name:SetPoint("LEFT", 5, 0)
+    f.Bar.Name:SetText(L["Spell"])
+    f.Bar.Duration = f.Bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.Bar.Duration:SetPoint("RIGHT", -5, 0)
+    f.Bar.Duration:SetText("8")
+    return f
+end
+function CM.DrawSample(f)
+    Pieces(f).styled = nil   -- (styled anew each time: the colour may have changed)
+    StyleBar(f)
+    return f:GetWidth(), f:GetHeight()
 end
 
 -- An Essential, Utility or Tracked Buffs icon (one border for the rows together), as the action
@@ -230,10 +282,10 @@ function CM.ShapeSetting(key)
     return {
         name = L["Icon Shape"], kind = LEM.SettingType.Dropdown, default = "blizzard",
         values = function()
-            return { { text = L["Default"], value = "blizzard", isRadio = true },
+            return { { text = L["Square"], value = "blizzard", isRadio = true },
                      { text = L["Rectangle"], value = "rect", isRadio = true } }
         end,
-        desc = L["The shape of this bar's icons. Default is Blizzard's own square icon."],
+        desc = L["The shape of this bar's icons. Square is Blizzard's. Rectangle is a quarter less tall, the art cut to fit."],
         get = function()
             local db = GetDb()
             return db and db.shape and db.shape[key] or "blizzard"
@@ -251,7 +303,7 @@ end
 --------------------------------------------------
 -- 3. GROW FROM
 -- Blizzard keeps a slot for every tracked buff, so the Tracked Buffs and Tracked Bars show gaps. With
--- Grow From set, the frames showing now are packed from the chosen edge (or the middle) of the viewer,
+-- Growth set, the frames showing now are packed from the chosen edge (or the middle) of the viewer,
 -- in Blizzard's order, after each of Blizzard's layouts and whenever Blizzard shows or hides one. Only the
 -- frames' points change: the viewer and its Edit Mode box stay Blizzard's. Default leaves all of it
 -- alone; back on Default, each frame gets the point Blizzard gave it.
@@ -378,22 +430,23 @@ local function HookArrange(name, item)
     if item.UpdateShownState then hooksecurefunc(item, "UpdateShownState", ItemChanged) end
 end
 
--- The Grow From row of a viewer's Edit Mode dialog; key: buffs / bars
+-- The Growth row of a viewer's Edit Mode dialog (its Frame section); key: buffs / bars. Named as Buff
+-- Reminders' Growth: the way the row grows (START packs at the left or top, so it grows right or down)
 function CM.GrowSetting(key)
     local LEM = LibStub("FlareEditMode")
     local name = key == "buffs" and "BuffIconCooldownViewer" or "BuffBarCooldownViewer"
     return {
-        name = L["Grow From"], kind = LEM.SettingType.Dropdown, default = "blizzard",
+        name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "blizzard",
         values = function()
             local viewer = _G[name]
             local horizontal = key == "buffs" and not (viewer and viewer.isHorizontal == false)
-            local values = { { text = L["Default"], value = "blizzard", isRadio = true } }
-            if key == "buffs" then values[#values + 1] = { text = L["Centre"], value = "CENTER", isRadio = true } end
-            values[#values + 1] = { text = horizontal and L["Left"] or L["Top"], value = "START", isRadio = true }
-            values[#values + 1] = { text = horizontal and L["Right"] or L["Bottom"], value = "END", isRadio = true }
+            local values = { { text = L["Blizzard"], value = "blizzard", isRadio = true } }
+            values[#values + 1] = { text = horizontal and L["Right"] or L["Down"], value = "START", isRadio = true }
+            values[#values + 1] = { text = horizontal and L["Left"] or L["Up"], value = "END", isRadio = true }
+            if key == "buffs" then values[#values + 1] = { text = L["From the Middle"], value = "CENTER", isRadio = true } end
             return values
         end,
-        desc = L["Where the shown ones start, with no gaps for the hidden ones. Default keeps Blizzard's slots."],
+        desc = L["How the shown ones line up:\n* Blizzard: a fixed place for each, with gaps for the ones not showing\n* The others: packed together, growing that way"],
         get = function() return Grow(name) end,
         set = function(_, value)
             local db = GetDb()

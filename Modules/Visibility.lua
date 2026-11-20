@@ -123,8 +123,8 @@ local ELEMENTS = {
     { key = "threat", threat = true, module = "damagemeter", instance = true, defaultShow = "meter" },
     -- Blizzard's Cooldown Manager viewers (CooldownManager.lua), behind its switch. keepAlpha: Blizzard's dialog has an
     -- Opacity of its own, so on Always the alpha is left alone unless FlareUI faded the viewer this session.
-    -- cdmShape: an Icon Shape in a Frame section above Fading (CooldownManager.ShapeSetting); cdmGrow: a Grow From
-    -- in the same section (CooldownManager.GrowSetting)
+    -- cdmGrow: a Growth in a Frame section (CooldownManager.GrowSetting); cdmShape: an Icon Shape in a Look
+    -- section (CooldownManager.ShapeSetting); both above Fading
     { key = "cdm_essential", page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
       cdmShape = "essential" },
@@ -1261,13 +1261,16 @@ local function AddEditModeSettings()
                 end
                 if e.external then rows = MeterRowsInChat(rows) end
                 -- a Fading section that opens and closes, starting closed, like every other
+                -- the Cooldown Manager's viewers: Growth in Frame and Icon Shape in Look, as Buffs & Debuffs
+                -- and Buff Reminders have them, then Fading
                 local CM = ns.CooldownManager
-                local layout = {}
-                if e.cdmShape and CM and CM.ShapeSetting then layout[#layout + 1] = CM.ShapeSetting(e.cdmShape) end
-                if e.cdmGrow and CM and CM.GrowSetting then layout[#layout + 1] = CM.GrowSetting(e.cdmGrow) end
-                if #layout > 0 then
+                local frameRows, lookRows = {}, {}
+                if e.cdmGrow and CM and CM.GrowSetting then frameRows[1] = CM.GrowSetting(e.cdmGrow) end
+                if e.cdmShape and CM and CM.ShapeSetting then lookRows[1] = CM.ShapeSetting(e.cdmShape) end
+                if #frameRows + #lookRows > 0 then
                     local Section, settings = ns.EditSections()
-                    Section("Frame", layout)
+                    Section("Frame", frameRows)
+                    Section("Look", lookRows)
                     Section("Fading", rows)
                     rows = settings
                 else

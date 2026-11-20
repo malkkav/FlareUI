@@ -813,7 +813,7 @@ local defaults = {
             skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
             softOverlay = false,        -- Soften Active Overlay: a faint swipe while an ability's effect runs
             effectCooldown = false,     -- Show Cooldown During Effect: the ability's own cooldown in the icon's corner
-            barColor = { 1, 0.5, 0.25 },   -- Bar Colour: the Tracked Bars, with the skin on
+            -- Bar Colour (Pick Your Colours): palette "custom" with customColors.bar, else FlareUI's (CM.COLORS)
             -- size 0: Auto, the size Blizzard gave the text
             stackFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
             cooldownFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -2237,7 +2237,7 @@ end
 do
     local CANON = {
         -- dropdowns
-        "Style", "Party Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
+        "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
         "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Text",
         "Tint Health", "Combo Points",
