@@ -10,6 +10,15 @@ local _, ns = ...
 local Ring = {}
 ns.UFRing = Ring
 
+-- Both ring styles: Blizzard's gold plate, ring and boss dragon toned down to the bronze of Forever's other
+-- frames (the minimap's heavy bronze, the bars' border), so they no longer stand out (11-19, picked in
+-- game). FlareUI Style's ring had its own darker 0.80, 0.70, 0.56 until then.
+Ring.PLATE_TINT = { 0.88, 0.80, 0.66 }
+function Ring.TintPlateArt(tex)
+    local t = Ring.PLATE_TINT
+    tex:SetVertexColor(t[1], t[2], t[3])
+end
+
 --------------------------------------------------
 -- 1. ART AND PLACEMENT
 -- The ring is the game's atlas (UI-HUD-UnitFrame-*-PortraitOn), cropped and masked to the ring; the
@@ -95,6 +104,8 @@ BLIZZ.focus = {
     centre = BLIZZ.target.centre, D = BLIZZ.target.D, side = "RIGHT", boss = true,
     level = BLIZZ.target.level, raidIcon = BLIZZ.target.raidIcon,
     classification = BLIZZ.target.classification, readyCheck = BLIZZ.target.readyCheck,
+    -- (11-20) the target's icons, in the same spots
+    pvp = BLIZZ.target.pvp, leader = BLIZZ.target.leader, quest = BLIZZ.target.quest,
 }
 -- The party and boss tiles (f.ringKind): the party as the player frame (role icon at the PvP crest),
 -- the boss as the target frame
@@ -550,7 +561,9 @@ end
 Ring.RING_RATIO = 80 / 60
 function Ring.RingDiameter(udb, f)
     if f and Ring.Plate(f) then return udb.ringSize or Ring.DefaultSize(Kind(f)) end
-    return math.floor((udb.height or 44) * Ring.RING_RATIO + 0.5)
+    -- Portrait Scale (FlareUI Style, 100%): the ring larger or smaller than the height gives it
+    local scale = (tonumber(udb.portraitScale) or 100) / 100
+    return math.floor((udb.height or 44) * Ring.RING_RATIO * scale + 0.5)
 end
 
 -- D, R, H, side, centre (from the frame's edge, positive inside), k (Blizzard's ring to this one)
@@ -1001,13 +1014,8 @@ function Ring.Layout(f)
         ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
         ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
     end
-    -- FlareUI Style: Blizzard's gold ring toned down towards the frame's bronze border
-    -- (ns.BORDER_COLOR #A67D45), still a little brighter than it; Forever Style keeps Blizzard's ring
-    if plate then
-        ring.Art:SetVertexColor(1, 1, 1)
-    else
-        ring.Art:SetVertexColor(0.80, 0.70, 0.56)
-    end
+    -- Blizzard's gold ring in Forever's bronze, the same in both ring styles (Ring.PLATE_TINT)
+    Ring.TintPlateArt(ring.Art)
     ring:SetShown(ring.hasArt)
     do
         -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
@@ -1092,9 +1100,9 @@ function Ring.LayoutLevel(f, g)
     g = g or Geometry(f)
     local e = BLIZZ[Kind(f)].level
     local placed = PlaceRegion(f, g, ring.Disc, e)
-    -- Level Badge Size (the settings page, every ring frame)
-    local db = GetDb()
-    local size = math.min(1, math.max(0.5, tonumber(db and db.levelSize) or 1))
+    -- Level Disc Size (11-20: each frame's Edit Mode Text section; unset, the old shared size)
+    local db, own = GetDb(), Db(f)
+    local size = math.min(1, math.max(0.5, tonumber(own and own.levelSize) or tonumber(db and db.levelSize) or 1))
     -- a little under its atlas size, round the same centre
     local w, h = ring.Disc:GetSize()
     ring.Disc:SetSize(w * LEVEL_SCALE * size, h * LEVEL_SCALE * size)
@@ -1204,7 +1212,7 @@ local function BuildPlate(f)
     return plate
 end
 
--- A bar over its slot in the frame's Bar Texture (FlareUI Forever: the plate's own bar art); the
+-- A bar over its slot in the frame's Bar Texture (FlareUI Dark: the plate's own bar art); the
 -- fill direction must be set first
 local function PlaceBar(bar, f, s, flip, slot)
     PlaceOnPlate(bar, f, s, flip, slot[1], slot[2], slot[3], slot[4])
@@ -1213,10 +1221,10 @@ local function PlaceBar(bar, f, s, flip, slot)
     bar.FlareUI_PlateInset = { length = length }
     local udb = Db(f)
     local name = udb and udb.texture
-    if name == "FlareUI Forever (Light)" and bar:GetReverseFill() then
+    if name == "FlareUI Light" and bar:GetReverseFill() then
         -- the light art's own right-to-left copy, as GetBarTexture picks off the plate
         bar:SetStatusBarTexture("Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga")
-    elseif name and name ~= "" and name ~= "FlareUI Forever" and LSM:IsValid("statusbar", name) then
+    elseif name and name ~= "" and name ~= "FlareUI Dark" and LSM:IsValid("statusbar", name) then
         bar:SetStatusBarTexture(LSM:Fetch("statusbar", name))
     else
         bar:SetStatusBarTexture(bar:GetReverseFill() and slot.mirrored or slot.tex)
@@ -1248,6 +1256,7 @@ function Ring.LayoutPlate(f)
                 if flip then u1, u2 = u2, u1 end
                 tex:SetTexture(info.file)
                 tex:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
+                Ring.TintPlateArt(tex)
                 -- the ring rim's column keeps the art's own rows (Power Height moves only the bars' line)
                 local rows = col == cols and PLATE.rowDelta or f.plateRows
                 PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2, rows)
@@ -1594,6 +1603,8 @@ function Ring.Update(f)
                 ring.Boss:SetSize(w, h)
                 ring.Boss:SetPoint("CENTER", ring, "CENTER", dx, dy)
                 if g.side ~= blizz.side then ring.Boss:SetTexCoord(1, 0, 0, 1) else ring.Boss:SetTexCoord(0, 1, 0, 1) end
+                -- the dragon in the same bronze as the ring
+                Ring.TintPlateArt(ring.Boss)
                 ring.Boss:SetShown(info ~= nil)
             end
         end
@@ -1602,7 +1613,9 @@ function Ring.Update(f)
     -- the level disc's skull for a "??" unit (10+ levels higher): target and focus with "High Level
     -- Skull" on; a red "??" everywhere else
     local level = Readable(ns.UnitShownLevel(unit))
-    local skull = exists and level and level <= 0 and (f.fuiUnit == "target" or f.fuiUnit == "focus")
+    -- (11-20: the boss tiles too, Boss > Icons > High Level Skull)
+    local isBoss = type(f.fuiUnit) == "string" and f.fuiUnit:find("^boss") ~= nil
+    local skull = exists and level and level <= 0 and (f.fuiUnit == "target" or f.fuiUnit == "focus" or isBoss)
         and IconOn(f, "highSkull", true) or false
     ring.Skull:SetShown(skull and ring.Disc:IsShown())
     f.Level:SetAlpha(skull and 0 or 1)
@@ -2197,7 +2210,7 @@ function Ring.PetDefaults(unit)
         -- the pet's own height (Ring.PET_RING_HEIGHT), the target-of frames half the player's
         height = unit == "pet" and Ring.PET_RING_HEIGHT or math.floor(player.height * PET_SHARE + 0.5),
         powerHeight = math.floor(player.powerHeight * PET_SHARE + 0.5), healthText = "percent", showLevel = unit == "pet",
-        powerText = "value", texture = "FlareUI Forever", border = player.border, absorbTexture = "FlareUI Striped",
+        powerText = "value", texture = "FlareUI Dark", border = player.border, absorbTexture = "FlareUI Striped",
         buffs = "OFF", debuffs = "OFF", auraSize = 12, castbar = false,
         -- Mirror Bars on for the target-of frames, in every style
         mirror = unit ~= "pet" or nil,

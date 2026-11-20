@@ -241,7 +241,7 @@ local function Card(parent, x, y, width, height, title)
         t:SetPoint("TOPLEFT", CARD_PAD, -CARD_PAD + 2)
         card.last = t
         local rule = card:CreateTexture(nil, "ARTWORK")
-        rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
+        rule:SetColorTexture(0.50, 0.38, 0.21, 0.8)
         rule:SetHeight(1)
         rule:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -7)
         rule:SetPoint("RIGHT", card, "RIGHT", -CARD_PAD, 0)
@@ -366,7 +366,7 @@ function BuildPage.unitFrames(page)
     local styles = {
         { value = "flareui", art = "StyleFlareUI", name = L["FlareUI Style"], text = L["The bronze ring beside FlareUI's bars."] },
         { value = "forever", art = "StyleForever", name = L["Forever Style"], text = L["Blizzard's bronze frame and portrait ring."] },
-        { value = "addon",   art = "StyleAddon",   name = L["Addon Style"],   text = L["Plain frames, the most options."] },
+        { value = "addon",   art = "StyleAddon",   name = L["Modern Style"],   text = L["Plain frames, the most options."] },
     }
     local cards = {}
     local row = ns.Settings.rows["uf.frameStyle"]
@@ -421,10 +421,10 @@ function BuildPage.unitFrames(page)
                 self.edge:SetBackdropBorderColor(1, 0.84, 0.5, 1)
                 self.plate:SetGradient("VERTICAL", CreateColor(0.13, 0.095, 0.055, 1), CreateColor(0.29, 0.21, 0.12, 1))
             elseif self.hovered then
-                self.edge:SetBackdropBorderColor(0.78, 0.6, 0.34, 1)
+                self.edge:SetBackdropBorderColor(0.80, 0.60, 0.34, 1)
                 self.plate:SetGradient("VERTICAL", CreateColor(0.1, 0.075, 0.045, 1), CreateColor(0.21, 0.155, 0.09, 1))
             else
-                self.edge:SetBackdropBorderColor(0.55, 0.42, 0.24, 1)
+                self.edge:SetBackdropBorderColor(0.65, 0.49, 0.27, 1)
                 self.plate:SetGradient("VERTICAL", CreateColor(0.07, 0.055, 0.035, 1), CreateColor(0.15, 0.11, 0.065, 1))
             end
             self.name:SetTextColor(picked and 1 or 0.85, picked and 0.89 or 0.79, picked and 0.63 or 0.66)
@@ -492,8 +492,8 @@ function BuildPage.editMode(page)
     selected:SetSize(130, 48)
     selected:SetPoint("CENTER", -52, 0)
     selected:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 2 })
-    selected:SetBackdropColor(0.24, 0.59, 1, 0.28)
-    selected:SetBackdropBorderColor(0.29, 0.64, 1, 1)
+    selected:SetBackdropColor(0.25, 0.60, 1, 0.28)   -- the palette's blue
+    selected:SetBackdropBorderColor(0.25, 0.60, 1, 1)
     local selectedText = Say(selected, "GameFontHighlight", L["Player Frame"])
     selectedText:SetPoint("CENTER")
     local dialog = CreateFrame("Frame", nil, scene, "BackdropTemplate")
@@ -504,7 +504,7 @@ function BuildPage.editMode(page)
         local bar = dialog:CreateTexture(nil, "ARTWORK")
         bar:SetPoint("TOPLEFT", 10, -10 - (i - 1) * 13)
         bar:SetSize(72, 5)
-        if i == 1 then bar:SetColorTexture(0.8, 0.6, 0.34, 1) else bar:SetColorTexture(0.42, 0.35, 0.26, 1) end
+        if i == 1 then bar:SetColorTexture(0.8, 0.6, 0.34, 1) else bar:SetColorTexture(0.50, 0.38, 0.21, 1) end
     end
     Stack(left, Say(left, "GameFontHighlight", L["Press |cffffd100Esc|r, then choose |cffffd100Edit Mode|r. Click anything on your screen to move it and change its size and look."], left.inner), 12)
     local here = Stack(left, Say(left, "GameFontNormal", L["Unit frames and bars are set up here."], left.inner), 12)
@@ -660,7 +660,7 @@ function BuildPage.finish(page)
             local row = rows[key]
             local name = Title(key)
             if key == "uf" and c.uf then
-                local styleNames = { flareui = L["FlareUI Style"], forever = L["Forever Style"], addon = L["Addon Style"] }
+                local styleNames = { flareui = L["FlareUI Style"], forever = L["Forever Style"], addon = L["Modern Style"] }
                 name = name .. ": " .. (styleNames[c.style] or "")
             end
             row.text:SetText(name)
@@ -799,8 +799,8 @@ function tour.Show(step)
             local size = i == step and 10 or 7
             dot:SetSize(size, size)
             if i == step then dot:SetVertexColor(1, 0.84, 0.5)
-            elseif i < step then dot:SetVertexColor(0.78, 0.6, 0.34)
-            else dot:SetVertexColor(0.27, 0.22, 0.16) end
+            elseif i < step then dot:SetVertexColor(0.80, 0.60, 0.34)
+            else dot:SetVertexColor(0.32, 0.24, 0.13) end
         end
         local title = info.title
         if type(title) == "function" then title = title() end
@@ -847,7 +847,7 @@ local function BuildTour()
     logoRim:SetTexture(CIRCLE)
     logoRim:SetSize(52, 52)
     logoRim:SetPoint("CENTER", logo)
-    logoRim:SetVertexColor(0.78, 0.6, 0.34)
+    logoRim:SetVertexColor(0.80, 0.60, 0.34)
     local logoShade = header:CreateTexture(nil, "ARTWORK", nil, 0)
     logoShade:SetTexture(CIRCLE)
     logoShade:SetSize(56, 56)
@@ -875,7 +875,7 @@ local function BuildTour()
     end
     -- a line under the header, as the settings window's tab line
     local line = header:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(0.47, 0.36, 0.22, 0.8)
+    line:SetColorTexture(0.50, 0.38, 0.21, 0.8)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT", SIDE, -88)
     line:SetPoint("TOPRIGHT", -SIDE, -88)

@@ -80,7 +80,8 @@ local ChatTabOn, MeterAllowed, ApplyChatTab, ApplyChatTabStrata
 
 -- The border picked in the options, or the default when LibSharedMedia does not know it
 local function GetBorderFile(db)
-    local name = db and db.borderTexture
+    -- Frame Style FlareUI: FlareUI Thick, as the chat's and the quest tracker's (its Border choice hides)
+    local name = db and (db.frameStyle == "flareui" and "FlareUI Thick" or db.borderTexture)
     if name == "None" then return nil end   -- Frame Border: None
     if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
     return LSM:Fetch("border", name)
@@ -271,6 +272,9 @@ function DamageMeter.PaintSkin(skin, db, inChat)
     skin.FlareUI_InChat = inChat
     skin:SetBackdropColor(1, 1, 1, inChat and 0 or db.opacity or 0.85)
     skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, inChat and 0 or BORDER_TINT.a)
+    -- Frame Style FlareUI (11-20): the chat's FlareUI strips (same 24 px header), none inside the chat
+    -- (the chat's skin is the frame there)
+    if ns.Chat and ns.Chat.ApplyFrameStyleArt then ns.Chat.ApplyFrameStyleArt(skin, db, inChat) end
 end
 
 local function SetSkinInChat(window, db, inChat)
@@ -313,7 +317,7 @@ local function UpdateSkinFrame(window, db)
         end)
     end
 
-    skin.Separator:SetShown(header ~= nil)
+    skin.Separator:SetShown(header ~= nil and not (db.frameStyle == "flareui" and not skin.FlareUI_InChat))
 end
 
 --------------------------------------------------
@@ -793,6 +797,26 @@ local function ApplyBarFont(entry, db)
     -- the row's only texts, both on its status bar
     ApplyToFS(nameFs)
     ApplyToFS(valueFs)
+    DamageMeter.ApplyBarTexture(statusBar, db)
+end
+
+-- Bar Texture: a unit frame texture on the fill (its colour stays the row's); "" keeps Blizzard's
+-- atlas, put back once when the choice goes back to Blizzard
+function DamageMeter.ApplyBarTexture(bar, db)
+    local fill = bar and bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+    if not fill then return end
+    local want = db and db.barTexture or ""
+    if bar.fuiBarTexture == want then return end
+    if want == "" then
+        if bar.fuiBarTexture and bar.fuiAtlas then fill:SetAtlas(bar.fuiAtlas) end
+    else
+        if bar.fuiBarTexture == nil then bar.fuiAtlas = fill.GetAtlas and fill:GetAtlas() or nil end
+        local Kit = ns.UnitFrames and ns.UnitFrames.Kit
+        local path = Kit and Kit.GetBarTexture and Kit.GetBarTexture(want)
+        if not path then return end
+        fill:SetTexture(path)
+    end
+    bar.fuiBarTexture = want
 end
 
 -- Blizzard calls SetTextScale on every row it sets up, so the bar font is re-applied there: hooked
@@ -1896,6 +1920,7 @@ do
         line:SetHeight(8)
         line:SetPoint("TOPLEFT", skin, "TOPLEFT", 3, -HEADER_HEIGHT)
         line:SetPoint("TOPRIGHT", skin, "TOPRIGHT", -3, -HEADER_HEIGHT)
+        skin.Separator = line   -- (Frame Style FlareUI hides it, Chat.ApplyFrameStyleArt)
         f.skin = skin
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")   -- (a font before SetText; Look sets the header font)
         f.title:SetPoint("LEFT", skin, "TOPLEFT", TITLE_LEFT, ROW_CENTER_Y)

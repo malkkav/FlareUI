@@ -33,7 +33,7 @@ S:Row{ key = "bl.combinedNote", kind = "text", noTitle = true, tab = "bags", sec
     hidden = function() return BagAddon() or (ns.Bags and ns.Bags.IsCombined and ns.Bags:IsCombined()) or false end }
 -- Combined Backpack (it explains why the rows below are greyed): Blizzard's own Use
 -- Combined Bags, switched from here. FlareUI saves nothing: Blizzard's checkbox and this one always agree.
-S:Row{ key = "bl.bagCombined", half = true, tab = "bags", disabled = BagAddon,
+S:Row{ key = "bl.bagCombined", lead = true, tab = "bags", disabled = BagAddon,   -- (lead: every row below reads it)
     get = function() return GetCVarBool("combinedBags") and true or false end,
     set = function(on) SetCVar("combinedBags", on and 1 or 0) end,
     apply = function()
@@ -66,16 +66,27 @@ S:Row{ key = "bl.bankTight", half = true, tab = "bags", path = "tweaks.bankTight
 -- BAGS: the item slots --------------------------
 -- Skin Item Slots (one choice): Off (Blizzard's slots), Thin Borders or Thick
 -- Borders. A skinned slot always takes its item's quality colour.
-S:Row{ key = "bl.bagSkinSlots", kind = "choice", tab = "bags", choices = { "off", "thin", "thick" },
+-- Skin Item Slots: Off, Thin or Thick Borders, and under a line Colour by Rarity (11-20; tweaks.bagRarity,
+-- on). Saved as before: tweaks.bagSkinSlots and tweaks.bagThickBorders.
+local SKIN_SPEC = { exclusive = { "off" }, tokens = { "thin", "thick", "rarity" }, rivals = { thin = "thick", thick = "thin" }, empty = "off" }
+S:Row{ key = "bl.bagSkinSlots", kind = "dropdown", tab = "bags", toggles = SKIN_SPEC,
+    choices = { "off", "thin", "thick", { divider = true }, "rarity" },
     apply = RefreshBags, disabled = BagAddon,
     get = function()
         if S:GetPath("tweaks.bagSkinSlots") == false then return "off" end
-        return S:GetPath("tweaks.bagThickBorders") and "thick" or "thin"
+        local list = { S:GetPath("tweaks.bagThickBorders") and "thick" or "thin" }
+        if S:GetPath("tweaks.bagRarity") ~= false then list[#list + 1] = "rarity" end
+        return table.concat(list, ",")
     end,
     set = function(value)
-        S:SetPath("tweaks.bagSkinSlots", value ~= "off")
-        if value ~= "off" then S:SetPath("tweaks.bagThickBorders", value == "thick") end
-    end }
+        if value == nil or value == "off" or value == "" then S:SetPath("tweaks.bagSkinSlots", false) return end
+        local set = ns.Conditions.Set(value, SKIN_SPEC)
+        S:SetPath("tweaks.bagSkinSlots", true)
+        -- (Colour by Rarity alone keeps a border: thin, the default)
+        S:SetPath("tweaks.bagThickBorders", set.thick and true or false)
+        S:SetPath("tweaks.bagRarity", set.rarity and true or false)
+    end,
+    resetValue = function() return "thin,rarity" end }
 S:Row{ key = "bl.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
 -- (not greyed beside a bag addon: the character sheet's item levels are its own, Bags.lua)
 S:Row{ key = "bl.bagItemLevel", half = true, tab = "bags", path = "tweaks.bagItemLevel",
@@ -111,6 +122,16 @@ S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAuto
 S:Row{ key = "bl.bagAutoOpen", half = true, tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
     apply = function() if ns.Bags and ns.Bags.AutoOpen then ns.Bags.AutoOpen.Next() end end }
 
+-- VENDOR (from Quality of Life, 11-20): selling, repairing and buying; the switches stay in tweaks.*
+S:Row{ key = "qol.repair", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.autoRepair", apply = Refresh }
+-- the guild bank pays Auto Repair first; greyed with Auto Repair off
+S:Row{ key = "qol.repairGuild", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.repairGuild",
+    disabled = function() return not S:GetPath("tweaks.autoRepair") end }
+S:Row{ key = "qol.sellJunk", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.sellJunk", apply = Refresh }
+S:Row{ key = "qol.merchantKnown", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.merchantKnown", apply = Refresh }
+S:Row{ key = "qol.bulkBuy", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.bulkBuy", apply = Refresh }
+S:Row{ key = "qol.merchantWide", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.merchantWide", reload = true }
+
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }
 S:Row{ key = "bl.skipLoot", half = true, tab = "looting", path = "tweaks.skipLootConfirm" }
@@ -120,7 +141,22 @@ S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload 
 S:Row{ key = "bl.lootRollsOpacity", kind = "range", tab = "looting", path = "tweaks.lootRollsOpacity", choices = S:OpacityChoices(),
     parent = "bl.lootRolls", apply = function() if ns.LootRolls and ns.LootRolls.ApplyOpacity then ns.LootRolls:ApplyOpacity() end end }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
-S:Row{ key = "bl.lootFeed", tab = "looting", path = "tweaks.lootFeed", reload = true }
+-- Loot Feed (11-20, was a switch): Off, Square Icons or Round Icons. Saved as before: tweaks.lootFeed,
+-- and the shape in tweaks.lootFeedIcons (square unset). Turning it on or off asks for a reload; the shape is live.
+local startFeed
+S:Row{ key = "bl.lootFeed", kind = "choice", tab = "looting", choices = { "off", "square", "round" },
+    get = function()
+        if not S:GetPath("tweaks.lootFeed") then return "off" end
+        return S:GetPath("tweaks.lootFeedIcons") == "round" and "round" or "square"
+    end,
+    set = function(value)
+        if startFeed == nil then startFeed = S:GetPath("tweaks.lootFeed") and true or false end
+        local on = value == "square" or value == "round"
+        S:SetPath("tweaks.lootFeed", on)
+        if on then S:SetPath("tweaks.lootFeedIcons", value) end
+        S:TrackReload("bl.lootFeed", on, startFeed)
+    end,
+    resetValue = function() return "off" end }
 local LOOT_QUALITY = {}
 -- Poor (0) is the lowest, so it lets every item through: named All Items (a player read it as grey only)
 for quality = 0, 4 do

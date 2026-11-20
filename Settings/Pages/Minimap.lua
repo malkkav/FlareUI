@@ -11,7 +11,7 @@ local function Refresh()
 end
 
 S:Module{ key = "mm", group = "map", order = 10, enabled = "minimap.enabled",
-    -- Map (Style, Info Bar, Map Tools), Addon Buttons, Fonts
+    -- Map (Look, Info Bar, Tweaks, Minimap Icons), Addon Buttons, Fonts
     tabs = { { key = "settings" }, { key = "buttons" }, { key = "fonts" } },
     -- the minimap's fade settings sit in Blizzard's minimap dialog
     editSystems = function()
@@ -55,10 +55,9 @@ S:Row{ key = "mm.squareBorder", kind = "choice", section = "mm.styleSection",
         Refresh()
         if ns.Minimap and ns.Minimap.PlaceAllButtons then ns.Minimap.PlaceAllButtons() end
     end }
-S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 -- the Info Bar
 -- (the Info Bar shows under the round map too)
-local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords", "coordsSimple" }
+local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords", "coordsSimple", "xp" }
 -- the three cells on one line with no labels, laid out as the bar itself; pointing at
 -- one shows its Left / Center / Right text
 -- the round map shows the Center cell only, inside the circle: Left and Right greyed there
@@ -72,7 +71,8 @@ end
 -- Show Box (on): the plates behind the cells; off, the text alone
 S:Row{ key = "mm.barBox", path = "minimap.infoBarBox", apply = Refresh, half = true }
 S:Row{ key = "mm.barHover", path = "minimap.infoBarHover", apply = Refresh, half = true }
--- Map Tools' switches in two columns (half rows)
+-- Tweaks: Auto Zoom Out, then the two switches in two columns
+S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu", half = true,
     apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }
 -- FPS/Ping on Clock (in Map Tools, under Middle-Click Menu)
@@ -82,7 +82,7 @@ S:Row{ key = "mm.clockStats", path = "minimap.clockStats", half = true }
 -- Drawer Style: Disabled / Sundial / Blizzard, first in Addon Buttons; Disabled greys the
 -- section's other rows (reload: the drawer and its button are made as the game loads)
 local function DrawerOff() return S:GetPath("minimap.drawerStyle") == "disabled" end
--- Sundial off (Map Tools): no Sundial choice, and a saved Sundial shows as Blizzard
+-- Sundial off (Minimap Icons): no Sundial choice, and a saved Sundial shows as Blizzard
 S:Row{ key = "mm.drawerStyle", kind = "choice", tab = "buttons", reload = true,
     get = function()
         local style = S:GetPath("minimap.drawerStyle")
@@ -93,46 +93,57 @@ S:Row{ key = "mm.drawerStyle", kind = "choice", tab = "buttons", reload = true,
     set = function(value) S:SetPath("minimap.drawerStyle", value) end,
     choices = function()
         if S:GetPath("minimap.sundial") == false then
-            return { { "disabled", L["Disabled"] }, { "blizzard", L["Blizzard"] } }
+            return { { "disabled", L["Off"] }, { "blizzard", L["Blizzard"] } }
         end
         return { "disabled", "sundial", "blizzard" }
     end }
-S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons", disabled = DrawerOff,
+S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons", disabled = DrawerOff, half = true,
     apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }
--- the four icons in the order they stack on the map, bottom to top: Sundial Icon,
--- Group Finder Icon, Vehicle Exit Button, Durability Warning
--- Sundial: the day/night badge. Off moves a drawer opened from it to
--- Blizzard (the little button under the calendar); a reload hides or shows it
-S:Row{ key = "mm.sundial", reload = true, half = true,
-    get = function() return S:GetPath("minimap.sundial") ~= false end,
-    set = function(on)
-        S:SetPath("minimap.sundial", on)
-        if not on then
+-- Minimap Icons: one dropdown of toggles for the four icons, in the order they stack on the map,
+-- bottom to top. Saved as before: minimap.sundial (off = false; a reload hides or shows it, and off
+-- moves a drawer opened from it to Blizzard), minimap.finderEye, minimap.vehicleExit, minimap.durability.
+local ICONS = { "sundial", "finderEye", "vehicleExit", "durability" }
+local ICON_SPEC = { exclusive = { "none" }, tokens = ICONS, empty = "none" }
+local function IconOn(key)
+    if key == "sundial" then return S:GetPath("minimap.sundial") ~= false end
+    return S:GetPath("minimap." .. key) and true or false
+end
+local startSundial
+S:Row{ key = "mm.icons", kind = "dropdown", toggles = ICON_SPEC,
+    choices = { "none", { divider = true }, "sundial", "finderEye", "vehicleExit", "durability" },
+    get = function()
+        local on = {}
+        for _, key in ipairs(ICONS) do if IconOn(key) then on[#on + 1] = key end end
+        return #on > 0 and table.concat(on, ",") or "none"
+    end,
+    set = function(value)
+        local set = ns.Conditions.Set(value, ICON_SPEC)
+        if startSundial == nil then startSundial = IconOn("sundial") end
+        local sundial = set.sundial and true or false
+        S:SetPath("minimap.sundial", sundial)
+        if not sundial then
             local style = S:GetPath("minimap.drawerStyle")
             if style ~= "disabled" and style ~= "blizzard" then S:SetPath("minimap.drawerStyle", "blizzard") end
         end
-    end }
--- Group Finder Icon: a small icon in place of Blizzard's queue eye (live, MinimapEye.lua)
-S:Row{ key = "mm.finderEye", path = "minimap.finderEye", half = true,
-    apply = function() if ns.MinimapEye and ns.MinimapEye.Update then ns.MinimapEye.Update() end end }
--- Vehicle Exit Button: the vehicle exit button on the map's left edge (live, MinimapVehicle.lua)
-S:Row{ key = "mm.vehicleExit", path = "minimap.vehicleExit", half = true,
-    apply = function() if ns.MinimapVehicle and ns.MinimapVehicle.Update then ns.MinimapVehicle.Update() end end }
--- Durability Warning (off): Blizzard's durability figure as one icon above the others (live)
-S:Row{ key = "mm.durability", path = "minimap.durability", half = true,
-    apply = function() if ns.MinimapDurability and ns.MinimapDurability.Update then ns.MinimapDurability.Update() end end }
+        S:TrackReload("mm.icons", sundial, startSundial)
+        for i = 2, #ICONS do S:SetPath("minimap." .. ICONS[i], set[ICONS[i]] and true or false) end
+    end,
+    apply = function()
+        if ns.MinimapEye and ns.MinimapEye.Update then ns.MinimapEye.Update() end
+        if ns.MinimapVehicle and ns.MinimapVehicle.Update then ns.MinimapVehicle.Update() end
+        if ns.MinimapDurability and ns.MinimapDurability.Update then ns.MinimapDurability.Update() end
+    end,
+    resetValue = function() return "sundial" end }
 -- the icons on the map's edge (sundial, Group Finder, Vehicle Exit, Durability) slide along it and
 -- resize with Shift and Ctrl held, always on (Minimap.lua MM.Moves): how, and a button that puts
 -- every one back
-S:Row{ key = "mm.resetButtonMoves", kind = "button", center = true, section = "mm.mapTools",
+S:Row{ key = "mm.resetButtonMoves", kind = "button", center = true, section = "mm.iconsSection",
     apply = function() if ns.Minimap and ns.Minimap.ResetButtonMoves then ns.Minimap.ResetButtonMoves() end end }
--- (None in Addons in the Drawer turns the drawer off)
 -- the drawer opens on the pointer instead of a click (live)
-S:Row{ key = "mm.bagHover", path = "minimap.bagHover", tab = "buttons",
-    disabled = function() return DrawerOff() or not S:GetPath("minimap.buttonBag") end }
+S:Row{ key = "mm.bagHover", path = "minimap.bagHover", tab = "buttons", half = true,
+    disabled = DrawerOff }
 -- which addons go in it (ticked) and which are left alone on the minimap; a reload puts a
--- button back where its addon keeps it. None is the drawer off (minimap.buttonBag): ticking an
--- addon turns it back on. The list itself is kept while it is off.
+-- button back where its addon keeps it. None: every button on the minimap's edge.
 local bagTokens = {}
 S:Row{ key = "mm.bagAddons", kind = "dropdown", reload = true, tab = "buttons", disabled = DrawerOff,
     choices = function()
@@ -146,19 +157,18 @@ S:Row{ key = "mm.bagAddons", kind = "dropdown", reload = true, tab = "buttons", 
     end,
     toggles = { exclusive = { "none" }, tokens = bagTokens, empty = "none" },
     get = function()
-        if not S:GetPath("minimap.buttonBag") then return "none" end
         return ns.MinimapBag and ns.MinimapBag.InDrawer and ns.MinimapBag.InDrawer() or "none"
     end,
     set = function(value)
-        local on = value ~= nil and value ~= "" and value ~= "none"
-        S:SetPath("minimap.buttonBag", on)
-        if on and ns.MinimapBag and ns.MinimapBag.SetInDrawer then ns.MinimapBag.SetInDrawer(value) end
+        -- None: every addon's button stays on the minimap's edge (the drawer is turned off by Drawer Style Off only)
+        if value == nil or value == "none" then value = "" end
+        if ns.MinimapBag and ns.MinimapBag.SetInDrawer then ns.MinimapBag.SetInDrawer(value) end
     end }
 -- the drawer's buttons bigger, 100% to 150%; the drawer grows to fit (live)
 local BAG_SIZES = {}
 for pct = 100, 150, 10 do BAG_SIZES[#BAG_SIZES + 1] = { pct, pct .. "%" } end
 S:Row{ key = "mm.bagButtonSize", kind = "range", path = "minimap.bagButtonSize", choices = BAG_SIZES, tab = "buttons",
-    disabled = function() return DrawerOff() or not S:GetPath("minimap.buttonBag") end,
+    disabled = DrawerOff,
     apply = function() if ns.MinimapBag and ns.MinimapBag.SizeChanged then ns.MinimapBag.SizeChanged() end end }
 
 -- while a gathering addon that moves the map to scan is loaded: the flashing is its own (Minimap.lua)

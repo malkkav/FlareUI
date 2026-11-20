@@ -52,7 +52,7 @@ local function Card(host, title, text)
     t:SetText(title or "")
     card.title = t
     local rule = card:CreateTexture(nil, "ARTWORK")
-    rule:SetColorTexture(0.47, 0.36, 0.22, 0.8)
+    rule:SetColorTexture(0.50, 0.38, 0.21, 0.8)
     rule:SetHeight(1)
     card.rule = rule
     -- a little smaller than the rows' text

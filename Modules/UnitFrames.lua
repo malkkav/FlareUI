@@ -49,7 +49,7 @@ local BORDER_SIZE   = 16
 local BG_OPACITY    = 0
 local DEFAULT_BORDER_COLOR = ns.BORDER_COLOR
 local DEFAULT_BORDER  = "FlareUI Thick"
-local DEFAULT_TEXTURE = "FlareUI Forever"
+local DEFAULT_TEXTURE = "FlareUI Dark"
 local SEPARATOR_TEXTURE = "Interface\\Common\\UI-TooltipDivider-Transparent"
 local SEPARATOR_HEIGHT  = 8
 local AURA_GAP      = 2     -- frame (or cast bar) to the aura rows
@@ -93,7 +93,7 @@ UF.PALETTES = {
         cast = { 0.80, 0.60, 0.36 }, castNoInterrupt = { 0.55, 0.55, 0.55 }, castChannel = { 0.30, 0.65, 0.90 },
         playerCast = { 0.36, 0.56, 0.78 }, playerChannel = { 0.50, 0.75, 0.88 },
         interrupted = { 0.85, 0.12, 0.10 }, latency = { 1, 0.15, 0.1 },
-        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 },
+        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 }, trail = { 1, 0.9, 0.75 },
         -- health bars only, kept apart from these classes' mana and energy bars; names keep the real colours
         classHealth = { SHAMAN = { 0.00, 0.32, 0.62 }, ROGUE = { 0.90, 0.80, 0.25 } },
     },
@@ -104,7 +104,7 @@ UF.PALETTES = {
         cast = { 1, 0.7, 0 }, castNoInterrupt = { 0.7, 0.7, 0.7 }, castChannel = { 0, 1, 0 },
         playerCast = { 1, 0.7, 0 }, playerChannel = { 0, 1, 0 },
         interrupted = { 0.85, 0.12, 0.10 }, latency = { 1, 0.15, 0.1 },
-        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 },
+        heal = { 11/255, 136/255, 105/255 }, absorb = { 0.67, 0.78, 0.92 }, trail = { 1, 0.9, 0.75 },
         texture = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Flat-Bright",
     },
 }
@@ -181,6 +181,7 @@ function UF.ApplyPalette()
     set(UF.LAG_COLOR, C("latency"))
     set(UF.HEAL_COLOR, C("heal"))
     set(UF.ABSORB_COLOR, C("absorb"))
+    set(UF.TRAIL_COLOR, C("trail"))   -- (its see-through alpha stays)
     -- custom power colours only: the others keep Blizzard's
     local power
     if palette == "custom" and db.customColors then
@@ -256,9 +257,12 @@ local UNITS = {
         key = "Focus", label = L["Focus"], order = 4, auras = true, portrait = true,
         blizzard = { "FocusFrame", "TargetofFocusFrame" },
         driver = "[@focus,exists] show; hide",
-        globalEvents = { PLAYER_FOCUS_CHANGED = true },
+        globalEvents = { PLAYER_FOCUS_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "focus",
+                         QUEST_LOG_UPDATE = true },
         castbar = true,
-        indicators = { classification = true, highSkull = true, threat = true, heals = true, readyCheck = true },
+        -- (11-20: the target's Leader, PvP Flag and Quest Objective too: a focus can be a player or a quest mob)
+        indicators = { leader = true, pvp = true, classification = true, highSkull = true, quest = true, threat = true,
+                       heals = true, readyCheck = true },
         threatGlow = true,   -- Threat Glow (Look): the player's threat on it
     },
     focustarget = {
@@ -685,12 +689,12 @@ end
 -- Percent curve (0..1 -> 0..100) so UnitHealthPercent's secret result can be shown directly
 local percentCurve = CurveConstants.ScaleTo100
 
--- An unknown name falls back to FlareUI Forever; mirrored: its right-to-left gradient file
+-- An unknown name falls back to FlareUI Dark; mirrored: its right-to-left gradient file
 local function GetBarTexture(name, mirrored)
     if not (name and name ~= "" and LSM:IsValid("statusbar", name)) then name = DEFAULT_TEXTURE end
     if name == "FlareUI Flat" and UF.basePalette == "blizzard" then return UF.PALETTES.blizzard.texture end
-    if mirrored and name == "FlareUI Forever" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" end
-    if mirrored and name == "FlareUI Forever (Light)" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga" end
+    if mirrored and name == "FlareUI Dark" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" end
+    if mirrored and name == "FlareUI Light" then return "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Bright-Mirrored.tga" end
     return LSM:Fetch("statusbar", name) or "Interface\\TargetingFrame\\UI-StatusBar"
 end
 
@@ -1048,6 +1052,39 @@ end
 -- BAR TEXT (BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
 -- keeps the bar's old text (HealthText, PowerText, ShiftManaText); Left and Middle are its "Left" and
 -- "Mid". Off the plate Left is the name side (Mirror puts it on the right), on the plate the bar's end.
+-- VALUES ON MOUSEOVER (11-20, every frame's Text section, off; Blizzard's own status text option): the
+-- health and power numbers sit on a layer of their own that shows only while the pointer is on the
+-- frame. Names and the level stay. Edit Mode always shows them. texts: the font strings to move there.
+function UF.ValuesOnHover(f, on, texts)
+    if not f then return end
+    if not on and not f.ValueLayer then return end
+    local layer = f.ValueLayer
+    if not layer then
+        local parent = texts[1] and texts[1]:GetParent() or f
+        layer = CreateFrame("Frame", nil, parent)
+        layer:SetAllPoints(parent)
+        f.ValueLayer = layer
+        f:HookScript("OnEnter", function(self) if self.valuesOnHover then self.ValueLayer:SetAlpha(1) end end)
+        f:HookScript("OnLeave", function(self)
+            if self.valuesOnHover and not ns.EditPreviewing() then self.ValueLayer:SetAlpha(0) end
+        end)
+    end
+    -- the layer above its parent's level, as the texts were
+    layer:SetFrameLevel(layer:GetParent():GetFrameLevel() + 1)
+    for _, fs in ipairs(texts) do
+        if fs and fs:GetParent() ~= layer then fs:SetParent(layer) end
+    end
+    f.valuesOnHover = on and true or nil
+    layer:SetAlpha((not on or ns.EditPreviewing() or f:IsMouseOver()) and 1 or 0)
+end
+-- the row in each frame's Text section
+function UF.ValuesOnHoverSetting(get, set)
+    local LEM = LibStub("FlareEditMode")
+    return { name = L["Values on Mouseover"], kind = LEM.SettingType.Checkbox, default = false,
+        desc = L["The health and power numbers show only while you point at the frame, as Blizzard's own option does."],
+        get = function() return get() and true or false end, set = set }
+end
+
 UF.SLOT_KEYS = { health = "HealthText", power = "PowerText", mana = "ShiftManaText" }
 -- the slots' font strings per bar, kept on the frame (read on every health and power tick)
 UF.SLOT_FIELDS = {
@@ -1185,7 +1222,8 @@ function UF.PlaceSlots(f, bar, barFrame, mirror, plate, pad, levelInRow)
     for _, slot in ipairs(BT.SLOTS) do
         if BT.NameOf(slots[slot]) then nameSlot = slot break end
     end
-    local showName = udb and udb.showName ~= false
+    -- (11-20: off the plate the name slot alone decides; Show Name is the plate's name box)
+    local showName = true
     local lead = levelInRow and f.Level or nil
     local piece = (showName and f.Name) or lead
     if piece == lead then lead = nil end
@@ -1403,6 +1441,8 @@ local KICK = {
     known = {},       -- spellID -> true while ready, false while cooling
     timers = {},      -- spellID -> Cooldown frame
 }
+
+UF.KICK = KICK   -- (the Nameplates module's Kick Ready colour reads it: UF.onKickChanged)
 
 -- nil when the player has no interrupt, else whether one is ready
 function KICK.IsReady()
@@ -2242,6 +2282,7 @@ function KICK.UpdateBars()
             UpdateCastBar(cast, IsCastEnabled(cast))
         end
     end
+    if UF.onKickChanged then pcall(UF.onKickChanged) end
 end
 
 function KICK.Timer(spellID)
@@ -2298,7 +2339,7 @@ KICK.events:RegisterEvent("SPELLS_CHANGED")
 KICK.events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 KICK.events:SetScript("OnEvent", function(_, event)
     if event == "SPELL_UPDATE_COOLDOWN" then
-        if castBars[1] and next(KICK.known) then KICK.Refresh(true) end
+        if (castBars[1] or UF.onKickChanged) and next(KICK.known) then KICK.Refresh(true) end
     else
         KICK.Learn()
     end
@@ -2751,8 +2792,10 @@ end
 -- PF.DispelHighlight), a dispellable debuff on you pulsing the border, and the ring, in its type's colour
 function UF.LayoutDispelHighlight(f)
     local PF = ns.PartyFrames
-    if f.fuiUnit ~= "player" or not (PF and PF.DispelHighlight) then return end
-    local udb = GetUnitDb("player")
+    -- (11-20: target and focus too, for a friendly target you dispel)
+    local unit = f.fuiUnit
+    if not (unit == "player" or unit == "target" or unit == "focus") or not (PF and PF.DispelHighlight) then return end
+    local udb = GetUnitDb(unit)
     local setting = udb and udb.dispelHighlight or "off"
     if setting == "off" and not f.AuraHighlight then return end
     if not PF.NewDispelHighlight(f) then return end
@@ -2770,6 +2813,8 @@ end
 function UF.LeadBuffs(f, perCorner, editing)
     f.enchantLead = nil
     if f.fuiUnit ~= "player" or editing then return end
+    local udb = GetUnitDb("player")
+    if udb and udb.showEnchants == false then return end   -- Show Weapon Enchants off
     for corner, list in pairs(perCorner) do
         local first = list[1]
         if first and first.key == "buffs" then
@@ -2833,6 +2878,19 @@ function UF.PlaceEnchants(f)
     end
 end
 
+-- Hide Buffs on the enchants as on the buffs: one whose full duration is longer than the choice
+-- stays hidden (a 1-hour poison with "Longer Than 1 Minute"). Permanent hides none: enchants run out.
+function UF.EnchantsShown(list, udb)
+    local hide = udb and udb.hideBuffs or "OFF"
+    local max = tonumber(hide)
+    if hide == "OFF" or hide == "PERMANENT" or not max then return list end
+    local shown = {}
+    for _, e in ipairs(list) do
+        if (e.duration or 0) <= max then shown[#shown + 1] = e end
+    end
+    return shown
+end
+
 UF.ENCHANT_EVENTS = { "WEAPON_ENCHANT_CHANGED", "WEAPON_SLOT_CHANGED", "PLAYER_EQUIPMENT_CHANGED",
     "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_ENTERING_WORLD" }
 
@@ -2843,6 +2901,7 @@ function UF.UpdateEnchants()
     local holder = f and f.FlareUI_Enchants
     local AU = ns.Auras
     local list = (lead and lead.look and AU and AU.ReadEnchants) and AU.ReadEnchants() or {}
+    list = UF.EnchantsShown(list, GetUnitDb("player"))
     if not holder then
         if not (f and lead) then return end
         holder = CreateFrame("Frame", nil, f)
@@ -3113,7 +3172,8 @@ end
 -- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style
 local function UsesClassicCombo(f)
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
-    if IsFlareUIRing(f) and UF.RingComboMode(GetUnitDb(f.fuiUnit)) ~= "classic" then return false end
+    -- (11-20: Forever Style reads the mode too, so its gems can be turned off)
+    if ringOn and UF.RingComboMode(GetUnitDb(f.fuiUnit)) ~= "classic" then return false end
     return (ringOn and GetClassicCombo()) and true or false
 end
 
@@ -3509,7 +3569,7 @@ local HEAL_COLOR      = { 11/255, 136/255, 105/255, 1 }   -- #0B8869, incoming h
 local ABSORB_COLOR    = { 0.67, 0.78, 0.92, 1 }           -- damage absorbs, the shield art's steel blue
 -- (the Colour Palette writes into these: UF.ApplyPalette)
 UF.HEAL_COLOR, UF.ABSORB_COLOR = HEAL_COLOR, ABSORB_COLOR
-local HEAL_TEXTURE    = "FlareUI Forever"
+local HEAL_TEXTURE    = "FlareUI Dark"
 local ABSORB_TEXTURE  = "FlareUI Striped"
 
 -- (an atlas found is remembered: GetAtlasInfo makes a new table on each call, and the icons ask on
@@ -3704,8 +3764,8 @@ local function LayoutIndicators(f)
         mirror = fillMirror
         heal:SetReverseFill(mirror)
         -- incoming heals in the frame's own bar texture (on the plate, whose bars are Blizzard's art:
-        -- FlareUI Forever, the same art)
-        heal:SetStatusBarTexture(GetBarTexture(inset and "FlareUI Forever" or (udb and udb.texture), mirror))
+        -- FlareUI Dark, the same art)
+        heal:SetStatusBarTexture(GetBarTexture(inset and "FlareUI Dark" or (udb and udb.texture), mirror))
         -- shields follow the health and the incoming heals, as Blizzard's frames draw them: what the
         -- bar has no room for is cut at its end, where the over-shield glow shows instead
         absorb:SetReverseFill(mirror)
@@ -3777,8 +3837,9 @@ function UF.PlaceOverAbsorb(over, health, width, mirror, texture)
     bar:SetWidth(width)
     bar:SetReverseFill(not mirror)
     bar:SetStatusBarTexture(texture)
-    -- a little see-through: the health colour still reads under it
-    bar:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3], 0.75)
+    -- see-through: the health still reads under it, also under a shield larger than the whole bar
+    -- (Templar's Bulwark covered all of it at 0.75, capo's report 11-19)
+    bar:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3], 0.4)
 end
 
 -- value nil: none (Edit Mode samples pass theirs on a 0..1 health)
@@ -3883,7 +3944,8 @@ end
 
 -- after the health bar's texture, fill direction and place are set (any style: the trail follows
 -- the bar itself). mirror: the bar fills from the right.
-function UF.PlaceDamageTrail(trail, mirror)
+-- color: the Resource Bars pass their palette's, the unit frames use UF.TRAIL_COLOR
+function UF.PlaceDamageTrail(trail, mirror, color)
     if not trail then return end
     local health = trail.health
     local fill = health:GetStatusBarTexture()
@@ -3901,8 +3963,8 @@ function UF.PlaceDamageTrail(trail, mirror)
     end
     trail:SetReverseFill(mirror and true or false)
     trail:SetStatusBarTexture((fill and fill:GetTexture()) or BACKDROP_FILE)
-    local c = UF.TRAIL_COLOR
-    trail:SetStatusBarColor(c[1], c[2], c[3], c[4])
+    local c = color or UF.TRAIL_COLOR
+    trail:SetStatusBarColor(c[1], c[2], c[3], UF.TRAIL_COLOR[4])
 end
 
 function UF.MoveDamageTrails(self)
@@ -4893,8 +4955,8 @@ function UpdateComboPoints(f)
     local udb = GetUnitDb(f.fuiUnit)
     -- the strip: FlareUI Style's Modern, else the Combo Points switch (Addon Style)
     local strip
-    if IsFlareUIRing(f) then
-        strip = UF.RingComboMode(udb) == "modern"
+    if ns.UFRing and ns.UFRing.Applies(f) then   -- (both ring styles: the mode; Forever has no strip)
+        strip = IsFlareUIRing(f) and UF.RingComboMode(udb) == "modern"
     else
         strip = not (udb and udb.comboPoints == false)
     end
@@ -5083,6 +5145,15 @@ local function LayoutFrame(f)
 
     LayoutAuras(f)
     UF.LayoutDispelHighlight(f)
+    -- Values on Mouseover: every slot's text of every bar
+    do
+        local list = {}
+        for bar in pairs(UF.SLOT_KEYS) do
+            local t = UF.SlotTexts(f, bar)
+            if t then list[#list + 1], list[#list + 2], list[#list + 3] = t.left, t.middle, t.right end
+        end
+        UF.ValuesOnHover(f, udb.valuesOnHover, list)
+    end
     LayoutIndicators(f)
     -- Smooth Animated Bars, when installed and on (ns.SAB)
     ns.SAB.UnitFrame(f)
@@ -5198,6 +5269,8 @@ end
 UF.fadeHolders = {}   -- unit -> holder
 
 function UF:GetFadeFrame(unit) return UF.fadeHolders[unit] end
+-- the unit's clickable frame (Visibility's Never takes its clicks away)
+function UF:GetUnitButton(unit) return frames[unit] end
 
 -- the pointer on the frame, or on a ring style's portrait outside it
 function UF:IsMouseOverUnit(unit)
@@ -5296,12 +5369,15 @@ end
 function UF.ApplyRangeAlpha(f, unit)
     if not f then return end
     local u = GetUnitDb(unit)
-    if ns.EditPreviewing() or (u and u.rangeCheck == false) or not UnitExists(unit)
+    -- (the pet's Range Check, 11-20, starts off: on only once switched on)
+    local off = (u and u.rangeCheck == false) or (unit == "pet" and not (u and u.rangeCheck))
+    if ns.EditPreviewing() or off or not UnitExists(unit)
             or canaccessvalue(UnitIsUnit(unit, "player")) and UnitIsUnit(unit, "player") then
         f:SetAlpha(1)
         return
     end
-    local inGroup = UnitInParty(unit)
+    -- (the pet reads the group range too: UnitInRange covers it)
+    local inGroup = unit == "pet" or UnitInParty(unit)
     if not (canaccessvalue(inGroup) and inGroup) then inGroup = UnitInRaid(unit) end
     if canaccessvalue(inGroup) and inGroup then
         local inRange, checked = UnitInRange(unit)
@@ -5377,7 +5453,7 @@ function UF.RangeReport()
 end
 
 -- target and focus re-check five times a second while shown (range has no event for them)
-UF.RANGE_UNITS = { "target", "focus" }
+UF.RANGE_UNITS = { "target", "focus", "pet" }   -- (the pet since 11-20, off by default)
 function UF.UpdateFrameRanges()
     for _, unit in ipairs(UF.RANGE_UNITS) do
         local f = frames[unit]
@@ -5720,7 +5796,7 @@ function UF.MediaValues(mediaType, base, first)
         return values
     end
 end
-UF.FLAREUI_BARS = { "FlareUI Flat", "FlareUI Forever", "FlareUI Forever (Light)", "FlareUI Striped" }
+UF.FLAREUI_BARS = { "FlareUI Flat", "FlareUI Dark", "FlareUI Light", "FlareUI Striped" }
 
 -- Bar, Cast Bar and Absorb Texture values
 local function BuildTextureValues()
@@ -5814,11 +5890,169 @@ function UF.ApplyPlayerCastMode()
     end
 end
 
+--------------------------------------------------
+-- Combat text on the portrait (Show Combat Text: player and pet, off; not in Addon Style). Blizzard's own hit numbers
+-- (CombatFeedback.lua: the same words, sizes, colours and timings), on FlareUI's frames: centred on
+-- the portrait, or on the health bar when the frame has none. UNIT_COMBAT's amount is secret in
+-- fights: it reaches the font string untouched, through BreakUpLargeNumbers (it takes secrets);
+-- only the readable event and flags pick the look. A secret amount can't be told from 0, so a WOUND
+-- with an Absorb / Block / Resist flag shows the word then (Blizzard shows a partial hit's number).
+--------------------------------------------------
+UF.CT = {
+    UNITS = { player = true, pet = true },
+    FADE_IN = 0.2, HOLD = 0.7, FADE_OUT = 0.3,
+    PORTRAIT_SIZE = 30 / 64,   -- Blizzard: a 30 high font on a 64 px portrait
+    MIN_SIZE = 14, MAX_SIZE = 44,
+    AVOIDED = { ABSORB = true, BLOCK = true, RESIST = true },
+    -- Edit Mode's samples, one every SAMPLE_EVERY seconds: a hit, a crit, a heal, a block, a fire hit
+    SAMPLES = { { "WOUND", "", 1234, 1 }, { "WOUND", "CRITICAL", 2468, 1 }, { "HEAL", "", 856, 1 },
+                { "WOUND", "BLOCK", 0, 1 }, { "WOUND", "", 512, 4 } },
+    SAMPLE_EVERY = 1.3,
+}
+
+-- (FlareUI and Forever Style only: Addon Style has no good place for it)
+function UF.CombatTextOn(unit)
+    if not ns.UFRing or ns.UFRing.Style() == "addon" then return false end
+    local udb = UF.CT.UNITS[unit] and GetUnitDb(unit)
+    return udb and udb.combatText == true or false
+end
+
+function UF.CT.Word(key)
+    local words = _G.CombatFeedbackText
+    return (words and words[key]) or _G[key]
+end
+
+function UF.CombatTextHolder(f)
+    if f.CombatText then return f.CombatText end
+    local holder = CreateFrame("Frame", nil, f)
+    -- above the ring, its icons and the combo strip
+    holder:SetFrameLevel(f:GetFrameLevel() + 20)
+    holder.Text = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalHuge")
+    holder.Text:SetPoint("CENTER")
+    holder:Hide()
+    holder:SetScript("OnUpdate", function(self)
+        local t, ct = GetTime() - (self.start or 0), UF.CT
+        if t < ct.FADE_IN then
+            self.Text:SetAlpha(t / ct.FADE_IN)
+        elseif t < ct.FADE_IN + ct.HOLD then
+            self.Text:SetAlpha(1)
+        elseif t < ct.FADE_IN + ct.HOLD + ct.FADE_OUT then
+            self.Text:SetAlpha(1 - (t - ct.FADE_IN - ct.HOLD) / ct.FADE_OUT)
+        else
+            self:Hide()
+        end
+    end)
+    f.CombatText = holder
+    return holder
+end
+
+-- On the portrait when it shows, else the health bar; the size follows it (and so Portrait Scale)
+function UF.CT.Place(f, holder)
+    local spot = (f.Portrait and f.Portrait:IsShown()) and f.Portrait or f.Health
+    holder:ClearAllPoints()
+    holder:SetAllPoints(spot)
+    local h = tonumber(spot:GetHeight()) or 0
+    local size = spot == f.Portrait and h * UF.CT.PORTRAIT_SIZE or h * 0.8
+    return math.max(UF.CT.MIN_SIZE, math.min(UF.CT.MAX_SIZE, size))
+end
+
+function UF.ShowCombatText(f, event, flags, amount, school)
+    if not (canaccessvalue(event) and canaccessvalue(flags)) then return end
+    local holder = UF.CombatTextHolder(f)
+    local size = UF.CT.Place(f, holder)
+    -- the frame's Combat Text font (Fonts tab); a set size replaces the portrait's (Auto: 0)
+    local font = UF.Font(f.fuiUnit, "combatText")
+    if font and (font.size or 0) > 0 then size = font.size end
+    local r, g, b = 1, 1, 1
+    local text, format
+    if event == "IMMUNE" then
+        size, text = size * 0.5, UF.CT.Word(event)
+    elseif event == "WOUND" then
+        local hit
+        if canaccessvalue(amount) then hit = amount ~= 0 else hit = not UF.CT.AVOIDED[flags] end
+        if hit then
+            if flags == "CRITICAL" or flags == "CRUSHING" then size = size * 1.5
+            elseif flags == "GLANCING" then size = size * 0.75 end
+            local physical = Enum.Damageclass and Enum.Damageclass.MaskPhysical or 1
+            if canaccessvalue(school) and school ~= physical then r, g, b = 1, 1, 0 end
+            text = BreakUpLargeNumbers(amount)
+            if flags == "BLOCK_REDUCED" then format = _G.COMBAT_TEXT_BLOCK_REDUCED end
+        elseif UF.CT.AVOIDED[flags] then
+            size, text = size * 0.75, UF.CT.Word(flags)
+        else
+            text = UF.CT.Word("MISS")
+        end
+    elseif event == "BLOCK" then
+        size, text = size * 0.75, UF.CT.Word(event)
+    elseif event == "HEAL" or event == "ENERGIZE" then
+        text = BreakUpLargeNumbers(amount)
+        if event == "HEAL" then r, g, b = 0, 1, 0 else r, g, b = 0.41, 0.8, 0.94 end
+        if flags == "CRITICAL" then size = size * 1.5 end
+    else
+        text = UF.CT.Word(event)
+    end
+    if text == nil then return end
+    local fs = holder.Text
+    ApplyFont(fs, font, math.floor(size + 0.5) - (font and font.size or 12))
+    if format then fs:SetFormattedText(format, text) else fs:SetText(text) end
+    fs:SetTextColor(r, g, b)
+    fs:SetAlpha(0)
+    holder.start = GetTime()
+    holder:Show()
+end
+
+-- Events on while a frame has it on; Edit Mode cycles the samples on those frames
+function UF.CombatTextSync()
+    local ct = UF.CT
+    local any = false
+    for unit in pairs(ct.UNITS) do
+        local f = frames[unit]
+        if f and UF.CombatTextOn(unit) then any = true
+        elseif f and f.CombatText then f.CombatText:Hide() end
+    end
+    if any and not ct.events then
+        ct.events = CreateFrame("Frame")
+        ct.events:SetScript("OnEvent", function(_, _, unit, event, flags, amount, school)
+            if not canaccessvalue(unit) then return end
+            local f = frames[unit]
+            if f and f:IsVisible() and UF.CombatTextOn(unit) and not ns.EditPreviewing() then
+                UF.ShowCombatText(f, event, flags, amount, school)
+            end
+        end)
+    end
+    if ct.events then
+        if any then pcall(ct.events.RegisterUnitEvent, ct.events, "UNIT_COMBAT", "player", "pet")
+        else ct.events:UnregisterAllEvents() end
+    end
+    local preview = any and ns.EditPreviewing()
+    if preview and not ct.ticker then
+        ct.sample = 0
+        local function Next()
+            ct.sample = ct.sample % #ct.SAMPLES + 1
+            local s = ct.SAMPLES[ct.sample]
+            for unit in pairs(ct.UNITS) do
+                local f = frames[unit]
+                if f and f:IsVisible() and UF.CombatTextOn(unit) then UF.ShowCombatText(f, s[1], s[2], s[3], s[4]) end
+            end
+        end
+        Next()
+        ct.ticker = C_Timer.NewTicker(ct.SAMPLE_EVERY, Next)
+    elseif not preview and ct.ticker then
+        ct.ticker:Cancel()
+        ct.ticker = nil
+        for unit in pairs(ct.UNITS) do
+            local f = frames[unit]
+            if f and f.CombatText then f.CombatText:Hide() end
+        end
+    end
+end
+
 -- a setting's redraw of its frame: once after Edit Mode's Reset Settings (LEM:Defer), else at once
 function UF.Redraw(f)
     if LEM:Defer(UF.Redraw, f) then return end
     LayoutFrame(f)
     UpdateAll(f)
+    if UF.CT.UNITS[f.fuiUnit] then UF.CombatTextSync() end
 end
 -- the same for the FlareUI Player Cast Bar
 function UF.RedrawPlayerCast()
@@ -5953,6 +6187,14 @@ local function BuildSettings(unit)
     settings[#settings + 1] = { name = L["Width"], kind = LEM.SettingType.Slider, default = width, minValue = 60, maxValue = 500, valueStep = 1, get = get("width"), set = set("width") }
     settings[#settings + 1] = { name = L["Height"], kind = LEM.SettingType.Slider, default = defaults.height or 44, minValue = 16, maxValue = 120, valueStep = 1, get = get("height"), set = setOffPlate("height"),
         hidden = onPlate }
+    -- Portrait Scale (FlareUI Style only, 100%): the ring in proportion, apart from the height
+    if info.portrait and ns.UFRing then
+        settings[#settings + 1] = { name = L["Portrait Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 150, valueStep = 5,
+            formatter = function(value) return value end,   -- plain: "100%" clips the value box
+            get = function() local u = GetUnitDb(unit); return u and u.portraitScale or 100 end, set = set("portraitScale"),
+            hidden = function() return not (ns.UFRing.Applies(frames[unit]) and ns.UFRing.Style() == "flareui") end,
+            desc = L["The portrait ring in percent of its usual size. It keeps its shape, and the frame keeps its height."] }
+    end
     settings[#settings + 1] = { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = defaults.powerHeight or 8, minValue = 0, maxValue = 40, valueStep = 1, get = get("powerHeight"), set = set("powerHeight"),
         formatter = function(value) return value == 0 and _G.OFF or value end,
         -- Forever Style: the plate has its own power slot
@@ -6008,39 +6250,43 @@ local function BuildSettings(unit)
             ApplyComboMode(f)
             UF.Redraw(f)
         end
-        -- Addon Style: the combo strip along the health bar, on or off
-        settings[#settings + 1] = { name = L["Combo Points"], kind = LEM.SettingType.Checkbox, default = true,
-            get = function() local u = GetUnitDb(unit); return not (u and u.comboPoints == false) end,
+        -- one dropdown in every style (11-20, was a switch in Modern and nothing in Forever):
+        -- Classic is Blizzard's gems round the portrait (the ring styles), Modern the strip along the
+        -- health bar (Modern Style, and FlareUI Style's option). Saved as before: ringCombo in the
+        -- ring styles, the comboPoints switch in Modern Style.
+        local function Style() return ns.UFRing and ns.UFRing.Style() or "addon" end
+        settings[#settings + 1] = { name = L["Combo Points"], kind = LEM.SettingType.Dropdown,
+            default = (Style() == "addon") and "modern" or "classic",
+            values = function()
+                local style = Style()
+                local list = { { text = L["Off"], value = "off", isRadio = true } }
+                if style ~= "addon" then list[#list + 1] = { text = L["Classic"], value = "classic", isRadio = true } end
+                if style ~= "forever" then list[#list + 1] = { text = L["Modern"], value = "modern", isRadio = true } end
+                return list
+            end,
+            get = function()
+                local u = GetUnitDb(unit)
+                if Style() == "addon" then return (u and u.comboPoints == false) and "off" or "modern" end
+                local mode = UF.RingComboMode(u)
+                if Style() == "forever" and mode == "modern" then mode = "classic" end
+                return mode
+            end,
             set = function(_, value)
                 local u = GetUnitDb(unit)
                 if not u then return end
-                u.comboPoints = value
+                if value == nil then value = (Style() == "addon") and "modern" or "classic" end
+                if Style() == "addon" then
+                    u.comboPoints = value ~= "off"
+                else
+                    u.ringCombo, u.modernCombo = value, nil
+                end
                 refreshCombo()
             end,
-            hidden = function()
-                local style = ns.UFRing and ns.UFRing.Style()
-                return style ~= nil and style ~= "addon"
-            end }
-        -- FlareUI Style: gems round the portrait, the strip, or none
-        settings[#settings + 1] = { name = L["Combo Points"], kind = LEM.SettingType.Dropdown, default = "classic",
-            values = {
-                { text = L["Off"],     value = "off",     isRadio = true },
-                { text = L["Classic"], value = "classic", isRadio = true },
-                { text = L["Modern"],  value = "modern",  isRadio = true },
-            },
-            get = function() return UF.RingComboMode(GetUnitDb(unit)) end,
-            set = function(_, value)
-                local u = GetUnitDb(unit)
-                if not u then return end
-                u.ringCombo, u.modernCombo = value, nil
-                refreshCombo()
-            end,
-            hidden = function() return not (ns.UFRing and ns.UFRing.Style() == "flareui") end,
-            desc = L["Classic: gems round the portrait. Modern: a bar along the top of the health bar, as in Addon Style."] }
+            desc = L["Classic: gems round the portrait. Modern: a bar along the top of the health bar, as in Modern Style."] }
     end
     if UF.THREAT_PERCENT_UNITS[unit] then
-        settings[#settings + 1] = { name = L["Show Threat"], kind = LEM.SettingType.Checkbox, default = false,
-            desc = L["Your threat on this unit as a percent, in threat colours. Above the portrait ring, or after the health value in Addon Style."],
+        settings[#settings + 1] = { name = L["Threat Text"], kind = LEM.SettingType.Checkbox, default = false,
+            desc = L["Your threat on this unit as a percent, in threat colours. Above the portrait ring, or after the health value in Modern Style."],
             get = function() local u = GetUnitDb(unit); return u and u.threatPercent or false end,
             set = function(_, value)
                 local u = GetUnitDb(unit)
@@ -6051,9 +6297,27 @@ local function BuildSettings(unit)
             end }
     end
     -- (the ring styles show it in the ring's disc, which goes with it)
+    -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
     settings[#settings + 1] = { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true,
-        get = function() return get("showName")() ~= false end, set = set("showName") }
+        get = function() return get("showName")() ~= false end, set = set("showName"),
+        hidden = function() return not onPlate() end }
     settings[#settings + 1] = { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") }
+    settings[#settings + 1] = UF.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover"))
+    settings[#settings + 1] = (function()
+        local ret = { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+          formatter = function(value) return value end,   -- plain: "100%" clips the value box
+          get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
+          set = function(layoutName, value) set("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
+          hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") or not (get("showLevel")() ~= false) end }
+        return ret
+    end)()
+    -- Show Combat Text (player and pet, off; FlareUI and Forever Style): the hits and heals taken, on the portrait
+    if UF.CT.UNITS[unit] then
+        settings[#settings + 1] = { name = L["Show Combat Text"], kind = LEM.SettingType.Checkbox, default = false,
+            desc = L["Damage and heals taken show on the portrait, as on Blizzard's frames. With no portrait, they show on the health bar."],
+            get = function() local u = GetUnitDb(unit); return u and u.combatText == true or false end, set = set("combatText"),
+            hidden = function() return not ns.UFRing or ns.UFRing.Style() == "addon" end }
+    end
     -- Flip Portrait: the portrait on the right, the whole frame laid out as the
     -- target frame; off, on the left as the player frame. Target, focus and the target-of frames, on by
     -- default; the ring styles (Addon Style's Mirror Bars lays its frames out). Above Mirror.
@@ -6068,13 +6332,19 @@ local function BuildSettings(unit)
                 local f = frames[unit]
                 if f then UF.Redraw(f); AttachExtras(f) end
             end,
-            hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end }
+            -- (a simple Target of Target / Target of Focus has no portrait to flip)
+            hidden = function()
+                if not (ns.UFRing and ns.UFRing.Style() ~= "addon") then return true end
+                local db = ns.db and ns.db.profile and ns.db.profile.unitframes
+                return (unit == "targettarget" or unit == "focustarget") and db and db.simpleTargetOf and true or false
+            end }
     end
     -- target of target and target of focus offer it too (info.mirrorOption)
     if info.mirrorable or info.mirrorOption then
         -- flips text order and bar fill so the frame faces the player frame
         settings[#settings + 1] = { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
-            set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then UF.Redraw(f); AttachExtras(f) end end }
+            set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then UF.Redraw(f); AttachExtras(f) end end,
+            desc = L["The bars fill from the other side, and the texts swap sides, so the frame faces the player frame."] }
     end
     if unit == "player" then
         settings[#settings + 1] = { name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false,
@@ -6099,9 +6369,13 @@ local function BuildSettings(unit)
     -- Range Check: the frames that fade out of range (target and focus); with the frame's own rows
     -- (it changes how the frame behaves, not how it looks)
     if tContains(UF.RANGE_UNITS, unit) then
-        settings[#settings + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true,
+        settings[#settings + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = unit ~= "pet",
             desc = L["The frame fades while the unit is out of range."],
-            get = function() local u = GetUnitDb(unit); return not (u and u.rangeCheck == false) end,
+            get = function()
+                local u = GetUnitDb(unit)
+                if unit == "pet" then return u and u.rangeCheck == true or false end
+                return not (u and u.rangeCheck == false)
+            end,
             set = function(_, value)
                 local u = GetUnitDb(unit)
                 if not u then return end
@@ -6189,7 +6463,7 @@ local function BuildSettings(unit)
               get = get("castbarPosition"), set = set("castbarPosition"), hidden = noCast },
             { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = defaults.castTexture or "", values = BuildTextureValues(),
               get = function() local u = GetUnitDb(unit); return u and u.castTexture or "" end, set = set("castTexture"), hidden = noCast },
-            { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
+            { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = defaults.castBorderTexture or "", values = BuildBorderValues(true),
               get = function() local u = GetUnitDb(unit); return u and u.castBorderTexture or "" end, set = set("castBorderTexture"),
               desc = L["The cast bar's border. Frame Border matches the frame's own border."],
               hidden = function() return noCast() or onPlate() end },
@@ -6241,12 +6515,12 @@ local function BuildSettings(unit)
     if info.auras then
         local positions = {
             { text = L["Off"],          value = "OFF" },
-            { text = L["Top"],          value = "TOP" },
-            { text = L["Top Left"],     value = "TOPLEFT" },
-            { text = L["Top Right"],    value = "TOPRIGHT" },
-            { text = L["Bottom"],       value = "BOTTOM" },
-            { text = L["Bottom Left"],  value = "BOTTOMLEFT" },
-            { text = L["Bottom Right"], value = "BOTTOMRIGHT" },
+            { text = L["Above the Frame"],        value = "TOP" },
+            { text = L["Above the Frame, Left"],  value = "TOPLEFT" },
+            { text = L["Above the Frame, Right"], value = "TOPRIGHT" },
+            { text = L["Below the Frame"],        value = "BOTTOM" },
+            { text = L["Below the Frame, Left"],  value = "BOTTOMLEFT" },
+            { text = L["Below the Frame, Right"], value = "BOTTOMRIGHT" },
         }
         -- buffs and debuffs never share a place: one that clashes with the other kind's (the same
         -- corner, or Top / Bottom and anything on that edge) is greyed out
@@ -6265,15 +6539,15 @@ local function BuildSettings(unit)
               generator = Corner("buffs", "debuffs"), get = get("buffs"), set = set("buffs") },
             { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions,
               generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
-            { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
+            { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 8, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), false, defaults.auraSize or 22) end, set = set("buffSize") },
-            { name = L["Buff Amount"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),
+            { name = L["Max Buffs"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),
               minValue = UF.AURA_AMOUNT.min, maxValue = UF.AURA_AMOUNT.max, valueStep = 1,
               get = function() return UF.AuraAmount(GetUnitDb(unit), false, unit) end, set = set("buffAmount"),
               desc = L["How many buffs show. They take as many rows as they need."] },
-            { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 12, maxValue = 48, valueStep = 1,
+            { name = L["Debuff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 8, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), true, defaults.auraSize or 22) end, set = set("debuffSize") },
-            { name = L["Debuff Amount"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),
+            { name = L["Max Debuffs"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),
               minValue = UF.AURA_AMOUNT.min, maxValue = UF.AURA_AMOUNT.max, valueStep = 1,
               get = function() return UF.AuraAmount(GetUnitDb(unit), true, unit) end, set = set("debuffAmount"),
               desc = L["How many debuffs show. They take as many rows as they need."] },
@@ -6285,10 +6559,21 @@ local function BuildSettings(unit)
             auraItems[#auraItems + 1] = { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
                 get = function() local u = GetUnitDb(unit); return u and u.onlyMyBuffs or false end, set = set("onlyMyBuffs"),
                 desc = L["Only the buffs you cast on yourself."] }
+            auraItems[#auraItems + 1] = { name = L["Show Weapon Enchants"], kind = LEM.SettingType.Checkbox, default = true,
+                get = function() local u = GetUnitDb(unit); return not (u and u.showEnchants == false) end, set = set("showEnchants"),
+                desc = L["Poisons, sharpening stones, oils and shaman weapon spells, at the start of the buffs. They follow Hide Buffs too."] }
             auraItems[#auraItems + 1] = { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = "off",
                 values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
                            { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
                 desc = L["A dispellable debuff on you makes the frame's border pulse in its type's colour. In the ring styles the portrait's ring pulses too."],
+                get = function() local u = GetUnitDb(unit); return u and u.dispelHighlight or "off" end, set = set("dispelHighlight") }
+        end
+        -- target and focus: the same Dispel Highlight, for a friendly unit you dispel (11-20, off)
+        if unit == "target" or unit == "focus" then
+            auraItems[#auraItems + 1] = { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = "off",
+                values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },
+                           { text = L["Dispellable by the Group"], value = "all", isRadio = true } },
+                desc = L["A dispellable debuff on a friendly unit makes the frame's border pulse in its type's colour."],
                 get = function() local u = GetUnitDb(unit); return u and u.dispelHighlight or "off" end, set = set("dispelHighlight") }
         end
         -- every debuff on yourself is yours to see: other units only
@@ -6369,6 +6654,7 @@ function UF.FontElements(key)
     local list = { "names", "health", "level", "power" }
     if info.castbar then list[#list + 1] = "cast"; list[#list + 1] = "castTime" end
     if info.auras then list[#list + 1] = "auras"; list[#list + 1] = "auraCount" end
+    if UF.CT.UNITS[key] then list[#list + 1] = "combatText" end   -- Show Combat Text
     return list
 end
 
@@ -6387,7 +6673,7 @@ UF.Kit = {
     -- Background Opacity's bar background and its Edit Mode slider
     Border = function(name) return ns.UFRing and ns.UFRing.Border(name) or name end,
     NoBorderOptions = function() return ns.UFRing and ns.UFRing.PlateOn() or false end,
-    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, PlatePowerSetting = UF.PlatePowerSetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, DamageTrailSetting = UF.DamageTrailSetting, DamageTrailOn = UF.DamageTrailOn, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting,
+    BAR_BG_OPACITY = UF.BAR_BG_OPACITY, SetBarBackground = UF.SetBarBackground, BgOpacitySetting = UF.BgOpacitySetting, PlatePowerSetting = UF.PlatePowerSetting, SmoothBarsSetting = UF.SmoothBarsSetting, BarEdgeGlowSetting = UF.BarEdgeGlowSetting, DamageTrailSetting = UF.DamageTrailSetting, DamageTrailOn = UF.DamageTrailOn, HideBuffsSetting = UF.HideBuffsSetting, ClassColorSetting = UF.ClassColorSetting, ValuesOnHover = UF.ValuesOnHover, ValuesOnHoverSetting = UF.ValuesOnHoverSetting,
     HealthColorSetting = UF.HealthColorSetting, HealthBarColor = UF.HealthBarColor, HealthColorLive = UF.HealthColorLive, HealthColorMode = UF.HealthColorMode, SampleHealthColor = UF.SampleHealthColor,
     INSET = INSET, BG_OPACITY = BG_OPACITY, BACKDROP_FILE = BACKDROP_FILE,
     SEPARATOR_TEXTURE = SEPARATOR_TEXTURE, SEPARATOR_HEIGHT = SEPARATOR_HEIGHT, TEXT_INSET = TEXT_INSET,
@@ -6454,6 +6740,7 @@ function UF:Refresh()
         end)
     end
     guard("player cast mode", UF.ApplyPlayerCastMode)
+    guard("combat text", UF.CombatTextSync)
 end
 
 -- Show Player or Hide Player Frame while in party changed (Party frames' Edit Mode)
@@ -6580,6 +6867,7 @@ function UF:Init()
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(true)
         SetCastPreview(true)
+        UF.CombatTextSync()
         UpdateFsrSpark()
     end
     local function EndPreview()
@@ -6587,6 +6875,7 @@ function UF:Init()
         for _, f in pairs(frames) do LayoutAuras(f) end
         SetAuraPreview(false)
         SetCastPreview(false)
+        UF.CombatTextSync()
         UpdateFsrSpark()
     end
     LEM:RegisterCallback("enter", ShowPreview)

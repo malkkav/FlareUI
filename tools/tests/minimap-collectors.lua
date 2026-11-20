@@ -56,6 +56,16 @@ local function setup(options)
     function Frame:ClearAllPoints() end
     function Frame:SetText(text) self.text = text end
     function Frame:RegisterForClicks() end
+    -- the badge's hover highlight (PR #109)
+    local highlight = { SetAlpha = function() end, SetShown = function() end, Show = function() end, Hide = function() end }
+    function Frame:SetHighlightTexture() end
+    function Frame:GetHighlightTexture() return highlight end
+    function Frame:LockHighlight() end
+    function Frame:UnlockHighlight() end
+    function Frame:HookScript(event, fn)
+        local old = self.scripts[event]
+        self.scripts[event] = old and function(...) old(...); fn(...) end or fn
+    end
     function Frame:RegisterEvent(event) self.events[event] = true end
     function Frame:UnregisterEvent(event) self.events[event] = nil end
     function Frame:IsShown() return self.shown end

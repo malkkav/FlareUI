@@ -96,6 +96,7 @@ local ctx = {
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return nil end,
     classic = true, mirror = true, hostile = true, castbar = true,
+    barText = true, TextDb = function() return GetDb() end,   -- the unit frames' text slots (PartyFrames.lua PF.SlotOn)
     ringKind = "boss",       -- the target frame's ring in the ring styles (PartyFrames.lua RingKind)
     fontKey = "flag",        -- their own fonts (Unit Frames > Fonts > Flag Carriers)
     factionIcon = true,      -- the faction crest in the role icon's place (PartyFrames.lua UpdateRole)
@@ -189,10 +190,12 @@ end
 -- the strata they were made with, hence the recursion; out of combat only (secure buttons).
 local HOLDER_LEVEL = 200
 -- (siblings as varargs: no table per frame)
+-- (an aura container's locked buttons are skipped, as in RaidFrames.lua)
 local function SetLayer(strata, frame, ...)
     if not frame then return end
-    frame:SetFrameStrata(strata)
-    SetLayer(strata, frame:GetChildren())
+    if not frame:IsForbidden() and pcall(frame.SetFrameStrata, frame, strata) then
+        SetLayer(strata, frame:GetChildren())
+    end
     return SetLayer(strata, ...)
 end
 local function ApplyLayer(editing)
@@ -313,6 +316,12 @@ local function BuildSettings()
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 1, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
           hidden = onPlate },
+        -- Portrait Scale (11-20, FlareUI Style, as on the unit frames): the ring in proportion, apart from the height
+        { name = L["Portrait Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 150, valueStep = 5,
+          formatter = function(value) return value end,
+          get = function() return get("portraitScale")() or 100 end, set = set("portraitScale"),
+          hidden = function() return not (ns.UFRing and ns.UFRing.Style() == "flareui") end,
+          desc = L["The portrait ring in percent of its usual size. It keeps its shape, and the frame keeps its height."] },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = D.powerHeight, minValue = 0, maxValue = 30, valueStep = 1,
           get = get("powerHeight"), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end,
           hidden = onPlate },
@@ -323,11 +332,22 @@ local function BuildSettings()
                 db.platePower = value
                 Refresh()
             end, onPlate),
-        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = get("healthText"), set = set("healthText") },
-        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = D.powerText or "value", values = K.POWER_TEXT_MODES,
-          get = function() local db = GetDb(); return K.PowerTextMode(db and db.powerText) end, set = set("powerText") },
-        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName") },
+        -- the unit frames' Left / Middle / Right text slots, with their defaults (tc's report 11-19)
+        ns.BarText.Setting({ name = L["Health Text"], bar = "health", db = GetDb, changed = Refresh,
+            style = function() return onPlate() and "plate" or "plain" end }),
+        ns.BarText.Setting({ name = L["Power Text"], bar = "power", db = GetDb, changed = Refresh,
+            style = function() return onPlate() and "plate" or "plain" end }),
+        -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
+        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
+          hidden = function() return not onPlate() end },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel == true, get = function() return get("showLevel")() == true end, set = set("showLevel") },
+        K.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
+        -- Level Disc Size (11-20, per frame): the ring styles' level disc, with Show Level on
+        { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+          formatter = function(value) return value end,   -- plain: "100%" clips the value box
+          get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
+          set = function(layoutName, value) set("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
+          hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") or not (get("showLevel")() == true) end },
         -- Flip Portrait (on: the portrait on the right) and Mirror Bars, as on the boss frames
         { name = L["Flip Portrait"], kind = LEM.SettingType.Checkbox, default = true,
           desc = L["The portrait on the right, as on the target frame. Off: on the left, as on the player frame."],
@@ -359,6 +379,8 @@ local function BuildSettings()
             item.hidden = K.NoBorderOptions
             return item
         end)(),
+        -- (11-20) as on every other player frame; unset, it follows the Unit Frames' Class Colours
+        K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
         K.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow")),
         K.DamageTrailSetting(get("damageTrail"), set("damageTrail")),
@@ -371,12 +393,23 @@ local function BuildSettings()
           set = function(layoutName, value) set("castbar")(layoutName, value); if holder then LEM:RefreshFrameSettings(holder) end end },
         { name = L["Bar Texture"], canon = "Cast Bar Texture", search = L["Cast Bar Texture"], kind = LEM.SettingType.Dropdown, default = D.castTexture, values = K.BuildTextureValues(),
           get = get("castTexture"), set = set("castTexture"), hidden = noCast },
-        { name = L["Border Texture"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
+        { name = L["Border"], canon = "Cast Bar Border", search = L["Cast Bar Border"], kind = LEM.SettingType.Dropdown, default = D.castBorderTexture, values = K.BuildBorderValues(true),
           get = get("castBorderTexture"), set = set("castBorderTexture"),
           hidden = function() return noCast() or K.NoBorderOptions() end,
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
-        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 12, minValue = 8, maxValue = 30, valueStep = 1,
+        { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight or 12, minValue = 8, maxValue = 40, valueStep = 1,
           get = get("castHeight"), set = set("castHeight"), hidden = noCast },
+        { name = L["Position"], canon = "Cast Bar Position", search = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = "BOTTOM",
+          values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
+          get = function() return get("castbarPosition")() or "BOTTOM" end, set = set("castbarPosition"), hidden = noCast },
+        (function()
+            -- the cast bar's own Background (11-20, as on the unit frames); unset, the frame's
+            local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
+                function() local v = get("castBgOpacity")(); if v == nil then v = get("bgOpacity")() end; if v == nil then return K.BAR_BG_OPACITY end; return v end,
+                set("castBgOpacity"))
+            item.canon, item.search, item.hidden = "Cast Bar Background", L["Cast Bar Background"], noCast
+            return item
+        end)(),
         { name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = true,
           get = function() return get("castIcon")() ~= false end,
           set = function(layoutName, value) set("castIcon")(layoutName, value and true or false) end,

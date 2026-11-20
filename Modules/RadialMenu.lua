@@ -88,7 +88,7 @@ local ROUND_STYLES = {
     },
 }
 local RIM_TINT_NONE = { 1, 1, 1 }
-local BORDER_COLOR         = { 0.45, 0.33, 0.19 }   -- the drawn fallback rim, the panel frames' brown
+local BORDER_COLOR         = { 0.50, 0.38, 0.21 }   -- the drawn fallback rim (palette bronze2)
 local ICON_SCALE_IDLE      = 0.88   -- the hovered button is full size
 
 -- tinted as Blizzard's action buttons; the portrait-mask swipe stays inside the round icon
@@ -109,9 +109,9 @@ local PING = {
     RING_SIZE = 56, HUB = 24,           -- the hub ring, and where the dividers start
     GLOW_SIZE = 400,                    -- the light's inner edge meets the hub ring at this size
     DIVIDER_THICKNESS = 4,
-    DIVIDER_COLOR = { 0.58, 0.44, 0.25, 0.85 },   -- frame bronze, dimmed
-    RING_COLOR = { 0.45, 0.33, 0.19, 1 },
-    LIT_COLOR = { 1, 0.80, 0.25 },
+    DIVIDER_COLOR = { 0.50, 0.38, 0.21, 0.85 },   -- palette bronze2
+    RING_COLOR = { 0.50, 0.38, 0.21, 1 },   -- palette bronze2
+    LIT_COLOR = { 1, 0.82, 0.25 },   -- palette goldOn
     GLOW_ALPHA = 0.5,
     LIT_DIVIDER_ALPHA = 0.7,
     -- Blizzard_RadialWheel.lua's timings: fade in / out while the icons glide SLIDE px
@@ -127,7 +127,7 @@ local PING = {
     DOT_STEP = math.rad(13),           -- between two dots, round the rim
     DOT_GAP = 6,                       -- outside the rim
     DOT_COLOR = { 0.85, 0.85, 0.85, 0.55 },
-    DOT_COLOR_ON = { 1, 0.80, 0.25, 1 },
+    DOT_COLOR_ON = { 1, 0.82, 0.25, 1 },   -- palette goldOn
 }
 
 local STUCK_OPEN_SECONDS = 20     -- see the guard in UpdateSelection
@@ -753,7 +753,11 @@ RM.EmoteKit = { TYPED = "CUSTOM", TYPED_ICON = "Interface\\Icons\\INV_Misc_Note_
 function RM.EmoteKit.Label(command, upper)
     local name = command:match("^/(%S+)") or command:gsub("^/", "")
     if upper then return name:upper() end
-    return name:sub(1, 1):upper() .. name:sub(2)
+    -- only a plain Latin first letter is raised: a Russian (or any UTF-8) letter is several bytes,
+    -- and cutting its first byte off drew a box (GitHub #107)
+    local first = name:sub(1, 1)
+    if first:find("^[%a]$") and first:byte() < 128 then return first:upper() .. name:sub(2) end
+    return name
 end
 -- the listed emote a typed command stands for (any of its slash commands, any case), or nil
 function RM.EmoteKit.TokenFor(command)
@@ -1665,7 +1669,13 @@ local function OpenRadial(radialID, mode)
     if Option("subRadials", "reset") ~= "remember" then
         for _, list in pairs(resolvedCache) do
             for _, info in ipairs(list) do
-                if info.children then info.childIndex = 1 end
+                -- the first child's name, icon and action too: SetButtonChild wrote the last one's
+                -- over them, so the button kept its look after a cancel (AstroFox, 11-19)
+                local first = info.children and info.children[1]
+                if first then
+                    info.childIndex = 1
+                    info.name, info.icon, info.attributes = first.name, first.icon, first.attributes
+                end
             end
         end
     end

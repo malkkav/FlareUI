@@ -957,15 +957,24 @@ local function UpdateHotkeyText(button)
     -- larger keybind font isn't cut off. One line inside the border, as Blizzard's own box, so a long
     -- name ("Middle Mouse") is cut short instead of wrapping over the icon
     hotkey:SetWordWrap(false)
-    hotkey:SetSize(math.max(1, button:GetWidth() - (clean and 2 or 8)), 0)
+    -- (a button not sized yet: the text's own width, not a 1 px box that shows nothing)
+    local width = button:GetWidth() - (clean and 2 or 8)
+    hotkey:SetSize(width > 8 and width or 0, 0)
 end
 
-local function UpdateButtonText(button)
+-- redraw: the size changed once and back, so the text is drawn anew. The same font again does
+-- nothing, and a key drawn at login before its font file loaded stays blank until a real change
+-- (a Button Scale change brought the keys back, TheHusky's report 11-19)
+local function UpdateButtonText(button, redraw)
     if not button then return end
     local db = GetBarConfig()
     if not db then return end
 
     if button.HotKey then
+        if redraw then
+            local path, size, flags = FontArgs(db.hotkeyFont)
+            if size then ns.SetFont(button.HotKey, path, size + 1, flags) end
+        end
         ns.SetFont(button.HotKey, FontArgs(db.hotkeyFont))
         ns.ApplyShadow(button.HotKey, db.hotkeyFont)
         UpdateHotkeyText(button)
@@ -2012,6 +2021,7 @@ function ActionBars:Refresh(event)
 
     UpdateGryphonLayer(db)
     if ActionBars.ApplyTotemScale then ActionBars.ApplyTotemScale() end   -- a profile's totem bar Size
+    ActionBars.ApplyCapScales()   -- the gryphons' Size
     ActionBars.ApplyMenuBags()
     UpdateButtonArtAll()
     UpdateBordersAll()
@@ -2074,7 +2084,7 @@ ActionBars.ApplyTotemScale = ApplyTotemScale
 function ActionBars.TotemSizeSetting()
     local LEM = LibStub("FlareEditMode")
     return {
-        name = L["Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
         formatter = function(value) return value end,   -- plain: "100%" clips the value box
         get = function() local db = GetBarConfig(); return db and db.totemScale or 100 end,
         set = function(_, value)
@@ -2083,6 +2093,50 @@ function ActionBars.TotemSizeSetting()
             db.totemScale = value ~= 100 and value or nil
             ApplyTotemScale()
         end,
+        -- (with Action Bars off nothing applies it: hidden, as the gryphons' and bag bar's Scale)
+        hidden = function() local db = GetBarConfig(); return not (db and db.enabled) end,
+    }
+end
+
+--------------------------------------------------
+-- 13b2. GRYPHON SIZE (Ravenesque 11-20)
+-- Each gryphon is its own Edit Mode system with no Size of its own: FlareUI adds one to each dialog
+-- (Visibility.lua, above Fading), 50-200%, on top of bar 1's scale (they sit inside it). 100% never
+-- touches a gryphon; out of a fight only.
+--------------------------------------------------
+ActionBars.CAP_FRAMES = { capLeft = "LeftEndCap", capRight = "RightEndCap" }
+function ActionBars.ApplyCapScales()
+    local db = GetBarConfig()
+    local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
+    if not (db and db.enabled and caps) then return end
+    if InCombatLockdown() then ActionBars._pendingCapScale = true return end
+    ActionBars._pendingCapScale = nil
+    local sizes = db.capScale or {}
+    for key, field in pairs(ActionBars.CAP_FRAMES) do
+        local cap = caps[field]
+        local scale = (sizes[key] or 100) / 100
+        if cap and not cap:IsForbidden() and (scale ~= 1 or cap.FlareUI_Scaled) then
+            local setScale = cap.SetScaleBase or cap.SetScale
+            setScale(cap, scale)
+            cap.FlareUI_Scaled = scale ~= 1 or nil
+        end
+    end
+end
+
+function ActionBars.CapSizeSetting(key)
+    local LEM = LibStub("FlareEditMode")
+    return {
+        name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
+        formatter = function(value) return value end,   -- plain: "100%" clips the value box
+        get = function() local db = GetBarConfig(); return db and db.capScale and db.capScale[key] or 100 end,
+        set = function(_, value)
+            local db = GetBarConfig()
+            if not db then return end
+            db.capScale = db.capScale or {}
+            db.capScale[key] = value ~= 100 and value or nil
+            ActionBars.ApplyCapScales()
+        end,
+        hidden = function() local db = GetBarConfig(); return not (db and db.enabled) end,
     }
 end
 
@@ -2182,7 +2236,7 @@ function ActionBars:OnEnteringWorld(event)
         C_Timer.After(delay, function()
             local db = GetBarConfig()
             if not (db and db.enabled) then return end
-            for _, btn in ipairs(GetAllActionButtons()) do UpdateButtonText(btn) end
+            for _, btn in ipairs(GetAllActionButtons()) do UpdateButtonText(btn, true) end
         end)
     end
 end
@@ -2193,6 +2247,7 @@ function ActionBars:OnCombatEnd()
     end
     if #pendingRanks > 0 then FlushRanks() end
     if self._pendingTotemScale then ApplyTotemScale() end
+    if self._pendingCapScale then ActionBars.ApplyCapScales() end
     if self._pendingBagSize then ApplyBagBarSize() end
 end
 

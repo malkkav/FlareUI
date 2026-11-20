@@ -1003,7 +1003,8 @@ end
 
 local function UpdateItemBorder(ov, db, quality, dimmed)
     local style = db.bagThickBorders and "thick" or "thin"
-    if quality and not dimmed then   -- (rarity colours always on)
+    -- Colour by Rarity (11-20, in Skin Item Slots; tweaks.bagRarity, on): off, every border bronze
+    if quality and not dimmed and db.bagRarity ~= false then
         local r, g, b = C_Item.GetItemQualityColor(quality)
         ShowBorder(ov, style, r, g, b)
     else

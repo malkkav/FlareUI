@@ -25,7 +25,7 @@ local LSM = LibStub("LibSharedMedia-3.0")
 --------------------------------------------------
 -- 3. CONSTANTS
 --------------------------------------------------
-local TEXTURE_NAME  = "FlareUI Forever"   -- Bar Texture's default
+local TEXTURE_NAME  = "FlareUI Dark"   -- Bar Texture's default
 local BORDER_NAME   = "FlareUI Thin"
 local BORDER_SIZE   = 16
 local BORDER_COLOR  = { 0.80, 0.60, 0.34 }         -- #CC9957
@@ -52,10 +52,10 @@ local function GetTexture()
     return LSM:Fetch("statusbar", name) or "Interface\\Buttons\\WHITE8x8"
 end
 
--- "Bar Texture" choices: FlareUI's bars, a divider, then other addons'
+-- "Bar Texture" choices: FlareUI's bars, a divider, then other addons' (the settings page reads them)
 local function TextureValues()
     local values = {}
-    for _, name in ipairs({ "FlareUI Flat", "FlareUI Forever", "FlareUI Forever (Light)", "FlareUI Striped" }) do
+    for _, name in ipairs({ "FlareUI Flat", "FlareUI Dark", "FlareUI Light", "FlareUI Striped" }) do
         if LSM:IsValid("statusbar", name) then values[#values + 1] = { text = name, value = name, isRadio = true } end
     end
     local others = ns.AddonMedia("statusbar")
@@ -794,11 +794,7 @@ local function BuildFlare()
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
-        { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = TEXTURE_NAME, values = TextureValues(),
-          get = function() return GetDb().texture or TEXTURE_NAME end, set = function(_, value) GetDb().texture = value; LayoutFlare() end },
-        -- None first, then FlareUI's and other addons' borders, as on the unit frames
-        { name = L["Border"], kind = LEM.SettingType.Dropdown, default = BORDER_NAME, values = ns.UnitFrames.Kit.BuildBorderValues(false),
-          get = function() return GetDb().border or BORDER_NAME end, set = function(_, value) GetDb().border = value; LayoutFlare() end },
+        -- (Bar Texture and Border: Settings > Action Bars > XP Bar, 11-20, as every other frame's look)
     }))
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)
     LEM:RegisterCallback("enter", UpdateFlare)
@@ -816,6 +812,18 @@ function XPB:ShouldLoad()
     -- with the module, unless its FlareUI XP Bar switch is off (Blizzard's bars are then untouched)
     return (ab and ab.enabled and not (ab.xpbar and ab.xpbar.enabled == false)) or false
 end
+
+-- Bar Texture and Border for Settings > Action Bars > XP Bar: { value, label } lists and the defaults
+function XPB.LookChoices(which)
+    local values = which == "border" and ns.UnitFrames.Kit.BuildBorderValues(false) or TextureValues()
+    if type(values) == "function" then values = values() end
+    local list = {}
+    for _, v in ipairs(values) do
+        if v.isDivider then list[#list + 1] = { divider = true } else list[#list + 1] = { v.value, v.text } end
+    end
+    return list
+end
+XPB.DEFAULT_TEXTURE, XPB.DEFAULT_BORDER = TEXTURE_NAME, BORDER_NAME
 
 -- The FlareUI XP Bar, for the Visibility module's fader
 function XPB:GetFrame()

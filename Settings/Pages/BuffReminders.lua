@@ -14,7 +14,7 @@ local function BR() return ns.BuffReminders end
 
 S:Module{
     key = "br", group = "combat", order = 51, enabled = "auras.reminders",
-    tabs = { { key = "reminders" }, { key = "when" }, { key = "alerts" }, { key = "fonts" } },
+    tabs = { { key = "reminders" }, { key = "when" }, { key = "fonts" } },
     editMode = function() return BR() and BR().GetFrame and BR():GetFrame() end,
 }
 
@@ -32,8 +32,6 @@ Row{ key = "br.extras", kind = "dropdown", tab = "reminders", path = "auras.remi
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ExtraKeys() or {}, empty = "none" } }
 Row{ key = "br.playstyle", kind = "choice", tab = "reminders", path = "auras.reminder.playstyle",
     choices = { "auto", "melee", "caster", "healer", "tank" } }
--- Weapons: in Consumables & Weapons
-Row{ key = "br.weaponOil", tab = "reminders", path = "auras.reminder.weaponOil" }
 -- Consumables: Food and Flask on or off (where it shows is on the When and Where tab), then the elixirs
 local function ConsumablesOn() return (S:GetPath("auras.reminder.consumables") or "off") ~= "off" end
 Row{ key = "br.consumables", tab = "reminders",
@@ -41,22 +39,35 @@ Row{ key = "br.consumables", tab = "reminders",
     set = function(on)
         S:SetPath("auras.reminder.consumables", on and (S:GetPath("auras.reminder.consumablesWhere") or "instance") or "off")
     end }
-Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.reminder.elixirs", parent = "br.consumables",
-    choices = function() return BR() and BR().ElixirChoices() or {} end,
-    toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
-    -- (with Those in Your Bags the ticks don't count)
-    disabled = function() return not ConsumablesOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
 -- which elixirs are watched, and each or any one of them
 Row{ key = "br.elixirSource", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
     choices = { "ticked", "bags" }, disabled = function() return not ConsumablesOn() end }
 Row{ key = "br.elixirMode", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
     choices = { "each", "any" }, disabled = function() return not ConsumablesOn() end }
--- Upkeep, in pairs
-Row{ key = "br.supplies", half = true, tab = "reminders", path = "auras.reminder.supplies" }
-Row{ key = "br.durability", half = true, tab = "reminders", path = "auras.reminder.durability" }
-Row{ key = "br.trinkets", half = true, tab = "reminders", path = "auras.reminder.trinkets" }
-Row{ key = "br.camping", half = true, tab = "reminders", path = "auras.reminder.camping" }
-Row{ key = "br.gathering", half = true, tab = "reminders", path = "auras.reminder.gathering" }
+Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.reminder.elixirs", parent = "br.consumables",
+    choices = function() return BR() and BR().ElixirChoices() or {} end,
+    toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
+    -- (with Those in Your Bags the ticks don't count)
+    disabled = function() return not ConsumablesOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
+-- Upkeep (11-20, was six switches): one dropdown of toggles over auras.reminder.<key>
+local UPKEEP = { "weaponOil", "supplies", "durability", "trinkets", "camping", "gathering" }
+local UPKEEP_SPEC = { exclusive = { "none" }, tokens = UPKEEP, empty = "none" }
+local function UpkeepValue(read)
+    local on = {}
+    for _, key in ipairs(UPKEEP) do if read(key) then on[#on + 1] = key end end
+    return #on > 0 and table.concat(on, ",") or "none"
+end
+Row{ key = "br.upkeepPick", kind = "dropdown", tab = "reminders", toggles = UPKEEP_SPEC,
+    choices = { "none", { divider = true }, "weaponOil", "supplies", "durability", "trinkets", "camping", "gathering" },
+    get = function() return UpkeepValue(function(key) return S:GetPath("auras.reminder." .. key) end) end,
+    set = function(value)
+        local set = ns.Conditions.Set(value, UPKEEP_SPEC)
+        for _, key in ipairs(UPKEEP) do S:SetPath("auras.reminder." .. key, set[key] and true or false) end
+    end,
+    resetValue = function()
+        local d = ns.defaults and ns.defaults.profile and ns.defaults.profile.auras and ns.defaults.profile.auras.reminder or {}
+        return UpkeepValue(function(key) return d[key] end)
+    end }
 -- Your Own: add a custom reminder, remove this class's, bring back the hidden ones
 -- (leads Your Own; it is the way in while the lists under it are empty)
 Row{ key = "br.custom", kind = "button", center = true, tab = "reminders", lead = true,
@@ -139,9 +150,10 @@ Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",
     end }
 
 -- ALERTS --------------------------------------
-Row{ key = "br.sound", kind = "choice", tab = "alerts", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
+Row{ key = "br.sound", kind = "choice", tab = "when", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
+    soundPreview = function(v) S:PlayAlertSound(v) end,
     apply = function() Refresh(); if BR() and BR().PlayAlert then BR().PlayAlert(true) end end }
-Row{ key = "br.readyCheck", tab = "alerts", path = "auras.reminder.readyCheck" }
+Row{ key = "br.readyCheck", tab = "when", path = "auras.reminder.readyCheck" }
 
 -- FONTS (back from Edit Mode): the counts and the time left on each icon
 local function FontsApply() if BR() and BR().Refresh then BR():Refresh() end end

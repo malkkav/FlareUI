@@ -69,12 +69,50 @@ local C = {
     TITLE_FOCUS = { 0.40, 0.80, 1 },   -- quest pop-ups ("! title"), and the focused quest with no focus buttons
     OBJECTIVE = { 0.85, 0.85, 0.85 },
     OBJECTIVE_DONE = { 0.55, 0.55, 0.55 },
+    -- the plain "Ready to turn in" line: Blizzard's grey (OBJECTIVE_TRACKER_COLOR.Complete); a quest's own
+    -- closing text or a "talk to" waypoint keeps the objective colour, as in Blizzard's tracker
+    READY = { 0.6, 0.6, 0.6 },
     DIM = { 0.55, 0.55, 0.55 },
     URGENT = { 1, 0.25, 0.25 },
     -- a quest timer by the quarter of its time it is in, last to first
     TIMER = { { 1, 0.25, 0.25 }, { 1, 0.5, 0.15 }, { 1, 1, 0 }, { 0.25, 1, 0.25 } },
     NO_FONT = {},           -- a font setting with nothing set (only ever read)
 }
+
+-- Colour Scheme (11-20, Malkkav): Blizzard's colours, or FlareUI's: the header and zone headings in light
+-- bronze, quest titles in the accent bronze, every other colour (complete, focus, objectives, timers,
+-- difficulty) in a softer tone of its own (ns.SoftColor). The C tables change in place, so every
+-- holder of one follows. Blizzard frame style always takes Blizzard's; FlareUI and Custom default to
+-- FlareUI's (objectivetracker.colorScheme nil).
+OT.SCHEME_KEYS = { "HEADING", "ZONE", "TITLE", "TITLE_DONE", "TITLE_FOCUS", "OBJECTIVE", "OBJECTIVE_DONE", "READY", "DIM", "URGENT" }
+OT.SCHEME_BRONZE = { HEADING = "bronze5", ZONE = "bronze5", TITLE = "bronze4" }
+OT.blizzColors = {}
+for _, key in ipairs(OT.SCHEME_KEYS) do OT.blizzColors[key] = { C[key][1], C[key][2], C[key][3] } end
+for i, c in ipairs(C.TIMER) do OT.blizzColors["TIMER" .. i] = { c[1], c[2], c[3] } end
+function OT.ColorScheme(db)
+    if not db or db.frameStyle == "blizzard" then return "blizzard" end
+    return db.colorScheme or "flareui"
+end
+function OT.ApplyColorScheme(db)
+    local scheme = OT.ColorScheme(db)
+    if scheme == OT.schemeApplied then return false end
+    OT.schemeApplied = scheme
+    OT.soft = scheme == "flareui"
+    local function Set(t, from, bronze)
+        local r, g, b = from[1], from[2], from[3]
+        if OT.soft then
+            if bronze then r, g, b = bronze[1], bronze[2], bronze[3] else r, g, b = ns.SoftColor(r, g, b) end
+        end
+        t[1], t[2], t[3] = r, g, b
+    end
+    for _, key in ipairs(OT.SCHEME_KEYS) do
+        Set(C[key], OT.blizzColors[key], OT.SCHEME_BRONZE[key] and ns.PALETTE[OT.SCHEME_BRONZE[key]])
+    end
+    for i, c in ipairs(C.TIMER) do Set(c, OT.blizzColors["TIMER" .. i]) end
+    -- the tables kept their identity: lines that skip an unchanged colour table paint again (LineLook)
+    OT.schemeGen = (OT.schemeGen or 0) + 1
+    return true
+end
 
 -- Shared with the settings specimen so its palette follows the live tracker.
 OT.SampleColors = { TITLE = C.TITLE, TITLE_FOCUS = C.TITLE_FOCUS, ZONE = C.ZONE, OBJECTIVE = C.OBJECTIVE }
@@ -116,6 +154,8 @@ local state = {
 }
 -- builders shared by the tracker and the settings preview's sample (OT.CreateSample)
 local Build = {}
+-- the header strips and their sizes, for the chat's FlareUI frame style (Chat.lua Chat.ApplyFrameStyleArt)
+OT.Build, OT.C = Build, C
 
 local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.objectivetracker
@@ -464,9 +504,9 @@ local function CollectQuests(db)
     wipe(questBuf)
     local header
     local watched = 0
-    -- Show Untracked Quests: with zone headings, the quests of the zone you are in that
-    -- you don't track are listed too (dimmed, after the tracked ones). Tracking is never changed here
-    local showUntracked = db.showUntracked and db.zoneHeaders and not db.sortByLevel and not db.sortByProgress
+    -- Show Untracked Quests: the quests of the zone you are in that you don't track are listed too
+    -- (dimmed, after the tracked ones; with no zone headings, after every tracked quest). Tracking is never changed here
+    local showUntracked = db.showUntracked
     state.untrackedShown = false
     for _, info in ipairs(logBuf) do
         local questID = info.questID
@@ -537,6 +577,8 @@ local function CollectQuests(db)
         else
             q.ftRank = (db.zoneHeaders or not db.zoneFirst) and groupRank[q.ftHeader] or (q.ftHere and 0 or 1)
         end
+        -- no headings to sit under: the untracked ones go after every tracked quest
+        if q.ftUntracked and not (db.zoneHeaders and not db.sortByLevel and not db.sortByProgress) then q.ftRank = 1e6 end
     end
     -- Pin to Top: pinned quests lead the list, in their own order
     local pinned = Char().pinned
@@ -1040,7 +1082,7 @@ local function ToggleZoneQuests(zone)
     for _, q in ipairs(quests) do
         if q.ftHeader == zone then SetCollapsed(q.questID, not allCollapsed) end
     end
-    OT:RequestRender()
+    OT:Render()   -- a click redraws at once (the usual 0.1 s wait made the headings feel slow)
 end
 
 local function TryInsertQuestLink(link)
@@ -1084,7 +1126,9 @@ local function OnLineClick(self, button)
         -- (a quest zone's heading always folds)
         local z = Char().collapsedZones
         z[self.zone] = not z[self.zone] or nil
-        OT:RequestRender()
+        -- at once: the usual 0.1 s wait (and any slide still running) made the headings feel slow
+        state.holdUntil = nil
+        OT:Render()
         return
     end
     if self.recipeID then
@@ -1158,8 +1202,8 @@ function Build.LineLook(line, text, kind, cfg, color, w, wrap)
         line.ftText = text
         line.text:SetText(text)
     end
-    if line.ftColor ~= color then
-        line.ftColor = color
+    if line.ftColor ~= color or line.ftScheme ~= OT.schemeGen then
+        line.ftColor, line.ftScheme = color, OT.schemeGen
         SetColor(line.text, color)
     end
     if line.ftWidth ~= w then
@@ -1845,10 +1889,25 @@ local PREVIEW = {
 
 -- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
 function Build.DifficultyColor(level, questID)
+    local c
     if questID and HaveQuestData(questID) then
-        return GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
+        c = GetDifficultyColor(C_PlayerInfo.GetContentDifficultyQuestForPlayer(questID))
+    else
+        c = GetQuestDifficultyColor(level)
     end
-    return GetQuestDifficultyColor(level)
+    -- FlareUI colour scheme: the same colour in a softer tone (one table per colour, kept)
+    if OT.soft and c then
+        Build.softDifficulty = Build.softDifficulty or {}
+        local key = string_format("%.3f %.3f %.3f", c.r, c.g, c.b)
+        local soft = Build.softDifficulty[key]
+        if not soft then
+            local r, g, b = ns.SoftColor(c.r, c.g, c.b)
+            soft = { r = r, g = g, b = b }
+            Build.softDifficulty[key] = soft
+        end
+        return soft
+    end
+    return c
 end
 
 -- Colour Names by Difficulty: the name in its level's colour, unless complete or focused (one
@@ -1911,16 +1970,30 @@ function Build.LayoutHeader(head, db, count, max, minimized)
     -- the quest count, always
     title = title .. "  " .. ColorCode(C.DIM) .. (max and (count .. "/" .. max) or count) .. "|r"
     head.title:SetText(title)
-    head.zone.text:SetText(db.zoneOnly and L["Zone"] or L["All"])
-    head.zone:SetSize(head.zone.text:GetStringWidth() + 6, C.HEADER - 6)
+    head.zone.active = db.zoneOnly or nil
+    head.zone:Paint(head.zone.lit)
 
     -- title on the left; the zone switch and the minimize button on the right
     local button = head.minimize
     button:ClearAllPoints()
     head.title:ClearAllPoints()
     head.zone:ClearAllPoints()
+    head.sort:ClearAllPoints()
     button:SetPoint("RIGHT", head, "RIGHT", 0, 0)
-    head.zone:SetPoint("RIGHT", button, "LEFT", -6, 0)
+    -- Header Buttons (Display): the filter and the sort, each left of the last one shown
+    local last = button
+    head.zone:SetShown(db.headerFilter ~= false)
+    if head.zone:IsShown() then
+        head.zone:SetPoint("RIGHT", last, "LEFT", -4, 0)
+        last = head.zone
+    end
+    head.sort:SetShown(db.headerSort ~= false)
+    if head.sort:IsShown() then
+        head.sort:SetPoint("RIGHT", last, "LEFT", -4, 0)
+        last = head.sort
+    end
+    head.lastButton = last
+    Build.LayoutAutoButtons(head, db)
     head.title:SetPoint("LEFT", head, "LEFT", C.PAD - C.HEADER_INSET, 0)
     button:SetPlus(minimized)
     -- Header Art: Blizzard's title strip behind the header, reaching past it as on Blizzard's tracker
@@ -1928,7 +2001,10 @@ function Build.LayoutHeader(head, db, count, max, minimized)
         local reach = Build.ArtReach(C.ART_TITLE)
         local leftOut = reach - C.ART_KNOB_IN + C.ART_TITLE_LEFT
         local rightOut = reach + C.ART_TITLE_RIGHT - C.ART_KNOB_IN - C.ART_TITLE_LEFT
-        Build.PlaceStrip(head, C.ART_TITLE, leftOut, rightOut)
+        -- (C.ART_TITLE_DOWN: the knobs onto the Thick border's curve, as the chat's; FlareUI style only,
+        -- the Blizzard style has no border and keeps its spot)
+        local down = Build.FrameStyle(db) == "flareui" and -C.ART_TITLE_DOWN or nil
+        Build.PlaceStrip(head, C.ART_TITLE, leftOut, rightOut, nil, down)
         -- and its bottom line, knobs and all, along the frame's bottom border: FlareUI style only (Blizzard
         -- has no border to put it on), and not while minimized (the frame is the header alone then)
         if minimized or Build.FrameStyle(db) ~= "flareui" then
@@ -1956,7 +2032,9 @@ C.ART_PAD = 5       -- more room above and below a zone heading with its strip
 C.ART_TITLE_RIGHT = 8   -- the title strip's art sits off its centre: its right end goes this much further out
 C.ART_TITLE_LEFT = 1    -- and the whole title strip one pixel to the left, to sit centred on the border
 C.ART_FOOT_BAND = { 31 / 40, 38 / 40 }   -- the title strip's bottom line with its knobs, for the frame's foot
-C.ART_FOOT_Y = 2        -- that line's middle, up from the frame's bottom edge (on the border, as the knobs at the top)
+C.ART_FOOT_Y = 2.5      -- that line's middle, up from the frame's bottom edge (on the border, as the knobs at the top;
+                        -- 2.5 and ART_TITLE_DOWN -0.5 (up) fitted to the Thick border's curve in game, Malkkav 11-20)
+C.ART_TITLE_DOWN = -0.5 -- the title strip this far below the header's middle
 C.ART_KNOB_IN = 2       -- the title strip's end knobs sit on the frame border, half of each knob outside it
 C.ART_HEADING_IN = 5    -- a zone heading's strip stays this far inside the frame border and the scroll bar
 Build.artInfo = {}
@@ -1977,6 +2055,11 @@ function Build.FrameStyle(db)
     return "flareui"
 end
 function Build.HeaderArtOn(db) return Build.FrameStyle(db) ~= "custom" end
+-- the scroll bar: never in the Blizzard style; Hide Scroll Bar (FlareUI and Custom) drops it. The thumb sits
+-- in the list's margin, so the text keeps its width either way; the mouse wheel always scrolls.
+function Build.ScrollBarShown(db)
+    return Build.FrameStyle(db) ~= "blizzard" and not (db and db.hideScrollBar)
+end
 -- how far a strip reaches past Blizzard's header on each side (its see-through ends)
 function Build.ArtReach(atlas)
     local info = Build.ArtInfo(atlas)
@@ -1991,7 +2074,8 @@ end
 -- the strip behind owner, centred on its height: from leftOut past its left edge to rightOut past
 -- its right edge
 -- band (optional): { from, to }, the part of the strip's height to draw, 0 at its top and 1 at its bottom
-function Build.PlaceStrip(owner, atlas, leftOut, rightOut, band)
+-- dy (optional): moves the strip up (+) or down (-) off its owner's middle, sub-pixel (no snapping)
+function Build.PlaceStrip(owner, atlas, leftOut, rightOut, band, dy)
     local info = Build.ArtInfo(atlas)
     if not info then Build.HideStrip(owner) return end
     local s = owner.ftStrip
@@ -1999,6 +2083,8 @@ function Build.PlaceStrip(owner, atlas, leftOut, rightOut, band)
         s = {}
         for _, part in ipairs({ "L", "M", "R" }) do
             local tex = owner:CreateTexture(nil, "BACKGROUND", nil, -1)
+            tex:SetSnapToPixelGrid(false)
+            tex:SetTexelSnappingBias(0)
             tex:Hide()
             s[part] = tex
         end
@@ -2023,10 +2109,10 @@ function Build.PlaceStrip(owner, atlas, leftOut, rightOut, band)
     end
     s.L:SetTexCoord(l, l + capSpan, t, b)
     s.L:SetWidth(cap)
-    s.L:SetPoint("LEFT", owner, "LEFT", -leftOut, 0)
+    s.L:SetPoint("LEFT", owner, "LEFT", -leftOut, dy or 0)
     s.R:SetTexCoord(r - capSpan, r, t, b)
     s.R:SetWidth(cap)
-    s.R:SetPoint("RIGHT", owner, "RIGHT", rightOut, 0)
+    s.R:SetPoint("RIGHT", owner, "RIGHT", rightOut, dy or 0)
     s.M:SetTexCoord(mid - span * 0.005, mid + span * 0.005, t, b)
     s.M:SetPoint("LEFT", s.L, "RIGHT")
     s.M:SetPoint("RIGHT", s.R, "LEFT")
@@ -2043,6 +2129,10 @@ function OT:Render()
     state.pending = false
     local db = GetDb()
     if not (db and holder) then return end
+    if OT.ApplyColorScheme(db) then
+        state.difficultyColors = nil
+        if header then SetColor(header.title, C.HEADING) end
+    end
     local char = Char()
     local minimized = char.minimized and not state.editMode
     local questGap = db.questGap or C.QUEST_GAP
@@ -2677,7 +2767,7 @@ function OT:UpdateScrollBar()
     if not thumb then return end
     local contentHeight, listHeight = state.contentHeight or 0, state.listHeight or 0
     -- (Frame Style Blizzard: no scroll bar; the mouse wheel still scrolls)
-    local scrollable = scroll:IsShown() and contentHeight > listHeight + 1 and Build.FrameStyle(GetDb()) ~= "blizzard"
+    local scrollable = scroll:IsShown() and contentHeight > listHeight + 1 and Build.ScrollBarShown(GetDb())
     thumb:SetShown(scrollable)
     if not scrollable then return end
     local range = contentHeight - listHeight
@@ -2831,6 +2921,8 @@ local INSTANCE_CONTEXT = { party = "dungeon", raid = "raid", pvp = "pvp", arena 
 local function CurrentContext(rules)
     -- lockdown only begins after PLAYER_REGEN_DISABLED, where this runs; the player is in combat already
     if rules.combat == "minimize" and UnitAffectingCombat("player") then return "combat" end
+    -- Auto Minimize on Flight Paths (11-19)
+    if rules.taxi == "minimize" and UnitOnTaxi("player") then return "taxi" end
     local _, instanceType = IsInInstance()
     return INSTANCE_CONTEXT[instanceType] or "world"
 end
@@ -3067,6 +3159,19 @@ local function CreateBoxButton(parent, name, size)
         Place(self.dash, (n - arm) / 2, (n - 2) / 2, arm, 2)
         Place(self.stem, (n - 2) / 2, (n - arm) / 2, 2, arm)
         self.stem:SetShown(self.plus or false)
+        -- a glyph of its own (Build.GLYPHS) in place of the minus / plus
+        if self.glyph then
+            self.dash:Hide()
+            self.stem:Hide()
+            self.marks = self.marks or {}
+            local rects = self.glyph(n)
+            for k, rect in ipairs(rects) do
+                local t = self.marks[k]
+                if not t then t = Tex("ARTWORK"); self.marks[k] = t end
+                Place(t, rect[1], rect[2], rect[3], rect[4])
+            end
+            for k = #rects + 1, #self.marks do self.marks[k]:Hide() end
+        end
         self:Paint(self.lit)
     end
     function b:Paint(lit)
@@ -3076,6 +3181,9 @@ local function CreateBoxButton(parent, name, size)
         for _, t in ipairs(self.steps) do t:SetColorTexture(c[1], c[2], c[3], 1) end
         self.dash:SetColorTexture(c[1], c[2], c[3], 1)
         self.stem:SetColorTexture(c[1], c[2], c[3], 1)
+        -- a switched-on glyph (Zone only) in the header gold
+        local g = self.active and C.HEADING or c
+        for _, t in ipairs(self.marks or {}) do t:SetColorTexture(g[1], g[2], g[3], 1) end
     end
     function b:SetPlus(plus)
         self.plus = plus
@@ -3088,6 +3196,89 @@ local function CreateBoxButton(parent, name, size)
     return b
 end
 
+-- The header buttons' glyphs, as rectangles { x, y, w, h } in pixels of a box n pixels wide
+Build.GLYPHS = {
+    -- a funnel: rows narrowing to a stem
+    funnel = function(n)
+        local m = n >= 14 and 4 or 3
+        local w, out, y = n - 2 * m, {}, m
+        while w >= 2 do
+            out[#out + 1] = { (n - w) / 2, y, w, 1 }
+            w, y = w - 2, y + 1
+        end
+        out[#out + 1] = { (n - 2) / 2, y, 2, n - m - y }
+        return out
+    end,
+    -- "!" and "?" in a 6 x 8 grid, centred (the Auto Quest Buttons)
+    exclaim = function(n) return Build.GridGlyph(n, { { 2, 0, 2, 6 }, { 2, 7, 2, 1 } }) end,
+    question = function(n)
+        return Build.GridGlyph(n, { { 1, 0, 4, 1 }, { 0, 1, 1, 1 }, { 5, 1, 1, 2 }, { 3, 3, 2, 1 }, { 2, 4, 2, 2 }, { 2, 7, 2, 1 } })
+    end,
+    -- three bars, longest on top
+    sort = function(n)
+        local m = n >= 14 and 4 or 3
+        local w = n - 2 * m
+        local gap = math_floor((n - 2 * m - 6) / 2) + 2
+        return { { m, m, w, 2 }, { m, m + gap, math_floor(w * 0.66 + 0.5), 2 }, { m, m + 2 * gap, math_floor(w * 0.33 + 0.5), 2 } }
+    end,
+}
+-- Auto Quest Buttons: with the switch on and Quality of Life running; not in the Gamepad UI, where
+-- the auto quests stand aside. Left of the sort button, "!" then "?"
+function OT.TweaksDb() return ns.db and ns.db.profile and ns.db.profile.tweaks end
+
+function Build.LayoutAutoButtons(head, db)
+    local accept, turnIn = head.autoAccept, head.autoTurnIn
+    if not (accept and turnIn) then return end
+    local tweaksModule = ns.modules and ns.modules["Tweaks"]
+    local can = tweaksModule and tweaksModule.initialized and not ns.IsGamepadUI() or false
+    -- each its own switch (11-20); a setup from before the split keeps its shared autoButtons
+    local function On(key)
+        local v = db[key]
+        if v == nil then v = db.autoButtons end
+        return can and v and true or false
+    end
+    local showAccept, showTurnIn = On("autoAcceptButton"), On("autoTurnInButton")
+    accept:SetShown(showAccept)
+    turnIn:SetShown(showTurnIn)
+    if not (showAccept or showTurnIn) then return end
+    local tweaks = OT.TweaksDb()
+    local last = head.lastButton or head.sort
+    if showTurnIn then
+        turnIn:ClearAllPoints()
+        turnIn:SetPoint("RIGHT", last, "LEFT", -4, 0)
+        last = turnIn
+    end
+    if showAccept then
+        accept:ClearAllPoints()
+        accept:SetPoint("RIGHT", last, "LEFT", -4, 0)
+    end
+    for _, b in ipairs({ accept, turnIn }) do
+        b.active = tweaks and tweaks[b.key] or nil
+        b:Paint(b.lit)
+    end
+end
+
+-- grid rectangles { col, row, w, h } in a 6 x 8 grid -> pixels, centred in the box
+function Build.GridGlyph(n, cells)
+    local u = math_max(1, math_floor((n - 6) / 8))
+    local x0, y0 = math_floor((n - 6 * u) / 2), math_floor((n - 8 * u) / 2)
+    local out = {}
+    for i, c in ipairs(cells) do out[i] = { x0 + c[1] * u, y0 + c[2] * u, c[3] * u, c[4] * u } end
+    return out
+end
+
+-- the sort in use, from the four settings (as Quest Tracker > Sort reads them)
+Build.SORTS = { "zone", "distance", "level", "progress" }
+function Build.SortMode(db)
+    if db.sortByLevel then return "level" end
+    if db.sortByProgress then return "progress" end
+    return db.zoneFirst and "zone" or "distance"
+end
+Build.SORT_LABELS = {
+    zone = function() return L["Sort: Zone"] end, distance = function() return L["Sort: Distance"] end,
+    level = function() return L["Sort: Level"] end, progress = function() return L["Sort: Progress"] end,
+}
+
 -- The header band (title, zone switch, minimize button) and the divider under it, on a window: the
 -- tracker's, or the settings preview's sample. No clicks or tooltips here.
 function Build.Header(window)
@@ -3097,10 +3288,24 @@ function Build.Header(window)
     head:SetHeight(C.HEADER - 3)
     head.title = head:CreateFontString(nil, "OVERLAY")
     head.minimize = CreateBoxButton(head, nil, C.BOX)
-    local zone = CreateFrame("Button", nil, head)
-    zone.text = zone:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    zone.text:SetPoint("CENTER")
+    -- All / Zone (a funnel, gold while only this zone shows) and the sort (three bars), as Kaliel's
+    -- Tracker has them (the idea only: its art is its own)
+    local zone = CreateBoxButton(head, nil, C.BOX)
+    zone.glyph = Build.GLYPHS.funnel
+    zone:Layout()
     head.zone = zone
+    local sort = CreateBoxButton(head, nil, C.BOX)
+    sort.glyph = Build.GLYPHS.sort
+    sort:Layout()
+    head.sort = sort
+    -- Auto Quest Buttons: "!" Auto Accept, "?" Auto Turn-In (Quality of Life's switches), gold while on
+    for _, def in ipairs({ { "autoAccept", "exclaim", "autoAcceptQuests" }, { "autoTurnIn", "question", "autoTurnInQuests" } }) do
+        local b = CreateBoxButton(head, nil, C.BOX)
+        b.glyph, b.key = Build.GLYPHS[def[2]], def[3]
+        b:Layout()
+        b:Hide()
+        head[def[1]] = b
+    end
 
     -- Header Art's line along the frame's bottom border (Build.LayoutHeader)
     local foot = CreateFrame("Frame", nil, window)
@@ -3118,9 +3323,10 @@ function Build.Header(window)
 end
 
 function Build.StyleHeader(head, db)
+    -- the live header: the scheme first, so "Quests" takes its colour (a preview's sample db never sets it)
+    if head == header then OT.ApplyColorScheme(db) end
     ApplyFont(head.title, db.headerFont, 13)
     SetColor(head.title, C.HEADING)
-    head.zone.text:SetTextColor(C.DIM[1], C.DIM[2], C.DIM[3])
 end
 
 -- the scroll bar: a dark bronze thumb down the list's right margin
@@ -3225,14 +3431,72 @@ local function CreateFrames()
         self:GetScript("OnEnter")(self)
     end)
     zone:SetScript("OnEnter", function(self)
-        self.text:SetTextColor(1, 1, 1)
+        self:Paint(true)
         ns.OwnGameTooltip(self, "ANCHOR_LEFT")
         GameTooltip:AddLine(GetDb().zoneOnly and L["Showing the quests of this zone"] or L["Showing all tracked quests"])
         GameTooltip:AddLine(L["Click to switch"], 0.5, 0.5, 0.5)
         GameTooltip:Show()
     end)
     zone:SetScript("OnLeave", function(self)
-        self.text:SetTextColor(C.DIM[1], C.DIM[2], C.DIM[3])
+        self:Paint(false)
+        GameTooltip:Hide()
+    end)
+
+    -- Auto Quest Buttons: a click switches Quality of Life's setting
+    for _, b in ipairs({ header.autoAccept, header.autoTurnIn }) do
+        b:SetScript("OnClick", function(self)
+            local tweaks = OT.TweaksDb()
+            if not tweaks then return end
+            tweaks[self.key] = not tweaks[self.key]
+            PlaySound(tweaks[self.key] and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_OFF)
+            self.active = tweaks[self.key] or nil
+            self:Paint(true)
+            if ns.SettingsPanel and ns.SettingsPanel.Refresh then pcall(ns.SettingsPanel.Refresh, ns.SettingsPanel) end
+            self:GetScript("OnEnter")(self)
+        end)
+        b:SetScript("OnEnter", function(self)
+            self:Paint(true)
+            local tweaks = OT.TweaksDb()
+            ns.OwnGameTooltip(self, "ANCHOR_LEFT")
+            GameTooltip:AddLine(self.key == "autoAcceptQuests" and L["Auto Accept Quests"] or L["Auto Turn-In Quests"])
+            if tweaks and tweaks[self.key] then
+                GameTooltip:AddLine(L["On"], GREEN_FONT_COLOR.r, GREEN_FONT_COLOR.g, GREEN_FONT_COLOR.b)
+            else
+                GameTooltip:AddLine(L["Off"], 0.5, 0.5, 0.5)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function(self)
+            self:Paint(false)
+            GameTooltip:Hide()
+        end)
+    end
+
+    -- Sort: a click the next way (Zone, Distance, Level, Progress), a right-click the one before; the
+    -- same four settings as Quest Tracker > Sort (AstroFox's idea 11-18)
+    local sort = header.sort
+    sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    sort:SetScript("OnClick", function(self, mouse)
+        local db = GetDb()
+        local now = Build.SortMode(db)
+        local at = 1
+        for i, mode in ipairs(Build.SORTS) do if mode == now then at = i end end
+        local step = mouse == "RightButton" and -1 or 1
+        local mode = Build.SORTS[(at - 1 + step) % #Build.SORTS + 1]
+        db.sortByLevel, db.sortByProgress = mode == "level", mode == "progress"
+        db.zoneFirst, db.sortByDistance = mode == "zone", mode == "distance"
+        OT:Render()
+        self:GetScript("OnEnter")(self)
+    end)
+    sort:SetScript("OnEnter", function(self)
+        self:Paint(true)
+        ns.OwnGameTooltip(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine(Build.SORT_LABELS[Build.SortMode(GetDb())]())
+        GameTooltip:AddLine(L["Click: next sort. Right-click: the one before."], 0.5, 0.5, 0.5)
+        GameTooltip:Show()
+    end)
+    sort:SetScript("OnLeave", function(self)
+        self:Paint(false)
         GameTooltip:Hide()
     end)
 
@@ -3318,7 +3582,7 @@ function OT:Init()
         "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "BAG_UPDATE_COOLDOWN",
         "PLAYER_LEVEL_UP", "PLAYER_TARGET_CHANGED", "TRACKED_RECIPE_UPDATE", "BAG_UPDATE_DELAYED",
         "GET_ITEM_INFO_RECEIVED", "QUEST_AUTOCOMPLETE", "QUEST_DETAIL", "PLAYER_MONEY", "SCENARIO_UPDATE", "SCENARIO_CRITERIA_UPDATE",
-        "QUEST_TURNED_IN",
+        "QUEST_TURNED_IN", "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED",
     }) do events:RegisterEvent(e) end
     events:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
     OT.KeepFocusChanged()   -- Keep Quest Focus: note the focus we start with
@@ -3343,6 +3607,11 @@ function OT:Init()
             return
         elseif event == "BAG_UPDATE_COOLDOWN" then
             OT:UpdateItemCooldowns()
+            return
+        elseif event == "PLAYER_CONTROL_LOST" or event == "PLAYER_CONTROL_GAINED" then
+            -- a flight path starts or ends (UnitOnTaxi can lag the event a moment)
+            OT:CheckContext()
+            C_Timer.After(0.5, function() OT:CheckContext() end)
             return
         elseif event == "PLAYER_TARGET_CHANGED" then
             UpdateRangeTicker()
@@ -3453,6 +3722,9 @@ do
         f.Header, f.Divider = Build.Header(window)
         f.Header.minimize:EnableMouse(false)
         f.Header.zone:EnableMouse(false)
+        f.Header.sort:EnableMouse(false)
+        f.Header.autoAccept:EnableMouse(false)
+        f.Header.autoTurnIn:EnableMouse(false)
         -- the list, cut at Max Height as the real one's scroll frame cuts it
         local list = CreateFrame("Frame", nil, window)
         list:SetClipsChildren(true)
@@ -3571,7 +3843,7 @@ do
                 end
                 if not collapsed then
                     if s.done then
-                        AddLine(s.ready, "objective", Build.DoneColor(db), objectiveIndent)
+                        AddLine(s.ready, "objective", s.ready == TEXT.ready and C.READY or Build.DoneColor(db), objectiveIndent)
                     else
                         for _, o in ipairs(s.objectives) do
                             if not (db.hideFinished and o.finished) then
@@ -3623,7 +3895,7 @@ do
             f.List:SetHeight(math_max(1, listHeight))
             f.List:Show()
             f.Divider:SetShown(not Build.HeaderArtOn(db))
-            local scrollable = contentHeight > listHeight + 1 and Build.FrameStyle(db) ~= "blizzard"
+            local scrollable = contentHeight > listHeight + 1 and Build.ScrollBarShown(db)
             thumb:SetShown(scrollable)
             if scrollable then Build.PlaceScrollBar(thumb, f.List, window, contentHeight, listHeight, 0) end
             height = C.HEADER + C.LIST_TOP + listHeight + C.LIST_BOTTOM

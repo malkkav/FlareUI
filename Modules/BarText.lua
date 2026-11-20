@@ -53,9 +53,12 @@ BT.DEFAULTS = {
 }
 
 -- a frame's own starting slots over its style's, in every style: no power text on the
--- pet and the target-of frames (mana as power)
+-- pet and the target-of frames (mana as power). A frame's "plain" / "plate" table holds slots for
+-- that style only (11-20: the party and boss frames start as their old Health Text: Percent, Power Value)
 BT.UNIT_DEFAULTS = {
     pet = { power = {} }, targettarget = { power = {} }, focustarget = { power = {} },
+    party = { plain = { health = { left = { name = true }, right = { percent = true } }, power = { right = { value = true } } } },
+    boss = { plain = { health = { left = { name = true }, right = { percent = true } }, power = { right = { value = true } } } },
 }
 
 -- an old Health Text / Power Text choice as slots: where the numbers stood (side: "right" off the
@@ -157,6 +160,7 @@ function BT.Slots(udb, bar, style, firstOnly, oldKey, unit)
     local defaults = BT.DEFAULTS[style] or BT.DEFAULTS.plain
     local fallback = defaults[bar] or defaults.power
     local own = unit and BT.UNIT_DEFAULTS[unit]
+    if own and (own.plain or own.plate) then own = own[style] end
     if own and own[bar == "mana" and "power" or bar] then fallback = own[bar == "mana" and "power" or bar] end
     local out = {}
     for _, slot in ipairs(BT.SLOTS) do
@@ -302,7 +306,7 @@ end
 
 -- The Edit Mode dropdown of one bar: Left, Middle and Right as submenus of ticks; the
 -- closed box sums the three slots up left to right, "Full Name · — · Value".
-BT.MENU_SLOTS = { left = L["Left"], middle = L["Middle"], right = L["Right"] }
+BT.MENU_SLOTS = { left = L["Left"], middle = L["Centre"], right = L["Right"] }
 BT.SHORT = { firstname = L["First Name"], fullname = L["Full Name"], percent = "%", value = L["Value"],
              max = L["Max"], lost = L["Lost"] }
 function BT.Summary(slots)

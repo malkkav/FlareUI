@@ -86,10 +86,12 @@ MM.SQUARE_BORDERS = {
     bronze = { barBottom = 8, sun = 9, sunRoom = 30, eye = 3, buttons = 0 },
     thick  = { lsm = "FlareUI Thick", edge = 16, side = 8, headerTop = 8, band = 28, shift = 0,
                grow = { left = 3, right = 1, top = 3, bottom = 0 }, line = 1.5, crop = 2,
-               barBottom = 8, sun = 6, sunRoom = 33, eye = 2.75, buttons = 0.75 },
+               barBottom = 8, sun = 6, sunRoom = 33, eye = 2.75, buttons = 0.75,
+               mask = "Interface\\AddOns\\FlareUI\\Media\\Art\\MinimapMaskThick" },
     thin   = { lsm = "FlareUI Thin", edge = 8, side = 8, headerTop = 8, band = 28, shift = 0,
                grow = { left = 4, right = 2, top = 4, bottom = 1 }, line = 2.5, crop = 3,
-               barBottom = 8, sun = 6, sunRoom = 33, eye = 3.25, buttons = 1.25 },
+               barBottom = 8, sun = 6, sunRoom = 33, eye = 3.25, buttons = 1.25,
+               mask = "Interface\\AddOns\\FlareUI\\Media\\Art\\MinimapMaskThin" },
 }
 -- each style's border numbers; Headerless with a FlareUI border is a style of its own (flare: its border)
 HEADER_STYLES.headerless.border = MM.SQUARE_BORDERS.bronze
@@ -119,6 +121,22 @@ end
 function MM.SquareBorder()
     return HeaderStyle().border
 end
+-- The square map's mask: a FlareUI border cuts the terrain's corners along its angled ones (mask: a
+-- 45-degree cut of 3 px for Thin, 5 px for Thick on the 243 terrain), else plain square. The square
+-- corners showed past the border's (MunchieDog, 11-19).
+function MM.SquareMask()
+    local flare = HeaderStyle().flare
+    return flare and flare.mask or SQUARE_MASK
+end
+-- the black backing takes the same corners
+function MM.MaskBack(back)
+    if not back.fuiMask then
+        back.fuiMask = back:GetParent():CreateMaskTexture()
+        back.fuiMask:SetAllPoints(back)
+        back:AddMaskTexture(back.fuiMask)
+    end
+    back.fuiMask:SetTexture(MM.SquareMask(), "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+end
 -- The map frame's box in the border in use: width, height, its centre's offset from the cluster's,
 -- the terrain's side, and the black backing's width and height. The bronze looks: the 244 square on the
 -- cluster's centre. A FlareUI border: its edge frame, grown per side (grow), with the terrain filling it
@@ -145,6 +163,7 @@ function MM.FitArt(frame, relative, terrain, back, dx, dy)
         frame:SetPoint("CENTER", relative, "CENTER", x, y)
     end
     if back then
+        MM.MaskBack(back)
         back:SetSize(backW, backH)
         back:ClearAllPoints()
         back:SetPoint("CENTER", relative, "CENTER", x, y)
@@ -337,11 +356,16 @@ local function ApplyBorder(border, above, style)
     for _, key in ipairs(TOP_PIECES) do
         if border[key] then border[key]:SetParent(style.over and above or border) end
     end
+    for _, key in ipairs({ "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+                           "TopEdge", "BottomEdge", "LeftEdge", "RightEdge", "Center" }) do
+        MM.TintArt(border[key])
+    end
     -- Headerless in the heavy bronze frame (BRONZE_ATLAS): Blizzard's own frames stretch it to any size
     local bronze = style.bronze and C_Texture.GetAtlasInfo(BRONZE_ATLAS) and true or false
     if bronze and not above.Bronze then
         above.Bronze = above:CreateTexture(nil, "BORDER")
         above.Bronze:SetAtlas(BRONZE_ATLAS)
+        MM.TintArt(above.Bronze)
         above.Bronze:SetPoint("TOPLEFT", border, "TOPLEFT", -BRONZE_OUT.left, BRONZE_OUT.top)
         above.Bronze:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", BRONZE_OUT.right, -BRONZE_OUT.bottom)
     end
@@ -423,7 +447,7 @@ local function CreateMapArt()
 end
 
 local function ApplySquareMap()
-    MinimapFrame:SetMaskTexture(MM.mapFaded and MASKS.EMPTY or SQUARE_MASK)
+    MinimapFrame:SetMaskTexture(MM.mapFaded and MASKS.EMPTY or MM.SquareMask())
     MinimapFrame:SetArchBlobRingScalar(0)
     MinimapFrame:SetQuestBlobRingScalar(0)
     MinimapFrame:SetTaskBlobRingScalar(0)
@@ -446,9 +470,20 @@ local function FitButtonArt(button)
     end
 end
 
+-- Blizzard's minimap art in FlareUI's bronze (11-20, palette work): the heavy bronze frame, the
+-- Bordered frame's pieces, Forever's round ring and the zone / Info Bar plates, multiplied like the
+-- unit frames' plate (UnitFramesRing.lua Ring.PLATE_TINT; picked in game 11-20).
+MM.ART_TINT = { 0.88, 0.80, 0.66 }
+function MM.TintArt(texture)
+    if not texture then return end
+    local t = MM.ART_TINT
+    texture:SetVertexColor(t[1], t[2], t[3])
+end
+
 -- Forever's zone plate stretched over a frame, its ends kept whole
 local function Plate(texture, frame)
     texture:SetAtlas(PLATE_ATLAS)
+    MM.TintArt(texture)
     texture:ClearAllPoints()
     texture:SetAllPoints(frame)
     if texture.SetTextureSliceMargins then
@@ -671,6 +706,18 @@ Bar.sources = {
     -- sample: the widest text a cell can show, so the cell is sized for it before it changes (Bar.Need)
     coords       = { text = function() return BarCoords(false) end, every = 0.2, sample = "88.8, 88.8" },
     coordsSimple = { text = function() return BarCoords(true) end, every = 0.2, sample = "88, 88" },
+    -- Experience: how far into the level, "XP 45%" (Sam's idea 11-19); the rested part in blue
+    -- after it; at the level cap, the level alone
+    xp = { text = function()
+        local max = UnitXPMax("player") or 0
+        if (IsPlayerAtEffectiveMaxLevel and IsPlayerAtEffectiveMaxLevel()) or max <= 0 then
+            return (_G.LEVEL or "Level") .. " " .. (UnitLevel("player") or "")
+        end
+        local text = ("XP %d%%"):format(math.floor((UnitXP("player") or 0) / max * 100))
+        local rested = GetXPExhaustion and GetXPExhaustion() or 0
+        if rested > 0 then text = text .. (" |cff4d85e6+%d%%|r"):format(math.floor(rested / max * 100)) end
+        return text
+    end, events = { "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION" }, sample = "XP 88% +88%" },
 }
 Bar.PAD = 8   -- a cell's room around its widest text
 
@@ -1787,7 +1834,7 @@ end
 local maskGuard = false
 local function WantedMask()
     if MM.mapFaded then return MASKS.EMPTY end
-    if squareStyle then return SQUARE_MASK end
+    if squareStyle then return MM.SquareMask() end
     return MM.roundMask or MASKS.FOREVER
 end
 local function SetMask()
@@ -2173,7 +2220,30 @@ function MM.PlaceAllButtons()
     for _, name in ipairs(lib:GetButtonList() or {}) do PlaceButton(lib:GetMinimapButton(name)) end
 end
 
+-- Popular addons with a minimap button of their own (not LibDBIcon): placed for their own idea of the
+-- map, so on the square map they sat apart from the row (MunchieDog 11-20). Adopted like LibDBIcon's:
+-- in the packed row, dragged along the square edge, the spot saved under the frame's name. Their own
+-- placing still runs (a SetPoint), and the hook puts them back on the square.
+MM.OWN_BUTTONS = { "HappyCamperMinimapButton", "LoreForeverMinimapButton" }
+function MM.AdoptOwnButtons()
+    local added = false
+    for _, name in ipairs(MM.OWN_BUTTONS) do
+        local button = _G[name]
+        if button and not buttonName[button] and button.HookScript then
+            buttonName[button] = name
+            MM.extraButtons[name] = button
+            hooksecurefunc(button, "SetPoint", PlaceButton)
+            button:HookScript("OnDragStop", SaveSpot)
+            button:HookScript("OnShow", MM.PlaceSoon)
+            button:HookScript("OnHide", MM.PlaceSoon)
+            added = true
+        end
+    end
+    if added then MM.PlaceAllButtons() end
+end
+
 function MM.PullButtonsIn()
+    MM.AdoptOwnButtons()
     local lib = LibStub and LibStub("LibDBIcon-1.0", true)
     if not (lib and lib.GetButtonList) then return end
     for _, name in ipairs(lib:GetButtonList() or {}) do
@@ -2330,6 +2400,7 @@ local function WatchMapButtons()
         if count ~= MM.mapChildren or beats >= 3 then
             MM.mapChildren = count
             beats = 0
+            MM.AdoptOwnButtons()   -- (made late: LoreForever builds its button after its UI)
             MM.LiftMapButtons()
         end
     end)
@@ -2477,6 +2548,8 @@ end
 function MM:Refresh()
     local db = GetDb()
     if not db or not db.enabled or not self.initialized then return end
+    -- the round style's frame is Blizzard's own texture
+    MM.TintArt(_G.MinimapCompassTexture)
     self:UpdateLayout()
     self:UpdateTrackerScale()
     self:ApplyFonts()
@@ -2782,6 +2855,7 @@ do
         rd.Terrain:AddMaskTexture(mask)
         local ring = box:CreateTexture(nil, "OVERLAY", nil, 2)
         ring:SetAtlas(ROUND.FRAME)
+        MM.TintArt(ring)
         ring:SetSize(w, h)
         ring:SetPoint("CENTER")
         local zone = CreateFrame("Frame", nil, rd)

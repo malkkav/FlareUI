@@ -68,7 +68,8 @@ function P.Measure(canvas)
 end
 function P.Resolve(row, value)
     if not row then return nil end
-    local kind = row.previewFont and 'font' or routes[row.key]
+    -- (every Nameplates row: the module draws its own plate, NP.DrawSample)
+    local kind = row.previewFont and 'font' or routes[row.key] or (row.key:find('^np%.') and 'nameplates')
     if not kind then return nil end
     if value == nil then value = row:Get() end
     -- (an inverted Show switch previews the saved "hide" value it stands for)
@@ -78,7 +79,7 @@ function P.Resolve(row, value)
 end
 
 local defaults = { uf = 'unit', mm = 'minimap', ch = 'chat', tt = 'tooltip', qt = 'tracker',
-    dm = 'meter', ab = 'actions', rb = 'resources', au = 'auras', rm = 'radial' }
+    dm = 'meter', ab = 'actions', rb = 'resources', au = 'auras', rm = 'radial', np = 'nameplates' }
 function P.Module(module)
     local kind = defaults[module]
     return kind and { kind = kind, key = module .. '.overview' } or nil

@@ -38,12 +38,13 @@ S:Row{ key = "qol.autoAcceptQuests", half = true, tab = "gameplay", path = "twea
 S:Row{ key = "qol.autoTurnInQuests", half = true, tab = "gameplay", path = "tweaks.autoTurnInQuests" }
 -- the lone banker / vendor / trainer option, and room for loot when the bags are full
 S:Row{ key = "qol.skipGossip", half = true, tab = "gameplay", path = "tweaks.skipGossip" }
-S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", path = "tweaks.taxiMap" }
 S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.trainAll", apply = Refresh }
 -- Map & Mail (back from Interface), above Convenience
 S:Row{ key = "qol.way", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mailBook", apply = Refresh }
+-- (Open Flight Map at Once: a map, so in Map & Mail; 5 + 5 switches became 4 + 6)
+S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.taxiMap" }
 S:Row{ key = "qol.zoneLevels", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.zoneLevels" }
 -- Coordinates on the World Map: Blizzard's own two options (your position and the
 -- cursor's) behind one switch, nothing of FlareUI's drawn. Its Interface options show the same values.
@@ -103,11 +104,13 @@ S:Row{ key = "qol.rumbleProcs", half = true, tab = "systems", path = "tweaks.rum
 -- INTERFACE --------------------------------------
 -- whether enemy plates show at all first, then what goes on them, then their text
 -- (Blizzard's own enemy plates, so another nameplate addon does not grey it out)
-S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh }
+-- (combat plates, combo points and quest marks move to the Nameplates page while that module is on)
+local function NameplatesOn() return ns.Nameplates ~= nil and S:GetPath("nameplates.enabled") and true or false end   -- (the module may be absent)
+S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh, hidden = NameplatesOn }
 -- friendly players' plates only in a fight (Blizzard's plates too)
-S:Row{ key = "qol.npCombatFriendly", tab = "nameplates", path = "tweaks.combatFriendly", apply = Refresh }
-S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon }
-S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken }
+S:Row{ key = "qol.npCombatFriendly", tab = "nameplates", path = "tweaks.combatFriendly", apply = Refresh, hidden = NameplatesOn }
+S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon, hidden = NameplatesOn }
+S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken, hidden = NameplatesOn }
 S:Row{ key = "qol.npNames", tab = "nameplates", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
 -- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
 -- them, so the reload bar offers a reload
@@ -121,16 +124,6 @@ S:Row{ key = "qol.npLevelName", tab = "nameplates", path = "tweaks.nameplateLeve
     disabled = function()
         return NameplateAddon() or not S:GetPath("tweaks.nameplateHideLevel") or S:GetPath("tweaks.nameplateHideNames") and true or false
     end }
-
-S:Row{ key = "qol.sellJunk", half = true, tab = "interface", path = "tweaks.sellJunk", apply = Refresh }
-S:Row{ key = "qol.repair", half = true, tab = "interface", path = "tweaks.autoRepair", apply = Refresh }
--- the guild bank pays Auto Repair first; greyed with Auto Repair off
-S:Row{ key = "qol.repairGuild", half = true, tab = "interface", path = "tweaks.repairGuild",
-    disabled = function() return not S:GetPath("tweaks.autoRepair") end }
-S:Row{ key = "qol.merchantKnown", half = true, tab = "interface", path = "tweaks.merchantKnown", apply = Refresh }
-S:Row{ key = "qol.bulkBuy", half = true, tab = "interface", path = "tweaks.bulkBuy", apply = Refresh }
-S:Row{ key = "qol.merchantWide", half = true, tab = "interface", path = "tweaks.merchantWide", reload = true }
-
 
 S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
 S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }

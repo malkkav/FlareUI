@@ -29,22 +29,35 @@ end)
 S:Row{ key = "au.shape", kind = "choice", path = "auras.style", choices = { "square", "round" }, apply = Refresh }   -- (as Unit Frames')
 S:Row{ key = "au.swipe", kind = "choice", path = "auras.swipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
 S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }
-S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh,
+S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh, half = true,
     disabled = function() return S:GetPath("auras.timer") == "none" end }
-S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh }
+S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh, half = true }
+-- TOTEMS (11-20, from their Edit Mode dialog): the swipe and the time on the player's totems
+-- (unitframes.totems, Totems.lua StyleTotem). The totems come with FlareUI's player frame, not this module.
+local function TotemsRefresh() if ns.Totems and ns.Totems.ApplyLayout then ns.Totems.ApplyLayout() end end
+local function TotemsOff()
+    return not (S:GetPath("unitframes.enabled") and S:GetPath("unitframes.units.player.enabled"))
+end
+S:Row{ key = "au.totemSwipe", kind = "choice", section = "au.totems", path = "unitframes.totems.swipe", ignoreModule = true,
+    choices = { "none", "icon", "border", "both" }, apply = TotemsRefresh, disabled = TotemsOff,
+    resetValue = function() return "both" end }
+S:Row{ key = "au.totemTimer", kind = "choice", section = "au.totems", path = "unitframes.totems.timer", ignoreModule = true,
+    choices = { "none", "below", "bottom", "middle" }, apply = TotemsRefresh, disabled = TotemsOff,
+    resetValue = function() return "none" end }
 
 local function NoMineFirst()
     local sort = S:GetPath("auras.sort")
     return sort ~= "time" and sort ~= "name"
 end
 S:Row{ key = "au.sort", kind = "choice", path = "auras.sort", choices = { "default", "applied", "time", "name" }, apply = Refresh }
-S:Row{ key = "au.reverse", path = "auras.reverse", apply = Refresh }
-S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled = NoMineFirst }
+S:Row{ key = "au.reverse", path = "auras.reverse", apply = Refresh, half = true }
+S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled = NoMineFirst, half = true }
 
 -- (Buff Reminders: its own page, Settings/Pages/BuffReminders.lua)
 
--- HIDE AURAS: add one of your auras or a spell ID, then pick where each one hides
--- (ns.HiddenAuras in Core.lua does the hiding, on every aura frame)
+-- AURA FILTERS: add one of your auras or a spell ID (it starts as Hide), then pick for each one Hide
+-- or Show and its frames (ns.HiddenAuras in Core.lua does it, on every aura frame; Hide and Show are
+-- saved apart, in auras.hidden and auras.shown)
 local HA = ns.HiddenAuras
 
 local function SpellLabel(id, withId)
@@ -55,18 +68,20 @@ local function SpellLabel(id, withId)
     return text
 end
 
--- your buffs, then your debuffs, minus the ones already hidden (an aura whose ID is secret in a
+S:Row{ key = "au.hideRulesNote", kind = "text", noTitle = true, tab = "hide", section = "au.hideRules" }
+
+-- your buffs, then your debuffs, minus the ones already listed (an aura whose ID is secret in a
 -- fight is left out)
 local function OwnAuras()
     local list = { { 0, L["Pick One of Yours"] } }
-    local saved, seen = HA.Saved() or {}, {}
+    local seen = {}
     for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
         local first = true
         for i = 1, 40 do
             local aura = C_UnitAuras.GetAuraDataByIndex("player", i, filter)
             if not aura then break end
             local id = aura.spellId
-            if canaccessvalue(id) and type(id) == "number" and not saved[id] and not seen[id] then
+            if canaccessvalue(id) and type(id) == "number" and not HA.ListOf(id) and not seen[id] then
                 seen[id] = true
                 if first then list[#list + 1] = { divider = true } first = false end
                 list[#list + 1] = { id, SpellLabel(id) }
@@ -83,7 +98,7 @@ S:Row{ key = "au.hideById", kind = "button", center = true, tab = "hide", sectio
     apply = function() ns.ShowDialog("FLAREUI_HIDE_AURA_ID") end }
 
 ns.Dialogs["FLAREUI_HIDE_AURA_ID"] = {
-    text = L["The spell ID of the aura to hide. Wowhead shows it in the spell's web address."],
+    text = L["The spell ID of the aura to add. Wowhead shows it in the spell's web address."],
     button1 = L["Add"],
     button2 = L["Cancel"],
     hasEditBox = true,
@@ -99,15 +114,18 @@ ns.Dialogs["FLAREUI_HIDE_AURA_ID"] = {
     hideOnEscape = true,
 }
 
--- the list, by name: a fixed set of rows, each showing the n-th hidden aura (sorted once per change)
+-- the list, both kinds together by name: a fixed set of rows, each showing the n-th aura (sorted once
+-- per change)
 local sorted, sortedStamp, sortedFrom = {}, -1, nil
 local function SortedIds()
-    local saved = HA.Saved()
-    if sortedStamp ~= HA.stamp or sortedFrom ~= saved then
-        sortedStamp, sortedFrom = HA.stamp, saved
+    local hidden, shown = HA.Saved(), HA.Saved("shown")
+    if sortedStamp ~= HA.stamp or sortedFrom ~= hidden then
+        sortedStamp, sortedFrom = HA.stamp, hidden
         wipe(sorted)
-        for id in pairs(saved or {}) do
-            if type(id) == "number" then sorted[#sorted + 1] = id end
+        for _, saved in ipairs({ hidden or {}, shown or {} }) do
+            for id in pairs(saved) do
+                if type(id) == "number" then sorted[#sorted + 1] = id end
+            end
         end
         table.sort(sorted, function(a, b)
             local na, nb = C_Spell.GetSpellName(a) or "", C_Spell.GetSpellName(b) or ""
@@ -121,25 +139,41 @@ end
 S:Row{ key = "au.hideEmpty", kind = "text", noTitle = true, tab = "hide", section = "au.hideList",
     hidden = function() return #SortedIds() > 0 end }
 
-local HIDE_ON = { exclusive = {}, tokens = HA.PLACES, empty = "" }
+-- the frames list follows the aura's Hide / Show (Show has no Buffs & Debuffs: those show every aura)
+-- (None first, as every toggle list; saved as "")
+local FRAMES = { exclusive = { "none" }, tokens = HA.PLACES, empty = "none" }
+local MODES = { { "hidden", L["Hide"] }, { "shown", L["Show"] } }
 for i = 1, 60 do
+    local key = "au." .. i .. ".filterOn"
     local function Id() return SortedIds()[i] end
-    S:Row{ key = "au." .. i .. ".hideOn", kind = "dropdown", tab = "hide", section = "au.hideList",
-        choices = HA.PLACES, toggles = HIDE_ON,
+    local function List() local id = Id() return id and HA.ListOf(id) or "hidden" end
+    S:Row{ key = key, kind = "dropdown", tab = "hide", section = "au.hideList", dropdownWidth = 150,
+        choices = function()
+            local names, out = S:Text(key, "choices") or {}, { { "none", L["None"] }, { divider = true } }
+            local show = List() == "shown"
+            for n, token in ipairs(HA.PLACES) do
+                if not (show and token == "auras") then out[#out + 1] = { token, names[n] or token } end
+            end
+            return out
+        end,
+        toggles = FRAMES,
         labelFn = function() local id = Id() return id and SpellLabel(id, true) or "" end,
         hidden = function() return Id() == nil end,
         get = function()
-            local id, saved = Id(), HA.Saved()
-            return id and saved and saved[id] or ""
+            local id, saved = Id(), HA.Saved(List())
+            local value = id and saved and saved[id] or ""
+            return value ~= "" and value or "none"
         end,
         set = function(value)
-            local id, saved = Id(), HA.Saved()
+            local id, saved = Id(), HA.Saved(List())
             if not (id and saved) then return end
-            saved[id] = value or ""
+            saved[id] = (value and value ~= "none") and value or ""
             HA.Changed()
         end,
+        sideMenu = { width = 90, choices = MODES, get = List,
+            set = function(list) local id = Id() if id then HA.SetList(id, list) end end },
         sideButtons = { right = { text = L["Remove"], width = 80,
-            onClick = function() local id = Id() if id then HA.Remove(id) end end } } }
+            onClick = function() local id = Id() if id then HA.Remove(id, List()) end end } } }
 end
 
 -- FONTS (back from Edit Mode): Buffs and Debuffs each in a section

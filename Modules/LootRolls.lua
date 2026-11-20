@@ -607,7 +607,7 @@ end
 local function Timer(card, height)
     card.timer = CreateFrame("StatusBar", nil, card)
     card.timer:SetHeight(height)
-    card.timer:SetStatusBarTexture(LSM:Fetch("statusbar", "FlareUI Forever"))
+    card.timer:SetStatusBarTexture(LSM:Fetch("statusbar", "FlareUI Dark"))
     card.timer:SetMinMaxValues(0, 1)
     local bg = card.timer:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
@@ -967,7 +967,8 @@ local function FillRow(row, s)
     row.icon.texture:SetDesaturated(lost)
     if lost then
         row.name:SetTextColor(0.6, 0.6, 0.6)
-        row.icon.edge:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+        local grey = ns.PALETTE.warmGrey   -- a lost roll: the palette's warm grey, not a cold one
+        row.icon.edge:SetBackdropBorderColor(grey[1], grey[2], grey[3], 1)
     end
     row.name:SetWidth(ROW_W - ROW_PAD - BOX_PAD - ROW_ICON - 7 - mineW - (resultW + 14 + 12))
     row:SetAlpha(lost and 0.6 or 1)

@@ -258,7 +258,7 @@ end
 
 local function CycleRow(row, delta)
     -- toggles have no single value to step through: the menu opens instead
-    if row.toggles then return end
+    if row.toggles or row.slots then return end
     local choices = {}
     for _, c in ipairs(row:Choices() or {}) do
         if not c.divider then choices[#choices + 1] = c end

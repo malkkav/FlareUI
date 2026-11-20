@@ -1,6 +1,85 @@
 # FlareUI changelog history
 
-Versions 6.8.2 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 6.9 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 6.9
+
+Version 6.9. (Nice!) All your fading now lives in Edit Mode. The chat, the Damage Meter and the threat window can join fade groups at last, every Visibility list learns **In an Instance**, and Edit Mode's settings open right next to the frame you clicked. Also new: Chinese, by AreChen, and a pile of quest tracker and chat options you asked for.
+
+## Highlights
+- **Fading in Edit Mode:** the chat, the Damage Meter and the threat window get a **Fading** section in Edit Mode, like every other frame. They can join fade groups.
+- **Edit Mode settings open next to the frame you select**, and stay on screen.
+- **In an Instance** on every Visibility list.
+- **Chinese:** Simplified and Traditional Chinese, by AreChen.
+
+## New
+
+### Chat
+- **Tab Sets Channel** (off), in Chat › Tweaks: clicking a tab that shows only one kind of chat, like Guild or Party, makes it the kind you type in.
+  - It goes by what the tab shows, not its name.
+  - A tab that shows several kinds keeps your current one. Party or Raid when you're not in one: Say.
+
+### Quest Tracker
+- **Quest Icons** (off), in Display: Blizzard's round icons before each quest, "…" while in progress and "?" when ready to turn in. Click one to focus the quest.
+- **Show Complete Tag** (on), in Display: turn it off and finished quests lose "(Complete)" and the green colour.
+- **Show Untracked Quests** (off), in Quests: with zone headings, quests in your zone that you don't track show too, dimmed. Shift-click one to track it.
+- **Collapsible Zones** (on), in Quests: click a zone heading to fold its quests. The heading now shows Blizzard's fold arrow.
+
+### Bags & Looting
+- **Combined Backpack**, in Bag Window: the same as Blizzard's **Use Combined Bags**. The options below it need it on.
+- **Sort Bags on Open** (off), in Tools: your bags tidy themselves each time you open them, as the broom button does. Not in a fight, and not at a vendor, the mailbox, the bank, the auction house or a trade. By ronborens.
+
+### Buff Reminders
+- Paladins: right-click the aura reminder for **Aura to Cast**: **Last Used** (the default) or one aura.
+- Elixirs, in Reminders › Consumables, by GregDuhamel from Celbrund's idea:
+  - **Elixirs to Watch**: **Ticked Ones** (as before) or **Those in Your Bags**, every elixir you carry with nothing to tick.
+  - **Elixirs to Keep Up**: **Each of Them** (as before) or **Any One of Them**, one icon until any of them is on you.
+  - Lower ranks of an elixir count, and a click drinks the best one you carry.
+  - The flask reminder can be clicked to drink your flask.
+
+### Quality of Life
+- **Better Camera** is now two sliders in Gameplay: **Max Zoom** and **Zoom Speed**.
+  - Both start at Blizzard's own values. If you had Better Camera on, you keep its values.
+  - Zoom Speed is greyed in Gamepad mode.
+
+### Player Cast Bar
+- Its **Visibility** in Edit Mode has **Never**: it hides FlareUI's cast bar and keeps Blizzard's hidden too, so only the player frame's own Cast Bar shows.
+
+### Translations
+- **Simplified Chinese** and **Traditional Chinese**, by AreChen. Pick them in Settings › Language.
+- French: all the 6.8.1 and 6.8.2 text, by Braincell1980.
+
+## Changed
+
+### Fading
+- The chat's, the Damage Meter's and the threat window's fading options moved from the settings window to Edit Mode. Your choices carry over.
+  - The chat's Visibility has a new **New Messages** choice: a new line, or closing a quest or vendor window, brings it back. Typing always shows the chat.
+  - The chat and the meter have a **Fade Delay**: how long they stay before fading.
+  - The meter's Visibility has **Never** (the old Hidden). Its Show on Mouseover is now the Mouseover choice.
+  - The threat window starts on **Same as Meter**, as before.
+  - The Chat and Meters pages have a **Fading in Edit Mode** button.
+- Every Visibility list has **In an Instance**, under In a Group.
+- **Has an Attackable Target** is now **Attackable Target**.
+- **Fade In Speed** and **Fade Out Speed** are now **Show Speed** and **Hide Speed**.
+
+### Edit Mode
+- The settings dialog opens next to the frame you select, not in a corner of the screen. FlareUI's own Fading box stays right under Blizzard's dialog, on screen.
+- Fading sections open and close, and start closed, on every frame.
+- The Damage Meter's dialog no longer shows **Text Size**. The meter's fonts are in Meters › Fonts.
+
+### Unit Frames
+- **Full Player Names** now works on party frames in every style. The focus frame always shows first names.
+- FlareUI Style: the portrait ring is a softer bronze, closer to the frame's border.
+
+### Other
+- **Nameplate Font** also sets the names over characters in the world. They change after a full restart of the game.
+- The hunter pet reminder stays quiet with the **Lone Wolf** talent.
+
+## Fixed
+- Bags: you can right-click items again after opening the bags through the crafting bag icon in a fight. By parchinskiy.
+- Damage Meter: closing Edit Mode no longer shows an error. By tinker-n-tailor.
+- Fonts: a font from another addon, like SharedMedia, applies even when that addon loads after FlareUI.
+- Settings window: small buttons no longer grow when you point at them.
 
 # FlareUI 6.8.2
 

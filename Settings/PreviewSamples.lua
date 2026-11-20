@@ -365,7 +365,7 @@ function R.chat(c, spec)
             t:SetWordWrap(false)
         end
     end
-    if spec.key == 'ch.linkIcons' then c.objects.chatLine1:SetText((Get('chat.linkIcons') and '|TInterface\\Icons\\Spell_Frost_FrostBolt02:12|t ' or '') .. '|cff71d5ff[' .. L["Frostbolt"] .. ']|r') end
+    if spec.key == 'ch.icons' then c.objects.chatLine1:SetText((Get('chat.linkIcons') and '|TInterface\\Icons\\Spell_Frost_FrostBolt02:12|t ' or '') .. '|cff71d5ff[' .. L["Frostbolt"] .. ']|r') end
     if spec.key == 'ch.whisperMarkers' then c.objects.chatLine1:SetText((Get('chat.whisperMarkers') and '|cff40ff40> |r' or '') .. '|cffff80ff[Aeloria]: ' .. L["Ready?"] .. '|r') end
     local position = Get('chat.editBoxPosition', 'inside')
     local editY = position == 'above' and top - 27 or position == 'below' and top + height + 4 or top + height - 24
@@ -401,7 +401,7 @@ function R.tooltip(c, spec)
     local box = c:Object('tooltip', 'Frame', 'BackdropTemplate')
     box:SetPoint('TOPLEFT', 8, -8); box:SetSize(c.width - 16, 182)
     box:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border', edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-    box:SetBackdropColor(0.05, 0.05, 0.06, 0.9)
+    box:SetBackdropColor(0.05, 0.04, 0.03, 0.9)
     box:SetBackdropBorderColor(0.8, 0.6, 0.34, 1)
     if Get('tooltips.borderByClass') or Get('tooltips.borderByQuality') then box:SetBackdropBorderColor((item and 0.64 or 0.41) * 0.85, (item and 0.21 or 0.8) * 0.85, (item and 0.93 or 0.94) * 0.85, 1) end
     local layout = NineSliceUtil and NineSliceUtil.GetLayout('TooltipDefaultLayout')
@@ -417,7 +417,7 @@ function R.tooltip(c, spec)
         for _, name in ipairs({ 'TopLeftCorner', 'TopRightCorner', 'BottomLeftCorner', 'BottomRightCorner', 'TopEdge', 'BottomEdge', 'LeftEdge', 'RightEdge' }) do
             if box[name] then box[name]:SetVertexColor(r, g, b, 1) end
         end
-        if box.Center then box.Center:SetVertexColor(0.05, 0.05, 0.06, 0.9) end
+        if box.Center then box.Center:SetVertexColor(0.05, 0.04, 0.03, 0.9) end
     end
     c:Text('tooltipTitle', item and '|cffa335ee' .. L["Robes of the Archmage"] .. '|r' or (Get('tooltips.nameColor') == 'class' and '|cff69ccf0Aeloria|r' or 'Aeloria'), 16, 18, c.width - 32, Font('tooltips.titleFont')):SetWordWrap(false)
     local lines = {}
@@ -445,14 +445,14 @@ function R.tooltip(c, spec)
         content = c:Text('tooltipText', table.concat(lines, '\n'), 16, 42, c.width - 32, displayFont)
     end
     local bottom = 48 + math.max(content:GetStringHeight(), #lines * (displayFont.size + 1))
-    -- Health Bar: FlareUI Forever in a thin FlareUI border, inside the tooltip's bottom or under it
+    -- Health Bar: FlareUI Dark in a thin FlareUI border, inside the tooltip's bottom or under it
     local barOn = not item and not Get('tooltips.hideHealthBar')
     local inside = barOn and Get('tooltips.healthBarPlace') == 'inside'
     box:SetHeight(bottom + (inside and 22 or 4))
     if barOn then
         local y = inside and bottom or bottom + 12
         c:Bar('tooltipHealthBack', 15, y, c.width - 30, 10, 1, { 0.04, 0.04, 0.04 })
-        c:Bar('tooltipHealth', 15, y, c.width - 30, 10, 0.8, ns.HEALTH_GREEN, 'FlareUI Forever'):SetFrameLevel(c.frame:GetFrameLevel() + 3)
+        c:Bar('tooltipHealth', 15, y, c.width - 30, 10, 0.8, ns.HEALTH_GREEN, 'FlareUI Dark'):SetFrameLevel(c.frame:GetFrameLevel() + 3)
         c:Box('tooltipHealthEdge', 11, y - 4, c.width - 22, 18, 'FlareUI Thin', 0):SetFrameLevel(c.frame:GetFrameLevel() + 4)
     end
     -- Compare with Shift: the item and the one equipped, side by side, whichever way it is set
@@ -469,7 +469,7 @@ function R.tooltip(c, spec)
             for _, name in ipairs({ 'TopLeftCorner', 'TopRightCorner', 'BottomLeftCorner', 'BottomRightCorner', 'TopEdge', 'BottomEdge', 'LeftEdge', 'RightEdge' }) do
                 if box2[name] then box2[name]:SetVertexColor(0.8, 0.6, 0.34, 1) end
             end
-            if box2.Center then box2.Center:SetVertexColor(0.05, 0.05, 0.06, 0.9) end
+            if box2.Center then box2.Center:SetVertexColor(0.05, 0.04, 0.03, 0.9) end
         end
         outer:Text('comparisonText', '|cff999999' .. L["Equipped"] .. '|r\n|cff1eff00' .. L["Cloth"] .. '|r\n+8 ' .. L["Intellect"], x + 7, 12, w - 14, { size = 9 })
     end
@@ -742,6 +742,14 @@ function R.nameplate(c, spec)
     Note(c)
 end
 
+-- The Nameplates page: drawn by the module itself (OWN below); this only shows if it can't be
+-- The Nameplates page: its picture is the strip pinned above the tabs (Pages/Nameplates.lua); the Info
+-- panel only tells it which state the row under the mouse is about
+function R.nameplates(c, spec)
+    local pinned = ns.NameplatesPinned
+    if pinned then pinned.Hover(spec and spec.key ~= 'np.overview' and spec.key or nil) end
+end
+
 function R.radial(c, spec)
     local size = math.min(c.width - 24, c.height - 48) * math.min(1.5, Get('radialmenu.scale', 1)) / 1.5
     local x = (c.width - size) / 2
@@ -925,7 +933,7 @@ function R.lootRolls(c, spec)
     Button('rollsBtnpass', 'pass', ir - 21, it + 12, 21)
     Button('rollsBtnneed', 'need', ir - 50, it, 21)
     Button('rollsBtngreed', 'greed', ir - 50, it + 25, 21)
-    c:Bar('rollsTimer', il, it + 50, ir - il - 26, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Forever'):SetFrameLevel(box:GetFrameLevel() + 2)
+    c:Bar('rollsTimer', il, it + 50, ir - il - 26, 6, 0.7, {1, 0.75, 0.1}, 'FlareUI Dark'):SetFrameLevel(box:GetFrameLevel() + 2)
     Line('rollsTime', '18', ir - 20, it + 48, 20, 9)
     local split = c:Texture('rollsSplit', nil, left, cy + 79, right - left, 1, true)
     local b = ns.BORDER_COLOR
