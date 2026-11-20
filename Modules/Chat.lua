@@ -292,6 +292,7 @@ local function UpdateCopyButton(chatFrame, db)
             icon:SetDesaturated(false)
             icon:SetVertexColor(1, 1, 1)
         end)
+        btn:SetScript("OnClick", function() Chat:ShowCopyChat(chatFrame) end)
         chatFrame.FlareUI_CopyButton = btn
     end
     btn:SetFrameLevel((chatFrame:GetFrameLevel() or 0) + 3)
@@ -3457,11 +3458,26 @@ local function ApplyLineSpacing(chatFrame, db)
     end
 end
 
+-- a size change and back, under FlareUI's own guard (the font hook leaves it alone)
+function Chat.RedrawFont(chatFrame, want)
+    chatFrame.FlareUI_SettingFont = true
+    chatFrame:SetFont(want.path, want.size + 1, want.flags)
+    chatFrame:SetFont(want.path, want.size, want.flags)
+    chatFrame.FlareUI_SettingFont = false
+end
+
 function Chat:ApplyMessageFont(chatFrame, db)
     local path, size, flags = self:MessageFont(chatFrame, db)
     chatFrame.FlareUI_SettingFont = true
     chatFrame:SetFont(path, size, flags)
     chatFrame.FlareUI_SettingFont = false
+    -- redrawn after loading screens like every FlareUI font (Core.lua ns.FontRedraw)
+    local R = ns.FontRedraw
+    if R and size and R.Wanted(path) then
+        R.objects[chatFrame] = { path = path, size = size, flags = flags or "", redraw = Chat.RedrawFont }
+    elseif R then
+        R.objects[chatFrame] = nil
+    end
     ns.ApplyShadow(chatFrame, db.chatFont)
     ApplyLineSpacing(chatFrame, db)
 end

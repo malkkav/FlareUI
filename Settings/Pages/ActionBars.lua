@@ -89,6 +89,31 @@ S:Row{ key = "ab.xpBar", tab = "xp", kind = "choice", lead = true, choices = { "
         S:TrackReload("ab.xpBar", v == "off", xpStartOff)
         if v ~= "off" then XPRefresh() end
     end }
+-- Order (11-20, Malkkav): Bar Style, Bar Texture, Border, Separators, then the text rows
+-- Bar Texture and Border (11-20, from its Edit Mode dialog): the bar's fill and its frame
+S:Row{ key = "ab.xpTexture", tab = "xp", kind = "choice", path = "actionbars.xpbar.texture", disabled = XPOff,
+    choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("texture") or {} end,
+    resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_TEXTURE end,
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+S:Row{ key = "ab.xpBorder", tab = "xp", kind = "choice", path = "actionbars.xpbar.border", disabled = XPOff,
+    choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("border") or {} end,
+    resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_BORDER end,
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+-- Separators (saved as bubbles): Off, 10 or 20; the old switch saved true for 20, so true still reads as 20
+S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10", "20" }, disabled = XPOff,
+    get = function()
+        local v = S:GetPath("actionbars.xpbar.bubbles")
+        if v == true or v == 20 then return "20" end
+        if v == 10 then return "10" end
+        return "off"
+    end,
+    set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+-- every colour the XP bar paints, in the colour window
+S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 1,   -- (11-20: after Separators, with the other look rows; a button would sink to the end)
+    buttonText = L["Pick Your Colours"], disabled = XPOff,
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
+
 -- XP Text: one dropdown, as the unit frames' Bar Text with one spot in the middle.
 -- Show Always or Show On Mouseover (one of the two, ticking one unticks the other), then any of
 -- Percent, Value, Max and Remaining, joined by " / ". It took over XP Text Visibility and the old
@@ -111,29 +136,6 @@ S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "all"
         if v ~= "off" then S:SetPath("actionbars.xpbar.questXPMode", v) end
     end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
--- Separators (saved as bubbles): Off, 10 or 20; the old switch saved true for 20, so true still reads as 20
-S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10", "20" }, disabled = XPOff,
-    get = function()
-        local v = S:GetPath("actionbars.xpbar.bubbles")
-        if v == true or v == 20 then return "20" end
-        if v == 10 then return "10" end
-        return "off"
-    end,
-    set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
-    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
--- Bar Texture and Border (11-20, from its Edit Mode dialog): the bar's fill and its frame
-S:Row{ key = "ab.xpTexture", tab = "xp", kind = "choice", path = "actionbars.xpbar.texture", disabled = XPOff,
-    choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("texture") or {} end,
-    resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_TEXTURE end,
-    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
-S:Row{ key = "ab.xpBorder", tab = "xp", kind = "choice", path = "actionbars.xpbar.border", disabled = XPOff,
-    choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("border") or {} end,
-    resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_BORDER end,
-    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
--- every colour the XP bar paints, in the colour window
-S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 0,   -- (right under FlareUI XP Bar, the section's master)
-    buttonText = L["Pick Your Colours"], disabled = XPOff,
-    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)

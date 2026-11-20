@@ -364,9 +364,9 @@ ns.Copy = {
         ["ab.xpBar"] = {
             choices = { L["Off"], L["Single"], L["Split"], L["Double"] },
             desc = L["FlareUI's XP bar, with your watched reputation or honor:\n* Off: Blizzard's bars\n* Single: one bar, XP (reputation or honor at max level)\n* Split: XP and reputation side by side\n* Double: two bars, the second below the first"],
-            label = L["FlareUI XP Bar"],
+            label = L["Bar Style"],
             section = "ab.experience",
-            tags = { "xp bar style", "enable xp bar", "reputation bar", "honor bar", "two bars" },
+            tags = { "flareui xp bar", "xp bar style", "enable xp bar", "reputation bar", "honor bar", "two bars" },
             tip = L["Place and size it in Edit Mode. Going to or from Off needs a reload."],
         },
         ["ab.xpBorder"] = {
@@ -644,14 +644,6 @@ ns.Copy = {
             tags = { "combined bags", "one bag", "bag window", "use combined bags" },
             tip = L["The options below need it on."],
         },
-        ["bl.bagFilters"] = {
-            choices = { L["Off"], L["Drawer"], L["Buttons"] },
-            desc = L["Filter your bags by Quest Items, Equipment, Materials or Consumables. Pick one and everything else dims.\n* Drawer: one button by the cleanup button opens a drawer of filters\n* Buttons: all four filters in a row by the search box, one click each"],
-            label = L["Category Filters"],
-            section = "bl.tools",
-            tags = { "bag filter", "sort", "category", "drawer", "buttons", "quest items", "materials" },
-            tip = L["Buttons needs the combined backpack with room to spare. In a narrow backpack or separate bags you get the drawer. Click the lit filter again, or right-click it, to clear it."],
-        },
         ["bl.bagGaps"] = {
             desc = L["Each bag starts a new row in the combined backpack, with a gap above it."],
             label = L["Gaps Between Bags"],
@@ -699,6 +691,14 @@ ns.Copy = {
             desc = L["An eye in the top right corner marks gear whose appearance you haven't collected yet and can learn."],
             label = L["Uncollected Appearances"],
             section = "bl.itemSlots",
+        },
+        ["bl.bagView"] = {
+            choices = { L["All Items"], L["Category Filters"], L["Category Rows"], L["Category Rows + Sets"] },
+            desc = L["How your bags show your items.\n* Category Filters: buttons for Quest Items, Equipment, Materials and Consumables. Pick one and everything else dims\n* Category Rows: the combined backpack in sections: Quest Items, Equipment, Materials, Consumables, Junk and Other\n* Category Rows + Sets: a section for each of your equipment sets too, after Equipment"],
+            label = L["Bag View"],
+            section = "bl.bagWindow",
+            tags = { "category filters", "bag filter", "bag categories", "sections", "quest items", "materials", "junk", "equipment sets", "gear sets", "drawer" },
+            tip = L["Category Rows need the combined backpack. In a narrow backpack or separate bags, the filters sit in a drawer. Click the lit filter again, or right-click it, to clear it."],
         },
         ["bl.bagWithCharacter"] = {
             desc = L["Your bags open with the character window and close with it."],

@@ -322,7 +322,7 @@ end
 Settings.GAMEPAD_OFF_MODULES = { au = true, br = true, cdm = true }
 Settings.GAMEPAD_OFF = {
     ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
-    ["bl.bagFilters"] = true, ["bl.bagWithCharacter"] = true,
+    ["bl.bagView"] = true, ["bl.bagWithCharacter"] = true,
     ["bl.bankColumns"] = true, ["bl.bankGaps"] = true, ["bl.bankTight"] = true,
     ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
     ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
