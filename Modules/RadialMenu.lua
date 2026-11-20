@@ -329,6 +329,15 @@ ACTIONS.mount = function(entry)
     return name, { texture = icon }, { type = "spell", spell = spellName }
 end
 
+-- a toy (Collections, 11-20): Blizzard's own "toy" action by item ID; one this character doesn't have
+-- is left out (radials are shared)
+ACTIONS.toy = function(entry)
+    if not (entry.id and C_ToyBox and PlayerHasToy) or not PlayerHasToy(entry.id) then return nil end
+    local _, name, icon = C_ToyBox.GetToyInfo(entry.id)
+    if not name then return nil end
+    return name, { texture = icon }, { type = "toy", toy = entry.id }
+end
+
 -- Blizzard's "item" action needs a NAME (an ID parses as a bag slot); an uncached name leaves the
 -- button out until ITEM_DATA_LOAD_RESULT
 local awaitedItems = {}   -- item id -> true while a radial waits for its data
@@ -1147,8 +1156,8 @@ local function ApplyButtonState(button, info)
     local kind, id
     if attributes and attributes.type == "spell" and attributes.spell then
         kind, id = "spell", attributes.spell
-    elseif attributes and attributes.type == "item" and entry and entry.id then
-        kind, id = "item", entry.id
+    elseif attributes and (attributes.type == "item" or attributes.type == "toy") and entry and entry.id then
+        kind, id = "item", entry.id   -- a toy's cooldown is its item's
     elseif attributes and attributes.type == "macro" and entry and entry.kind == "macro" then
         local icon
         kind, id, icon = RM.MacroAction(entry)
@@ -3596,7 +3605,7 @@ end
 function RM.MarkDirty() syncDirty = true end
 local dirtyEvents = CreateFrame("Frame")
 for _, event in ipairs({ "SPELLS_CHANGED", "UPDATE_MACROS", "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED",
-                         "NEW_MOUNT_ADDED", "COMPANION_LEARNED", "COMPANION_UNLEARNED", "PLAYER_GUILD_UPDATE",
+                         "NEW_MOUNT_ADDED", "TOYS_UPDATED", "COMPANION_LEARNED", "COMPANION_UNLEARNED", "PLAYER_GUILD_UPDATE",
                          "LEARNED_SPELL_IN_SKILL_LINE", "PLAYER_TALENT_UPDATE", "UPDATE_SHAPESHIFT_FORMS", "UNIT_PET",
                          "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_WATCH_LIST_CHANGED", "GROUP_ROSTER_UPDATE" }) do
     pcall(dirtyEvents.RegisterEvent, dirtyEvents, event)

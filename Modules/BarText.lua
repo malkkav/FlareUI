@@ -372,3 +372,123 @@ function BT.Setting(o)
         end,
     }
 end
+
+--------------------------------------------------
+-- NAME ABOVE PLATES (11-20, Malkkav, the most asked-for change): the unit's name above the frame, so the
+-- bars can stay clean. One Edit Mode dropdown in each frame's Text section: Off, then Left, Centre and
+-- Right, each with First Name and Full Name. One pick in all: a new pick replaces the old one. Stored
+-- per frame as udb.nameAbove = "<slot>:<firstname|fullname>". The spot is the frame's own left, centre
+-- or right (not mirrored). Auras and a cast bar above the frame move up by the name's height
+-- (f.nameAboveLift), so nothing covers it.
+--------------------------------------------------
+local NA = {}
+ns.NameAbove = NA
+NA.KINDS = { "firstname", "fullname" }
+NA.GAP = 2      -- px between the frame's top and the name
+NA.INSET = 3    -- px in from the frame's side for Left and Right
+
+function NA.Get(udb)
+    local v = udb and udb.nameAbove
+    if type(v) ~= "string" then return nil end
+    local slot, kind = v:match("^(%a+):(%a+)$")
+    if BT.MENU_SLOTS[slot] and (kind == "firstname" or kind == "fullname") then return slot, kind end
+    return nil
+end
+
+function NA.Summary(udb)
+    local slot, kind = NA.Get(udb)
+    if not slot then return L["Off"] end
+    return BT.MENU_SLOTS[slot] .. ": " .. BT.SHORT[kind]
+end
+
+-- o: db() (the frame's stored table), changed() after a pick
+function NA.Setting(o)
+    local LEM = LibStub("FlareEditMode")
+    local function Pick(owner, value)
+        local udb = o.db()
+        if not udb then return end
+        udb.nameAbove = value
+        if o.changed then o.changed() end
+        if owner and owner.OverrideText then owner:OverrideText(NA.Summary(udb)) end
+    end
+    local function Is(value) local udb = o.db() return (udb and udb.nameAbove) == value end
+    return {
+        name = L["Name Above Plates"], kind = LEM.SettingType.Dropdown, hidden = o.hidden,
+        desc = L["The name above the frame, on its left, centre or right. Auras above the frame move up to make room."],
+        generator = function(owner, rootDescription)
+            rootDescription:CreateRadio(L["Off"], function() return Is(nil) end, function() Pick(owner, nil) end)
+            for _, slot in ipairs(BT.SLOTS) do
+                local sub = rootDescription:CreateButton(BT.MENU_SLOTS[slot])
+                for _, kind in ipairs(NA.KINDS) do
+                    local value = slot .. ":" .. kind
+                    sub:CreateRadio(BT.LABELS[kind], function() return Is(value) end, function() Pick(owner, value) end)
+                end
+            end
+            if owner.OverrideText then owner:OverrideText(NA.Summary(o.db())) end
+        end,
+        get = function() return NA.Summary(o.db()) end,
+        -- Edit Mode's Reset: Off
+        set = function(_, _, reset)
+            if not reset then return end
+            local udb = o.db()
+            if udb then udb.nameAbove = nil end
+            if o.changed then o.changed() end
+        end,
+    }
+end
+
+-- Places (or hides) the name above anchor (the frame, or its health bar); font: the font string whose
+-- font it copies (the frame's own name). Returns the height the name takes, 0 when off.
+function NA.Layout(f, udb, anchor, font)
+    local slot = NA.Get(udb)
+    local fs = f.NameAboveText
+    if not slot then
+        if fs then fs:Hide() end
+        f.nameAboveLift = 0
+        return 0
+    end
+    if not fs then
+        fs = f:CreateFontString(nil, "OVERLAY")
+        fs:SetWordWrap(false)
+        f.NameAboveText = fs
+    end
+    if font and font.GetFont then
+        local face, size, flags = font:GetFont()
+        if face then fs:SetFont(face, size, flags) end
+        if font.GetShadowOffset then
+            local sx, sy = font:GetShadowOffset()
+            fs:SetShadowOffset(sx or 1, sy or -1)
+            fs:SetShadowColor(font:GetShadowColor())
+        end
+        fs:SetTextColor(font:GetTextColor())
+    else
+        fs:SetFontObject("GameFontNormalSmall")
+    end
+    local at = (slot == "left" and "LEFT") or (slot == "right" and "RIGHT") or ""
+    local x = (slot == "left" and NA.INSET) or (slot == "right" and -NA.INSET) or 0
+    fs:ClearAllPoints()
+    fs:SetPoint("BOTTOM" .. at, anchor, "TOP" .. at, x, NA.GAP)
+    fs:SetJustifyH(at == "" and "CENTER" or at)
+    fs:SetWidth(math.max(20, (anchor:GetWidth() or 100) - 2 * NA.INSET))
+    fs:Show()
+    local _, size = fs:GetFont()
+    f.nameAboveLift = math.floor((size or 12) + NA.GAP + 1)
+    return f.nameAboveLift
+end
+
+-- The name's text (secret names go to the widget as they are)
+function NA.SetName(f, udb, unit)
+    local fs = f.NameAboveText
+    local slot, kind = NA.Get(udb)
+    if not (fs and slot) then return end
+    local name = unit and UnitExists(unit) and ns.UnitDisplayName(unit, nil, kind == "fullname") or nil
+    if canaccessvalue(name) and not name then name = "" end
+    fs:SetText(name or "")
+end
+-- a sample's name in Edit Mode (first, surname)
+function NA.SetSample(f, udb, first, surname)
+    local fs = f.NameAboveText
+    local slot, kind = NA.Get(udb)
+    if not (fs and slot) then return end
+    fs:SetText((kind == "fullname" and surname and surname ~= "") and (first .. " " .. surname) or first or "")
+end

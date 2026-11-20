@@ -2113,7 +2113,8 @@ local function UpdateHeader(module)
     if note and module:IsOn() then desc = desc .. "\n" .. GRAY_FONT_COLOR:WrapTextInColorCode(note) end
     -- a module's own line in its place while it's on (Nameplates: the unit type and preset being edited)
     if module.subtitle and module:IsOn() then
-        local ok, text = pcall(module.subtitle)
+        local tab = Panel:ActiveTab(module)
+        local ok, text = pcall(module.subtitle, tab and tab.key)
         if ok and text then desc = text end
     end
     page.desc:SetText(desc)

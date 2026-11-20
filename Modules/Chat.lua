@@ -318,6 +318,24 @@ local function RepositionScrollToBottomButton(chatFrame)
         local w, h = btn:GetSize()
         if (w or 0) < 10 or (h or 0) < 10 then btn:SetSize(8, 8) end
     end
+    -- MOUSE WHEEL (11-20, Discord): Blizzard gives a chat window wheel scrolling only when the game's
+    -- "chatMouseScroll" setting is on as it loads, and Forever's options have no switch for it. A
+    -- window left without it scrolls with FlareUI's own: 3 lines a notch, Shift to the top or bottom.
+    -- (set before the hooks below, which would be lost under a new script)
+    if not chatFrame.FlareUI_ScrollBottomHooked and not chatFrame:GetScript("OnMouseWheel") then
+        chatFrame:EnableMouseWheel(true)
+        chatFrame:SetScript("OnMouseWheel", function(self, delta)
+            local max = self:GetMaxScrollRange() or 0
+            local offset
+            if IsShiftKeyDown() then
+                offset = delta > 0 and max or 0
+            else
+                offset = (self:GetScrollOffset() or 0) + delta * 3
+            end
+            self:SetScrollOffset(math.max(0, math.min(max, offset)))
+            if self.ResetAllFadeTimes then self:ResetAllFadeTimes() end
+        end)
+    end
     if not chatFrame.FlareUI_ScrollBottomHooked then
         chatFrame.FlareUI_ScrollBottomHooked = true
         Chat:SecureHook(chatFrame, "SetScrollOffset", UpdateScrollToBottomVisibility)
@@ -3499,8 +3517,7 @@ function Chat:StyleChatFrame(chatFrame, db)
         chatFrame:SetScript("OnUpdate", nil)
     end
 
-    chatFrame:SetFading(false)
-    chatFrame:SetTimeVisible(9999)
+    Chat.LineFadeOn(chatFrame, db)   -- Blizzard's line fading off, or Fade Old Lines
 
     -- Blizzard's own alpha changes are overruled by FlareUI's target alpha
     if not chatFrame.FlareUI_AlphaHooked then
@@ -3660,9 +3677,17 @@ function Chat.FadeDelay()
     local V = ns.Visibility
     return V and V.GetFadeDelay and V:GetFadeDelay("chat") or 0
 end
+-- New Messages or Only Chat Messages ticked: lines wake the chat
 function Chat.ShowsMessages()
     local V = ns.Visibility
-    return V and V.HasToken and V:HasToken("chat", "messages") or false
+    if not (V and V.HasToken) then return false end
+    return V:HasToken("chat", "messages") or V:HasToken("chat", "chatonly")
+end
+-- Only Chat Messages ticked: only lines people write wake it (Chat.OnPeopleLine), never loot, skill-ups,
+-- XP or system lines, nor a closing quest window. It wins over New Messages when both are ticked.
+function Chat.ChatLinesOnly()
+    local V = ns.Visibility
+    return V and V.HasToken and V:HasToken("chat", "chatonly") or false
 end
 
 function Chat:SetChatFrameAlpha(chatFrame, alpha)
@@ -3680,9 +3705,7 @@ end
 function Chat:FadeApply(alpha)
     Chat.fadeAlpha = alpha
     if not GetDb() then return end
-    for _, cf in Windows() do
-        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then Chat:SetChatFrameAlpha(cf, alpha) end
-    end
+    Chat.ApplyWindowFades()
     -- the Gamepad UI's tab bar is Blizzard's tabs in the dock: they fade with the chat
     local dock = _G.GeneralDockManager
     if dock and ns.IsGamepadUI() and not dock:IsForbidden() then dock:SetAlpha(alpha) end
@@ -3720,16 +3743,190 @@ function Chat.ChatWanted()
     return false
 end
 
+-- FADE OLD LINES (11-20, Malkkav, from a Discord request; off): Blizzard's own line fading
+-- (ScrollingMessageFrame: a line stays Time Visible seconds, then fades over Fade Duration), oldest
+-- first. Time Visible is the chat's Fade Delay (at least 3 s, so a line can be read). Lines come back
+-- when the pointer is on the window, when typing, and when scrolling (Blizzard's own). Off gives the
+-- old FlareUI setting: lines never fade.
+Chat.LINE_FADE_TIME = 3      -- seconds a line takes to fade
+Chat.LINE_MIN_VISIBLE = 3    -- shortest time a line stays
+
+function Chat.LineFadeOn(chatFrame, db)
+    if not chatFrame or chatFrame:IsForbidden() then return end
+    if db and db.fadeLines then
+        Chat.WatchLines(true)
+        chatFrame:SetTimeVisible(math_max(Chat.LINE_MIN_VISIBLE, Chat.FadeDelay()))
+        chatFrame:SetFadeDuration(Chat.LINE_FADE_TIME)
+        chatFrame:SetFading(true)
+    else
+        chatFrame:SetFading(false)
+        chatFrame:SetTimeVisible(9999)
+    end
+end
+
+function Chat.ApplyLineFade()
+    local db = GetDb()
+    if not db then return end
+    for _, cf in Windows() do
+        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
+            Chat.LineFadeOn(cf, db)
+            if not db.fadeLines and cf.ResetAllFadeTimes then cf:ResetAllFadeTimes() end
+        end
+    end
+    Chat.WatchLines(db.enabled and db.fadeLines)
+end
+
+-- The faded lines come back with the pointer on a window or its edit box in use: their timers start
+-- again. A light watcher, five checks a second, only while Fade Old Lines is on.
+function Chat.WatchLines(on)
+    local watcher = Chat.lineWatcher
+    if not on then
+        if watcher then watcher:Hide() end
+        return
+    end
+    if not watcher then
+        watcher = CreateFrame("Frame")
+        Chat.lineWatcher = watcher
+        watcher:SetScript("OnUpdate", function(self, elapsed)
+            self.wait = (self.wait or 0) + elapsed
+            if self.wait < 0.2 then return end
+            self.wait = 0
+            for _, cf in Windows() do
+                if cf and cf.FlareUI_Skin and not cf:IsForbidden() and cf:IsVisible() and cf.ResetAllFadeTimes
+                        and (cf:IsMouseOver() or (cf.editBox and cf.editBox:HasFocus())) then
+                    cf:ResetAllFadeTimes()
+                end
+            end
+        end)
+    end
+    watcher:Show()
+end
+
+-- POP-OUT WINDOWS FADE ON THEIR OWN (11-20, Malkkav, from a Discord request): the docked windows share
+-- one timer, each popped-out window has its own. A new line, a tab click or the pointer holds only that
+-- window's timer, so a loot window lights up alone. The chat's shared reasons (its ticked conditions,
+-- typing, the gamepad, the settings page, a fade group) still show every window.
+Chat.windowHolds = {}   -- [window or "dock"] = GetTime() until which it stays up
+
+local function HoldKey(chatFrame) return IsPopped(chatFrame) and chatFrame or "dock" end
+
+local function HoldWindow(chatFrame, now)
+    local key = HoldKey(chatFrame)
+    Chat.windowHolds[key] = math_max(Chat.windowHolds[key] or 0, now + Chat.FadeDelay())
+end
+
+-- The pointer on a shown chat window (its skin, its tab bar) holds that window; on a header button or
+-- the meter in the Meter tab, the dock
+function Chat.HoldMouseWindows(now)
+    local any = false
+    for _, cf in Windows() do
+        if cf and not cf:IsForbidden() and cf:IsVisible() and (cf:IsMouseOver()
+                or (cf.FlareUI_Skin and cf.FlareUI_Skin:IsMouseOver())
+                or (cf.FlareUI_TabBar and cf.FlareUI_TabBar:IsVisible() and cf.FlareUI_TabBar:IsMouseOver())) then
+            HoldWindow(cf, now)
+            any = true
+        end
+    end
+    if not any and Chat.MouseOverChat() then
+        Chat.windowHolds.dock = math_max(Chat.windowHolds.dock or 0, now + Chat.FadeDelay())
+        any = true
+    end
+    return any
+end
+
+-- Is this window up by itself (a shared reason, or its own timer)?
+local function WindowHeld(chatFrame, now)
+    if now < Chat.holdUntil then return true end
+    return now < (Chat.windowHolds[HoldKey(chatFrame)] or 0)
+end
+
 -- The fader asks this for the chat (ruled: its ticked conditions hold; mouseOK: Mouseover ticked).
--- Any reason holds it Fade Delay seconds from now; with none left, it shows until that runs out.
+-- A shared reason holds every window Fade Delay seconds from now; a window's own reason, that window.
+-- With none left, it shows until the last runs out.
 function Chat.FadeHold(ruled, mouseOK)
     if not GetDb() then return true end
     local now = GetTime()
-    if ruled or Chat.ChatWanted() or (mouseOK and Chat.MouseOverChat()) then
+    if ruled or Chat.ChatWanted() then
         Chat.holdUntil = math_max(Chat.holdUntil, now + Chat.FadeDelay())
-        return true
     end
-    return now < Chat.holdUntil
+    if mouseOK then Chat.HoldMouseWindows(now) end
+    local held = now < Chat.holdUntil
+    for key, untilTime in pairs(Chat.windowHolds) do
+        if now < untilTime then held = true else Chat.windowHolds[key] = nil end
+    end
+    Chat.lastHeld = held
+    if held then Chat.StartWindowTicker() end
+    return held
+end
+
+-- Each window's alpha: a window that is up follows the fader's alpha; one that isn't (another window
+-- holds the chat up) fades down to Faded Opacity on its own at the chat's Hide Speed, and comes back at
+-- its Show Speed. With the chat shown for a reason outside it (a fade group), every window follows.
+local function WindowTarget(cf, now, alpha, minAlpha)
+    if not Chat.lastHeld then return alpha end          -- shown by a fade group, or fading out together
+    if WindowHeld(cf, now) then return alpha end
+    return math_min(alpha, minAlpha)
+end
+
+function Chat.ApplyWindowFades(elapsed)
+    local now, alpha = GetTime(), Chat.fadeAlpha or 1
+    local V, db = ns.Visibility, GetDb()
+    local fades = db and Fades(db) and V ~= nil
+    local minAlpha = fades and V:GetMinAlpha("chat") / 100 or 1
+    local inTime = fades and ns.FadeTime(V:GetFadeIn("chat")) or 0
+    local outTime = fades and ns.FadeTime(V:GetFadeOut("chat")) or 0
+    local span = math_max(0.01, 1 - minAlpha)
+    local moving = false
+    for _, cf in Windows() do
+        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
+            local target = fades and WindowTarget(cf, now, alpha, minAlpha) or alpha
+            local value = cf.FlareUI_WindowAlpha or alpha
+            -- a window following the fader stays on it; one that left it (faded alone) moves on its own
+            if target < alpha then cf.FlareUI_FadesAlone = true end
+            if not cf.FlareUI_FadesAlone then
+                value = target
+            elseif value > target and target == alpha then
+                value = target                               -- the fader is lower: down with it at once
+            elseif elapsed then
+                if value < target then
+                    value = inTime > 0 and math_min(target, value + span * elapsed / inTime) or target
+                elseif value > target then
+                    value = outTime > 0 and math_max(target, value - span * elapsed / outTime) or target
+                end
+            end
+            if value == alpha then cf.FlareUI_FadesAlone = nil end
+            if value ~= target then moving = true end
+            cf.FlareUI_WindowAlpha = value
+            Chat:SetChatFrameAlpha(cf, value)
+        end
+    end
+    if moving and not elapsed then Chat.StartWindowTicker() end
+    return moving
+end
+
+-- Runs while the chat is held by a window's own reason or a window is still moving to its alpha, so a
+-- window's timer running out is seen while the fader itself stands still
+function Chat.StartWindowTicker()
+    local ticker = Chat.windowTicker
+    if not ticker then
+        ticker = CreateFrame("Frame")
+        Chat.windowTicker = ticker
+        ticker:Hide()
+        ticker:SetScript("OnUpdate", function(self, elapsed)
+            self.wait = (self.wait or 0) + elapsed
+            if self.wait < 0.05 then return end
+            local step = self.wait
+            self.wait = 0
+            local now = GetTime()
+            local anyOwn = false
+            for _, untilTime in pairs(Chat.windowHolds) do
+                if now < untilTime then anyOwn = true break end
+            end
+            local moving = Chat.ApplyWindowFades(step)
+            if not moving and not anyOwn then self:Hide() end
+        end)
+    end
+    if not ticker:IsShown() then ticker.wait = 0; ticker:Show() end
 end
 
 -- Shows the chat (fading in) and restarts its hold
@@ -3741,7 +3938,9 @@ function Chat:ShowChatFrame(chatFrame, db)
     end
     -- a window new to the chat (a whisper window) starts where the others are
     if chatFrame.FlareUI_TargetAlpha == nil then Chat:SetChatFrameAlpha(chatFrame, Chat.fadeAlpha) end
-    Chat.holdUntil = math_max(Chat.holdUntil, GetTime() + Chat.FadeDelay())
+    -- this window's own timer (the dock's, for a docked one): a popped-out window lights up alone
+    HoldWindow(chatFrame, GetTime())
+    Chat.StartWindowTicker()
     if Chat.wakeHeld then
         Chat.wakeWanted = true
     elseif ns.Visibility and ns.Visibility.Wake then
@@ -3774,7 +3973,15 @@ end
 function Chat:TakeOverFromDock(chatFrame)
     local db = GetDb()
     if not (db and chatFrame and chatFrame.FlareUI_Skin) or chatFrame:IsForbidden() then return end
-    Chat:SetChatFrameAlpha(chatFrame, Fades(db) and Chat.fadeAlpha or 1)
+    if not Fades(db) then Chat:SetChatFrameAlpha(chatFrame, 1) return end
+    -- it takes the dock's alpha (a docked window that faded alone takes that, not the fader's)
+    local dockAlpha
+    for _, cf in Windows() do
+        if cf ~= chatFrame and cf and cf.isDocked and cf.FlareUI_WindowAlpha then dockAlpha = cf.FlareUI_WindowAlpha break end
+    end
+    chatFrame.FlareUI_WindowAlpha = dockAlpha or Chat.fadeAlpha
+    chatFrame.FlareUI_FadesAlone = dockAlpha ~= nil and dockAlpha ~= Chat.fadeAlpha or nil
+    Chat:SetChatFrameAlpha(chatFrame, chatFrame.FlareUI_WindowAlpha)
 end
 
 --------------------------------------------------
@@ -3803,7 +4010,7 @@ end
 
 -- the chat comes back after a quest or gossip window (with New Messages ticked)
 function Chat:OnNPCInteractionEnd()
-    if SELECTED_CHAT_FRAME and Chat.ShowsMessages() then self:ShowChatFrame(SELECTED_CHAT_FRAME, GetDb()) end
+    if SELECTED_CHAT_FRAME and Chat.ShowsMessages() and not Chat.ChatLinesOnly() then self:ShowChatFrame(SELECTED_CHAT_FRAME, GetDb()) end
 end
 
 --------------------------------------------------
@@ -3866,7 +4073,7 @@ local function OnChatMessage(chatFrame, text, r, g, b, typeID, _, _, event)
     end
     -- a line into a window that isn't shown (another tab) doesn't wake the chat: its tab lights up
     -- (New Messages ticked: the chat fades, as Always can't be ticked with it)
-    if db and chatFrame:IsVisible() and Chat.ShowsMessages() then Chat:ShowChatFrame(chatFrame, db) end
+    if db and chatFrame:IsVisible() and Chat.ShowsMessages() and not Chat.ChatLinesOnly() then Chat:ShowChatFrame(chatFrame, db) end
     -- a line under the Meter tab lights its window's tab (not the Combat Log's, which never stops)
     if Chat:MeterTabActive() and chatFrame ~= _G.ChatFrame2 and chatFrame == SelectedDocked()
         and Chat.LineGlows(chatFrame, typeID, db, event) then

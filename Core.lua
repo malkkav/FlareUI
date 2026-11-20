@@ -465,6 +465,7 @@ local defaults = {
 
             copyButton = true,          -- the copy icon in each window's top right corner
             increaseLineHeight = false, -- a little more space between chat lines
+            fadeLines = false,          -- Fade Old Lines (Edit Mode Fading): each line fades, oldest first
             formatNPC = false,
             formatPlayer = false,
             betterTimestamps = false,
@@ -538,7 +539,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Dark", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Dark", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, tooltip = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -995,7 +996,7 @@ local defaults = {
             bgOpacity = 90,             -- the bar's background, in percent (the unit frames' value)
             -- Bar Effects (the unit frames' three, all off): Animations (health glides), Edge Glow, Damage Trail
             smoothBars = false, edgeGlow = false, damageTrail = false,
-            targetScale = 1.05,         -- your target's plate grows this much (the game's own zoom is set to 1: NP.PinZoom)
+            targetScale = 1.2,         -- your target's plate grows this much (the game's own zoom is set to 1: NP.PinZoom)
             healthColor = "class",      -- Health Colour: off (Blizzard's) | reaction | class (Class & Reaction) | health
             threat = "groups",          -- Threat Colours: off | groups | always
             role = "auto",              -- Role: auto | tank | damage
@@ -1004,13 +1005,18 @@ local defaults = {
             colorFocus = false, groupColor = false,
             execute = "off",            -- Execute Range: off | auto | 20 | 25 | 30 | 35
             threatScale = false,        -- Threat Scale (tanks): lost mobs grow, held ones shrink a little
+            nameOnlySize = 100,
+            combatPlates = "none",      -- Show Plates in Combat (Name Only Mode): types that leave Name Only in a fight         -- Name Only Size (per type): the name on a Name Only plate, in % of the Names font
+            threatPercent = false,      -- Threat Percentage: your threat % in the bar's middle, coloured as the unit frames' Threat Text
+            peacefulNames = false,      -- Name Only While Unattackable: enemy NPCs you can't attack show only their name
+            enemyPlayers = true, enemyNpcs = true,   -- Enemy Types: FlareUI's plates for enemy players / NPCs
             kickReady = false,          -- Kick Ready: interruptible casts in their own colour while your interrupt is ready
-            rangeAlpha = 1,             -- Out of Range Opacity (1 = off)
+            rangeAlpha = 0.8,           -- Out of Range Opacity (1 = off)
             -- Targeting: size and opacity with no target, on your target, and on the others while you have one
-            noTargetScale = 1, noTargetAlpha = 1, targetAlpha = 1, notTargetScale = 1,
+            noTargetScale = 1, noTargetAlpha = 1, targetAlpha = 1, notTargetScale = 0.8,
             nonTargetAlpha = 1,         -- Not Targeted opacity (1 = off)
             -- Target Highlight: border in the target colour (on), bar tint, outer glow, arrows (off)
-            targetBorder = true, targetBarColor = false, targetGlow = false,
+            targetBorder = true, targetBarColor = true, targetGlow = false,
             targetArrows = "off",       -- off | npe | npeGlow | chevron | hook | big | red (Blizzard's art)
             targetArrowSide = "both",   -- both | left | right | top
             castKickMark = false,
@@ -2243,7 +2249,7 @@ do
         -- dropdowns
         "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
-        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Text",
+        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text",
         "Tint Health", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         -- the Cast Bar section's rows have no prefix: placed by their canon names
@@ -2258,7 +2264,7 @@ do
         -- each aura kind's size, then how many (the Amount names until the Max Buffs / Max Debuffs rename)
         "Buff Size", "Max Buffs", "Buff Amount", "Debuff Size", "Max Debuffs", "Debuff Amount",
         -- the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
-        "Faded Opacity", "Fade Delay",
+        "Faded Opacity", "Fade Delay", "Fade Old Lines",
         -- switches
         -- first of their sections' switches: Range Check (Look) and Show Level (Frame)
         -- the resource bars' two texts right under the sliders, before Range Check
@@ -2377,7 +2383,7 @@ do
                  "Power Bar for Mana Users Only", "Only Mana Power Bars" },
         -- the frame's look picks (11-20): first in its Look section (ns.EditSections takes them there)
         look = { "Portrait", "Flip Portrait", "Mirror Bars" },
-        text = { "Health Text", "Power Text", "Druid Mana Text", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
+        text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
                  "Threat Text", "Bar Text", "Show Timer", "Level Disc Size", "Values on Mouseover" },
     }
     -- the section titles reach ns.L as variables (EditSections): listed here for the phrase list

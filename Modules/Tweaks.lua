@@ -1566,6 +1566,8 @@ local function UpdateNameplateCombo(_, event, _, powerToken)
     if event == "PLAYER_TARGET_CHANGED" then last = nil end
     row.lastPoints = canaccessvalue(points) and points or nil
     local show = plate ~= nil and PlayerBuildsComboPoints()
+    -- FlareUI's nameplates: the target's unit type may have Combo Points off (Nameplates.lua)
+    if show and ns.Nameplates and ns.Nameplates.ComboAllowed and not ns.Nameplates.ComboAllowed("target") then show = false end
     if show and canaccessvalue(points) and points == 0 then show = false end
     if not show then
         row:Hide()

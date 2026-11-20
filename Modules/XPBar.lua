@@ -456,13 +456,16 @@ local function CreateSection(parent)
     text:SetWordWrap(false)
     section.Text = text
 
-    -- the numbers on mouseover. No tooltip (11-20, Malkkav): it covered the bar's own text.
-    -- ShowSectionTooltip stays for now, unused, should it come back.
+    -- the numbers on mouseover. The tooltip only with Show Tooltip (11-20, Malkkav: off by default, it
+    -- covered the bar's own text)
     section:SetScript("OnEnter", function(self)
         if not XPB.TextAlways() then self.Text:Show() end
+        local db = ns.db and ns.db.profile.actionbars.xpbar
+        if db and db.tooltip then ShowSectionTooltip(self) end
     end)
     section:SetScript("OnLeave", function(self)
         if not XPB.TextAlways() then self.Text:Hide() end
+        if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     end)
 
     -- a short light over the fill on an XP gain

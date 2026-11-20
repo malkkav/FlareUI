@@ -1047,6 +1047,7 @@ local function UpdateName(f)
     local name = ns.UnitDisplayName(unit, nil, UF.ShowsFullName(f))
     if canaccessvalue(name) and not name then name = "" end
     f.Name:SetText(name)
+    ns.NameAbove.SetName(f, GetUnitDb(unit), unit)   -- Name Above Plates (BarText.lua)
 end
 
 -- BAR TEXT (BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
@@ -1578,8 +1579,10 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     UF.SetBarBackground(cast, style.bgOpacity)
     cast:ClearAllPoints()
     if mode == "TOP" then
-        cast:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", PADDING + iconOffset + leftExtra, CAST_GAP)
-        cast:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -PADDING - rightExtra, CAST_GAP)
+        -- above Name Above Plates' name when the frame has one
+        local lift = CAST_GAP + (anchor.nameAboveLift or 0)
+        cast:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", PADDING + iconOffset + leftExtra, lift)
+        cast:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -PADDING - rightExtra, lift)
         cast:SetHeight(height)
     elseif mode == "BOTTOM" then
         cast:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", PADDING + iconOffset + leftExtra, -CAST_GAP)
@@ -2411,6 +2414,7 @@ local function ApplySample(f)
     local s = info.sample or {}
     local power = s.power or 0.6
     f.Name:SetText(s.name or info.label)
+    ns.NameAbove.SetSample(f, udb, s.name or info.label, s.surname)
     if udb and udb.showLevel then
         f.Level:SetText(UnitLevel("player") or "")
         f.Level:SetTextColor(1, 0.82, 0)
@@ -2948,6 +2952,8 @@ function AURA.Placement(f, corner)
         local reach = (udb.castHeight or CAST_HEIGHT) + 2 * CAST_GAP
         y = isTop and reach or -reach
     end
+    -- Name Above Plates: auras above the frame go over the name (BarText.lua)
+    if isTop then y = y + (f.nameAboveLift or 0) end
     if ns.UFRing and ns.UFRing.Applies(f) and (ns.UFRing.Side(f) == "LEFT") == isLeft then
         local clear = ns.UFRing.Clearance(f, math.abs(y))
         x = x + (isLeft and clear or -clear)
@@ -5128,6 +5134,17 @@ local function LayoutFrame(f)
     -- a settings preview's sample stops here: no cast bar, auras or icons
     if f.fuiSample then return end
 
+    -- Name Above Plates (BarText.lua): not on Forever Style's plate, which has its name box
+    ns.NameAbove.Layout(f, not (ns.UFRing and ns.UFRing.Plate(f)) and udb or nil, f, f.Name)
+    if f.NameAboveText and f.NameAboveText:IsShown() then
+        if f.fuiSample or not UnitExists(f.fuiUnit) then
+            local s = UNITS[f.fuiUnit].sample or {}
+            ns.NameAbove.SetSample(f, udb, s.name or UNITS[f.fuiUnit].label, s.surname)
+        else
+            ns.NameAbove.SetName(f, udb, f.fuiUnit)
+        end
+    end
+
     -- cast bar hangs off the frame
     if f.Cast then
         local leftExtra, rightExtra
@@ -6241,6 +6258,12 @@ local function BuildSettings(unit)
     for _, item in ipairs(UF.BarTextSettings(unit, function() return (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and "plate" or "plain" end)) do
         settings[#settings + 1] = item
     end
+    -- Name Above Plates (BarText.lua): hidden on Forever Style's plate, which has its name box
+    settings[#settings + 1] = ns.NameAbove.Setting({
+        db = function() return GetUnitDb(unit) end,
+        hidden = onPlate,
+        changed = function() local f = frames[unit] if f then UF.Redraw(f) end end,
+    })
     if info.comboPoints then
         -- (the redraw is UF.Redraw's, so a Reset Settings lays the frame out once; LayoutFrame applies
         -- the combo mode again in the ring styles, with the settings as they end up)

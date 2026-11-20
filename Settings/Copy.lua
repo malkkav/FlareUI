@@ -79,7 +79,7 @@ ns.Copy = {
         np = {
             desc = L["FlareUI's own enemy nameplates."],
             offCard = L["* Enemy nameplates in the FlareUI style\n* Threat colours for tanks, damage and healers\n* Cast bars, your debuffs and crowd control on each plate\n* Every colour yours to pick"],
-            tabs = { L["Plate"], L["Targeting"], L["Extras"], L["Cast Bar"], L["Auras"], L["Visibility"], L["Fonts"] },
+            tabs = { L["Plate"], L["Extras"], L["Cast Bar"], L["Auras"], L["Targeting"], L["Visibility"], L["Fonts"] },
             title = L["Nameplates"],
         },
         qol = {
@@ -407,6 +407,12 @@ ns.Copy = {
             label = L["Bar Texture"],
             section = "ab.experience",
             tags = { "xp bar texture", "experience bar look" },
+        },
+        ["ab.xpTooltip"] = {
+            desc = L["Point at the XP bar for its details: XP to the next level, rested XP, quest XP and XP per hour. Reputation and honor show theirs."],
+            label = L["Show Tooltip"],
+            section = "ab.experience",
+            tags = { "xp bar tooltip", "details", "xp per hour", "time to level" },
         },
         ["about.commands"] = {
             kind = "text",
@@ -1139,9 +1145,9 @@ ns.Copy = {
             tags = { "fade speed", "min alpha", "transparency" },
         },
         ["ch.em.show"] = {
-            desc = L["When the chat shows. Any ticked condition shows it.\n* New Messages: a new line, or closing a quest or vendor window, brings it back"],
+            desc = L["When the chat shows. Any ticked condition shows it.\n* New Messages: a new line, or closing a quest or vendor window, brings it back\n* Only Chat Messages: only lines people write (say, party, guild, whispers, channels). Loot, skill-ups and XP stay quiet\n* Popped-out windows fade on their own"],
             label = L["Visibility"],
-            tags = { "show", "view conditions", "chat interactions", "new messages", "hide chat" },
+            tags = { "show", "view conditions", "chat interactions", "new messages", "hide chat", "loot", "skill-ups", "only chat" },
             tip = L["Typing always shows the chat."],
         },
         ["ch.font.editBox"] = {
@@ -1624,11 +1630,6 @@ ns.Copy = {
             label = L["Background Opacity"],
             section = "np.frameSection",
         },
-        ["np.blizzardNames"] = {
-            desc = L["The font of the game's own names: names over heads, and friendly plates inside dungeons and raids. Set on the General page."],
-            label = L["Blizzard's Names"],
-            section = "np.blizzardFonts",
-        },
         ["np.border"] = {
             desc = L["The border round each plate's bar. The cast bar keeps FlareUI Thin when you pick FlareUI Thick."],
             label = L["Border"],
@@ -1724,6 +1725,13 @@ ns.Copy = {
             label = L["Focus Colour"],
             section = "np.highlights",
         },
+        ["np.combatPlates"] = {
+            choices = { L["None"], L["Enemy Player"], L["Enemy NPC"], L["Friendly Player"], L["Friendly NPC"], L["Minor"] },
+            desc = L["The units picked here leave Name Only Mode while you're in a fight and show their whole plate. Their options stay open to set that plate."],
+            label = L["Show Plates in Combat"],
+            section = "np.nameOnlySection",
+            tags = { "combat plates", "name only combat", "show bars in combat" },
+        },
         ["np.comboPoints"] = {
             desc = L["Combo point gems under your target's plate, below its cast bar while it casts."],
             label = L["Combo Points"],
@@ -1761,11 +1769,12 @@ ns.Copy = {
             tip = L["Only in Combat keeps your own setting and gives it back when you pick another choice."],
         },
         ["np.enemyTypes"] = {
-            choices = { L["None"], L["Minions"], L["Minor Enemies"] },
-            desc = L["Which other enemies get a plate too:\n* Minions: their pets, totems and guardians\n* Minor Enemies: such as critters that fight back"],
+            choices = { L["None"], L["Players"], L["NPCs"], L["Minions"], L["Minor Enemies"] },
+            desc = L["Which enemies get a plate:\n* Players\n* NPCs\n* Minions: their pets, totems and guardians\n* Minor Enemies: such as critters that fight back"],
             label = L["Enemy Types"],
             section = "np.which",
-            tags = { "enemy minions", "pets", "totems", "minor enemies" },
+            tags = { "enemy players", "enemy npcs", "enemy minions", "pets", "totems", "minor enemies" },
+            tip = L["Players and NPCs hide FlareUI's own plates. With the Enemy type on Blizzard's plates, they always show."],
         },
         ["np.execute"] = {
             choices = { L["Off"], L["Automatic"], L["20%"], L["25%"], L["30%"], L["35%"] },
@@ -1875,6 +1884,19 @@ ns.Copy = {
             label = L["Colour Where"],
             section = "np.specialColors",
         },
+        ["np.nameOnlyMode"] = {
+            desc = L["This unit's plates show only the name: no bar, cast bar or auras. The other options for this unit grey out, as they don't apply."],
+            label = L["Name Only Mode"],
+            section = "np.nameOnlySection",
+            tags = { "name only", "names only", "no bar" },
+            tip = L["The Name Only preset turns this on."],
+        },
+        ["np.nameOnlySize"] = {
+            desc = L["How big the name is in Name Only Mode. The Names font stays as it is everywhere else."],
+            label = L["Name Only Size"],
+            section = "np.nameOnlySection",
+            tags = { "name size", "name only", "name scale" },
+        },
         ["np.npcNames"] = {
             choices = { L["None"], L["Quest NPCs"], L["Hostile"], L["Interactive"], L["All"] },
             desc = L["Which NPCs show a name over their head."],
@@ -1887,6 +1909,12 @@ ns.Copy = {
             section = "np.fadeSection",
             tags = { "obscured", "occluded", "line of sight", "behind walls" },
             tip = L["This is the game's own setting. FlareUI only changes it once you move the slider."],
+        },
+        ["np.peacefulNames"] = {
+            desc = L["Enemy NPCs you can't attack yet show only their name. Their full plate comes back once you can attack them."],
+            label = L["Name Only While Unattackable"],
+            section = "np.platesBehaviour",
+            tags = { "name only", "unattackable", "not attackable", "peaceful", "event npcs" },
         },
         ["np.pickColors"] = {
             desc = L["Every colour the plates paint, next to sample plates:\n* Reaction and tapped\n* Threat, as a tank and as damage or healer\n* Cast bar, target border, heals and shields\nChange any colour and the palette becomes Custom."],
@@ -1955,11 +1983,6 @@ ns.Copy = {
         ["np.showOffscreen"] = {
             desc = L["Plates of units just off the screen stay at its edge."],
             label = L["Offscreen Plates"],
-            section = "np.platesBehaviour",
-        },
-        ["np.showRealm"] = {
-            desc = L["Friendly players from other realms show their realm."],
-            label = L["Realm Names"],
             section = "np.platesBehaviour",
         },
         ["np.stacking"] = {
@@ -2031,6 +2054,13 @@ ns.Copy = {
             label = L["Threat Glow"],
             section = "np.threatSection",
             tags = { "aggro glow", "threat border" },
+        },
+        ["np.threatPercent"] = {
+            desc = L["Your threat on the unit as a number, in the middle of the bar. Coloured as the unit frames' Threat Text. With something already in the middle, it sits to its right, in brackets."],
+            label = L["Threat Percentage"],
+            section = "np.threatSection",
+            tags = { "threat percent", "threat number", "aggro percent" },
+            tip = L["100% is where you pull it. As a tank holding it, it shows your lead over the next."],
         },
         ["np.threatScale"] = {
             desc = L["As a tank, plate size shows threat too:\n* A mob you lost grows\n* One someone is taking grows a little\n* One you hold shrinks a little"],
@@ -3297,7 +3327,6 @@ ns.Copy = {
         ["mm.infoBar"] = L["Info Bar"],
         ["mm.mapTools"] = L["Tweaks"],
         ["mm.styleSection"] = L["Look"],
-        ["np.blizzardFonts"] = L["Blizzard's Names"],
         ["np.buffSection"] = L["Buffs"],
         ["np.castBehaviour"] = L["Behaviour"],
         ["np.castFrame"] = L["Frame"],
@@ -3311,6 +3340,7 @@ ns.Copy = {
         ["np.highlights"] = L["Target Highlight"],
         ["np.look"] = L["Look"],
         ["np.marks"] = L["Icons"],
+        ["np.nameOnlySection"] = L["Name Only Mode"],
         ["np.platesBehaviour"] = L["Behaviour"],
         ["np.scaleSection"] = L["Scale & Opacity"],
         ["np.specialColors"] = L["Special Colouring"],

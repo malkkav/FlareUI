@@ -491,6 +491,29 @@ function Visibility.MigrateCapsBar1(db)
     end
 end
 
+-- NO TOOLTIPS FROM HIDDEN FRAMES (11-20, Malkkav, from a Discord report): a frame on Never is only
+-- see-through, so its buttons, auras and icons would still show tooltips under the pointer. Any tooltip
+-- owned by such a frame, or by anything inside it, closes as it opens. Edit Mode still shows them.
+Visibility.neverFrames = {}
+Visibility.NEVER_DEPTH = 6   -- parents climbed from the tooltip's owner
+function Visibility.HideNeverTooltip(tip)
+    if not next(Visibility.neverFrames) then return end
+    if _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then return end
+    local owner = tip:GetOwner()
+    for _ = 1, Visibility.NEVER_DEPTH do
+        if not owner then return end
+        if Visibility.neverFrames[owner] then tip:Hide() return end
+        owner = owner.GetParent and owner:GetParent() or nil
+    end
+end
+function Visibility.WatchNeverTooltips()
+    if Visibility.neverWatched then return end
+    Visibility.neverWatched = true
+    for _, tip in ipairs({ _G.GameTooltip, _G.ItemRefTooltip }) do
+        if tip then tip:HookScript("OnShow", Visibility.HideNeverTooltip) end
+    end
+end
+
 function Visibility:GetShow(key)
     local db, cfg = GetDb(), ElementConfig(key)
     local e = ELEMENT_BY_KEY[key]
@@ -547,6 +570,8 @@ function Visibility:SetFadeDelay(key, value)
     if not cfg then return end
     cfg.fadeDelay = value
     self:Refresh()
+    -- Fade Old Lines: a line stays Fade Delay seconds
+    if key == "chat" and ns.Chat and ns.Chat.ApplyLineFade then ns.Chat.ApplyLineFade() end
 end
 
 -- a condition ticked in the element's Visibility (its group's, in a group)
@@ -782,7 +807,7 @@ local CAP_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- the chat's New Messages (right under Mouseover); the meter's Never and In an Instance; the threat
 -- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
-Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" },
+Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "chatonly", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city" },
                          legacy = SHOW_SPEC.legacy, empty = "always" }
 Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
                           legacy = SHOW_SPEC.legacy, empty = "always" }
@@ -1046,7 +1071,12 @@ local function BuildElementSettings(key)
                 -- the chat's New Messages, right under Mouseover
                 if e and e.messages then
                     for i, v in ipairs(values) do
-                        if v.value == "mouseover" then table_insert(values, i + 1, { text = L["New Messages"], value = "messages", isRadio = true }) break end
+                        if v.value == "mouseover" then
+                            table_insert(values, i + 1, { text = L["New Messages"], value = "messages", isRadio = true })
+                            -- (11-20, Discord) only lines people write: loot, skill-ups, XP and system lines don't wake it
+                            table_insert(values, i + 2, { text = L["Only Chat Messages"], value = "chatonly", isRadio = true })
+                            break
+                        end
                     end
                 end
                 if e and e.inuse then
@@ -1064,7 +1094,7 @@ local function BuildElementSettings(key)
                 or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].mana
                 and L["Missing Health and Missing Mana can't be ticked together: the game hides both from addons, so they can't be combined."])
                 or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].chat
-                and L["Typing always shows the chat.\nNew Messages: a new line, or closing a quest or vendor window, brings it back."])
+                and L["Typing always shows the chat.\nNew Messages: a new line, or closing a quest or vendor window, brings it back.\nOnly Chat Messages: only lines people write. Loot, skill-ups and XP stay quiet."])
                 or (external and L["Never: it shows only in Edit Mode, or at its Faded Opacity."])
                 or (ELEMENT_BY_KEY[key] and ELEMENT_BY_KEY[key].threat
                 and L["Same as Meter: it shows and fades with the Damage Meter."])
@@ -1098,13 +1128,28 @@ local function BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
     if e and e.delay then
         rows[#rows + 1] = {
-            name = L["Fade Delay"], kind = LEM.SettingType.Slider, default = e.delay, minValue = 0, maxValue = 30, valueStep = 1,
+            name = L["Fade Delay"], kind = LEM.SettingType.Slider, default = e.delay, minValue = 0, maxValue = 60, valueStep = 1,   -- up to 1 minute (11-20); longer = Always
             -- seconds, short (a word clips the dialog's edge)
             formatter = function(value) return value .. "s" end,   -- 0s, not Off: at 0 it still fades (terminology.md)
             get = function() return Visibility:GetFadeDelay(key) end,
             set = function(_, value) Visibility:SetFadeDelay(key, value) end,
             hidden = AlwaysShown,
             desc = L["How long it stays after it was last needed, in seconds, before it fades."],
+        }
+    end
+    -- Fade Old Lines (the chat, 11-20, Discord): each line fades on its own, oldest first (Chat.lua
+    -- ApplyLineFade). Off by default; shown with any Visibility, as it works with Always too.
+    if e and e.chat then
+        rows[#rows + 1] = {
+            name = L["Fade Old Lines"], kind = LEM.SettingType.Checkbox, default = false,
+            get = function() local c = ns.db and ns.db.profile.chat return c and c.fadeLines or false end,
+            set = function(_, value)
+                local c = ns.db and ns.db.profile.chat
+                if not c then return end
+                c.fadeLines = value and true or nil
+                if ns.Chat and ns.Chat.ApplyLineFade then ns.Chat.ApplyLineFade() end
+            end,
+            desc = L["Lines fade one by one, oldest first, Fade Delay seconds after they arrive. Pointing at the chat or typing brings them back."],
         }
     end
     return rows
@@ -1539,6 +1584,7 @@ function Visibility:Refresh()
     Fader.groups = {}
     Fader.groupOf = {}
     Fader.delays = {}
+    wipe(Visibility.neverFrames)   -- filled again below, for each frame on Never
     Fader.dirty = {}
     Fader.shows = {}
     Fader.counting = {}
@@ -1607,6 +1653,9 @@ function Visibility:Refresh()
                 if key == "quest" and ns.ObjectiveTracker and ns.ObjectiveTracker.SetNever then
                     ns.ObjectiveTracker:SetNever(show == "never")
                 end
+                -- a frame on Never shows no tooltips (Visibility.HideNeverTooltip)
+                Visibility.neverFrames[frame] = show == "never" or nil
+                if show == "never" then Visibility.WatchNeverTooltips() end
                 if show == "never" then
                     -- out for good; Edit Mode still shows it, to be found and set back
                     local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()

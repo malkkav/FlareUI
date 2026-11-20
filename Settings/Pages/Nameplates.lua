@@ -21,11 +21,20 @@ end
 --   Live Preview: a real plate drawn by the module's own code (NP.CreateSample / DrawSample) showing
 --     everything the type's settings draw, and Test in Game
 -- The hovered row adds its own state.
-local PIN = { hover = nil, scale = 1.5, kind = "enemy" }
-local KINDS = { { "enemy", L["Enemy"] }, { "friendly", L["Friendly"] }, { "minion", L["Minion"] }, { "minor", L["Minor"] } }
+local PIN = { hover = nil, scale = 1.5, kind = "enemyNpc" }
+-- (11-20: players and NPCs split again; Minions are part of Minor)
+local KINDS = { { "enemyPlayer", L["Enemy Player"] }, { "enemyNpc", L["Enemy NPC"] }, { "friendlyPlayer", L["Friendly Player"] },
+                { "friendlyNpc", L["Friendly NPC"] }, { "minor", L["Minor"] } }
 local PRESETS = { { "full", L["Full"] }, { "compact", L["Simple"] }, { "tiny", L["Minimal"] }, { "name", L["Name Only"] },
                   { "custom", L["Custom"] } }
 local function Named(list, key) for _, e in ipairs(list) do if e[1] == key then return e[2] end end return key end
+-- a preset's name; each type's own Custom says whose it is (11-20): "Custom Enemy"
+local function PresetName(key, kind)
+    if key == "custom" then return L["Custom %s"]:format(Named(KINDS, kind or PIN.kind)) end
+    return Named(PRESETS, key)
+end
+-- the tabs whose rows every unit type shares (the others are each type's own)
+local SHARED_TABS = { targeting = true, visibility = true, fonts = true }
 -- a setting of the type being edited
 local function TV(key) local np = NP() return np and np.TypeDB(PIN.kind)[key] end
 -- what the preview shows: every state the type's settings draw (Can't Interrupt aside: the cast shows
@@ -210,7 +219,8 @@ local function Build(host, np)
         end
         return g
     end
-    host.unitGroup = Group(L["Unit"], KINDS, 0, function() return PIN.kind end, function(key)
+    -- (two columns: the five names don't fit one line)
+    host.unitGroup = Group(L["Unit"], KINDS, 2, function() return PIN.kind end, function(key)
         PIN.kind = key
         if np.testing then np.TestMode(true, PIN.kind) end
         RefreshAll(DrawSide)
@@ -221,7 +231,7 @@ local function Build(host, np)
     if ns.SettingsPanel.BoxArrow then ns.SettingsPanel.BoxArrow(host.presetDrop) end
     host.presetDrop:SetupMenu(function(_, root)
         for _, pr in ipairs(PRESETS) do
-            root:CreateRadio(pr[2], function() return np.PresetOf(PIN.kind) == pr[1] end, function()
+            root:CreateRadio(PresetName(pr[1]), function() return np.PresetOf(PIN.kind) == pr[1] end, function()
                 np.SetPreset(PIN.kind, pr[1])
                 if np.Refresh then np:Refresh() end
                 RefreshAll(DrawSide)
@@ -384,17 +394,20 @@ end
 
 S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
     enabled = "nameplates.enabled",
-    tabs = { { key = "style" }, { key = "targeting" }, { key = "extras" }, { key = "cast" }, { key = "auras" },
+    -- (11-20: Targeting moved next to Visibility; it, Visibility and Fonts are shared by every type)
+    tabs = { { key = "style" }, { key = "extras" }, { key = "cast" }, { key = "auras" }, { key = "targeting" },
              { key = "visibility" }, { key = "fonts" } },
     -- the page's subtitle names what the rows change
-    subtitle = function()
+    subtitle = function(tab)
         local np = NP()
         if not np then return nil end
-        return L["Editing: %s (%s)"]:format(Named(KINDS, PIN.kind), Named(PRESETS, np.PresetOf(PIN.kind)))
+        -- the shared tabs say so, instead of the unit being edited (11-20)
+        if SHARED_TABS[tab] then return L["Overall options for all plates"] end
+        return L["Editing: %s (%s)"]:format(Named(KINDS, PIN.kind), PresetName(np.PresetOf(PIN.kind)))
     end,
     sidePanel = {
         -- Plate Setup and Live Preview at the bottom; the text box gets the rest
-        height = 330,
+        height = 360,   -- (11-20: +30 for the Unit list's three rows)
         show = function(host)
             PIN.host = host
             DrawSide()
@@ -402,17 +415,36 @@ S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
         end,
         hover = function(key) ns.NameplatesPinned.Hover(key) end,
         -- shown while no setting is under the mouse
-        idle = { L["How It Works"], L["* Pick the Unit to change: enemies, friends, minions (pets, totems, guardians) or minor mobs.\n* Pick a Preset. Change any setting and it becomes Custom, saved for that unit.\n* Live Preview shows everything the plate can show. Test in Game puts it on the plates around you."] },
+        idle = { L["How It Works"], L["* Pick the Unit to change: enemy or friendly players, enemy or friendly NPCs, or Minor (minor mobs, pets, totems and guardians).\n* Pick a Preset. Change any setting and it becomes Custom, saved for that unit.\n* Live Preview shows everything the plate can show. Test in Game puts it on the plates around you."] },
     } }
 
 -- the default preset's value of a per-type setting (what Reset brings back)
 local function TypeDefault(key)
     local np = NP()
     if not (np and np.PresetValue) then return nil end
-    return np.PresetValue(np.C.DEFAULT_PRESET[PIN.kind] or "full", key)
+    return np.PresetValue(np.C.DEFAULT_PRESET[PIN.kind] or "full", key, PIN.kind)
+end
+-- NAME ONLY MODE (11-20, Malkkav): with it on, the type's other rows on its own tabs grey out (a
+-- Name Only plate draws none of them), unless Show Plates in Combat gives it its bar in a fight
+local OWN_TABS = { style = true, extras = true, cast = true, auras = true }
+local function NameOnlyLocked()
+    if TV("plate") ~= "name" then return false end
+    local v = S:GetPath("nameplates.combatPlates")
+    if type(v) == "string" then
+        for t in v:gmatch("[^,]+") do if t == PIN.kind then return false end end
+    end
+    return true
 end
 local function Row(def)
     def.apply = def.apply or Refresh
+    if OWN_TABS[def.tab] and def.section ~= "np.nameOnlySection" then
+        local own = def.disabled
+        def.disabled = function()
+            if NameOnlyLocked() then return true end
+            if type(own) == "function" then return own() end
+            return own
+        end
+    end
     if def.path and not def.path:find("%.") then
         local np = NP()
         local key = def.path
@@ -506,14 +538,16 @@ Row{ key = "np.barEffects", kind = "dropdown", tab = "style", section = "np.look
     get = function()
         local list = {}
         for _, e in ipairs(EFFECTS) do
-            if S:GetPath("nameplates." .. e[2]) then list[#list + 1] = e[1] end
+            if TV(e[2]) then list[#list + 1] = e[1] end
         end
         return #list > 0 and table.concat(list, ",") or "none"
     end,
     set = function(value)
         local on = {}
         for token in tostring(value or ""):gmatch("[^,]+") do on[token] = true end
-        for _, e in ipairs(EFFECTS) do S:SetPath("nameplates." .. e[2], on[e[1]] and true or false) end
+        -- the type's own (11-20), as every row on this tab
+        local np = NP()
+        for _, e in ipairs(EFFECTS) do if np then np.TypeSet(PIN.kind, e[2], on[e[1]] and true or false) end end
     end,
     resetValue = function() return "none" end }
 Row{ key = "np.healthColor", kind = "choice", path = "healthColor", choices = { "off", "reaction", "class", "health" }, tab = "style", section = "np.look" }
@@ -591,6 +625,24 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
     end }
 Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health" }
 
+-- NAME ONLY MODE (11-20): the switch (the type's Plate: Name Only, as the Name Only preset), the name's
+-- size, and which types get their whole plate back in a fight (shared: one list of types)
+local function NameOnlyOff() return TV("plate") ~= "name" end
+Row{ key = "np.nameOnlyMode", tab = "style", section = "np.nameOnlySection", lead = true,
+    get = function() return TV("plate") == "name" end,
+    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "plate", on and "name" or "bar") end end,
+    resetValue = function() return TypeDefault("plate") == "name" end,
+    apply = function() Refresh() if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end end }
+Row{ key = "np.nameOnlySize", kind = "range", path = "nameOnlySize", choices = Steps(50, 200, 10, function(v) return v .. "%" end),
+    tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
+Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
+    choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
+    toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },
+    get = function() return S:GetPath("nameplates.combatPlates") or "none" end,
+    set = function(v) S:SetPath("nameplates.combatPlates", v) end,
+    resetValue = function() return "none" end,
+    apply = function() Refresh() if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end end }
+
 -- TARGETING: size and opacity in three states (no target, your target, the others while you have
 -- one), out of range, and how your target stands out
 local function Scales(from, to)
@@ -662,17 +714,36 @@ Row{ key = "np.colorFocus", path = "colorFocus", tab = "targeting", section = "n
 -- (moved from Quality of Life while this module is on: the same saved switches, Tweaks.lua)
 local function TweaksApply() if ns.Tweaks then ns.Tweaks:Refresh() end Refresh() end
 Row{ key = "np.rarityIcon", path = "rarityIcon", tab = "extras", section = "np.marks", half = true }
-Row{ key = "np.comboPoints", path = "tweaks.nameplateCombo", tab = "extras", section = "np.marks", half = true, apply = TweaksApply }
+-- Combo Points and Objective Icon (11-20, per type): the shared Quality of Life switch (Blizzard's plates
+-- use it too) and the type's own; ticking one on turns the shared one on as well
+local function TypeSwitch(tweakPath, key)
+    return function()
+        return (S:GetPath(tweakPath) and TV(key) ~= false) and true or false
+    end, function(on)
+        local np = NP()
+        if on then S:SetPath(tweakPath, true) end
+        if np then np.TypeSet(PIN.kind, key, on and true or false) end
+    end
+end
+do
+    local get, set = TypeSwitch("tweaks.nameplateCombo", "combo")
+    Row{ key = "np.comboPoints", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
+        get = get, set = set, resetValue = function() return false end }
+end
 -- Objective Icon (the saved quest switch, shared with Blizzard's plates) and Objective Progress (never
 -- set, it follows the icon: NP.QuestParts)
-Row{ key = "np.questMarks", path = "tweaks.nameplateQuest", tab = "extras", section = "np.marks", half = true, apply = TweaksApply }
+do
+    local get, set = TypeSwitch("tweaks.nameplateQuest", "questIcon")
+    Row{ key = "np.questMarks", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
+        get = get, set = set, resetValue = function() return false end }
+end
 Row{ key = "np.questProgress", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
     get = function()
-        local v = S:GetPath("nameplates.questProgress")
-        if v == nil then v = S:GetPath("tweaks.nameplateQuest") end
+        local v = TV("questProgress")
+        if v == nil then v = S:GetPath("tweaks.nameplateQuest") and TV("questIcon") ~= false end
         return v and true or false
     end,
-    set = function(on) S:SetPath("nameplates.questProgress", on and true or false) end,
+    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "questProgress", on and true or false) end end,
     resetValue = function() return false end }
 Row{ key = "np.threat", kind = "choice", path = "threat", choices = { "off", "groups", "always" }, tab = "extras", section = "np.threatSection" }
 Row{ key = "np.role", kind = "choice", path = "role", choices = { "auto", "tank", "damage" }, tab = "extras", section = "np.threatSection",
@@ -683,11 +754,12 @@ Row{ key = "np.role", kind = "choice", path = "role", choices = { "auto", "tank"
     end }
 Row{ key = "np.threatGlow", path = "threatGlow", tab = "extras", section = "np.threatSection", half = true }
 Row{ key = "np.aggroFlash", path = "aggroFlash", tab = "extras", section = "np.threatSection", half = true }
-Row{ key = "np.threatScale", path = "threatScale", tab = "extras", section = "np.threatSection" }
+-- (11-20: Threat Scale paired with Threat Percentage, two columns as the rows above)
+Row{ key = "np.threatScale", path = "threatScale", tab = "extras", section = "np.threatSection", half = true }
+Row{ key = "np.threatPercent", path = "threatPercent", tab = "extras", section = "np.threatSection", half = true }
 -- Special Colours: each a switch (its colour is picked in Pick Your Colours)
 local function NoMobTypes()
-    local db = S:GetPath("nameplates") or {}
-    return not (db.colorBoss or db.colorElite or db.colorCaster or db.colorTrivial)
+    return not (TV("colorBoss") or TV("colorElite") or TV("colorCaster") or TV("colorTrivial"))
 end
 Row{ key = "np.execute", kind = "choice", path = "execute", choices = { "off", "auto", "20", "25", "30", "35" }, tab = "extras", section = "np.specialColors" }
 -- Colour Mob Types: the four switches ticked in one dropdown (each its own saved switch), then where
@@ -698,14 +770,15 @@ Row{ key = "np.mobTypes", kind = "dropdown", tab = "extras", section = "np.speci
     get = function()
         local list = {}
         for _, m in ipairs(MOB_TYPES) do
-            if S:GetPath("nameplates." .. m[2]) then list[#list + 1] = m[1] end
+            if TV(m[2]) then list[#list + 1] = m[1] end
         end
         return #list > 0 and table.concat(list, ",") or "none"
     end,
     set = function(value)
         local on = {}
         for token in tostring(value or ""):gmatch("[^,]+") do on[token] = true end
-        for _, m in ipairs(MOB_TYPES) do S:SetPath("nameplates." .. m[2], on[m[1]] and true or false) end
+        local np = NP()
+        for _, m in ipairs(MOB_TYPES) do if np then np.TypeSet(PIN.kind, m[2], on[m[1]] and true or false) end end
     end,
     resetValue = function() return "none" end }
 Row{ key = "np.mobTypesWhere", kind = "choice", path = "mobTypesWhere", choices = { "instances", "everywhere" }, tab = "extras", section = "np.specialColors",
@@ -714,12 +787,11 @@ Row{ key = "np.mobTypesWhere", kind = "choice", path = "mobTypesWhere", choices 
 Row{ key = "np.groupColor", path = "groupColor", tab = "extras", section = "np.specialColors", half = true }
 Row{ key = "np.raidColor", tab = "extras", section = "np.specialColors", half = true,
     get = function()
-        local db = S:GetPath("nameplates") or {}
-        local v = db.raidColor
-        if v == nil then v = db.groupColor end
+        local v = TV("raidColor")
+        if v == nil then v = TV("groupColor") end
         return v and true or false
     end,
-    set = function(on) S:SetPath("nameplates.raidColor", on and true or false) end,
+    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "raidColor", on and true or false) end end,
     resetValue = function() return false end }
 
 -- CAST BAR: the switch alone, then its frame and how it behaves
@@ -808,7 +880,37 @@ local function SwitchesRow(key, section, list, setCVar)
 end
 -- PLATES
 ShowRow("np.enemyShow", "nameplateShowEnemies", "combatPlates")
-SwitchesRow("np.enemyTypes", "np.which", { { "minions", "nameplateShowEnemyMinions" }, { "minor", "nameplateShowEnemyMinus" } }, SetGameCVar)
+-- Enemy Types (11-20): Players and NPCs too. The game has no switch for those two: they are FlareUI's
+-- (nameplates.enemyPlayers / enemyNpcs, Nameplates.lua NP.UnitHidden); Minions and Minor are the game's
+do
+    local GAME = { minions = "nameplateShowEnemyMinions", minor = "nameplateShowEnemyMinus" }
+    local OWN = { players = "nameplates.enemyPlayers", npcs = "nameplates.enemyNpcs" }
+    local ORDER = { "players", "npcs", "minions", "minor" }
+    local function On(token)
+        if OWN[token] then return S:GetPath(OWN[token]) ~= false end
+        return GetCVarBool(GAME[token])
+    end
+    Row{ key = "np.enemyTypes", kind = "dropdown", tab = "visibility", section = "np.which",
+        choices = { "none", { divider = true }, "players", "npcs", "minions", "minor" },
+        toggles = { exclusive = { "none" }, tokens = ORDER, empty = "none" },
+        get = function()
+            local on = {}
+            for _, t in ipairs(ORDER) do if On(t) then on[#on + 1] = t end end
+            return #on > 0 and table.concat(on, ",") or "none"
+        end,
+        set = function(value)
+            if InCombatLockdown() then return end
+            local want = {}
+            for token in tostring(value or ""):gmatch("[^,]+") do want[token] = true end
+            for _, t in ipairs(ORDER) do
+                local v = want[t] or false
+                if OWN[t] then S:SetPath(OWN[t], v)
+                elseif GetCVarBool(GAME[t]) ~= v then SetGameCVar(GAME[t], v) end
+            end
+        end,
+        resetValue = function() return "players,npcs" end,
+        disabled = Locked, apply = Refresh }
+end
 ShowRow("np.friendlyShow", "nameplateShowFriends", "combatFriendly")
 SwitchesRow("np.friendlyTypes", "np.which", { { "players", "nameplateShowFriendlyPlayers" }, { "npcs", "nameplateShowFriendlyNpcs" },
     { "minions", "nameplateShowFriendlyPlayerMinions" } }, SetGameCVar)
@@ -848,10 +950,8 @@ Row{ key = "np.showOffscreen", tab = "visibility", section = "np.platesBehaviour
     set = function(on) SetGameCVar("nameplateShowOffscreen", on) end,
     disabled = Locked, apply = function() end }
 Row{ key = "np.clickThrough", path = "clickThrough", tab = "visibility", section = "np.platesBehaviour", half = true }
-Row{ key = "np.showRealm", tab = "visibility", section = "np.platesBehaviour", half = true,
-    get = function() return GetCVarBool("nameplateShowFriendlyRealmName") end,
-    set = function(on) SetGameCVar("nameplateShowFriendlyRealmName", on) end,
-    disabled = Locked, apply = function() end }
+-- (11-20: Realm Names removed, Forever has no realms) Name Only While Unattackable, off (Nameplates.lua NP.Peaceful)
+Row{ key = "np.peacefulNames", path = "peacefulNames", tab = "visibility", section = "np.platesBehaviour", half = true }
 
 -- WORLD NAMES: the names over units' heads (Blizzard's own switches)
 local function SetNameCVar(cvar, on) if not InCombatLockdown() then SetCVar(cvar, on and "1" or "0") end end
@@ -890,7 +990,4 @@ S:FontRows{ module = "np", tab = "fonts", section = "np.fonts", apply = Refresh,
     { key = "level", path = "nameplates.levelFont" },
     { key = "cast", path = "nameplates.castFont" },
 } }
--- the game's own name text (friendly plates inside instances, names over heads): its font is set on
--- the General page, with every font the game draws
-Row{ key = "np.blizzardNames", kind = "button", buttonText = L["Open"], tab = "fonts", section = "np.blizzardFonts",
-    apply = function() if ns.SettingsPanel then ns.SettingsPanel:Open("language", "interface") end end }
+-- (11-20: the Blizzard's Names section, a link to the General page, removed)

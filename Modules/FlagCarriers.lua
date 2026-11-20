@@ -337,6 +337,8 @@ local function BuildSettings()
             style = function() return onPlate() and "plate" or "plain" end }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", db = GetDb, changed = Refresh,
             style = function() return onPlate() and "plate" or "plain" end }),
+        -- Name Above Plates (BarText.lua): not on Forever Style's plate (its name box)
+        ns.NameAbove.Setting({ db = GetDb, changed = Refresh, hidden = onPlate }),
         -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
           hidden = function() return not onPlate() end },

@@ -426,6 +426,7 @@ local function UpdateName(f)
     local full = nil
     if PF.SlotOn(f) then full = f.btFullName ~= false end
     f.Name:SetText(SafeName(ns.UnitDisplayName(f.fuiUnit, not f.ctx and "party" or nil, full)))
+    if f.NameAboveText then ns.NameAbove.SetName(f, PF.NameAboveDb(f), f.fuiUnit) end
 end
 
 local function UpdateLevel(f)
@@ -1272,6 +1273,8 @@ local function AuraAnchor(f, pos)
     else -- INSIDE_BOTTOMRIGHT
         point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", health, "BOTTOMRIGHT", -inset, inset, H.Left, H.Up
     end
+    -- Name Above Plates (BarText.lua): the places above the frame go over the name
+    if pos == "ABOVE" or pos == "ABOVE_RIGHT" or pos == "ABOVE_WIDE" then y = y + (f.nameAboveLift or 0) end
     return point, rel, relPoint, x, y, growH, growV
 end
 
@@ -1870,6 +1873,8 @@ end
 -- The Right slot is the old HealthText / PowerText; Left and Middle are made here.
 PF.SLOT_RIGHT = { health = "HealthText", power = "PowerText" }
 -- (11-20: the party's Classic tiles too, with no ctx; Raid Style keeps the single Health / Power Text)
+-- the table holding a tile's Name Above Plates pick: its Bar Text's
+function PF.NameAboveDb(f) return f.ctx and f.ctx.TextDb and f.ctx.TextDb() or TS(f) end
 function PF.SlotOn(f)
     if not (f and ns.BarText) then return false end
     if f.ctx then return f.ctx.barText and true or false end
@@ -2179,6 +2184,9 @@ local function LayoutMember(f)
     LayoutHealClip(f)
     K.PlaceDamageTrail(f.DamageTrail, Mirrored(f, true))
     LayoutTexts(f)
+    -- Name Above Plates (BarText.lua): the bar text tiles (party Classic, boss, flag carriers), not
+    -- Forever Style's plate (its name box)
+    ns.NameAbove.Layout(f, (PF.SlotOn(f) and not OnPlate(f)) and PF.NameAboveDb(f) or nil, f, f.Name)
     LayoutIcons(f)
     if f.Cast then
         -- FlareUI Style: the cast bar ends where the ring starts at its height
@@ -2749,6 +2757,7 @@ ApplyPreview = function(f)
     else
         f.Name:SetText(data.name)
     end
+    if f.NameAboveText then ns.NameAbove.SetSample(f, PF.NameAboveDb(f), data.name, data.surname) end
     if st.showLevel and data.level == -1 then
         f.Level:SetText("??")
         f.Level:SetTextColor(1, 0.1, 0.1)
@@ -3397,6 +3406,9 @@ local function BuildSettings()
             item.hidden = IsRaidStyle
             return item
         end)(),
+        -- Name Above Plates (BarText.lua): Classic tiles, not Raid Style nor Forever Style's plate
+        ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
+            hidden = function() return IsRaidStyle() or onPlate() end }),
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText"),
           hidden = function() return not IsRaidStyle() end },
         -- (Raid Style's default is None, as on the raid frames: TilePowerMode)

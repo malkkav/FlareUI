@@ -136,6 +136,8 @@ S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "all"
         if v ~= "off" then S:SetPath("actionbars.xpbar.questXPMode", v) end
     end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+-- Show Tooltip (11-20, Malkkav: back as a switch, off): the XP, rested and quest details on mouseover
+S:Row{ key = "ab.xpTooltip", tab = "xp", path = "actionbars.xpbar.tooltip", disabled = XPOff }
 
 -- Hide Blizzard elements (also removed from Edit Mode)
 local function Hide(key, path)

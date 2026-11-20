@@ -158,12 +158,32 @@ local function DB() return ns.db and ns.db.profile and ns.db.profile.nameplates 
 -- PLATE TYPES: Enemy, Friendly, Minions (pets, totems, guardians) and Minor mobs.
 -- Each type keeps its own value of these settings (nameplates.types[kind]); every other setting is
 -- shared. A type's view reads its own value first, then the shared one.
-C.KINDS = { "enemy", "friendly", "minion", "minor" }
+-- (11-20, Malkkav: open PvP is big on Forever, so players and NPCs are split again on both sides;
+-- Minions merged into Minor, one type for pets, totems, guardians and minor mobs)
+C.KINDS = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }
+C.FRIENDLY = { friendlyPlayer = true, friendlyNpc = true }
 C.TYPE_KEYS = {
     plate = true, width = true, height = true, level = true, levelSide = true, barText = true, hideTextAtFull = true,
     healthColor = true, castbar = true, castHeight = true, debuffs = true, debuffSize = true, debuffMax = true,
     buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true, clickThrough = true,
+    -- (11-20, Malkkav: every row on the Style tab is the type's own) the look rows and Name Only Size
+    texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true,
+    -- (11-20, Malkkav: every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
+    -- Targeting, Visibility and Fonts stay shared. Role stays shared: it is yours, not the plate's;
+    -- so do the colours, picked in their own window)
+    rarityIcon = true, combo = true, questIcon = true, questProgress = true,
+    threat = true, threatGlow = true, aggroFlash = true, threatScale = true, threatPercent = true,
+    execute = true, colorBoss = true, colorElite = true, colorCaster = true, colorTrivial = true, mobTypesWhere = true,
+    groupColor = true, raidColor = true,
+    castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
 }
+-- these were one shared value before 11-20: a preset reads the profile's old shared value, so every
+-- type keeps the look it had; a type's Custom keeps its own from then on
+C.WAS_SHARED = { texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true,
+    rarityIcon = true, questProgress = true, threat = true, threatGlow = true, aggroFlash = true, threatScale = true, threatPercent = true,
+    execute = true, colorBoss = true, colorElite = true, colorCaster = true, colorTrivial = true, mobTypesWhere = true,
+    groupColor = true, raidColor = true,
+    castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true }
 -- PRESETS: each type picks one (types[kind].preset); a preset is a few values over the Core.lua
 -- defaults. Changing any of the type's settings turns it into Custom: the preset's values are copied
 -- into types[kind].custom, and the change goes there. Custom stays saved while another preset is
@@ -175,7 +195,39 @@ C.PRESETS = {
     name = { plate = "name", castbar = false, debuffs = "off", buffs = "off", cc = false, level = "off" },
 }
 C.PRESET_ORDER = { "full", "compact", "tiny", "name", "custom" }
-C.DEFAULT_PRESET = { enemy = "full", friendly = "name", minion = "compact", minor = "tiny" }
+C.DEFAULT_PRESET = { enemyPlayer = "full", enemyNpc = "full", friendlyPlayer = "name", friendlyNpc = "name", minor = "full",
+    -- (not a type of its own: Name Only While Unattackable lays an enemy NPC you can't attack out
+    -- with the Name Only preset, NP.Peaceful)
+    peaceful = "name" }
+-- EACH TYPE'S OWN DEFAULTS (11-20, Malkkav's setup): what Full and the other presets build on. Both
+-- enemy types and both friendly types share Enemy's; the friendly ones start on Name Only, its
+-- name at 140%. Minor (minions too) has its own.
+C.ENEMY_BASE = {
+    width = 150, height = 15, level = "box", levelSide = "left", healthColor = "class",
+    barText = { health = { left = { firstname = 1 }, middle = {}, right = { percent = 1 } } },
+    hideTextAtFull = true, texture = "FlareUI Dark", border = "FlareUI Frames",
+    smoothBars = true, edgeGlow = true, damageTrail = true, rarityIcon = false, questProgress = false,
+    execute = "auto", raidColor = false,
+    castbar = true, castHeight = 12, castIcon = false, castTarget = false,
+    kickReady = true, castKickMark = true, castTargetedFlash = true,
+    debuffs = "mine", debuffSize = 18, debuffMax = 8, buffs = "off", buffSize = 18, buffMax = 3,
+    cc = false, ccSize = 24, defensives = false, clickThrough = false,
+}
+C.TYPE_BASE = {
+    enemyPlayer = C.ENEMY_BASE, enemyNpc = C.ENEMY_BASE, peaceful = C.ENEMY_BASE,   -- (peaceful: NP.Peaceful)
+    friendlyPlayer = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
+    friendlyNpc = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
+    minor = {
+        width = 100, height = 13, level = "off", levelSide = "left",   -- (Colour By: Core's default, 11-20)
+        hideTextAtFull = false, texture = "FlareUI Dark", border = "FlareUI Frames",
+        smoothBars = true, edgeGlow = true, damageTrail = true, rarityIcon = false, questProgress = false,
+        execute = "auto", raidColor = false, combo = false,
+        castbar = false, castHeight = 10, castIcon = false, castTarget = false,
+        kickReady = true, castKickMark = true, castTargetedFlash = true,
+        debuffs = "off", debuffSize = 20, debuffMax = 6, buffs = "off", buffSize = 16, buffMax = 3, hideBuffs = "OFF",
+        cc = false, ccSize = 28, defensives = false, clickThrough = false,
+    },
+}
 local function Defaults()
     return ns.defaults and ns.defaults.profile and ns.defaults.profile.nameplates or {}
 end
@@ -185,11 +237,18 @@ local function Copy(v)
     for k, x in pairs(v) do t[k] = Copy(x) end
     return t
 end
--- a preset's value of a per-type setting
-function NP.PresetValue(preset, key)
+-- a preset's value of a per-type setting: the preset's own, then a value the profile saved when the
+-- setting was shared, then the type's own default (C.TYPE_BASE), then Core.lua's
+function NP.PresetValue(preset, key, kind)
     local p = C.PRESETS[preset] or C.PRESETS.full
     local v = p[key]
     if v ~= nil then return v end
+    if C.WAS_SHARED[key] then
+        local db = DB()
+        if db and rawget(db, key) ~= nil then return rawget(db, key) end
+    end
+    local base = kind and C.TYPE_BASE[kind]
+    if base and base[key] ~= nil then return base[key] end
     return Defaults()[key]
 end
 local function Own(kind)
@@ -204,7 +263,7 @@ function NP.PresetOf(kind)
 end
 local typeViews = {}
 function NP.TypeDB(kind)
-    kind = kind or "enemy"
+    kind = kind or "enemyNpc"
     local view = typeViews[kind]
     if not view then
         view = setmetatable({ kind = kind }, { __index = function(_, key)
@@ -215,9 +274,9 @@ function NP.TypeDB(kind)
                 if preset == "custom" then
                     local v = Own(kind).custom[key]
                     if v ~= nil then return v end
-                    return NP.PresetValue("full", key)
+                    return NP.PresetValue("full", key, kind)
                 end
-                return NP.PresetValue(preset, key)
+                return NP.PresetValue(preset, key, kind)
             end
             return db[key]
         end })
@@ -240,7 +299,7 @@ function NP.SetPreset(kind, preset)
     if preset == "custom" and not own.custom then
         local from = NP.PresetOf(kind)
         own.custom = {}
-        for key in pairs(C.TYPE_KEYS) do own.custom[key] = Copy(NP.PresetValue(from, key)) end
+        for key in pairs(C.TYPE_KEYS) do own.custom[key] = Copy(NP.PresetValue(from, key, kind)) end
     end
     own.preset = preset
 end
@@ -251,9 +310,9 @@ function NP.TypeSet(kind, key, value)
     local preset = NP.PresetOf(kind)
     if preset ~= "custom" then
         -- (a Reset that changes nothing keeps the preset)
-        if NP.SameValue(value, NP.PresetValue(preset, key)) then return end
+        if NP.SameValue(value, NP.PresetValue(preset, key, kind)) then return end
         own.custom = {}
-        for k in pairs(C.TYPE_KEYS) do own.custom[k] = Copy(NP.PresetValue(preset, k)) end
+        for k in pairs(C.TYPE_KEYS) do own.custom[k] = Copy(NP.PresetValue(preset, k, kind)) end
         own.preset = "custom"
     end
     own.custom[key] = Copy(value)
@@ -279,16 +338,18 @@ function NP.MigratePresets()
         for key in pairs(C.TYPE_KEYS) do
             local v = own[key]
             if v == nil then v = C.PRESETS[base][key] end
-            if v == nil then v = db[key] end
+            -- (only a value the profile saved: a default read here would hide the type's own default)
+            if v == nil then v = rawget(db, key) end
+            if v == nil then v = NP.PresetValue(base, key, kind) end
             custom[key] = Copy(v)
-            if not Same(v, NP.PresetValue(base, key)) then differs = true end
+            if not Same(v, NP.PresetValue(base, key, kind)) then differs = true end
         end
         local fresh = { preset = base }
         if differs then fresh.preset, fresh.custom = "custom", custom end
         db.types[kind] = fresh
     end
 end
-local function PDB(p) return p.tdb or NP.TypeDB("enemy") end
+local function PDB(p) return p.tdb or NP.TypeDB("enemyNpc") end
 
 function NP.Palette()
     local db = DB()
@@ -573,6 +634,10 @@ function NP.Build(parent, sample)
         fs:SetWordWrap(false)
         p.texts[slot] = fs
     end
+    -- Threat Percentage: outside the holder, so Hide at Full doesn't fade it (NP.UpdateThreatText)
+    p.threatText = NewText(overlay)
+    p.threatText:SetWordWrap(false)
+    p.threatText:Hide()
 
     -- the cast bar: the unit frames' (its interrupted flash and timer binding come with it)
     if K and K.CreateCastBar then
@@ -845,7 +910,7 @@ end
 -- a soft glow round it (Outer Glow) and the arrows. Everything else draws as it was.
 function NP.UpdateTargetLook(p)
     local db = PDB(p)
-    local on = p.targetShown and not p.nameOnly and not p.hiddenPlate
+    local on = p.targetShown and not p.nameOnly and not p.hiddenPlate and not p.unitHidden
     p.targetTint:SetShown(on and db.targetBarColor and true or false)
     p.targetGlow:SetShown(on and db.targetGlow and true or false)
     -- (the level box or disc glows with it: they and the bar read as one plate)
@@ -1264,6 +1329,20 @@ function NP.Layout(p)
     end
     p.textOn = BT.HasNumbers(p.slots.left) or BT.HasNumbers(p.slots.middle) or BT.HasNumbers(p.slots.right)
     p.textHolder:SetShown(p.textOn)
+    -- Threat Percentage: the bar's middle; with something already there (numbers or the name), right
+    -- of it and in brackets
+    ApplyFontTo(p.threatText, db.healthFont)
+    p.threatText:ClearAllPoints()
+    p.threatBesides = nil
+    if p.nameSlot == "middle" then
+        p.threatText:SetPoint("LEFT", p.name, "RIGHT", 2, 0)
+        p.threatBesides = true
+    elseif BT.HasNumbers(p.slots.middle) then
+        p.threatText:SetPoint("LEFT", p.texts.middle, "RIGHT", 2, 0)
+        p.threatBesides = true
+    else
+        p.threatText:SetPoint("CENTER", p.health, "CENTER", 0, 0)
+    end
 
     -- cast bar under the bar's frame, as wide as the bar
     if p.cast then
@@ -1325,7 +1404,8 @@ function NP.Layout(p)
     LayoutAuras(p, db)
     NP.PlaceBelow(p)
     -- Plate: Bar (all of the above), Name Only (the name alone, centred, in its colour) or Hidden
-    p.nameOnly = db.plate == "name"
+    -- (Show Plates in Combat: a Name Only type picked there gets its bar in a fight, NP.CombatFull)
+    p.nameOnly = db.plate == "name" and not NP.CombatFull(db.kind)
     p.hiddenPlate = db.plate == "hidden"
     p.health:SetShown(not p.nameOnly)
     if p.nameOnly then
@@ -1339,7 +1419,15 @@ function NP.Layout(p)
         p.nameSlot = p.nameSlot or "middle"
         p.name:ClearAllPoints()
         p.name:SetPoint("CENTER", p.box, "CENTER", 0, 0)
-        p.name:SetWidth(w + 40)
+        -- Name Only Size (11-20): this type's name alone, scaled; the Names font itself stays as set
+        -- (through the font family with a size offset, from the Names font's own size: a SetFont on
+        -- the string would beat the family from then on, and each layout would scale it again)
+        local scale = (tonumber(db.nameOnlySize) or 100) / 100
+        if scale ~= 1 and K and K.ApplyFont then
+            local base = (db.nameFont and db.nameFont.size) or 12
+            K.ApplyFont(p.name, db.nameFont, math_floor(base * (scale - 1) + 0.5))
+        end
+        p.name:SetWidth((w + 40) * math_max(1, scale))
         p.name:SetJustifyH("CENTER")
         p.name:Show()
         NP.PlaceSides(p)
@@ -1471,6 +1559,44 @@ function NP.PaintGlow(p)
     end
 end
 
+-- THREAT PERCENTAGE (11-20, Malkkav; Extras > Threat, off): your threat on the unit as a number, in
+-- the colours of the unit frames' Threat Text (Blizzard's threat status colours). 100% is where you
+-- pull it; a tank holding it reads its lead over the next. Shown in a fight with threat on it, and on
+-- the Test plates; never on Name Only plates. A threat the game keeps hidden shows nothing.
+function NP.UpdateThreatText(p, db)
+    local fs = p.threatText
+    if not fs then return end
+    local unit = p.unit
+    local display, status
+    if db.threatPercent and unit and not p.nameOnly then
+        if NP.testKind then
+            display, status = 75, 1
+        else
+            local secret = false
+            if C_Secrets and C_Secrets.ShouldUnitThreatStateBeSecret then
+                local ok, s = pcall(C_Secrets.ShouldUnitThreatStateBeSecret, "player", unit)
+                secret = not ok or not canaccessvalue(s) or s
+            end
+            if not secret then
+                local ok, tanking, detailed, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
+                if ok and canaccessallvalues(tanking, detailed, scaled) then
+                    display, status = scaled, detailed
+                    if tanking then
+                        local lead = UnitThreatPercentageOfLead("player", unit)
+                        if canaccessvalue(lead) and lead then display = lead end
+                    end
+                end
+            end
+        end
+    end
+    if type(display) ~= "number" or display <= 0 then fs:Hide() return end
+    local r, g, b = 1, 1, 1
+    if status and status >= 1 and GetThreatStatusColor then r, g, b = GetThreatStatusColor(status) end
+    fs:SetTextColor(r, g, b)
+    fs:SetFormattedText(p.threatBesides and "(%.0f%%)" or "%.0f%%", display)
+    fs:Show()
+end
+
 function NP.UpdateColor(p)
     local db, unit = PDB(p), p.unit
     if not (db and unit) then return end
@@ -1486,6 +1612,7 @@ function NP.UpdateColor(p)
         if db.aggroFlash and before and (threatKey == "aggro" or threatKey == "lost") then p.flashAnim:Stop() p.flashAnim:Play() end
     end
     p.threatRGB = r and { r, g, b } or nil
+    NP.UpdateThreatText(p, db)
     NP.PaintBorder(p)
     if r then NP.BarColor(p, r, g, b) return end
     -- your focus (Focus Colour), then the mob type colours
@@ -1891,15 +2018,64 @@ end
 
 -- Objective Icon (tweaks.nameplateQuest, shared with Blizzard's plates) and Objective Progress
 -- (nameplates.questProgress; never set, it follows the icon, as before the two were split)
-function NP.QuestParts()
-    local t = ns.db and ns.db.profile and ns.db.profile.tweaks
-    local icon = (t and t.nameplateQuest) and true or false
-    local db = DB()
-    local progress = db and db.questProgress
+-- Objective Icon and Progress, per type (11-20): the icon needs the shared quest switch (it also
+-- serves Blizzard's plates) and the type's own Objective Icon; Progress never set follows the icon.
+-- With no plate: whether any type shows them (the module's quest events).
+local function TypeQuest(tdb, master)
+    local icon = master and tdb.questIcon ~= false
+    local progress = tdb.questProgress
     if progress == nil then progress = icon end
+    return icon and true or false, progress and true or false
+end
+function NP.QuestParts(p)
+    local t = ns.db and ns.db.profile and ns.db.profile.tweaks
+    local master = (t and t.nameplateQuest) and true or false
     -- Questie draws its own quest icons on plates when its option is on
     if ns.Tweaks and ns.Tweaks.QuestieHasNameplateIcons and ns.Tweaks:QuestieHasNameplateIcons() then return false, false end
-    return icon, progress and true or false
+    if p then return TypeQuest(PDB(p), master) end
+    local anyIcon, anyProgress = false, false
+    for _, kind in ipairs(C.KINDS) do
+        local i, pr = TypeQuest(NP.TypeDB(kind), master)
+        anyIcon, anyProgress = anyIcon or i, anyProgress or pr
+    end
+    return anyIcon, anyProgress
+end
+-- SHOW PLATES IN COMBAT (11-20, Malkkav; Plate > Name Only Mode): the unit types picked there leave
+-- Name Only Mode while you are in a fight and show their whole plate (nameplates.combatPlates, a list
+-- of types, "none" first). Entering and leaving combat lays the plates out again (NP.Relayout).
+function NP.CombatList()
+    local db = DB()
+    local v = db and db.combatPlates
+    local set = {}
+    if type(v) == "string" then for t in v:gmatch("[^,]+") do set[t] = true end end
+    return set
+end
+function NP.CombatFull(kind)
+    return state.combat and kind ~= nil and NP.CombatList()[kind] or false
+end
+-- every plate laid out again where it stands (no settings or game options touched: fine in a fight,
+-- as a plate claimed in a fight is laid out too)
+function NP.Relayout()
+    if not NP.ready then return end
+    local held = {}
+    for _, p in pairs(byPlate) do held[#held + 1] = p end
+    for _, p in ipairs(held) do NP.ReleasePlate(p) end
+    for _, p in ipairs(pool) do
+        local ok, err = pcall(NP.Layout, p)
+        if not ok then ns.LogError("Nameplates Layout", err) end
+    end
+    NP.Sync()
+end
+
+-- Combo Points per type (11-20): Tweaks.lua asks before it puts the points on your target's plate
+function NP.ComboAllowed(unit)
+    if not NP.ready or NP.standDown then return true end
+    local want, kind = NP.WantsPlate(unit)
+    if not want or not kind then return true end
+    local tdb = NP.TypeDB(kind)
+    -- a Name Only plate has no bar to hang them from (unless Show Plates in Combat gives it one)
+    if tdb.plate == "name" and not NP.CombatFull(kind) then return false end
+    return tdb.combo ~= false
 end
 function NP.QuestOn()
     local icon, progress = NP.QuestParts()
@@ -1907,7 +2083,7 @@ function NP.QuestOn()
 end
 
 function NP.UpdateQuest(p)
-    local icon, showProgress = NP.QuestParts()
+    local icon, showProgress = NP.QuestParts(p)
     if not (icon or showProgress) then p.quest:Hide() p.questText:Hide() NP.PlaceSides(p) return end
     local progress = NP.QuestProgress(p.unit)
     if progress == false then return end   -- unreadable now: kept as it was
@@ -2015,6 +2191,13 @@ local function OnUnitEvent(self, event)
         end
         NP.UpdateColor(p)
     elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_FLAGS" then
+        -- Name Only While Unattackable: it became attackable (or stopped being): laid out again
+        if event == "UNIT_FLAGS" and not NP.testKind and NP.Peaceful(p.unit, p.kind) ~= (p.layKind == "peaceful") then
+            local unit = p.unit
+            NP.ReleasePlate(p)
+            NP.Claim(unit)
+            return
+        end
         NP.UpdateColor(p)
     elseif event == "UNIT_NAME_UPDATE" then
         NP.UpdateName(p)
@@ -2148,20 +2331,39 @@ function NP.Kind(unit)
         if UnitIsMinion then minion = Readable(UnitIsMinion(unit)) else minion = Readable(UnitPlayerControlled(unit)) end
     end
     if not canAttack and friend ~= false then
-        if minion then return "minion" end
-        return "friendly"
+        if minion then return "minor" end
+        return player and "friendlyPlayer" or "friendlyNpc"
     end
-    if player then return "enemy" end
-    if minion then return "minion" end
+    if player then return "enemyPlayer" end
+    if minion then return "minor" end
     if Readable(UnitClassification(unit)) == "minus" then return "minor" end
-    return "enemy"
+    return "enemyNpc"
+end
+-- NAME ONLY WHILE UNATTACKABLE (11-20, Malkkav): an
+-- enemy NPC you can't attack (an event mob, a quest giver of the other side) shows only its name, as
+-- the Name Only preset, until you can attack it. Off by default (nameplates.peacefulNames).
+function NP.Peaceful(unit, kind)
+    local db = DB()
+    if not (db and db.peacefulNames) or kind ~= "enemyNpc" then return false end
+    if Readable(UnitIsPlayer(unit)) then return false end
+    return Readable(UnitCanAttack("player", unit)) == false
+end
+-- ENEMY PLAYERS / ENEMY NPCS (11-20, the Plates' Enemy Types): the game has no switch for these two, so
+-- FlareUI hides its own plate for them (as Plate: Hidden). Both on by default (nameplates.enemyPlayers,
+-- nameplates.enemyNpcs).
+function NP.UnitHidden(unit, kind)
+    local db = DB()
+    if not db then return false end
+    if kind == "enemyPlayer" then return db.enemyPlayers == false end
+    if kind == "enemyNpc" then return db.enemyNpcs == false end
+    return false
 end
 -- whether FlareUI draws this unit's plate (its type's Plate isn't Blizzard), its type, and whether the
 -- game couldn't say yet
 function NP.WantsPlate(unit)
     local kind = NP.Kind(unit)
     if not kind then return false, nil, true end
-    if kind == "friendly" and Readable(UnitIsUnit(unit, "player")) then return false, kind end
+    if kind == "friendlyPlayer" and Readable(UnitIsUnit(unit, "player")) then return false, kind end
     return NP.TypeDB(kind).plate ~= "blizzard", kind
 end
 
@@ -2209,7 +2411,7 @@ function NP.Claim(unit)
     end
     retries[unit] = nil
     -- a spare plate already laid out for this type, else any (Test: every plate as the picked type)
-    local look = NP.testKind or kind
+    local look = NP.testKind or (NP.Peaceful(unit, kind) and "peaceful") or kind
     local p
     for i = #spare, 1, -1 do
         if spare[i].layKind == look then p = table.remove(spare, i) break end
@@ -2217,6 +2419,7 @@ function NP.Claim(unit)
     p = p or table.remove(spare)
     if not p then stats.given = stats.given + 1 return end
     p.kind, p.tdb = kind, NP.TypeDB(look)
+    p.unitHidden = NP.UnitHidden(unit, kind)
     if p.layKind ~= look then
         local okL, errL = pcall(NP.Layout, p)
         if not okL then ns.LogError("Nameplates Layout", errL) end
@@ -2232,7 +2435,7 @@ function NP.Claim(unit)
         p.root:ClearAllPoints()
         -- the name and bar together sit in the middle of the game plate's box
         p.root:SetPoint("CENTER", plate, "CENTER", 0, -(p.nameRoom or 0) / 2)
-        SetClickArea(plate, p.hiddenPlate or p.tdb.clickThrough)
+        SetClickArea(plate, p.hiddenPlate or p.unitHidden or p.tdb.clickThrough)
         -- the check: our frame must be usable on this plate
         -- (nothing is measured here: the game refuses measuring nameplate parts under restrictions)
         if p.root:IsForbidden() then error("forbidden after attach") end
@@ -2244,7 +2447,7 @@ function NP.Claim(unit)
         p.targetShown = nil
         p.root:SetScale(1)
         p.scaleNow, p.threatKey = 1, nil
-        p.root:SetShown(not p.hiddenPlate)
+        p.root:SetShown(not (p.hiddenPlate or p.unitHidden))
         NP.UpdateAll(p)
     end)
     if ok then
@@ -2405,7 +2608,15 @@ function NP:OnEvent(event, unit)
         NP.UpdateGroup()
         NP.UpdateRole()
         RepaintAll()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        state.combat = true
+        if next(NP.CombatList()) then NP.Relayout() end
     elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "PLAYER_REGEN_ENABLED" then
+        if event == "PLAYER_REGEN_ENABLED" then
+            local was = state.combat
+            state.combat = false
+            if was and next(NP.CombatList()) then NP.Relayout() end
+        end
         if event == "PLAYER_REGEN_ENABLED" and state.sizePending then NP.ApplySize() end
         local before = state.role
         NP.UpdateRole()
@@ -2427,9 +2638,10 @@ function NP:OnEvent(event, unit)
         if db and db.colorFocus then RepaintAll() end
     elseif event == "SPELLS_CHANGED" then
         -- Execute Range on Auto follows the spells you know
-        local db = DB()
-        if db and db.execute == "auto" and NP.ExecuteAt(db) ~= state.execAt then
-            state.execAt = NP.ExecuteAt(db)
+        -- (each type has its own Execute Range now: Auto's spot is the same for all)
+        local at = NP.ExecuteAt({ execute = "auto" })
+        if at ~= state.execAt then
+            state.execAt = at
             NP:Refresh()
         end
     end
@@ -2454,7 +2666,7 @@ end
 local GLOBAL_EVENTS = {
     "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
     "RAID_TARGET_UPDATE", "GROUP_ROSTER_UPDATE", "PLAYER_ROLES_ASSIGNED", "UPDATE_SHAPESHIFT_FORM",
-    "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD", "QUEST_LOG_UPDATE", "UNIT_QUEST_LOG_CHANGED",
+    "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_ENTERING_WORLD", "QUEST_LOG_UPDATE", "UNIT_QUEST_LOG_CHANGED",
     "PLAYER_FOCUS_CHANGED", "SPELLS_CHANGED",
 }
 
@@ -2619,7 +2831,7 @@ function NP.DrawSample(f, kind)
     elseif db.healthColor == "health" and UF and UF.SampleHealthColor then
         r, g, b = UF.SampleHealthColor({ healthColor = "health" }, share, r, g, b)
     end
-    if db.kind == "friendly" then local c = NP.Color("friendly") r, g, b = c[1], c[2], c[3] end
+    if C.FRIENDLY[db.kind] then local c = NP.Color("friendly") r, g, b = c[1], c[2], c[3] end
     NP.BarColor(p, r, g, b)
     -- the execute tint below its threshold
     p.execTint:SetAlpha((p.execAt and share < p.execAt) and 1 or 0)
@@ -2632,14 +2844,14 @@ function NP.DrawSample(f, kind)
     p.name:SetTextColor(1, 1, 1)
     -- players: a player's name in your class colour
     -- (the friendly sample is a player: you, in your class colour)
-    if db.kind == "friendly" then
+    if db.kind == "friendlyPlayer" then
         local _, class = UnitClass("player")
         local cc = class and C_ClassColor.GetClassColor(class)
         p.name:SetText(UnitName("player"))
         if cc then p.name:SetTextColor(cc:GetRGB()) end
     end
     local questOn = NP.QuestOn() and (st.quest or type(kind) ~= "table")
-    local questIcon, questProgress = NP.QuestParts()
+    local questIcon, questProgress = NP.QuestParts(p)
     p.quest:SetShown(questOn and questIcon)
     p.questText:SetText("3/8")
     p.questText:SetShown(questOn and questProgress)
@@ -2719,7 +2931,9 @@ function NP.DrawSample(f, kind)
     end
     -- combo points under the plate (below the cast bar while it shows), 3 of 5, as the live ones
     NP.PlaceBelow(p)
+    -- (the unit type's own Combo Points too, and never on a Name Only plate: NP.ComboAllowed)
     local comboOn = ns.db and ns.db.profile and ns.db.profile.tweaks and ns.db.profile.tweaks.nameplateCombo
+        and db.combo ~= false and not p.nameOnly
         and (st.combo or type(kind) ~= "table")
     p.sampleCombo = p.sampleCombo or {}
     local gemSize = 14
@@ -2950,7 +3164,7 @@ function NP.TestIcons(p, tdb)
     if questOn then
         -- (the plate's own quest check may have hidden them since the last tick: shown again, the
         -- side auras move back out past them)
-        local icon, progress = NP.QuestParts()
+        local icon, progress = NP.QuestParts(p)
         local changed = p.quest:IsShown() ~= icon or p.questText:IsShown() ~= progress
         p.quest:SetShown(icon)
         if p.questText:GetText() ~= "3/8" then p.questText:SetText("3/8") end
@@ -2958,7 +3172,7 @@ function NP.TestIcons(p, tdb)
         if changed and p.testIcons then NP.PlaceSides(p) end
     end
     local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
-    local comboOn = tweaks and tweaks.nameplateCombo and ns.CreateComboPoint
+    local comboOn = tweaks and tweaks.nameplateCombo and ns.CreateComboPoint and PDB(p).combo ~= false and not p.nameOnly
     -- (made out of combat only: frames made on a nameplate in a fight come out forbidden)
     if comboOn and not p.testCombo and not InCombatLockdown() then
         p.testCombo = {}
@@ -3008,7 +3222,7 @@ function NP.ApplySize()
     if not NP.ready or NP.standDown then return end
     if InCombatLockdown() then state.sizePending = true return end
     state.sizePending = nil
-    local db = NP.TypeDB("enemy")
+    local db = NP.TypeDB("enemyNpc")
     local _, _, pad = NP.Edge(db)
     local w = db.width + 2 * pad + 2 * C.CLICK_ROOM
     local h = db.height + 2 * pad + NP.NameRoom(db) + 2 * C.CLICK_ROOM
@@ -3104,21 +3318,34 @@ function NP:ShouldLoad()
     -- 11-19: Friendly Plates (Blizzard / FlareUI) became the Friendly type's Plate
     if db and rawget(db, "friendly") == "flareui" then NP.TypeStore("friendly").plate = "bar" end
     if db then db.friendly = nil end
-    -- 11-19: the player / NPC units became one Enemy and one Friendly: each keeps the NPC side's setup,
-    -- or the player side's when only that one was changed
-    if db and db.types then
+    -- 11-20: Enemy and Friendly split again into players and NPCs (each side keeps the one setup it
+    -- had, copied to both); Minions went into Minor (Minor's setup stays). Once per profile.
+    if db and not db.typesV3 then
+        db.typesV3 = true
         local t = db.types
-        local function Changed(own) return own and (own.preset == "custom" or (not own.preset and next(own) ~= nil)) end
-        local function Merge(to, npc, player)
-            local a, b = t[npc], t[player]
-            if not t[to] and (a or b) then
-                local pick = (Changed(a) and a) or (Changed(b) and b) or a or b
-                t[to] = Copy(pick)
+        if t then
+            local function Split(from, player, npc)
+                local own = t[from]
+                if own then
+                    t[player] = t[player] or Copy(own)
+                    t[npc] = t[npc] or Copy(own)
+                end
+                t[from] = nil
             end
-            t[npc], t[player] = nil, nil
+            Split("enemy", "enemyPlayer", "enemyNpc")
+            Split("friendly", "friendlyPlayer", "friendlyNpc")
+            t.minion = nil
         end
-        Merge("enemy", "enemyNpc", "enemyPlayer")
-        Merge("friendly", "friendlyNpc", "friendlyPlayer")
+        if type(db.combatPlates) == "string" and db.combatPlates ~= "none" then
+            local MAP = { enemy = "enemyPlayer,enemyNpc", friendly = "friendlyPlayer,friendlyNpc", minion = "minor", minor = "minor" }
+            local seen, out = {}, {}
+            for token in db.combatPlates:gmatch("[^,]+") do
+                for k in (MAP[token] or token):gmatch("[^,]+") do
+                    if not seen[k] then seen[k] = true out[#out + 1] = k end
+                end
+            end
+            db.combatPlates = #out > 0 and table.concat(out, ",") or "none"
+        end
     end
     NP.MigratePresets()
     -- 11-19: the Chevron and Hook arrows went (Chevron was the Yellow one turned)
@@ -3164,13 +3391,13 @@ function NP:Init()
     for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnEvent") end
     C_Timer.NewTicker(C.SYNC, NP.Sync)
     C_Timer.NewTicker(0.1, NP.RangeTick)
-    state.execAt = NP.ExecuteAt(DB())
+    state.execAt = NP.ExecuteAt({ execute = "auto" })
     -- Kick Ready: casts on screen take the new colour when your interrupt comes back or goes
     UF.onKickChanged = function()
-        local db = DB()
-        if not (db and (db.kickReady or db.castKickMark)) then return end
+        -- (per type: each plate checks its own)
         for _, p in pairs(byPlate) do
-            if p.cast and p.cast:IsShown() and not p.cast.flashing then NP.UpdateCast(p) end
+            local tdb = PDB(p)
+            if (tdb.kickReady or tdb.castKickMark) and p.cast and p.cast:IsShown() and not p.cast.flashing then NP.UpdateCast(p) end
         end
     end
     NP.Sync()

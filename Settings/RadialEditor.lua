@@ -95,7 +95,7 @@ local function CreateList(parent, width, columns, rows, cellHeight, buildCell, f
             local index = offset + i
             local item = self.data[index]
             cell.item, cell.dataIndex = item, item and index or nil
-            if item then
+            if item and not item.blank then
                 fillCell(cell, item, index)
                 cell:Show()
             else
@@ -169,8 +169,10 @@ local function EntryFromCursor()
     local entry
     if cursorType == "spell" then
         entry = info3 and { kind = "spell", id = info3 }
-    elseif cursorType == "item" then
-        entry = { kind = "item", id = info1 }
+    elseif cursorType == "item" or cursorType == "toy" then
+        -- a toy dragged from the Toy Box (it isn't in the bags): the toy action
+        local isToy = cursorType == "toy" or (PlayerHasToy and info1 and PlayerHasToy(info1) and C_Item.GetItemCount(info1) == 0)
+        entry = { kind = isToy and "toy" or "item", id = info1 }
     elseif cursorType == "mount" then
         entry = { kind = "mount", id = info1 }
     elseif cursorType == "macro" then
@@ -233,6 +235,10 @@ local function EntryDisplay(entry)
                 { texture = C_Item.GetItemIconByID(entry.id) or FALLBACK_ICON }
         end
     end
+    if entry and entry.kind == "toy" and entry.id and C_ToyBox then
+        local _, name, icon = C_ToyBox.GetToyInfo(entry.id)
+        if name then return "|cff808080" .. name .. " (" .. L["unavailable"] .. ")|r", { texture = icon or FALLBACK_ICON } end
+    end
     if entry and entry.kind == "mount" and entry.id and C_MountJournal then
         local name, _, icon = C_MountJournal.GetMountInfoByID(entry.id)
         if name then return "|cff808080" .. name .. " (" .. L["unavailable"] .. ")|r", { texture = icon or FALLBACK_ICON } end
@@ -265,7 +271,7 @@ local function EntryTooltip(owner, entry, hint)
             right:SetTextColor(0.5, 0.5, 0.5)
             right:Show()
         end
-    elseif entry.kind == "item" and entry.id then
+    elseif (entry.kind == "item" or entry.kind == "toy") and entry.id then
         GameTooltip:SetItemByID(entry.id)
     elseif macroKind == "spell" or macroKind == "item" then
         if macroKind == "spell" then GameTooltip:SetSpellByID(macroID) else GameTooltip:SetItemByID(macroID) end
@@ -306,6 +312,7 @@ local function MakeRound(cell, size)
     end
     rim:SetSize(size, size)
     rim:SetPoint("CENTER", cell.Icon, "CENTER")
+    cell.Rim = rim
 end
 
 local function ApplyIcon(owner, icon)
@@ -322,6 +329,39 @@ end
 -- 4. CATEGORY BROWSERS (menu order = declaration order)
 --------------------------------------------------
 local CATEGORIES = {}
+
+-- SUBTITLES (11-20, Malkkav): a category holding two kinds (Mounts and Toys, Spells and Pet Spells...)
+-- lists each under a small title, each list on its own rows. groups: { { title, entries }, ... }; with
+-- only one kind there, no titles. The titles are { header = text } entries; RefreshBrowse lays them out
+-- (and drops them while searching).
+local function Grouped(groups)
+    local filled = 0
+    for _, g in ipairs(groups) do if #g[2] > 0 then filled = filled + 1 end end
+    local out = {}
+    for _, g in ipairs(groups) do
+        if #g[2] > 0 then
+            if filled > 1 then out[#out + 1] = { header = g[1] } end
+            for _, e in ipairs(g[2]) do out[#out + 1] = e end
+        end
+    end
+    return out
+end
+-- the grid's rows: a title starts a row of its own (the row before it closed with empty cells),
+-- and its list starts on the next row
+local BLANK = { blank = true }
+local function LayRows(entries, columns)
+    local out = {}
+    for _, e in ipairs(entries) do
+        if e.header then
+            while #out % columns ~= 0 do out[#out + 1] = BLANK end
+            out[#out + 1] = e
+            for _ = 2, columns do out[#out + 1] = BLANK end
+        else
+            out[#out + 1] = e
+        end
+    end
+    return out
+end
 
 -- empty: what the grid says when the category has nothing for this character
 local function AddCategory(key, label, build, note, empty)
@@ -360,16 +400,19 @@ local function ForEachBookSpell(callback)
             -- (pet commands like Attack and Follow have no spell of their own: skipped)
             if info and info.spellID and info.spellID > 0 and not info.isPassive
                 and info.itemType == Enum.SpellBookItemType.PetAction and C_Spell.GetSpellName(info.spellID) then
-                callback(info.spellID)
+                callback(info.spellID, true)
             end
         end
     end
 end
 
 AddCategory("spells", L["Spells"], function()
-    local out = {}
-    ForEachBookSpell(function(spellID) out[#out + 1] = { kind = "spell", id = spellID } end)
-    return out
+    local mine, pet = {}, {}
+    ForEachBookSpell(function(spellID, isPet)
+        local list = isPet and pet or mine
+        list[#list + 1] = { kind = "spell", id = spellID }
+    end)
+    return Grouped({ { L["Spells"], mine }, { L["Pet Spells"], pet } })
 end, nil, L["No spells in your spellbook yet."])
 
 -- Party: your helpful spells, each spread over the group (a button per person, RadialMenu.lua
@@ -402,6 +445,7 @@ end)
 -- Professions: every profession you know, at its best rank (each opens its window),
 -- then the profession spells around them: Smelting, Disenchant, the tracking, a campfire, Pick Lock.
 -- Ranks highest first; a spell you don't know is left out.
+local PROFESSION_COUNT = 9   -- the first nine rows: the professions; the rest their spells
 local PROFESSION_SPELLS = {
     { 11611, 3464, 3101, 2259 },     -- Alchemy
     { 9785, 3538, 3100, 2018 },      -- Blacksmithing
@@ -443,11 +487,14 @@ AddCategory("professions", L["Professions"], function()
         local i = names[C_Spell.GetSpellName(spellID) or ""]
         if i and not found[i] then found[i] = spellID end
     end)
+    -- the professions themselves (the first nine), then their tools (Smelting, Disenchant, tracking...)
+    local tools = {}
     for i, ranks in ipairs(PROFESSION_SPELLS) do
         local id = found[i] or KnownProfessionSpell(ranks)
-        if id then out[#out + 1] = { kind = "spell", id = id } end
+        local list = i <= PROFESSION_COUNT and out or tools
+        if id then list[#list + 1] = { kind = "spell", id = id } end
     end
-    return out
+    return Grouped({ { L["Professions"], out }, { L["Profession Spells"], tools } })
 end, nil, L["Nothing here yet: learn a profession and its spells appear here."])
 
 AddCategory("macros", L["Macros"], function()
@@ -455,29 +502,31 @@ AddCategory("macros", L["Macros"], function()
     local global, perChar = GetNumMacros()
     -- per-character macros are indexed after the account block
     local accountMax = Constants.MacroConsts.MAX_ACCOUNT_MACROS
+    local own = {}
     for i = 1, (global or 0) do
         local name, icon, body = GetMacroInfo(i)
         if name then out[#out + 1] = { kind = "macro", name = name, icon = icon, text = body } end
     end
     for i = 1, (perChar or 0) do
         local name, icon, body = GetMacroInfo(accountMax + i)
-        if name then out[#out + 1] = { kind = "macro", name = name, icon = icon, text = body } end
+        if name then own[#own + 1] = { kind = "macro", name = name, icon = icon, text = body } end
     end
-    return out
+    -- Blizzard's macro window's two tabs
+    return Grouped({ { L["General Macros"], out }, { L["Character Macros"], own } })
 end, nil, L["No macros yet: make one with /macro and it appears here."])
 
 AddCategory("markers", L["Markers"], function()
-    local out = {}
+    local out, world = {}, {}
     for i = 1, 8 do out[#out + 1] = { kind = "targetmarker", marker = i } end
     out[#out + 1] = { kind = "targetmarker", marker = -1 }
     out[#out + 1] = { kind = "targetmarker", marker = 0 }
     -- star to skull, like the target markers above (the stored number is the game's own)
     for icon = 1, 8 do
         local marker = ns.RadialMenu.WorldMarkerForIcon and ns.RadialMenu.WorldMarkerForIcon(icon) or icon
-        out[#out + 1] = { kind = "worldmarker", marker = marker }
+        world[#world + 1] = { kind = "worldmarker", marker = marker }
     end
-    out[#out + 1] = { kind = "worldmarker", marker = 0 }
-    return out
+    world[#world + 1] = { kind = "worldmarker", marker = 0 }
+    return Grouped({ { L["Target Markers"], out }, { L["World Markers"], world } })
 end)
 
 AddCategory("emotes", L["Emotes"], function()
@@ -489,15 +538,25 @@ AddCategory("emotes", L["Emotes"], function()
     return out
 end)
 
-AddCategory("mounts", L["Mounts"], function()
-    local out = {}
-    if not C_MountJournal then return out end
-    for _, mountID in ipairs(C_MountJournal.GetMountIDs()) do
-        local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-        if isCollected then out[#out + 1] = { kind = "mount", id = mountID } end
+-- Collections (11-20, was Mounts): your mounts, then your toys, as Blizzard's Collections window. One
+-- link for both keeps the categories on one line. Toys come from the Toy Box's list as its own filters
+-- leave it (a toy hidden there is left out here too).
+AddCategory("mounts", L["Collections"], function()
+    local out, toys = {}, {}
+    if C_MountJournal then
+        for _, mountID in ipairs(C_MountJournal.GetMountIDs()) do
+            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            if isCollected then out[#out + 1] = { kind = "mount", id = mountID } end
+        end
     end
-    return out
-end, nil, L["No mounts yet."])
+    if C_ToyBox and C_ToyBox.GetNumFilteredToys and PlayerHasToy then
+        for i = 1, C_ToyBox.GetNumFilteredToys() do
+            local itemID = C_ToyBox.GetToyFromIndex(i)
+            if itemID and itemID > 0 and PlayerHasToy(itemID) then toys[#toys + 1] = { kind = "toy", id = itemID } end
+        end
+    end
+    return Grouped({ { L["Mounts"], out }, { L["Toys"], toys } })
+end, nil, L["No mounts or toys yet."])
 
 -- a radial that contains the edited one, at any depth, is left out of the list
 local function ContainsRadial(radialID, targetID, depth)
@@ -1697,21 +1756,37 @@ local function BuildLower(host, height, width)
             cell.Text:SetPoint("LEFT", cell, "LEFT", 4 + GRID_RIM + 6, 0)
             cell:RegisterForDrag("LeftButton")
             cell:SetScript("OnEnter", function(self)
-                if not self.item then return end
+                if not self.item or self.item.header then return end
                 -- a category's note (Radials explains sub-radials) comes with every entry's tooltip
                 local note = host.categoryNote
                 EntryTooltip(self, self.item, (note and (note .. "\n\n") or "") .. L["Click or drag to add it."])
             end)
             cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
             cell:SetScript("OnDragStart", function(self)
-                if self.item then StartDrag({ entry = self.item }) end
+                if self.item and not self.item.header then StartDrag({ entry = self.item }) end
             end)
             cell:SetScript("OnDragStop", FinishDrag)
             cell:SetScript("OnClick", function(self)
-                if self.item then InsertEntry(self.item) end
+                if self.item and not self.item.header then InsertEntry(self.item) end
             end)
         end,
         function(cell, entry)
+            -- a subtitle: small yellow text at the row's left, as the category links; no icon, no clicks
+            local header = entry.header ~= nil
+            cell.Icon:SetShown(not header)
+            if cell.Rim then cell.Rim:SetShown(not header) end
+            cell:EnableMouse(not header)
+            cell.Text:ClearAllPoints()
+            if header then
+                cell.Text:SetFontObject("GameFontNormalSmall")
+                cell.Text:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 4, 4)
+                cell.Text:SetWidth(cell:GetWidth() * 2)
+                cell.Text:SetText(entry.header)
+                return
+            end
+            cell.Text:SetFontObject("GameFontHighlightSmall")
+            cell.Text:SetPoint("LEFT", cell, "LEFT", 4 + GRID_RIM + 6, 0)
+            cell.Text:SetPoint("RIGHT", cell, "RIGHT", -6, 0)
             local name, icon = EntryDisplay(entry)
             ApplyIcon(cell, icon)
             cell.Text:SetText(name)
@@ -1790,11 +1865,11 @@ function RefreshBrowse()
     if filter ~= "" then
         local shown = {}
         for _, entry in ipairs(entries) do
-            if EntryDisplay(entry):lower():find(filter, 1, true) then shown[#shown + 1] = entry end
+            if not entry.header and EntryDisplay(entry):lower():find(filter, 1, true) then shown[#shown + 1] = entry end
         end
         entries = shown
     end
-    editor.browseList:SetData(entries)
+    editor.browseList:SetData(LayRows(entries, 3))
     -- an empty grid says why: nothing found by the search, or nothing in this category yet
     local list = editor.browseList
     if not list.emptyText then
