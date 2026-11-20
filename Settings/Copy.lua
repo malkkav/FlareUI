@@ -637,6 +637,21 @@ ns.Copy = {
             tags = { "free slots", "empty slots", "hide empty slots", "compact bags" },
             tip = L["Drop an item on it to put it in your bags."],
         },
+        ["bl.bagCategoryView"] = {
+            choices = { L["All Items"], L["By Category"] },
+            desc = L["Groups your items into Quest Items, Equipment, Materials, Consumables and Junk sections. Items without a category follow those sections."],
+            label = L["Bag View"],
+            section = "bl.bagWindow",
+            tags = { "bag categories", "categorized bags", "junk", "quest items" },
+            tip = L["Needs Combined Bags on in Blizzard's options (Controls)."],
+        },
+        ["bl.bagSetCategories"] = {
+            desc = L["In the By Category view, each of your equipment sets gets its own section, after Equipment. An item in more than one set goes in the first."],
+            label = L["Equipment Set Sections"],
+            section = "bl.bagWindow",
+            tags = { "equipment manager", "equipment sets", "gear sets", "bag categories" },
+            tip = L["Needs Bag View set to By Category."],
+        },
         ["bl.bagCombined"] = {
             desc = L["All your bags in one window. The same as Blizzard's Use Combined Bags option."],
             label = L["Combined Backpack"],

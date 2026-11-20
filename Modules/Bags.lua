@@ -77,6 +77,7 @@ local function LayoutWanted()
     if not db or Bags:GetOtherBagAddon() then return false end
     if GamepadUI() then return false end
     return (db.bagColumns or 0) > 0 or db.bagGaps == true or db.bagKeyring == true or db.bagReagent == true
+        or db.bagCombineEmpty == true or db.bagCategoryView == "categories"
 end
 
 --------------------------------------------------
@@ -184,9 +185,10 @@ function Bags.AddSlotArt(b)
 end
 
 -- a slot's place in the combined backpack: filled from the bottom right, right to left, upwards
-function Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
+-- extra: more height below this row (By Category's section titles)
+function Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY, extra)
     b:ClearAllPoints()
-    b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP)
+    b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP + (extra or 0))
 end
 
 -- Blizzard's item update (ContainerFrameMixin:UpdateItems), for one of FlareUI's buttons
@@ -458,11 +460,126 @@ local function LayoutColumns(db)
     return (db.bagColumns or 0) > 0 and db.bagColumns or DEFAULT_COLUMNS
 end
 
+-- The grid lays items upward from the bottom, so this is reverse of the visible alphabetical order.
+local CATEGORY_ORDER = { "other", "quest", "materials", "junk", "equipment", "consumables" }
+local CATEGORY_NAMES = {
+    quest = L["Quest Items"], equipment = L["Equipment"], materials = L["Materials"],
+    consumables = L["Consumables"], junk = L["Junk"], other = L["Other"],
+}
+local categoryHeaders = {}
+
+-- Equipment sets as categories of their own (the Equipment Manager's sets, in its order), each just
+-- after Equipment. An item in more than one set goes in the first. Read on each layout:
+-- list: { key, name } per set; where: bag -> slot -> its set's key (bags only, not the bank)
+Bags.SetCategories = {}
+
+function Bags.SetCategories.Read()
+    local list, where = {}, {}
+    local api = C_EquipmentSet
+    if not (api and api.GetEquipmentSetIDs and api.GetEquipmentSetInfo and api.GetItemLocations
+        and EquipmentManager_GetLocationData) then return list, where end
+    for _, setID in ipairs(api.GetEquipmentSetIDs() or {}) do
+        local name = api.GetEquipmentSetInfo(setID)
+        local locations = name and api.GetItemLocations(setID)
+        if locations then
+            local key = "set:" .. setID
+            list[#list + 1] = { key = key, name = name }
+            -- (empty, ignored and missing slots are small numbers without the bags bit)
+            for _, location in pairs(locations) do
+                local data = type(location) == "number" and EquipmentManager_GetLocationData(location)
+                if data and data.isBags and not data.isBank and data.bag and data.slot then
+                    local bag = where[data.bag] or {}
+                    where[data.bag] = bag
+                    bag[data.slot] = bag[data.slot] or key
+                end
+            end
+        end
+    end
+    return list, where
+end
+
+-- the grid's category order (bottom first) with the sets between Junk and Equipment, so they read
+-- just below Equipment
+function Bags.SetCategories.Order(list)
+    local order = {}
+    for _, key in ipairs(CATEGORY_ORDER) do
+        if key == "equipment" then
+            for i = #list, 1, -1 do order[#order + 1] = list[i].key end
+        end
+        order[#order + 1] = key
+    end
+    return order
+end
+
+local function ItemCategory(button, setOf)
+    if Bags.combinedEmpty and Bags.combinedEmpty[button] then return "other" end
+    local bagID, slotID = button:GetBagID(), button:GetID()
+    local info = C_Container.GetContainerItemInfo(bagID, slotID)
+    if not info then return "other" end
+    local set = setOf and setOf[bagID] and setOf[bagID][slotID]
+    if set then return set end
+    local quest = C_Container.GetContainerItemQuestInfo and C_Container.GetContainerItemQuestInfo(bagID, slotID)
+    if quest and (quest.isQuestItem or quest.questID) then return "quest" end
+    if info.quality == Enum.ItemQuality.Poor and info.itemID then
+        local _, _, _, _, _, _, _, _, _, _, sellPrice = C_Item.GetItemInfo(info.itemID)
+        if (sellPrice or 0) > 0 then return "junk" end
+    end
+    if info.itemID then
+        local classID, subclassID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+        local classes = Enum.ItemClass
+        if classID == classes.Weapon or classID == classes.Armor then
+            local slotType = C_Item.GetItemInventoryTypeByID(info.itemID)
+            local types = Enum.InventoryType
+            if slotType ~= types.IndexNonEquipType and slotType ~= types.IndexBagType
+                and slotType ~= types.IndexQuiverType and slotType ~= types.IndexAmmoType then return "equipment" end
+        elseif classID == classes.Tradegoods or (Enum.ItemClass.Reagent and classID == Enum.ItemClass.Reagent) then
+            return "materials"
+        elseif classID == classes.Consumable then
+            return "consumables"
+        end
+    end
+    return "other"
+end
+
+local function CategoryHeader(frame, key, label)
+    local header = categoryHeaders[key]
+    if not header then
+        header = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+        header:SetTextColor(1, 0.82, 0.3)
+        categoryHeaders[key] = header
+    end
+    header:SetParent(frame)
+    header:SetText(label or CATEGORY_NAMES[key])
+    return header
+end
+
 local function ExtraSectionChanged(bagID, wanted, columns)
     local section = bagID and extras[bagID]
     local visible = section and section.holder:IsShown()
     if not wanted then return visible end
     return not visible or section.shownSlots ~= ShownSlots(bagID, columns)
+end
+
+-- Blizzard's "+" button for an account without an authenticator (ContainerFrameExtendedSlotPack:
+-- LayoutAddSlots) sits on the left of the first locked slot. FlareUI's grid moves or hides that slot, so
+-- with a FlareUI layout the button goes to the empty left end of the money bar, sized to fit it; without
+-- one, Blizzard's own size and place come back. (A plain button, no secure template.)
+Bags.AddSlots = { SIZE = 22, BLIZZARD_SIZE = 28 }
+
+function Bags.AddSlots.Place(frame, wanted)
+    local button = frame and frame.AddSlotsButton
+    if not button then return end
+    local AddSlots = Bags.AddSlots
+    if wanted and frame.MoneyFrame then
+        button:SetSize(AddSlots.SIZE, AddSlots.SIZE)
+        button:ClearAllPoints()
+        button:SetPoint("LEFT", frame.MoneyFrame, "LEFT", 0, 0)
+        AddSlots.moved = true
+    elseif AddSlots.moved then
+        AddSlots.moved = nil
+        button:SetSize(AddSlots.BLIZZARD_SIZE, AddSlots.BLIZZARD_SIZE)
+        if frame.LayoutAddSlots then frame:LayoutAddSlots() end
+    end
 end
 
 local layingOut = false
@@ -474,6 +591,7 @@ local function Relayout(frame)
         extraButtonsDeferred = false
         lastLayoutColumns = nil
         HideExtras()
+        Bags.AddSlots.Place(frame, false)
         return
     end
     local db = GetDb()
@@ -495,6 +613,29 @@ local function Relayout(frame)
     items = Bags.CombineEmpty(items, combine)
     layingOut = false
     if #items == 0 then return end
+
+    local categorized = db.bagCategoryView == "categories"
+    local groups, setNames, categoryOf
+    if categorized then
+        categoryOf = {}
+        local sets, setOf = {}, nil
+        if db.bagSetCategories then sets, setOf = Bags.SetCategories.Read() end
+        local order = Bags.SetCategories.Order(sets)
+        setNames = {}
+        for _, set in ipairs(sets) do setNames[set.key] = set.name end
+        groups = {}
+        for _, key in ipairs(order) do groups[key] = {} end
+        for _, button in ipairs(items) do
+            local key = ItemCategory(button, setOf)
+            categoryOf[button] = key
+            local group = groups[key]
+            group[#group + 1] = button
+        end
+        items = {}
+        for _, key in ipairs(order) do
+            for _, button in ipairs(groups[key]) do items[#items + 1] = button end
+        end
+    end
 
     local columns = LayoutColumns(db)
     local gaps = db.bagGaps == true and not (h2fa and Bags.H2FA.Compact()) and not combine
@@ -537,26 +678,50 @@ local function Relayout(frame)
     -- (Hide 2FA Bag Slots, without gaps: the rows stay full and the spare room sits bottom right, as
     -- that addon lays them out)
     if h2fa and not gaps and col == 0 then col = (columns - #items % columns) % columns end
+    local visibleHeaders = {}
+    local currentCategory
+    -- a section's title above its top row: only the text's height, not a whole row of slots
+    -- (about 12 for the text, the rest a little air above it, from the section over it)
+    local HEADER_H, headerSpace = 20, 0
+    local function CloseSection()
+        if col > 0 then col, row = 0, row + 1 end
+        local header = CategoryHeader(frame, currentCategory, setNames[currentCategory])
+        header:ClearAllPoints()
+        header:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 4 + row * stepY + gapCount * BAG_GAP + headerSpace)
+        header:Show()
+        visibleHeaders[currentCategory] = true
+        headerSpace = headerSpace + HEADER_H
+    end
     for _, button in ipairs(items) do
+        local category = categorized and categoryOf[button]
+        if categorized and category and category ~= currentCategory then
+            if currentCategory then CloseSection() end
+            col, prevBag, currentCategory = 0, nil, category
+        elseif categorized and not category then
+            currentCategory = nil
+        end
         local bag = button:GetBagID()
-        if gaps and prevBag and bag ~= prevBag then
+        if not categorized and gaps and prevBag and bag ~= prevBag then
             if col > 0 then col, row = 0, row + 1 end
             gapCount = gapCount + 1
         end
-        Bags.GridPoint(button, anchor, col, row, gapCount, stepX, stepY)
+        Bags.GridPoint(button, anchor, col, row, gapCount, stepX, stepY, headerSpace)
         col = col + 1
         if col >= columns then col, row = 0, row + 1 end
         prevBag = bag
     end
+    if currentCategory then CloseSection() end
+    for key, header in pairs(categoryHeaders) do if not visibleHeaders[key] then header:Hide() end end
     local rows = row + (col > 0 and 1 or 0)
 
     local width = columns * w + (columns - 1) * ITEM_SPACING + frame:GetPaddingWidth()
-    local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP
+    local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + headerSpace
         + frame:GetPaddingHeight() + frame:CalculateExtraHeight()
     frame:SetSize(width, height)
     if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then NineSliceUtil.UpdateCornerCropping(frame, height) end
     lastLayoutColumns, lastLayoutGaps, lastLayoutSecured = columns, gaps, secured
     layingOut = false
+    Bags.AddSlots.Place(frame, true)
     Bags:PlaceBagButtons()
 end
 
@@ -621,7 +786,7 @@ end
 -- layout runs again as the fight ends. A slot filled or emptied re-lays the grid (BAG_UPDATE_DELAYED).
 --------------------------------------------------
 Bags.combineHidden = setmetatable({}, { __mode = "k" })
-Bags.freeText = setmetatable({}, { __mode = "k" })
+Bags.combinedEmpty = setmetatable({}, { __mode = "k" })
 
 function Bags.CombineEmptyOn()
     local db = GetDb()
@@ -636,26 +801,29 @@ local function SetSlotShown(button, shown)
 end
 
 local function SetFreeCount(button, count)
-    local text = Bags.freeText[button]
+    Bags.combinedEmpty[button] = count and true or nil
+    local label = button.fuiFreeCount
     if not count then
-        if text then text:Hide() end
+        if label then label:Hide() end
         return
     end
-    if not text then
-        text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-        text:SetPoint("CENTER")
-        text:SetTextColor(0.75, 0.72, 0.66)
-        Bags.freeText[button] = text
+    if not label then
+        local layer = CreateFrame("Frame", nil, button)
+        layer:SetAllPoints(button)
+        layer:SetFrameLevel(button:GetFrameLevel() + 10)
+        label = layer:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+        label:SetPoint("CENTER")
+        button.fuiFreeCount = label
     end
-    text:SetText(count)
-    text:Show()
+    label:SetText(count)
+    label:Show()
 end
 
 function Bags.CombineEmpty(items, combine)
     if not combine then
         -- back to every slot: the ones this hid show again
         for button in pairs(Bags.combineHidden) do SetSlotShown(button, true) end
-        for button in pairs(Bags.freeText) do SetFreeCount(button, nil) end
+        for button in pairs(Bags.combinedEmpty) do SetFreeCount(button, nil) end
         return items
     end
     local kept, spare, free = {}, nil, 0
@@ -1394,7 +1562,10 @@ function Filter.Mode()
     return "off"
 end
 
+-- (Category View already groups the combined backpack by these categories: no filter there)
 function Filter.On()
+    local db = GetDb()
+    if db and db.bagCategoryView == "categories" and Bags:IsCombined() and LayoutWanted() then return false end
     return Filter.Mode() ~= "off" and not Bags:GetOtherBagAddon() and not GamepadUI()
         and C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID and true or false
 end
@@ -1662,6 +1833,12 @@ function Bags.FitSearchBox(frame, searchUpdated)
     local search, sort = _G.BagItemSearchBox, _G.BagItemAutoSortButton
     if not (frame and search and search:GetParent() == frame and search:IsShown()) then return end
     if Filter.On() then Filter.Place(frame, searchUpdated) return end
+    -- (the filter just went off, e.g. Category View picked: its buttons go and nothing stays dimmed)
+    if Filter.moved then
+        Filter.Close()
+        if itemFilter then Filter.Set(nil) end
+        Filter.Restore()
+    end
     -- (the Gamepad UI anchors both its edges: it fits already)
     if search:GetNumPoints() ~= 1 then return end
     local point, rel, _, x = search:GetPoint(1)
@@ -1794,7 +1971,7 @@ function Bags:Init()
     bagEvents:RegisterEvent("GAME_PAD_ACTIVE_CHANGED")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_NEW_ITEMS_UPDATED", "BAG_UPDATE_COOLDOWN", "ITEM_LOCK_CHANGED", "INVENTORY_SEARCH_UPDATE",
-                             "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED" }) do
+                             "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED", "EQUIPMENT_SETS_CHANGED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
     bagEvents:SetScript("OnEvent", function(self, event, bagID, slotID)
@@ -1804,6 +1981,14 @@ function Bags:Init()
         end
         if event == "QUEST_LOG_UPDATE" then
             if itemFilter == "quest" then RefreshItemFilter() end
+            return
+        end
+        -- By Category: a set saved, renamed or deleted moves its items between sections
+        local db = GetDb()
+        local byCategory = db and db.bagCategoryView == "categories"
+        if event == "EQUIPMENT_SETS_CHANGED" then
+            local backpack = byCategory and db.bagSetCategories and Combined()
+            if backpack and backpack:IsShown() then Relayout(backpack) end
             return
         end
         if event == "ITEM_LOCK_CHANGED" then
@@ -1819,9 +2004,9 @@ function Bags:Init()
         -- Auto Open Containers, and Combine Empty Slots: a filled or emptied slot moves the grid
         if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED" then
             -- (turning the option on runs it from the settings)
-            local db = GetDb()
             if db and db.bagAutoOpen then C_Timer.After(0.3, Bags.AutoOpen.Next) end
-            if Bags.CombineEmptyOn() or next(Bags.combineHidden) then
+            -- (By Category too: an item moved, equipped or taken off changes its section)
+            if Bags.CombineEmptyOn() or next(Bags.combineHidden) or byCategory then
                 local backpack = Combined()
                 if backpack and backpack:IsShown() then Relayout(backpack) end
             end

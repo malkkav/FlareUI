@@ -53,6 +53,15 @@ S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyri
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
 -- one empty slot with the free count in place of every empty slot (Bags.lua 1c)
 S:Row{ key = "bl.bagCombineEmpty", half = true, tab = "bags", path = "tweaks.bagCombineEmpty", apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "bl.bagCategoryView", kind = "choice", tab = "bags", path = "tweaks.bagCategoryView",
+    choices = { "current", "categories" }, resetValue = function() return "current" end,
+    apply = function()   -- (Equipment Set Sections below greys with it)
+        RefreshBags()
+        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
+    end, disabled = NotCombined }
+-- a section per equipment set, in the By Category view only
+S:Row{ key = "bl.bagSetCategories", half = true, tab = "bags", path = "tweaks.bagSetCategories", apply = RefreshBags,
+    disabled = function() return NotCombined() or S:GetPath("tweaks.bagCategoryView") ~= "categories" end }
 
 -- BAGS: the bank window (Bags.lua 4e). Forever's bank is one window
 -- whatever Combined Bags says, so only another bag addon greys these.

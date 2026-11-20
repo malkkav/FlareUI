@@ -1060,6 +1060,7 @@ local defaults = {
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagCombineEmpty = false,    -- Combine Empty Slots: one empty slot with the free count
+            bagSetCategories = false,   -- Equipment Set Sections: By Category gives each equipment set a section (Bags.lua 1)
             bagAutoOpen = false,        -- Auto Open Containers: clams, loot bags, opened lockboxes
             bankColumns = 0,            -- Bank Window Columns; 0 = Blizzard's (8) (Bags.lua 4e)
             bankGaps = false,           -- Bank Window: each bank bag starts a new row, with a gap
