@@ -8,7 +8,9 @@ local S = ns.Settings
 -- hovered row's text on the right, the reload bar below. Built on first open.
 --------------------------------------------------
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
-local WIDTH, HEIGHT = 1180, 700
+-- HEIGHT: the left list holds every page without a scroll bar (11-20: 730 for Cooldown Manager and
+-- Nameplates; each page is 30 px, the list has HEIGHT - 88 px)
+local WIDTH, HEIGHT = 1180, 730
 local HEADER_H, FOOTER_H = 46, 34
 local FOOTER_RISE = 8    -- the reload bar's extra height for the top the window's bronze frame covers
 local LEFT_W, RIGHT_W = 200, 280
