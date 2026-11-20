@@ -78,6 +78,11 @@ S:Row{
 -- frames are made at login: the pet's style applies on reload
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true }
+-- the level disc on every ring-style frame (UnitFramesRing.lua LayoutLevel)
+local LEVEL_SIZES = {}
+for percent = 50, 100 do LEVEL_SIZES[#LEVEL_SIZES + 1] = { percent / 100, percent .. "%" } end
+S:Row{ key = "uf.levelSize", kind = "range", path = "unitframes.levelSize", choices = LEVEL_SIZES, apply = Refresh,
+    disabled = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end }
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (Off first in every dropdown)

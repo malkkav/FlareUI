@@ -592,6 +592,7 @@ local defaults = {
             enabled = false,
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
+            levelSize = 1,              -- Level Badge Size: the ring styles' level disc, 0.5-1 of its size (UnitFramesRing.lua LayoutLevel)
             fullNames = true,           -- (the retired Full Player Names switch: its saved "off" makes a setup's names start as First Name)
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
