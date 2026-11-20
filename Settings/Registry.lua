@@ -319,12 +319,12 @@ end
 -- off there (Bags.lua layout and filters, Auras / BuffReminders ShouldLoad, Tweaks' quest, mail,
 -- merchant and camera helpers, Tooltips' visibility and mouseover, the meter's chat tab...). Greyed
 -- there, and their section or page says why (Panel.lua GamepadNote).
-Settings.GAMEPAD_OFF_MODULES = { au = true, br = true }
+Settings.GAMEPAD_OFF_MODULES = { au = true, br = true, cdm = true }
 Settings.GAMEPAD_OFF = {
     ["bl.bagColumns"] = true, ["bl.bagGaps"] = true, ["bl.bagKeyring"] = true, ["bl.bagReagent"] = true,
     ["bl.bagView"] = true, ["bl.bagWithCharacter"] = true,
     ["bl.bankColumns"] = true, ["bl.bankGaps"] = true, ["bl.bankTight"] = true,
-    ["ab.skinCDM"] = true, ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
+    ["dm.chatTab"] = true, ["dm.chatTabIgnoreFade"] = true, ["tt.mouseover"] = true,
     ["qol.autoAcceptQuests"] = true, ["qol.autoTurnInQuests"] = true, ["qol.mailBook"] = true,
     ["qol.bulkBuy"] = true, ["qol.merchantWide"] = true, ["qol.fishCast"] = true, ["qol.cameraZoomSpeed"] = true,
     ["qol.move"] = true,

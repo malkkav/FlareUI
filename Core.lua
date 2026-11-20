@@ -807,6 +807,26 @@ local defaults = {
             petFollowsPlayer = false,   -- Link Pet Frame: the pet frame fades with the player frame
         },
 
+        -- [[ COOLDOWN MANAGER ]] Blizzard's Cooldown Manager (Modules/CooldownManager.lua), a module of its own
+        cooldownmanager = {
+            enabled = false,            -- the Cooldown Manager page's switch: everything below, and the viewers' Edit Mode rows
+            skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
+            softOverlay = false,        -- Soften Active Overlay: a faint swipe while an ability's effect runs
+            effectCooldown = false,     -- Show Cooldown During Effect: the ability's own cooldown in the icon's corner
+            -- Bar Colour (Pick Your Colours): palette "custom" with customColors.bar, else FlareUI's (CM.COLORS)
+            -- size 0: Auto, the size Blizzard gave the text
+            stackFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            cooldownFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            barFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            keybinds = false,           -- Show Keybinds: the action button's key on the Essential and Utility icons
+            keybindFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            press = false,              -- Show Button Presses: an icon lights up while its spell's key is held
+            -- Icon Shape in each icon viewer's Edit Mode dialog: blizzard | rect
+            shape = { essential = "blizzard", utility = "blizzard", buffs = "blizzard" },
+            -- Grow From in the Tracked Buffs' and Tracked Bars' Edit Mode dialogs: blizzard | CENTER | START | END
+            grow = { buffs = "blizzard", bars = "blizzard" },
+        },
+
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
         auras = {
             enabled = false,
@@ -815,7 +835,6 @@ local defaults = {
             timer = "below",            -- below (under the icon) | bottom (along its bottom edge)
             timerColor = true,          -- Timer Colour: yellow under 10 s, red under 5
             arrive = true,               -- new icons fade in while dropping into place
-            skinCDM = false,            -- (off by default) Skin Cooldown Manager: Blizzard's Tracked Bars and Tracked Buffs in FlareUI's look
             sort = "applied", reverse = false, mineFirst = true,   -- Aura Ordering (both frames)
             hidden = {},                -- Hide Auras: [spellID] = the places it hides on, "auras,player,..." (ns.HiddenAuras)
             shown = {},                 -- Always Show: [spellID] = the places it always shows on, "player,target,..."
@@ -2218,7 +2237,7 @@ end
 do
     local CANON = {
         -- dropdowns
-        "Style", "Party Style", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
+        "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
         "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Text",
         "Tint Health", "Combo Points",

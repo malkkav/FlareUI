@@ -894,6 +894,8 @@ local function GetBindingKeyForButton(button)
     end
     return key
 end
+-- (CooldownManager.lua's Show Keybinds)
+ActionBars.ShortenKey, ActionBars.BindingKey = ShortenKey, GetBindingKeyForButton
 
 -- Blizzard's range dot: the "●" a button without a key shows while you have a target, red out of
 -- range. Status Colouring on: no dot, the button's own red says it. Off: Blizzard's dot, in Arial
