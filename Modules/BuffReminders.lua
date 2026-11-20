@@ -2713,6 +2713,27 @@ function BR:Init()
             if kind == "item" then NoteFood(id) end
         end)
     end
+    -- /use macros and the reminder's own click (11-20, Bill: food eaten that way was never remembered)
+    if C_Item and C_Item.UseItemByName then
+        hooksecurefunc(C_Item, "UseItemByName", function(name)
+            if name == nil then return end
+            NoteFood((C_Item.GetItemInfoInstant(name)))
+        end)
+    end
+    -- the food buff coming in confirms the food, wherever you are (11-20: Check only runs where the
+    -- Consumables choice shows the reminder, so eating in the open world was never remembered)
+    function BR.ConfirmFood()
+        local pending = BR.pendingFood
+        if not pending then return end
+        if GetTime() - pending.at >= 90 then BR.pendingFood = nil return end
+        local name = C_Spell.GetSpellName(19705)   -- Well Fed
+        if not name then return end
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
+        if ok and Readable(aura) and aura then
+            ns.CharDB().buffFood = pending.item
+            BR.pendingFood = nil
+        end
+    end
     events:SetScript("OnEvent", function(_, event, unit, _, spellID)
         if event == "PLAYER_REGEN_ENABLED" and not holder:IsShown() then holder:Show() end
         -- Ready Check Alert: the row glows for 8 seconds and the sound plays once
@@ -2742,6 +2763,7 @@ function BR:Init()
         -- (party1..4 and raid1..40 only: their pets are never checked)
         if event == "UNIT_AURA" and unit and not (unit == "player" or unit == "pet" or unit:find("^party%d") or unit:find("^raid%d")) then return end
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
+        if event == "UNIT_AURA" and unit == "player" and BR.pendingFood then BR.ConfirmFood() end
         if event == "UNIT_AURA" then Soon(unit) else Soon() end
     end)
     -- buffs running out cross the reminder line without an event: a look every 10 seconds; in a group,

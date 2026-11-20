@@ -779,6 +779,7 @@ local function CreateBar()
             Bar.lines[i - 1] = line
         end
     end
+    -- (a blank bar at login, Ciron 11-20: Core.lua ns.FontRedraw draws the cells anew)
     f:SetScript("OnEvent", function() Bar.Fill() end)
     f:SetScript("OnShow", function() Bar.Fill(); Bar.Tick() end)
     f:SetScript("OnHide", function() Bar.Tick() end)

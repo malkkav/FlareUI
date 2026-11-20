@@ -456,18 +456,14 @@ local function CreateSection(parent)
     text:SetWordWrap(false)
     section.Text = text
 
-    -- the numbers on mouseover, and the tooltip (Shift pressed or let go while hovering redraws it)
+    -- the numbers on mouseover. No tooltip (11-20, Malkkav): it covered the bar's own text.
+    -- ShowSectionTooltip stays for now, unused, should it come back.
     section:SetScript("OnEnter", function(self)
         if not XPB.TextAlways() then self.Text:Show() end
-        ShowSectionTooltip(self)
-        self:RegisterEvent("MODIFIER_STATE_CHANGED")
     end)
     section:SetScript("OnLeave", function(self)
         if not XPB.TextAlways() then self.Text:Hide() end
-        self:UnregisterEvent("MODIFIER_STATE_CHANGED")
-        if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
     end)
-    section:SetScript("OnEvent", function(self) if self:IsMouseOver() then ShowSectionTooltip(self) end end)
 
     -- a short light over the fill on an XP gain
     local flash = section:CreateTexture(nil, "OVERLAY")

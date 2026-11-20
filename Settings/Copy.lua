@@ -364,9 +364,9 @@ ns.Copy = {
         ["ab.xpBar"] = {
             choices = { L["Off"], L["Single"], L["Split"], L["Double"] },
             desc = L["FlareUI's XP bar, with your watched reputation or honor:\n* Off: Blizzard's bars\n* Single: one bar, XP (reputation or honor at max level)\n* Split: XP and reputation side by side\n* Double: two bars, the second below the first"],
-            label = L["FlareUI XP Bar"],
+            label = L["Bar Style"],
             section = "ab.experience",
-            tags = { "xp bar style", "enable xp bar", "reputation bar", "honor bar", "two bars" },
+            tags = { "flareui xp bar", "xp bar style", "enable xp bar", "reputation bar", "honor bar", "two bars" },
             tip = L["Place and size it in Edit Mode. Going to or from Off needs a reload."],
         },
         ["ab.xpBorder"] = {

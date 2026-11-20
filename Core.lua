@@ -1328,6 +1328,68 @@ end
 -- and reads back the old font (a new font string has none, and any text on it throws), and the string
 -- switches once the file is in. So a string gets the base font at the right size and asks again until
 -- the client says yes. A blank or hidden string's request doesn't load the file: never test a font on one.
+-- REDRAW (11-20, every font option at once; Ciron's blank Info Bar, TheHusky's blank keybinds): text
+-- drawn before its font file loaded can stay blank after the file is in, and the same font set again
+-- does nothing. A size change and back draws it anew. So every string styled here (and every font
+-- object) is remembered, and redrawn: the moment its file answers yes, and 2 and 10 s after each
+-- loading screen (a string the client said yes to at once can still have been drawn blank).
+-- Strings and objects are weak keys: nothing is kept alive. Fields, not file-scope locals.
+ns.FontRedraw = {
+    strings = setmetatable({}, { __mode = "k" }),   -- font string -> { path, size, flags }
+    objects = setmetatable({}, { __mode = "k" }),   -- font object -> { path, size, flags }
+    AFTER_LOAD = { 2, 10 },
+    NEW_FAMILY = { 0.5, 2, 5 },
+    -- the game's own files, in from the start (memory: font-loading-research): never redrawn
+    ALWAYS_IN = { ["fonts\\frizqt__.ttf"] = true, ["fonts\\frizqt___cyr.ttf"] = true, ["fonts\\arialn.ttf"] = true,
+                  ["fonts\\arkai_t.ttf"] = true, ["fonts\\2002.ttf"] = true, ["fonts\\2002b.ttf"] = true },
+    SLOW_SECONDS = 5, SLOW_TICKS = 60,              -- after the fast retries: every 5 s for 5 minutes
+}
+do
+    local R = ns.FontRedraw
+    -- whether a font file needs the redraws (a game file never does)
+    function R.Wanted(path)
+        return type(path) == "string" and not R.ALWAYS_IN[path:lower():gsub("/", "\\")]
+    end
+    -- only while it still holds the font asked for (another setter since then: left alone)
+    function R.String(fontString, want)
+        local _, size = fontString:GetFont()
+        if not (size and math.abs(size - want.size) < 0.05) then return end
+        fontString:SetFont(want.path, want.size + 1, want.flags)
+        fontString:SetFont(want.path, want.size, want.flags)
+    end
+    -- (want.redraw: an object that redraws its own way, the chat windows)
+    function R.Object(fontObject, want)
+        if want.family then return R.Family(fontObject, want) end
+        local _, size = fontObject:GetFont()
+        if not (size and math.abs(size - want.size) < 0.05) then return end
+        if want.redraw then return want.redraw(fontObject, want) end
+        fontObject:SetFont(want.path, want.size + 1, want.flags)
+        fontObject:SetFont(want.path, want.size, want.flags)
+    end
+    -- a font family (ns.SetFontFamily: the unit frames, meters, loot rolls...): member by member,
+    -- each at its own file; every string using the family follows
+    function R.Family(family, want)
+        if not family.GetFontObjectForAlphabet then return end
+        for _, alphabet in ipairs(ns.FontFamily.alphabets) do
+            local ok, member = pcall(family.GetFontObjectForAlphabet, family, alphabet)
+            local file = ok and member and member.GetFont and member:GetFont()
+            if file and R.Wanted(file) then
+                member:SetFont(file, want.size + 1, want.flags)
+                member:SetFont(file, want.size, want.flags)
+            end
+        end
+    end
+    function R.All()
+        for fontString, want in pairs(R.strings) do R.String(fontString, want) end
+        for fontObject, want in pairs(R.objects) do R.Object(fontObject, want) end
+    end
+    local watch = CreateFrame("Frame")
+    watch:RegisterEvent("PLAYER_ENTERING_WORLD")
+    watch:SetScript("OnEvent", function()
+        for _, delay in ipairs(R.AFTER_LOAD) do C_Timer.After(delay, R.All) end
+    end)
+end
+
 local RETRY_SECONDS, RETRY_TICKS = 0.5, 60
 local pendingFonts = setmetatable({}, { __mode = "k" })   -- font string -> what it's waiting for
 local retryTicker, retryTicks
@@ -1335,12 +1397,20 @@ local retryTicker, retryTicks
 local function RetryFonts()
     retryTicks = retryTicks + 1
     for fontString, want in pairs(pendingFonts) do
-        if fontString:SetFont(want.path, want.size, want.flags) ~= false then pendingFonts[fontString] = nil end
+        if fontString:SetFont(want.path, want.size, want.flags) ~= false then
+            pendingFonts[fontString] = nil
+            if ns.FontRedraw then ns.FontRedraw.String(fontString, want) end   -- the file is in: draw the text anew
+        end
     end
-    if retryTicks >= RETRY_TICKS or not next(pendingFonts) then
+    local R = ns.FontRedraw or { SLOW_TICKS = 0, SLOW_SECONDS = 5 }
+    if not next(pendingFonts) or retryTicks >= RETRY_TICKS + R.SLOW_TICKS then
         wipe(pendingFonts)   -- never loaded: the base font stays until the next refresh asks again
         retryTicker:Cancel()
         retryTicker = nil
+    elseif retryTicks == RETRY_TICKS then
+        -- not in yet (a hidden string's request loads nothing): keep asking, slower
+        retryTicker:Cancel()
+        retryTicker = C_Timer.NewTicker(R.SLOW_SECONDS, RetryFonts)
     end
 end
 
@@ -1351,6 +1421,13 @@ ns.TEXT_SCALE = 1
 
 local function SetFontRaw(fontString, path, size, flags)
     pendingFonts[fontString] = nil
+    -- remembered for the redraws (the base font is always in: nothing to redraw)
+    local R = ns.FontRedraw
+    if R and size and path ~= BaseFont() and R.Wanted(path) then
+        R.strings[fontString] = { path = path, size = size, flags = flags or "" }
+    elseif R then
+        R.strings[fontString] = nil
+    end
     if fontString:SetFont(path, size, flags) ~= false then return end
     fontString:SetFont(BaseFont(), size, flags)
     fontString:SetFont(path, size, flags)
@@ -1430,6 +1507,15 @@ function ns.SetFontFamily(fontString, path, size, flags)
         local ok, made = pcall(CreateFontFamily, "FlareUI_FontFamily" .. F.count, members)
         if not (ok and made) then return SetFontRaw(fontString, path, size, flags) end
         family, F.built[key] = made, made
+        if ns.FontRedraw and ns.FontRedraw.Wanted(path) then
+            local want = { family = true, size = size, flags = flags }
+            ns.FontRedraw.objects[family] = want
+            -- (a family has no SetFont answer to retry on: its strings are drawn anew a few times
+            -- while the file comes in)
+            for _, delay in ipairs(ns.FontRedraw.NEW_FAMILY) do
+                C_Timer.After(delay, function() ns.FontRedraw.Family(made, want) end)
+            end
+        end
     end
     fontString:SetFontObject(family)
 end
@@ -1439,6 +1525,12 @@ end
 local function SetFontObjectFaceRaw(fontObject, path, size, flags)
     flags = flags or ""
     fontObject:SetFont(path, size, flags)
+    local R = ns.FontRedraw
+    if R and size and R.Wanted(path) then
+        R.objects[fontObject] = { path = path, size = size, flags = flags }
+    elseif R then
+        R.objects[fontObject] = nil
+    end
     if not fontObject.GetFontObjectForAlphabet then return end
     for _, alphabet in ipairs(ns.FontFamily.alphabets) do
         local ok, member = pcall(fontObject.GetFontObjectForAlphabet, fontObject, alphabet)

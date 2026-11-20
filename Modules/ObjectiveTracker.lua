@@ -2422,7 +2422,9 @@ function OT:Render()
                     end
                     if not collapsed then
                         if complete then
-                            local ready = AddLine(CompleteText(q), "objective", Build.DoneColor(db), objectiveIndent)
+                            -- the plain "Ready for turn-in" line in Blizzard's grey (11-20: 6.13 only did it in the sample)
+                            local doneText = CompleteText(q)
+                            local ready = AddLine(doneText, "objective", doneText == TEXT.ready and C.READY or Build.DoneColor(db), objectiveIndent)
                             ready.questID = q.questID
                             if seen and seen.complete == false then state.sheens[#state.sheens + 1] = ready end
                         elseif C_QuestLog.IsFailed(q.questID) then
