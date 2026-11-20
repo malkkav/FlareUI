@@ -478,7 +478,7 @@ ns.Copy = {
             tip = L["Import shows the string's version, UI scale and any fonts or textures you're missing, then reloads. To share Edit Mode layouts, use Edit Mode."],
         },
         ["au.*.filterOn"] = {
-            choices = { L["Buffs & Debuffs"], L["Player"], L["Pet"], L["Target"], L["Focus"], L["Party"], L["Raid"], L["Boss"] },
+            choices = { L["Buffs & Debuffs"], L["Player"], L["Pet"], L["Target"], L["Focus"], L["Party"], L["Raid"], L["Boss"], L["Nameplates"] },
             desc = L["|cffffd100Hide|r: the aura never shows on the ticked frames.\n|cffffd100Show|r: it always shows there, even when Only My Buffs, Only My Debuffs or Hide Buffs would leave it out. It comes after the frame's other buffs or debuffs."],
             label = L["Filter On"],
             section = "au.hideList",
