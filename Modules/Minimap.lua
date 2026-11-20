@@ -2284,15 +2284,8 @@ local function PlaceFlare(b)
     b:SetPoint("CENTER", MinimapFrame, "CENTER", math.cos(angle) * r, math.sin(angle) * r)
 end
 
-local function FlareButton()
-    if MM.flareButton then return MM.flareButton end
-    -- (named ^FlareUI: the drawer never adopts it)
-    local b = CreateFrame("Button", "FlareUIMinimapButton", MinimapFrame)
+local function SetFlareButtonArt(b)
     b:SetSize(31, 31)
-    b:SetFrameStrata("MEDIUM")
-    b:SetFrameLevel(8)
-    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    b:RegisterForDrag("LeftButton")
     local ground = b:CreateTexture(nil, "BACKGROUND")
     ground:SetSize(24, 24)
     ground:SetPoint("CENTER")
@@ -2309,6 +2302,17 @@ local function FlareButton()
     ring:SetSize(50, 50)
     ring:SetPoint("TOPLEFT")
     ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+end
+
+local function FlareButton()
+    if MM.flareButton then return MM.flareButton end
+    -- (named ^FlareUI: the drawer never adopts it)
+    local b = CreateFrame("Button", "FlareUIMinimapButton", MinimapFrame)
+    SetFlareButtonArt(b)
+    b:SetFrameStrata("MEDIUM")
+    b:SetFrameLevel(8)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:RegisterForDrag("LeftButton")
     b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     b:SetScript("OnEnter", function(self)
         ns.OwnGameTooltip(self, "ANCHOR_LEFT")
@@ -2751,7 +2755,7 @@ end
 -- A plain copy of the minimap as FlareUI draws it, from the module's own pieces (border layout,
 -- plate, header row, menu rows), for the settings Info Panel. Blizzard's minimap
 -- is never touched: the terrain is a shipped picture and the badge is drawn from its atlases.
--- Kinds: "map" (default) and "menu". The clock's tooltip is Blizzard's (FlareUI only adds lines to
+-- Kinds: "map" (default), "drawer" and "menu". The clock's tooltip is Blizzard's (FlareUI only adds lines to
 -- it), so it has no sample.
 --------------------------------------------------
 do
@@ -2884,6 +2888,7 @@ do
         local calendar = ArtFrame(rd, CALENDAR_ATLAS, ROUND.BUTTON)
         calendar:SetPoint("TOPLEFT", zone, "TOPRIGHT", -4, 0)
         calendar:SetFrameLevel(zone:GetFrameLevel())
+        rd.Calendar = calendar
         return rd
     end
 
@@ -2924,6 +2929,23 @@ do
         over:SetFrameLevel(f:GetFrameLevel() + OVER_LEVEL)
         f.Badge = BuildBadge(over)
         f.Badge:SetFrameLevel(over:GetFrameLevel() + 1)
+        if kind == "drawer" then
+            f.Flare = CreateFrame("Frame", nil, over)
+            SetFlareButtonArt(f.Flare)
+            f.Compartment = CreateFrame("Frame", nil, over)
+            f.Compartment:SetSize(23, 22)
+            local art = f.Compartment:CreateTexture(nil, "ARTWORK")
+            art:SetAtlas("ui-hud-minimap-addon-indicator", true)
+            art:SetPoint("CENTER")
+            f.Compartment.Text = f.Compartment:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            f.Compartment.Text:SetPoint("CENTER")
+            f.Compartment.Text:SetScale(0.9)
+            f.Badge.Highlight = f.Badge:CreateTexture(nil, "OVERLAY", nil, 2)
+            f.Badge.Highlight:SetAllPoints()
+            f.Badge.Highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+            f.Badge.Highlight:SetBlendMode("ADD")
+            f.Badge.Highlight:SetAlpha(0.65)
+        end
         local bag = ns.MinimapBag
         if bag and bag.CreateSample then
             f.Drawer = bag.CreateSample(f)
@@ -2932,7 +2954,29 @@ do
         return f
     end
 
-    local function DrawMap(f)
+    local function PlaceSampleFlare(f, square, db)
+        local angle = type(db.buttonSpots) == "table" and tonumber(db.buttonSpots[FLARE_NAME])
+        local terrain = square and f.Square.Terrain or f.Round.Terrain
+        local half = terrain:GetWidth() / 2
+        local x, y
+        if square then
+            local art = f.Square.Art
+            local halfY = half + MM.SquareBorder().buttons
+            local halfX = halfY + (art:GetWidth() - art:GetHeight()) / 2
+            if angle then
+                x, y = EdgePoint(angle, halfX, halfY)
+            else
+                x, y = -halfX + STACK.first, -halfY
+            end
+        else
+            angle = math.rad(angle or FLARE_ROUND_ANGLE)
+            x, y = math.cos(angle) * (half + 5), math.sin(angle) * (half + 5)
+        end
+        f.Flare:ClearAllPoints()
+        f.Flare:SetPoint("CENTER", terrain, "CENTER", x, y)
+    end
+
+    local function DrawMap(f, spec)
         local db = GetDb() or {}
         local square = (f.forceStyle or db.style) ~= "round"
         f.Square:SetShown(square)
@@ -2993,8 +3037,30 @@ do
         local width, height = base:GetSize()
         -- the addon drawer, open under the map
         local drawer = f.Drawer
-        if drawer and bag and bag:IsOn() then
-            local w, h = bag.DrawSample(drawer)
+        local drawerOn = bag and bag:IsOn()
+        local preview
+        if f.Compartment and bag then
+            local style = bag.Style()
+            local flareOn = bag.FlareOn()
+            local size
+            if spec then
+                if spec.key == "mm.drawerStyle" then style = spec.value or style end
+                if spec.key == "mm.flareButton" and spec.value ~= nil then flareOn = spec.value end
+                if spec.key == "mm.bagButtonSize" then size = spec.value end
+            end
+            if style == "sundial" and not bag.SundialShown() then style = "blizzard" end
+            drawerOn = style ~= "disabled" and db.buttonBag ~= false
+            preview = { buttonSize = bag.ButtonSize(size), flareIn = drawerOn and flareOn and bag.FlareSelected() }
+            f.Flare:SetShown(flareOn and not preview.flareIn)
+            if f.Flare:IsShown() then PlaceSampleFlare(f, square, db) end
+            f.Badge.Highlight:SetShown(drawerOn and style == "sundial")
+            f.Compartment:SetShown(drawerOn and style == "blizzard")
+            f.Compartment:ClearAllPoints()
+            f.Compartment:SetPoint("TOP", base.Calendar, "BOTTOM", 0, 1)
+        end
+        if drawer and drawerOn then
+            local w, h, count = bag.DrawSample(drawer, preview)
+            if preview and f.Compartment:IsShown() then f.Compartment.Text:SetText(count) end
             local x = square and FRAME_PAD or (ROUND.CLUSTER - f.Round.Box:GetWidth()) / 2 + ROUND.SHIFT
             drawer:ClearAllPoints()
             drawer:SetPoint("TOPLEFT", f, "TOPLEFT", x, -(height + DRAWER_GAP))
@@ -3006,12 +3072,12 @@ do
         return width, height
     end
 
-    function MM.DrawSample(f)
+    function MM.DrawSample(f, kind, spec)
         local width, height
         if f.kind == "menu" then
             width, height = f.Menu:GetSize()
         else
-            width, height = DrawMap(f)
+            width, height = DrawMap(f, spec)
         end
         f:SetSize(width, height)
         f:Show()

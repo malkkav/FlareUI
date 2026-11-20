@@ -613,6 +613,7 @@ local function PageSpec()
     end
     -- Buff Reminders (its own page): the reminder row on every tab
     if current == 'br' then return { kind = 'reminders', key = 'br.remindersOverview' } end
+    if current == 'mm' and tab == 'buttons' then return { kind = 'minimapDrawer', key = 'mm.buttonsOverview' } end
     if current == 'ab' and tab == 'xp' then return { kind = 'xp', key = 'ab.xpOverview' } end
     if current == 'dm' and tab == 'threat' then return { kind = 'meter', key = 'dm.threatOverview' } end
     return ns.SettingsPreview.Module(current)
@@ -666,8 +667,8 @@ local function SideBoxes(on, top)
     end
 end
 
--- a picture shows the current settings only; hovering never tries a value on
-local function ShowVisual(row)
+-- a picture shows the current settings; only the minimap drawer rows try a value on (value)
+local function ShowVisual(row, value)
     if not preview.canvas then return end
     local side = SidePanel()
     if side then
@@ -694,6 +695,10 @@ local function ShowVisual(row)
     else spec = preview.spec or PageSpec() end
     if spec and spec.key == "ch.icons" and not IsRowHovered(spec.key) then
         spec = PageSpec()
+    end
+    if spec and spec.kind == 'minimapDrawer' and value ~= nil then
+        -- The slider and style menu can preview a value before the row saves it.
+        spec.value = value
     end
     -- One stable composition for the whole Action Bars page: hover changes the explanation, not
     -- the scene or animation.
@@ -757,8 +762,8 @@ local function ShowModulePreview()
 end
 
 -- title: the row's info text, else its label, else its section title
-local function ShowRowPreview(row)
-    ShowVisual(row)
+local function ShowRowPreview(row, value)
+    ShowVisual(row, value)
     preview.helpRow = row
     local title = S:Text(row.key, "info")
     if not title or title == "" then title = row:Label() end
@@ -941,7 +946,7 @@ local function SetupChoiceMenu(dropdown, f)
             else
                 c.row = row
                 local option = root:CreateRadio(c.text, IsChoice, PickChoice, c)
-                option:SetOnEnter(function() ShowRowPreview(row) end)
+                option:SetOnEnter(function() ShowRowPreview(row, c.value) end)
                 option:SetOnLeave(function() ShowRowPreview(row) end)
                 -- a choice with a picture (c.icon = { atlas, rotation }), at the entry's right
                 if c.icon and option.AddInitializer then
@@ -1011,7 +1016,7 @@ local function SetupChoiceMenu(dropdown, f)
                         e.checked, e.pick = function() return IsTicked(c) end, function() Tick(c) end
                     else
                         e.checked, e.pick = function() return IsChoice(c) end, function() PickChoice(c) end
-                        e.onEnter = function() ShowRowPreview(row) end
+                        e.onEnter = function() ShowRowPreview(row, c.value) end
                         e.onLeave = function() ShowRowPreview(row) end
                     end
                     if row.previewFont and row.key:match('%.face$') then
@@ -1131,7 +1136,7 @@ Build.range = function(f)
         local choice = choices and choices[math.max(1, math.min(#choices, math.floor(value + 0.5)))]
         if not choice then return end
         f.rangeChoice = choice; f.value:SetText(choice.text); FitText(f.value, f.value:GetWidth())
-        if f.rangeDragging then ShowRowPreview(f.row) else Commit() end
+        if f.rangeDragging then ShowRowPreview(f.row, choice.value) else Commit() end
     end)
     ForwardHover(slider, f)
     ForwardHover(holder.Back, f)

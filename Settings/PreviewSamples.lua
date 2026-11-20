@@ -986,11 +986,15 @@ end
 -- A module that builds its own sample (M.CreateSample(parent, kind) / M.DrawSample(f, kind), as the
 -- unit frames, bars and action buttons do) is shown that way; until it does, its drawing above stays.
 --------------------------------------------------
-local function ModuleSample(c, mod, kind)
+local function ModuleSample(c, mod, kind, spec)
     local M = ns[mod]
     if not (M and M.CreateSample and M.DrawSample) then return nil end
     return Sample(c, mod .. ':' .. kind, function(parent) return M.CreateSample(parent, kind) end,
-        function(f) return M.DrawSample(f, kind) end, 4)
+        function(f) return M.DrawSample(f, kind, spec) end, 4)
+end
+
+function R.minimapDrawer(c, spec)
+    ModuleSample(c, 'Minimap', 'drawer', spec)
 end
 
 local ITEM_TOOLTIP = { ['tt.shortItemStats'] = true, ['tt.ids'] = true }
