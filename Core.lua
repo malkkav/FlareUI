@@ -1060,12 +1060,11 @@ local defaults = {
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagCombineEmpty = false,    -- Combine Empty Slots: one empty slot with the free count
-            bagSetCategories = false,   -- Equipment Set Sections: By Category gives each equipment set a section (Bags.lua 1)
             bagAutoOpen = false,        -- Auto Open Containers: clams, loot bags, opened lockboxes
             bankColumns = 0,            -- Bank Window Columns; 0 = Blizzard's (8) (Bags.lua 4e)
             bankGaps = false,           -- Bank Window: each bank bag starts a new row, with a gap
             bankTight = false,          -- Bank Window: slots 5 apart, as in the backpack, not Blizzard's 13/10
-            bagFilters = "off",         -- Category Filters: "off" | "drawer" (button + drawer) | "buttons" (row in a wide combined backpack) (Bags.lua 4b)
+            bagView = "all",            -- Bag View: "all" | "filters" (Category Filters, Bags.lua 4b) | "rows" | "rowsSets" (Category Rows, + a row per equipment set; Bags.lua 1)
             bagWithCharacter = false,   -- Open with Character Window: the bags open and close with it (Bags.lua 4c)
             bagAutoSort = false,        -- Sort Bags on Open: Blizzard's clean-up each time the bags open (Bags.lua 4d)
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's

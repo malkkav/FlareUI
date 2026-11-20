@@ -53,15 +53,19 @@ S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyri
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
 -- one empty slot with the free count in place of every empty slot (Bags.lua 1c)
 S:Row{ key = "bl.bagCombineEmpty", half = true, tab = "bags", path = "tweaks.bagCombineEmpty", apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "bl.bagCategoryView", kind = "choice", tab = "bags", path = "tweaks.bagCategoryView",
-    choices = { "current", "categories" }, resetValue = function() return "current" end,
-    apply = function()   -- (Equipment Set Sections below greys with it)
+-- Bag View (one question: how the bags sort your items): All Items, Category Filters (Bags.lua 4b:
+-- a row of buttons by the search box where there's room, else a filter button and drawer; separate
+-- bags too), Category Rows, Category Rows + Sets (Bags.lua 1: the combined backpack in sections, +
+-- one per equipment set). Bags.View carries the older Category Filters choice over.
+S:Row{ key = "bl.bagView", kind = "choice", tab = "bags", path = "tweaks.bagView", disabled = BagAddon,
+    choices = { "all", "filters", "rows", "rowsSets" },
+    get = function() return ns.Bags and ns.Bags.View and ns.Bags.View() or S:GetPath("tweaks.bagView") or "all" end,
+    set = function(v) S:SetPath("tweaks.bagView", v) end,
+    resetValue = function() return "all" end,
+    apply = function()
         RefreshBags()
-        if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
-    end, disabled = NotCombined }
--- a section per equipment set, in the By Category view only
-S:Row{ key = "bl.bagSetCategories", half = true, tab = "bags", path = "tweaks.bagSetCategories", apply = RefreshBags,
-    disabled = function() return NotCombined() or S:GetPath("tweaks.bagCategoryView") ~= "categories" end }
+        if ns.Bags and ns.Bags.Filter then ns.Bags.Filter.Refresh() end
+    end }
 
 -- BAGS: the bank window (Bags.lua 4e). Forever's bank is one window
 -- whatever Combined Bags says, so only another bag addon greys these.
@@ -108,20 +112,6 @@ S:Row{ key = "bl.bagBoE", half = true, tab = "bags", path = "tweaks.bagBoE", app
 S:Row{ key = "bl.bagPlainEmpty", half = true, tab = "bags", path = "tweaks.bagPlainEmpty", apply = RefreshBags, disabled = BagAddon }
 
 -- BAGS: tools ------------------------------------
--- Category Filters (issue #26): Off, Drawer (a filter button and drawer by the search box) or
--- Buttons (the four in a row in a wide combined backpack, else the drawer); Bags.lua 4b. A dropdown,
--- so a full row on top; the two switches below pair up. The old switch saved true: read as Drawer.
-S:Row{ key = "bl.bagFilters", kind = "choice", tab = "bags", path = "tweaks.bagFilters", disabled = BagAddon,
-    choices = { "off", "drawer", "buttons" },
-    get = function()
-        local v = S:GetPath("tweaks.bagFilters")
-        if v == true or v == "drawer" then return "drawer" end
-        if v == "buttons" then return "buttons" end
-        return "off"
-    end,
-    set = function(v) S:SetPath("tweaks.bagFilters", v) end,
-    resetValue = function() return "off" end,
-    apply = function() if ns.Bags and ns.Bags.Filter then ns.Bags.Filter.Refresh() end end }
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
 -- the bags open and close with the character window (Bags.lua 4c; the bank and guild bank always do)
 S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.bagWithCharacter" }

@@ -44,6 +44,21 @@ local function GetDb()
     return ns.db and ns.db.profile and ns.db.profile.tweaks
 end
 
+-- Bag View: "all", "filters" (Category Filters), "rows" or "rowsSets" (Category Rows, + equipment sets).
+-- The older Category Filters dropdown (Off / Drawer / Buttons) is carried over once: any filter
+-- becomes Category Filters, which shows the buttons when there's room and the drawer otherwise.
+function Bags.View(db)
+    db = db or GetDb()
+    if not db then return "all" end
+    local old = db.bagFilters
+    if old ~= nil then
+        if old ~= "off" and old ~= false and db.bagView == "all" then db.bagView = "filters" end
+        db.bagFilters = nil
+    end
+    return db.bagView or "all"
+end
+local function CategoryRows(db) local v = Bags.View(db) return v == "rows" or v == "rowsSets" end
+
 -- the name of a loaded bag addon, or nil
 function Bags:GetOtherBagAddon()
     if self.otherAddon == nil then
@@ -77,7 +92,7 @@ local function LayoutWanted()
     if not db or Bags:GetOtherBagAddon() then return false end
     if GamepadUI() then return false end
     return (db.bagColumns or 0) > 0 or db.bagGaps == true or db.bagKeyring == true or db.bagReagent == true
-        or db.bagCombineEmpty == true or db.bagCategoryView == "categories"
+        or db.bagCombineEmpty == true or CategoryRows(db)
 end
 
 --------------------------------------------------
@@ -564,7 +579,8 @@ end
 -- LayoutAddSlots) sits on the left of the first locked slot. FlareUI's grid moves or hides that slot, so
 -- with a FlareUI layout the button goes to the empty left end of the money bar, sized to fit it; without
 -- one, Blizzard's own size and place come back. (A plain button, no secure template.)
-Bags.AddSlots = { SIZE = 22, BLIZZARD_SIZE = 28 }
+-- OFFSET_X: over the money bar's rounded left end (8 px), so its edge doesn't show beside the button
+Bags.AddSlots = { SIZE = 22, BLIZZARD_SIZE = 28, OFFSET_X = -4 }
 
 function Bags.AddSlots.Place(frame, wanted)
     local button = frame and frame.AddSlotsButton
@@ -573,7 +589,7 @@ function Bags.AddSlots.Place(frame, wanted)
     if wanted and frame.MoneyFrame then
         button:SetSize(AddSlots.SIZE, AddSlots.SIZE)
         button:ClearAllPoints()
-        button:SetPoint("LEFT", frame.MoneyFrame, "LEFT", 0, 0)
+        button:SetPoint("LEFT", frame.MoneyFrame, "LEFT", AddSlots.OFFSET_X, 0)
         AddSlots.moved = true
     elseif AddSlots.moved then
         AddSlots.moved = nil
@@ -614,12 +630,12 @@ local function Relayout(frame)
     layingOut = false
     if #items == 0 then return end
 
-    local categorized = db.bagCategoryView == "categories"
+    local categorized = CategoryRows(db)
     local groups, setNames, categoryOf
     if categorized then
         categoryOf = {}
         local sets, setOf = {}, nil
-        if db.bagSetCategories then sets, setOf = Bags.SetCategories.Read() end
+        if Bags.View(db) == "rowsSets" then sets, setOf = Bags.SetCategories.Read() end
         local order = Bags.SetCategories.Order(sets)
         setNames = {}
         for _, set in ipairs(sets) do setNames[set.key] = set.name end
@@ -1553,19 +1569,13 @@ local Filter = {
 }
 Bags.Filter = Filter
 
--- "off", "drawer" or "buttons" (the old switch saved true: the drawer)
+-- "off" or "buttons": Bag View's Category Filters, a row by the search box where there's room, else
+-- the drawer (Filter.Place). "drawer" stays a mode for the narrow case.
 function Filter.Mode()
-    local db = GetDb()
-    local v = db and db.bagFilters
-    if v == true or v == "drawer" then return "drawer" end
-    if v == "buttons" then return "buttons" end
-    return "off"
+    return Bags.View() == "filters" and "buttons" or "off"
 end
 
--- (Category View already groups the combined backpack by these categories: no filter there)
 function Filter.On()
-    local db = GetDb()
-    if db and db.bagCategoryView == "categories" and Bags:IsCombined() and LayoutWanted() then return false end
     return Filter.Mode() ~= "off" and not Bags:GetOtherBagAddon() and not GamepadUI()
         and C_Container.GetContainerItemQuestInfo and C_Item.GetItemInventoryTypeByID and true or false
 end
@@ -1985,9 +1995,8 @@ function Bags:Init()
         end
         -- By Category: a set saved, renamed or deleted moves its items between sections
         local db = GetDb()
-        local byCategory = db and db.bagCategoryView == "categories"
         if event == "EQUIPMENT_SETS_CHANGED" then
-            local backpack = byCategory and db.bagSetCategories and Combined()
+            local backpack = db and Bags.View(db) == "rowsSets" and Combined()
             if backpack and backpack:IsShown() then Relayout(backpack) end
             return
         end
