@@ -85,6 +85,7 @@ Modules\MinimapVehicle.lua
 Modules\MinimapDurability.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
+Modules\Nameplates.lua
 Modules\JunkDelete.lua
 Modules\Fishing.lua
 Modules\Bags.lua
@@ -116,6 +117,7 @@ Settings\Pages\ActionBars.lua
 Settings\Pages\CooldownManager.lua
 Settings\Pages\UnitFrames.lua
 Settings\Pages\ResourceBars.lua
+Settings\Pages\Nameplates.lua
 Settings\Pages\Chat.lua
 Settings\Pages\DamageMeter.lua
 Settings\Pages\Tooltips.lua

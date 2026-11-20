@@ -2067,9 +2067,9 @@ ns.HiddenAuras = { stamp = 0 }
 do
     local HA = ns.HiddenAuras
     -- "auras": the Buffs & Debuffs frames
-    HA.PLACES = { "auras", "player", "pet", "target", "focus", "party", "raid", "boss" }
+    HA.PLACES = { "auras", "player", "pet", "target", "focus", "party", "raid", "boss", "nameplates" }
     HA.ALL = table.concat(HA.PLACES, ",")
-    HA.SHOW_PLACES = { "player", "pet", "target", "focus", "party", "raid", "boss" }
+    HA.SHOW_PLACES = { "player", "pet", "target", "focus", "party", "raid", "boss", "nameplates" }
     HA.SHOW_ALL = table.concat(HA.SHOW_PLACES, ",")
     local cache, cachedFrom = { hidden = {}, shown = {}, both = {} }, nil
 
