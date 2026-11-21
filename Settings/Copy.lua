@@ -2822,6 +2822,14 @@ ns.Copy = {
             label = L["Title"],
             section = "tt.fonts",
         },
+        ["tt.healingDamage"] = {
+            choices = { L["Off"], L["Spell Healing / Spell Damage"], L["Spell Healing / Spell Power"] },
+            desc = L["How Simplified Item Stats shortens lines with both healing and damage:\n* Off: the long line, unchanged\n* Spell Healing / Spell Damage: both numbers as they are\n* Spell Healing / Spell Power: the damage as Spell Power, plus the extra healing"],
+            label = L["Healing & Damage"],
+            section = "tt.items",
+            tags = { "healing", "spell damage", "spell power" },
+            tip = L["Needs Simplified Item Stats on."],
+        },
         ["tt.healthBar"] = {
             choices = { L["Off"], L["Below"], L["Inside"] },
             desc = L["A health bar on unit tooltips, in FlareUI's look:\n* Below: under the tooltip\n* Inside: at the tooltip's bottom, which grows to hold it"],

@@ -1133,7 +1133,8 @@ end
 local ITEM_TOOLTIP = { ['tt.shortItemStats'] = true, ['tt.ids'] = true }
 local THREAT_KEYS = { ['dm.threatValue'] = true, ['dm.pullLine'] = true, ['dm.pullFlash'] = true, ['dm.tankLead'] = true, ['dm.threatOverview'] = true }
 local OWN = {
-    tooltip = { 'Tooltips', function(spec) return spec.key == 'tt.compareShift' and 'compare' or ITEM_TOOLTIP[spec.key] and 'item' or 'unit' end },
+    tooltip = { 'Tooltips', function(spec) return spec.key == 'tt.compareShift' and 'compare' or spec.key == 'tt.healingDamage' and 'healing'
+        or ITEM_TOOLTIP[spec.key] and 'item' or 'unit' end },
     reminders = { 'BuffReminders', function() return 'reminders' end },
     radial = { 'RadialMenu', function() return 'radial' end },
     bags = { 'Bags', function() return 'bags' end },
