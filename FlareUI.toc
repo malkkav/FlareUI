@@ -86,6 +86,7 @@ Modules\MinimapDurability.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
 Modules\Nameplates.lua
+Modules\NameplatesMusician.lua
 Modules\JunkDelete.lua
 Modules\Fishing.lua
 Modules\Bags.lua

@@ -1699,6 +1699,10 @@ function NP.UpdateName(p)
     -- always the first name; Follow Name puts the level in front, in its colour
     local name = UnitName(unit)
     local prefix = p.levelFollow and NP.LevelPrefix(unit)
+    if p.nameIconForUnit then
+        local icon = p.nameIconForUnit(unit)
+        if icon then prefix = icon .. " " .. (prefix or "") end
+    end
     if prefix then p.name:SetFormattedText("%s%s", prefix, name) else p.name:SetText(name) end
     -- Party Colour (groupColor) and Raid Colour: your party or raid members' names in their own
     -- colour; other players by class, everyone else white. (Raid Colour never set follows the old
@@ -2473,6 +2477,7 @@ function NP.Claim(unit)
     end)
     if ok then
         stats.claimed = stats.claimed + 1
+        NP:SendMessage("FlareUINameplateClaimed", p)
         if ns.Tweaks and ns.Tweaks.PlateChanged then pcall(ns.Tweaks.PlateChanged, unit) end
     else
         stats.failed = stats.failed + 1
@@ -2482,7 +2487,7 @@ function NP.Claim(unit)
     end
 end
 
-function Release(p)
+function Release(p, departing)
     if not p then return end
     if p.events then p.events:UnregisterAllEvents() end
     if p.auras then
@@ -2494,7 +2499,8 @@ function Release(p)
         p.cast:Hide()
     end
     -- only a unit whose plate stays on screen (NAME_PLATE_UNIT_REMOVED: no plate left to move to)
-    local token = p.gamePlate and p.gamePlate.unitToken
+    -- The removal event can arrive before Blizzard clears the frame's token.
+    local token = not departing and p.gamePlate and p.gamePlate.unitToken
     local unit = (canaccessvalue(token) and token ~= nil and token == p.unit) and p.unit or nil
     local live = unit ~= nil and p.blizz ~= nil and p.gamePlate.UnitFrame == p.blizz
     pcall(ShowBlizzard, p, live)
@@ -2509,6 +2515,7 @@ function Release(p)
     local known = false
     for _, s in ipairs(spare) do if s == p then known = true break end end
     if not known then spare[#spare + 1] = p end
+    NP:SendMessage("FlareUINameplateReleased", p, live)
     -- (a unit still on screen: its quest tag and combo points go back to Blizzard's plate)
     if unit and ns.Tweaks and ns.Tweaks.PlateChanged then pcall(ns.Tweaks.PlateChanged, unit) end
 end
@@ -2517,7 +2524,7 @@ NP.ReleasePlate = Release
 function NP.ReleaseUnit(unit)
     if not canaccessvalue(unit) then return end
     for _, p in pairs(byPlate) do
-        if p.unit == unit then Release(p) end
+        if p.unit == unit then Release(p, true) end
     end
 end
 
