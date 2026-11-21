@@ -120,6 +120,10 @@ Tweak{ key = "tt.ids", get = ids.get, set = ids.set, apply = Refresh }
 Tweak{ key = "tt.itemLevel", path = "tooltips.itemLevel" }
 Tweak{ key = "tt.compareShift", path = "tooltips.compareShift", apply = Refresh }
 Tweak{ key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
+-- after the switches (rank 3.5), beside Simplified Item Stats, greyed while it is off (no indent)
+Tweak{ key = "tt.healingDamage", kind = "choice", path = "tooltips.healingDamage", rank = 3.5,
+    choices = { "off", "damage", "power" },
+    disabled = function() return not S:GetPath("tooltips.shortItemStats") end }
 
 S:FontRows{ module = "tt", tab = "fonts", section = "tt.fonts", apply = Refresh, fonts = {
     { key = "title", path = "tooltips.titleFont" },

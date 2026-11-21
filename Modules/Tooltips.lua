@@ -1109,6 +1109,35 @@ do
         return lines, border
     end
 
+    -- Healing & Damage's own sample: Cauterizing Band, whose line gives healing and damage apart
+    local function HealingLines(db)
+        local r, g, b = C_Item.GetItemQualityColor(4)
+        r, g, b = r or 1, g or 1, b or 1
+        local name = Readable((C_Item.GetItemInfo(19140)))
+        if type(name) ~= "string" then name = "Cauterizing Band" end
+        local lines = {}
+        lines[#lines + 1] = { name, r, g, b, title = true }
+        lines[#lines + 1] = { _G.ITEM_BIND_ON_PICKUP or "Binds when picked up" }
+        lines[#lines + 1] = { _G.INVTYPE_FINGER or "Finger" }
+        lines[#lines + 1] = { "+9 " .. (_G.SPELL_STAT3_NAME or "Stamina") }
+        lines[#lines + 1] = { "+12 " .. (_G.SPELL_STAT4_NAME or "Intellect") }
+        lines[#lines + 1] = { Format(_G.ITEM_MIN_LEVEL, "Requires Level 60", 60) }
+        -- the long line, or its two short lines (healing first), as ItemStats.lua writes them
+        local mode = db.shortItemStats and db.healingDamage
+        if mode == "damage" or mode == "power" then
+            lines[#lines + 1] = { "+" .. (mode == "power" and 30 or 46) .. " " .. (_G.ITEM_MOD_SPELL_HEALING_DONE_SHORT or "Spell Healing"), 0, 1, 0 }
+            lines[#lines + 1] = { "+16 " .. (mode == "power" and (_G.ITEM_MOD_SPELL_POWER_SHORT or "Spell Power")
+                or (_G.ITEM_MOD_SPELL_DAMAGE_DONE_SHORT or "Spell Damage")), 0, 1, 0 }
+        else
+            lines[#lines + 1] = { Format(_G.TOOLTIP_ITEM_STAT_SPELL_HEALING_INCREASE_DAMAGE_INCREASE,
+                "Equip: Increases healing done by up to 46 and damage done by up to 16 for all magical spells and effects.", 46, 16),
+                0, 1, 0, wrap = true }
+        end
+        local border
+        if db.borderByQuality then border = { Mute(r, g, b) } end
+        return lines, border
+    end
+
     local function DrawTip(tip, kind, equipped)
         local db = GetDb() or {}
         local w, h
@@ -1119,14 +1148,15 @@ do
             local c = TIP.borderColorOf[tip]
             if c and tip.bar.fuiBorder then tip.bar.fuiBorder:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
         else
-            local lines, border = ItemLines(db, equipped)
+            local lines, border = (kind == "healing" and HealingLines or ItemLines)(db, equipped)
             w, h = Fill(tip, lines, "off")
             ApplyColors(tip, border)
         end
         return w, h
     end
 
-    -- kind: "unit" (default), "item" or "compare" (the item beside the one it is compared with)
+    -- kind: "unit" (default), "item", "healing" (Healing & Damage's item) or "compare" (the item beside
+    -- the one it is compared with)
     function TIP.CreateSample(parent, kind)
         kind = kind or "unit"
         if kind == "compare" then

@@ -901,6 +901,7 @@ local defaults = {
             showGuildRank = false,      -- Show Guild Ranks: the rank after the guild's name
             showFaction = true,         -- Show Faction: the Alliance or Horde line (was Hide Faction)
             shortItemStats = false,     -- "+12 Spell Power" for the long Equip: stat lines (ItemStats.lua)
+            healingDamage = "off",      -- Healing & Damage: off | damage | power, for "healing … and damage …" lines
             itemLevel = false,          -- Show Item Level: weapons' and armour's level on their tooltip
             compareShift = false,       -- comparison tooltips only while Shift is held
             showItemID = false,
