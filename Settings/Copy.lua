@@ -2789,7 +2789,7 @@ ns.Copy = {
         ["tt.compareShift"] = {
             desc = L["Your worn gear shows beside an item's tooltip only while you hold Shift."],
             label = L["Compare with Shift"],
-            section = "tt.tweaks",
+            section = "tt.items",
             tip = L["Turning it off restores your own setting."],
         },
         ["tt.corner"] = {
@@ -2838,7 +2838,7 @@ ns.Copy = {
         ["tt.itemLevel"] = {
             desc = L["A weapon's or armour's item level at the bottom of its tooltip."],
             label = L["Show Item Level"],
-            section = "tt.tweaks",
+            section = "tt.items",
             tags = { "ilvl", "item level" },
         },
         ["tt.mouseover"] = {
@@ -2865,7 +2865,7 @@ ns.Copy = {
         ["tt.shortItemStats"] = {
             desc = L["Short item stats, like \"+12 Spell Power\" instead of the long \"Equip: Increases…\" line. Set bonuses are shortened too."],
             label = L["Simplified Item Stats"],
-            section = "tt.tweaks",
+            section = "tt.items",
             tags = { "short stats", "item stats", "equip lines" },
         },
         ["tt.showAuras"] = {
@@ -3373,6 +3373,7 @@ ns.Copy = {
         ["rm.opening"] = L["Opening"],
         ["rm.radialMacros"] = L["Radial Macros"],
         ["tt.fonts"] = L["Tooltips"],
+        ["tt.items"] = L["Items"],
         ["tt.look"] = L["Look"],
         ["tt.mouseoverSection"] = L["Position"],
         ["tt.tweaks"] = L["Tweaks"],
