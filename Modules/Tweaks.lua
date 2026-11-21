@@ -618,9 +618,11 @@ local function SaveSync(event)
     if forced and forced.combatPlates ~= nil and store.cvars.nameplateShowEnemies ~= nil then
         store.cvars.nameplateShowEnemies = forced.combatPlates
     end
-    local forcedFriendly = ns.db.global and Tweaks.ForcedCVars("combatFriendly")
-    if forcedFriendly and forcedFriendly.combatFriendly ~= nil and store.cvars.nameplateShowFriends ~= nil then
-        store.cvars.nameplateShowFriends = forcedFriendly.combatFriendly
+    local heldFriendly = ns.db.global and Tweaks.FriendlyHeld()
+    if heldFriendly then
+        for i, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do
+            if store.cvars[cvar] ~= nil then store.cvars[cvar] = heldFriendly:sub(i, i) end
+        end
     end
 
     -- Edit Mode layout, by name and kind, from the manager's presets-then-saved list (the only place
@@ -814,8 +816,11 @@ local function LoadSync()
         elseif name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
             -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
             forced.combatPlates = tostring(value)
-        elseif name == "nameplateShowFriends" and ns.db.global and Tweaks.ForcedCVars("combatFriendly").combatFriendly ~= nil then
-            Tweaks.ForcedCVars("combatFriendly").combatFriendly = tostring(value)
+        elseif Tweaks.FriendlyIndex(name) and ns.db.global and Tweaks.FriendlyHeld() then
+            -- combat-only holds the friendly switches: the source's pick is what comes back later
+            local i, held = Tweaks.FriendlyIndex(name), Tweaks.FriendlyHeld()
+            local on = (tostring(value) == "1" or value == true) and "1" or "0"
+            Tweaks.ForcedCVars("combatFriendly").combatFriendly = held:sub(1, i - 1) .. on .. held:sub(i + 1)
         elseif CVarKnown(name) then
             local ok, current = pcall(GetCVar, name)
             if ok and not SameCVar(current, value) then
@@ -988,7 +993,8 @@ local function InitSyncUI()
     local watched = {}
     for _, n in ipairs(SYNC_CVARS) do watched[n:lower()] = true end
     SyncEvents:RegisterEvent("CVAR_UPDATE", function(_, name)
-        if type(name) == "string" and name ~= "nameplateShowEnemies" and name ~= "nameplateShowFriends" and watched[name:lower()] then QueueSaveSync() end
+        if type(name) == "string" and name ~= "nameplateShowEnemies" and not (Tweaks.FriendlyIndex(name) and Tweaks.FriendlyHeld())
+            and watched[name:lower()] then QueueSaveSync() end
     end)
     SyncEvents:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", QueueSaveSync)
     SyncEvents:RegisterEvent("UPDATE_CHAT_WINDOWS", QueueSaveSync)
@@ -1151,7 +1157,7 @@ local origZoomIn, origZoomOut
 Tweaks.FORCED_KEYS = {
     maxZoom = "cameraDistanceMaxZoomFactor", zoomSpeed = "cameraZoomSpeed",
     tips = "showTutorials", combatPlates = "nameplateShowEnemies", mapFade = "mapFade",
-    combatFriendly = "nameplateShowFriends",   -- Combat Friendly Plates
+    combatFriendly = "nameplateShowFriendlyPlayers",   -- Combat Friendly Plates (holds all three type switches)
     compare = "alwaysCompareItems",   -- the Tooltips module's Compare with Shift
     keyDown = "ActionButtonUseKeyDown",   -- Cast on Key Press
 }
@@ -1720,6 +1726,14 @@ function UpdateQuestTag(unit)
     local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
     if own or Tweaks:QuestieHasNameplateIcons() then
         if questTags[plate] then questTags[plate]:Hide() end
+        return
+    end
+    -- another nameplate addon found after the tags started (it took the plates over later): the tag
+    -- sat beside Blizzard's hidden plate, far off, with its switch greyed out (11-21). All off now.
+    if Tweaks:GetNameplateAddon() then
+        if questEvents then questEvents:UnregisterAllEvents() end
+        for _, tag in pairs(questTags) do tag:Hide() end
+        wipe(questUnits)
         return
     end
     local hostile = UnitCanAttack("player", unit)
@@ -3230,17 +3244,47 @@ local function ApplyCombatPlates()
     end
 end
 
--- Friendly Nameplates in Combat Only: the same for friendly players' plates
--- (nameplateShowFriends), so you see who is low in a fight without them cluttering the world after
+-- Friendly Nameplates in Combat Only: the same for friends' plates, so you see who is low in a fight
+-- without them cluttering the world after. Forever has no master switch for friendly plates (no
+-- nameplateShowFriends, 11-21): only the three type switches, so those are held at 0 out of combat
+-- and the player's picks are kept as a 3-character string ("101" = players on, NPCs off, minions on)
+Tweaks.FRIENDLY_CVARS = { "nameplateShowFriendlyPlayers", "nameplateShowFriendlyNpcs", "nameplateShowFriendlyPlayerMinions" }
+-- 1-3 for a friendly type switch (CVAR_UPDATE may send the name in lower case), else nil
+function Tweaks.FriendlyIndex(name)
+    if type(name) ~= "string" then return nil end
+    name = name:lower()
+    for i, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do if cvar:lower() == name then return i end end
+end
+function Tweaks.FriendlyPicks()
+    local picks = ""
+    for _, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do picks = picks .. (GetCVarBool(cvar) and "1" or "0") end
+    return picks
+end
+function Tweaks.SetFriendlyPicks(picks)
+    for i, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do pcall(SetCVar, cvar, picks:sub(i, i) == "1" and "1" or "0") end
+end
+-- the held picks while combat-only holds the switches, else nil (a 1-character value is the old
+-- master-switch memory, from before 11-21: that CVar never existed, so it is dropped)
+function Tweaks.FriendlyHeld()
+    local forced = Tweaks.ForcedCVars("combatFriendly")
+    local held = forced.combatFriendly
+    if held ~= nil and not (type(held) == "string" and held:match("^[01][01][01]$")) then forced.combatFriendly = nil return nil end
+    return held
+end
 function Tweaks.ApplyCombatFriendly()
     local db = GetDb()
     local forced = Tweaks.ForcedCVars("combatFriendly")
     if InCombatLockdown() then return end
+    local held = Tweaks.FriendlyHeld()
     if db and db.combatFriendly then
-        if forced.combatFriendly == nil then forced.combatFriendly = GetCVar("nameplateShowFriends") or "0" end
-        pcall(SetCVar, "nameplateShowFriends", 0)
-    elseif forced.combatFriendly ~= nil then
-        pcall(SetCVar, "nameplateShowFriends", forced.combatFriendly)
+        -- nothing picked: friendly players, what the option is about
+        if not held then
+            held = Tweaks.FriendlyPicks()
+            forced.combatFriendly = held == "000" and "100" or held
+        end
+        Tweaks.SetFriendlyPicks("000")
+    elseif held then
+        Tweaks.SetFriendlyPicks(held)
         forced.combatFriendly = nil
     end
 end
@@ -3254,7 +3298,10 @@ local function InitCombatPlates()
         if event == "PLAYER_REGEN_DISABLED" then
             -- still allowed: combat lockdown begins right after this event
             if db and db.combatPlates then SetEnemyPlates(true) end
-            if db and db.combatFriendly then pcall(SetCVar, "nameplateShowFriends", 1) end
+            if db and db.combatFriendly then
+                local held = Tweaks.FriendlyHeld()
+                if held then Tweaks.SetFriendlyPicks(held) end
+            end
         else
             ApplyCombatPlates()
             Tweaks.ApplyCombatFriendly()
@@ -3429,8 +3476,9 @@ function Tweaks:ShouldLoad()
         if zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(zoomSpeed, "cameraZoomSpeed")) end
         if tips then Tweaks.RestoreTips(tips) end
         if plates ~= nil then pcall(SetCVar, "nameplateShowEnemies", plates) end
-        local friendly = Take("combatFriendly")
-        if friendly ~= nil then pcall(SetCVar, "nameplateShowFriends", friendly) end
+        local friendly = Tweaks.FriendlyHeld()
+        Take("combatFriendly")
+        if friendly then Tweaks.SetFriendlyPicks(friendly) end
         -- Move Any Window and Sync Blizz UI are General page options: they start
         -- with Quality of Life off too (with it on, Init starts them)
         if not Tweaks.accountStarted then

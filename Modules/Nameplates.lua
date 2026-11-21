@@ -609,6 +609,11 @@ function NP.Build(parent, sample)
 
     p.name = NewText(overlay)
     p.name:SetWordWrap(false)
+    -- an NPC's title ("General Goods") under a Name Only name (NP.UpdateTitle)
+    p.npcTitle = NewText(overlay)
+    p.npcTitle:SetWordWrap(false)
+    p.npcTitle:SetJustifyH("CENTER")
+    p.npcTitle:Hide()
     -- Quest Marks: the quest "!" and what's left ("3/8") at the name line's right end
     p.quest = overlay:CreateTexture(nil, "OVERLAY", nil, 2)
     p.quest:Hide()
@@ -762,8 +767,10 @@ function NP.TextSlots(db)
         if not set then
             set = (slot == "left" and { firstname = 1 }) or (slot == "right" and NP.BlizzardHealthDefault()) or {}
         end
+        -- (Full Name stays Full Name: before 11-21 it was read as First Name, so plates never showed
+        -- surnames; NP.UpdateName reads p.nameFull)
         local copy = {}
-        for k, v in pairs(set) do copy[k == "fullname" and "firstname" or k] = v end
+        for k, v in pairs(set) do copy[k] = v end
         out[slot] = copy
     end
     return out
@@ -898,7 +905,13 @@ function NP.PlaceSides(p)
     end
     -- (the raid marker clear of the defensives: two icons at most)
     local room = (db and db.defensives) and (2 * db.ccSize + C.AURA_GAP + gap) or 0
-    p.raid:SetPoint("RIGHT", outer.left, "LEFT", -gap - room - 1 + pad.left, 0)
+    if p.nameOnly then
+        -- Name Only: the box is a whole plate wide round a short name, so beside it the marker stood
+        -- far off (11-21); it sits over the name instead (a name's width can't be measured on a plate)
+        p.raid:SetPoint("BOTTOM", p.name, "TOP", 0, 2)
+    else
+        p.raid:SetPoint("RIGHT", outer.left, "LEFT", -gap - room - 1 + pad.left, 0)
+    end
     p.sideLeft, p.sideRight, p.sidePad = outer.left, outer.right, pad
     local arrows = p.arrows
     if arrows then
@@ -1302,9 +1315,10 @@ function NP.Layout(p)
     -- Bar text: Left, Middle and Right inside the bar. The name is one slot's pick and stands alone
     -- there; it gives way to the numbers in the other slots.
     p.slots = NP.TextSlots(db)
-    p.nameSlot = nil
+    p.nameSlot, p.nameFull = nil, false
     for _, slot in ipairs(BT.SLOTS) do
-        if BT.NameOf(p.slots[slot]) then p.nameSlot = slot break end
+        local pick = BT.NameOf(p.slots[slot])
+        if pick then p.nameSlot, p.nameFull = slot, pick == "fullname" break end
     end
     local POINT = { left = "LEFT", middle = "CENTER", right = "RIGHT" }
     local X = { left = 3, middle = 0, right = -3 }
@@ -1412,7 +1426,8 @@ function NP.Layout(p)
     NP.PlaceBelow(p)
     -- Plate: Bar (all of the above), Name Only (the name alone, centred, in its colour) or Hidden
     -- (Show Plates in Combat: a Name Only type picked there gets its bar in a fight, NP.CombatFull)
-    p.nameOnly = db.plate == "name" and not NP.CombatFull(db.kind)
+    p.layFull = NP.CombatFull(db.kind)
+    p.nameOnly = db.plate == "name" and not p.layFull
     p.hiddenPlate = db.plate == "hidden"
     p.health:SetShown(not p.nameOnly)
     if p.nameOnly then
@@ -1437,8 +1452,21 @@ function NP.Layout(p)
         p.name:SetWidth((w + 40) * math_max(1, scale))
         p.name:SetJustifyH("CENTER")
         p.name:Show()
-        NP.PlaceSides(p)
+        -- the NPC title under it, a little smaller (NP.UpdateTitle fills it)
+        if p.npcTitle then
+            if K and K.ApplyFont then
+                local base = (db.nameFont and db.nameFont.size) or 12
+                K.ApplyFont(p.npcTitle, db.nameFont, math_floor(base * (scale * C.TITLE_SIZE - 1) + 0.5))
+            end
+            p.npcTitle:ClearAllPoints()
+            p.npcTitle:SetPoint("TOP", p.name, "BOTTOM", 0, -1)
+            p.npcTitle:SetWidth((w + 40) * math_max(1, scale))
+        end
+    elseif p.npcTitle then
+        p.npcTitle:Hide()
     end
+    -- (again now that nameOnly is known: the raid marker's place depends on it)
+    NP.PlaceSides(p)
     p.layKind = db.kind
     p.laid = true
 end
@@ -1579,19 +1607,23 @@ function NP.UpdateThreatText(p, db)
         if NP.testKind then
             display, status = 75, 1
         else
-            local secret = false
-            if C_Secrets and C_Secrets.ShouldUnitThreatStateBeSecret then
-                local ok, s = pcall(C_Secrets.ShouldUnitThreatStateBeSecret, "player", unit)
-                secret = not ok or not canaccessvalue(s) or s
-            end
-            if not secret then
-                local ok, tanking, detailed, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
-                if ok and canaccessallvalues(tanking, detailed, scaled) then
-                    display, status = scaled, detailed
-                    if tanking then
-                        local lead = UnitThreatPercentageOfLead("player", unit)
-                        if canaccessvalue(lead) and lead then display = lead end
-                    end
+            -- (11-21) the numbers are read whenever the game hands them over; before, the text gave up
+            -- whenever ShouldUnitThreatStateBeSecret said yes, so it never showed in a fight. A secret
+            -- percent goes into the text unread (C_StringUtil rounds it, SetFormattedText draws it),
+            -- in white: its colour would need comparing it.
+            local ok, tanking, detailed, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
+            if ok and canaccessallvalues(tanking, detailed, scaled) then
+                display, status = scaled, detailed
+                if tanking then
+                    local lead = UnitThreatPercentageOfLead("player", unit)
+                    if canaccessvalue(lead) and lead then display = lead end
+                end
+            elseif ok and not canaccessvalue(scaled) and C_StringUtil and C_StringUtil.RoundToNearestString then
+                local okR, text = pcall(C_StringUtil.RoundToNearestString, scaled)
+                if okR and pcall(fs.SetFormattedText, fs, p.threatBesides and "(%s%%)" or "%s%%", text) then
+                    fs:SetTextColor(1, 1, 1)
+                    fs:Show()
+                    return
                 end
             end
         end
@@ -1696,8 +1728,9 @@ end
 function NP.UpdateName(p)
     local db, unit = PDB(p), p.unit
     if not p.nameSlot then return end
-    -- always the first name; Follow Name puts the level in front, in its colour
-    local name = UnitName(unit)
+    -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
+    -- front, in its colour
+    local name = ns.UnitDisplayName(unit, nil, p.nameFull and true or false)
     local prefix = p.levelFollow and NP.LevelPrefix(unit)
     if prefix then p.name:SetFormattedText("%s%s", prefix, name) else p.name:SetText(name) end
     -- Party Colour (groupColor) and Raid Colour: your party or raid members' names in their own
@@ -1730,6 +1763,47 @@ function NP.UpdateName(p)
         if r then p.name:SetTextColor(r, g, b) return end
     end
     p.name:SetTextColor(1, 1, 1)
+end
+
+-- NPC TITLES (11-21, Malkkav: always on, no option): an NPC's title ("General Goods", "Blacksmithing
+-- Trainer") under its name on a Name Only plate, as players asked. The game has no call for it: it is
+-- the second line of the NPC's tooltip (one line lower in Colourblind Mode), unless that line is its
+-- level. Read once per NPC name (C.TITLES), never in instances (tooltip data can be secret there),
+-- never a secret line. Friendly and enemy NPCs only (a pet's second line is its owner).
+C.TITLE_SIZE = 0.8
+C.TITLES = {}   -- NPC name -> its title, or false for none
+function NP.NPCTitle(unit)
+    if IsInInstance() then return nil end
+    local name = UnitName(unit)
+    local key = (canaccessvalue(name) and type(name) == "string") and name or nil
+    if key and C.TITLES[key] ~= nil then return C.TITLES[key] or nil end
+    if not (C_TooltipInfo and C_TooltipInfo.GetUnit) then return nil end
+    local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
+    if not (ok and type(data) == "table" and type(data.lines) == "table") then return nil end
+    local colourblind = tonumber(GetCVar("colorblindMode")) or 0
+    local line = data.lines[2 + colourblind]
+    local text = type(line) == "table" and line.leftText
+    local title = false
+    if text and canaccessvalue(text) and type(text) == "string" and text ~= "" then
+        -- a level line ("Level 30 Humanoid", "Level ?? Elite") is no title
+        local levelWord = _G.LEVEL or "Level"
+        if not text:find(levelWord, 1, true) then title = text end
+    end
+    -- (remembered only once the tooltip has that line: one still loading would be "no title" for good)
+    if key and type(line) == "table" then C.TITLES[key] = title end
+    return title or nil
+end
+function NP.UpdateTitle(p)
+    local fs = p.npcTitle
+    if not fs then return end
+    local title = p.nameOnly and p.unit and (p.kind == "friendlyNpc" or p.kind == "enemyNpc") and NP.NPCTitle(p.unit)
+    if not title then fs:Hide() return end
+    fs:SetText(title)
+    -- (11-21, Malkkav) its own colour, apart from the name's: the palette's light bronze, a tan as other
+    -- nameplate addons draw titles in
+    local c = ns.PALETTE.bronze5
+    fs:SetTextColor(c[1], c[2], c[3], 1)
+    fs:Show()
 end
 
 function NP.UpdateLevel(p)
@@ -2063,23 +2137,25 @@ function NP.CombatList()
     local db = DB()
     local v = db and db.combatPlates
     local set = {}
-    if type(v) == "string" then for t in v:gmatch("[^,]+") do set[t] = true end end
+    -- ("none", the default, is no type: before 11-21 it counted as one, and every fight's start and end
+    -- laid out all forty plates again, the 70 ms combat stutter)
+    if type(v) == "string" then for t in v:gmatch("[^,]+") do if t ~= "none" then set[t] = true end end end
     return set
 end
 function NP.CombatFull(kind)
     return state.combat and kind ~= nil and NP.CombatList()[kind] or false
 end
--- every plate laid out again where it stands (no settings or game options touched: fine in a fight,
--- as a plate claimed in a fight is laid out too)
+-- A fight began or ended: only the plates on screen whose look changes (a Name Only type picked in
+-- Show Plates in Combat) come off and are claimed again, which lays them out (no settings or game
+-- options touched: fine in a fight). Spare plates are laid out when claimed (NP.Claim checks layFull).
 function NP.Relayout()
     if not NP.ready then return end
-    local held = {}
-    for _, p in pairs(byPlate) do held[#held + 1] = p end
-    for _, p in ipairs(held) do NP.ReleasePlate(p) end
-    for _, p in ipairs(pool) do
-        local ok, err = pcall(NP.Layout, p)
-        if not ok then ns.LogError("Nameplates Layout", err) end
+    local stale = {}
+    for _, p in pairs(byPlate) do
+        if p.layFull ~= NP.CombatFull(p.layKind) then stale[#stale + 1] = p end
     end
+    if #stale == 0 then return end
+    for _, p in ipairs(stale) do NP.ReleasePlate(p) end
     NP.Sync()
 end
 
@@ -2174,6 +2250,7 @@ function NP.UpdateAll(p)
     NP.UpdateHeals(p)
     NP.UpdateColor(p)
     NP.UpdateName(p)
+    NP.UpdateTitle(p)
     NP.UpdateLevel(p)
     NP.UpdateRaid(p)
     NP.UpdateTarget(p, C_NamePlate.GetNamePlateForUnit("target"))
@@ -2223,6 +2300,7 @@ local function OnUnitEvent(self, event)
     elseif event == "UNIT_NAME_UPDATE" then
         NP.UpdateName(p)
         NP.UpdateColor(p)
+        NP.UpdateTitle(p)
     elseif event == "UNIT_LEVEL" or event == "UNIT_CLASSIFICATION_CHANGED" then
         NP.UpdateLevel(p)
     end
@@ -2382,6 +2460,11 @@ end
 -- whether FlareUI draws this unit's plate (its type's Plate isn't Blizzard), its type, and whether the
 -- game couldn't say yet
 function NP.WantsPlate(unit)
+    -- objects (chairs, signs, mailboxes, herbs and ore with the interact key) and widget-only plates:
+    -- Blizzard's own plate shows them without a bar, so they stay Blizzard's (11-21: they read as
+    -- Enemy NPCs and got a full plate with level and health)
+    if UnitIsGameObject and Readable(UnitIsGameObject(unit)) then return false, nil end
+    if UnitNameplateShowsWidgetsOnly and Readable(UnitNameplateShowsWidgetsOnly(unit)) then return false, nil end
     local kind = NP.Kind(unit)
     if not kind then return false, nil, true end
     if kind == "friendlyPlayer" and Readable(UnitIsUnit(unit, "player")) then return false, kind end
@@ -2433,15 +2516,17 @@ function NP.Claim(unit)
     retries[unit] = nil
     -- a spare plate already laid out for this type, else any (Test: every plate as the picked type)
     local look = NP.testKind or (NP.Peaceful(unit, kind) and "peaceful") or kind
+    -- (and laid out for the fight as it stands now: Show Plates in Combat, NP.CombatFull)
+    local full = NP.CombatFull(look)
     local p
     for i = #spare, 1, -1 do
-        if spare[i].layKind == look then p = table.remove(spare, i) break end
+        if spare[i].layKind == look and spare[i].layFull == full then p = table.remove(spare, i) break end
     end
     p = p or table.remove(spare)
     if not p then stats.given = stats.given + 1 return end
     p.kind, p.tdb = kind, NP.TypeDB(look)
     p.unitHidden = NP.UnitHidden(unit, kind)
-    if p.layKind ~= look then
+    if p.layKind ~= look or p.layFull ~= full then
         local okL, errL = pcall(NP.Layout, p)
         if not okL then ns.LogError("Nameplates Layout", errL) end
     end
@@ -2461,6 +2546,15 @@ function NP.Claim(unit)
         -- (nothing is measured here: the game refuses measuring nameplate parts under restrictions)
         if p.root:IsForbidden() then error("forbidden after attach") end
         HideBlizzard(p, unitFrame)
+        -- (Musician's name frame, if it made one before we took the plate: NP:Init)
+        local musicianFrame = plate.musicianUnitFrame
+        if musicianFrame and not musicianFrame:IsForbidden() then musicianFrame:Hide() end
+        -- Blizzard marks minions, minor mobs and (by its setting) friends "simplified", and the game
+        -- then shrinks the whole plate, ours with it (11-21: Minor names tiny even at 200%). Ours has
+        -- its own sizes: off while we hold the plate, Blizzard's value back on release.
+        if C_NamePlateManager and C_NamePlateManager.SetNamePlateSimplified then
+            pcall(C_NamePlateManager.SetNamePlateSimplified, unit, false)
+        end
         if p.auras then
             for _, entry in pairs(p.auras) do pcall(entry.container.SetUnit, entry.container, unit) end
         end
@@ -2497,6 +2591,9 @@ function Release(p)
     local token = p.gamePlate and p.gamePlate.unitToken
     local unit = (canaccessvalue(token) and token ~= nil and token == p.unit) and p.unit or nil
     local live = unit ~= nil and p.blizz ~= nil and p.gamePlate.UnitFrame == p.blizz
+    if live and C_NamePlateManager and C_NamePlateManager.SetNamePlateSimplified then
+        pcall(C_NamePlateManager.SetNamePlateSimplified, unit, p.blizz.isSimplified == true)
+    end
     pcall(ShowBlizzard, p, live)
     if p.gamePlate and byPlate[p.gamePlate] == p then byPlate[p.gamePlate] = nil end
     p.gamePlate, p.unit, p.targetShown = nil, nil, nil
@@ -3403,6 +3500,11 @@ function NP:Init()
     if K.HasAuraSupport then K.HasAuraSupport() end
     BuildPool()
     NP.ready = true
+    -- Musician: out of a fight it swaps a friendly player's plate for its own name frame, which
+    -- showed next to ours (11-21, two names). Its API for nameplate addons turns that off, as its
+    -- own Plater and ElvUI modules do (NP.Claim hides a frame it already made)
+    local musician = _G.Musician and _G.Musician.NamePlates
+    if musician and musician.ForbidHideHealthBars then pcall(musician.ForbidHideHealthBars) end
     NP.PinZoom()
     NoteBlizzardSize()
     NP.HookDriver()

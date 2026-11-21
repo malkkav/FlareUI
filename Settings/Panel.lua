@@ -2325,7 +2325,7 @@ function Panel:Refresh()
                 return 8 - PlaceRows(content, results, -24, function(row)
                     local module = S.modules[row.module]
                     if row.kind == "editmode" then
-                        return module:Title() .. "  ›  " .. row.frameName .. "  ·  " .. L["Edit Mode"]
+                        return module:Title() .. "  ›  " .. row.frameName .. "  " .. ns.DOT .. "  " .. L["Edit Mode"]
                     end
                     local section = row.section and ns.Copy.sections[row.section]
                     return module:Title() .. (section and ("  ›  " .. section) or "")

@@ -636,6 +636,12 @@ local function LayoutFlare(target)
     -- Border: its own choice, None first; an unknown name falls back to FlareUI Thin
     local name = db.border or BORDER_NAME
     if name ~= "None" and not LSM:IsValid("border", name) then name = BORDER_NAME end
+    -- the border art's outer pixels are see-through (about 2): the frame may pass the screen edge by
+    -- that much, so the drawn line can touch it (11-21: a small gap stayed at the bottom)
+    if not flare.fuiSample then
+        local m = name == "None" and 0 or 2
+        flare:SetClampRectInsets(m, -m, -m, m)
+    end
     if name == "None" then
         flare.Border:SetBackdrop(nil)
     else

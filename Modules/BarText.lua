@@ -316,7 +316,7 @@ function BT.Summary(slots)
         for _, item in ipairs((BT.Ordered(slots[slot]))) do items[#items + 1] = BT.SHORT[item] end
         parts[#parts + 1] = #items > 0 and table.concat(items, " / ") or "\226\128\148"   -- an em dash
     end
-    return table.concat(parts, "  \194\183  ")   -- a middle dot between the slots
+    return table.concat(parts, "  " .. (ns.DOT or "\194\183") .. "  ")   -- a middle dot between the slots (Core.lua ns.DOT)
 end
 -- o: name, bar, db() (the stored table), style() ("plain", "plate", "bar"), firstOnly() (optional),
 -- oldKey (optional), changed() after a pick or a reset

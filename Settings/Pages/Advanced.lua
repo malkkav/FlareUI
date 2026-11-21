@@ -411,7 +411,7 @@ function ns.ShowImportPicker(payload)
     if type(payload.uiScale) == "number" then
         bits[#bits + 1] = L["UI scale %.2f (yours %.2f)"]:format(payload.uiScale, UIParent:GetScale())
     end
-    f.info:SetText(table.concat(bits, "  ·  "))
+    f.info:SetText(table.concat(bits, "  " .. ns.DOT .. "  "))
 
     -- one box per part, all ticked
     for _, check in ipairs(f.checks) do

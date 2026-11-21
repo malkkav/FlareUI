@@ -911,9 +911,46 @@ do
         resetValue = function() return "players,npcs" end,
         disabled = Locked, apply = Refresh }
 end
-ShowRow("np.friendlyShow", "nameplateShowFriends", "combatFriendly")
-SwitchesRow("np.friendlyTypes", "np.which", { { "players", "nameplateShowFriendlyPlayers" }, { "npcs", "nameplateShowFriendlyNpcs" },
-    { "minions", "nameplateShowFriendlyPlayerMinions" } }, SetGameCVar)
+-- Show Friendly Plates / Friendly Types (11-21): Forever has no master switch for friendly plates
+-- (nameplateShowFriends does not exist), only the three type switches. Off = all three off, Always =
+-- at least one on (Players when none is), In Combat = Tweaks holds them at 0 out of a fight and keeps
+-- the picks (Tweaks.FriendlyHeld), which Friendly Types then reads and writes instead of the game's
+do
+    local T = ns.Tweaks
+    local FRIENDLY = { "players", "npcs", "minions" }   -- in Tweaks.FRIENDLY_CVARS order
+    local function Picks() return (T.FriendlyHeld and T.FriendlyHeld()) or (T.FriendlyPicks and T.FriendlyPicks()) or "000" end
+    Row{ key = "np.friendlyShow", kind = "choice", choices = { "off", "always", "combat" }, tab = "visibility", section = "np.which",
+        get = function()
+            if S:GetPath("tweaks.combatFriendly") then return "combat" end
+            return Picks() ~= "000" and "always" or "off"
+        end,
+        set = function(v)
+            if InCombatLockdown() or not T.SetFriendlyPicks then return end
+            S:SetPath("tweaks.combatFriendly", v == "combat")
+            TweaksRefresh()   -- (turning combat-only off puts the player's picks back first)
+            if v == "off" then T.SetFriendlyPicks("000")
+            elseif v == "always" and T.FriendlyPicks() == "000" then T.SetFriendlyPicks("100") end
+        end,
+        resetValue = function() return "always" end,
+        disabled = Locked, apply = function() end }
+    Row{ key = "np.friendlyTypes", kind = "dropdown", tab = "visibility", section = "np.which",
+        choices = { "none", { divider = true }, "players", "npcs", "minions" },
+        toggles = { exclusive = { "none" }, tokens = FRIENDLY, empty = "none" },
+        get = function()
+            local picks, on = Picks(), {}
+            for i, t in ipairs(FRIENDLY) do if picks:sub(i, i) == "1" then on[#on + 1] = t end end
+            return #on > 0 and table.concat(on, ",") or "none"
+        end,
+        set = function(value)
+            if InCombatLockdown() or not T.SetFriendlyPicks then return end
+            local want, picks = {}, ""
+            for token in tostring(value or ""):gmatch("[^,]+") do want[token] = true end
+            for _, t in ipairs(FRIENDLY) do picks = picks .. (want[t] and "1" or "0") end
+            if T.FriendlyHeld() then T.ForcedCVars("combatFriendly").combatFriendly = picks
+            else T.SetFriendlyPicks(picks) end
+        end,
+        disabled = Locked, apply = function() end }
+end
 Row{ key = "np.showAll", tab = "visibility", section = "np.which",
     get = function() return GetCVarBool("nameplateShowAll") end,
     set = function(on) SetGameCVar("nameplateShowAll", on) end,

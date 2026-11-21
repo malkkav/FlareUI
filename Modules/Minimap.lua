@@ -635,19 +635,20 @@ end
 local Bar = { cells = {}, lines = {}, picks = {}, at = {}, SUN_ROOM = 30, shown = false }
 Bar.SIDES = { "left", "center", "right" }
 Bar.ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
-Bar.COINS = { "ffffd700", "ffc7c7cf", "ffeda55f" }
+-- (11-21) Blizzard's coin icons after each number, as in the bags, not coloured "g s c" letters
+Bar.COINS = { "Interface\\MoneyFrame\\UI-GoldIcon", "Interface\\MoneyFrame\\UI-SilverIcon", "Interface\\MoneyFrame\\UI-CopperIcon" }
 Bar.WARN, Bar.ALERT, Bar.BAGS_WARN = "|cffff9933", "|cffff4040", 0.85
 
 local function BarMoney()
     local cash = GetMoney() or 0
     local coins = { math.floor(cash / 10000), math.floor(cash / 100) % 100, cash % 100 }
-    local symbols = { _G.GOLD_AMOUNT_SYMBOL or "g", _G.SILVER_AMOUNT_SYMBOL or "s", _G.COPPER_AMOUNT_SYMBOL or "c" }
     -- copper only below 1 gold; silver dropped from 1000 gold
     local last = coins[1] >= 1000 and 1 or coins[1] >= 1 and 2 or 3
     local parts = {}
     for i = 1, last do
         if coins[i] > 0 or #parts > 0 or i == last then
-            parts[#parts + 1] = ("|c%s%d%s|r"):format(Bar.COINS[i], coins[i], symbols[i])
+            -- (the icon the text's height, 2 px after the number, as Blizzard's money strings)
+            parts[#parts + 1] = ("%d|T%s:0:0:2:0|t"):format(coins[i], Bar.COINS[i])
         end
     end
     return table.concat(parts, " ")

@@ -165,13 +165,18 @@ local function Extra(bagID, frame)
     e.holder:Hide()
     e.holder:SetAllPoints(frame)
     e.holder:SetID(bagID)
+    -- (11-21) the crafting bag holds reagents that spells target (filling a crate, milling,
+    -- prospecting): a button made by addon code runs that use tainted, and the game blocked it. Its
+    -- section shows Blizzard's own buttons instead (Bags.AdoptReagentButtons); the keyring's stay ours.
+    e.blizzardButtons = bagID == ReagentID()
     extras[bagID] = e
     return e
 end
 
 local function ExtraButton(e, slot)
     local b = e.buttons[slot]
-    if b or InCombatLockdown() then return b end
+    -- the crafting bag shows Blizzard's own buttons, once its window has made them (Bags.AdoptReagentButtons)
+    if b or InCombatLockdown() or e.blizzardButtons then return b end
     b = CreateFrame("ItemButton", nil, e.holder, "ContainerFrameItemButtonTemplate")
     b:SetID(slot)
     Bags.AddSlotArt(b)
@@ -186,6 +191,7 @@ local function WarmExtraButtons()
     if not frame then return end
     for _, bagID in ipairs(ExtraBags()) do
         local section = Extra(bagID, frame)
+        -- (the keyring only: the crafting bag's buttons are Blizzard's, ExtraButton makes none)
         for slot = 1, C_Container.GetContainerNumSlots(bagID) do
             ExtraButton(section, slot)
         end
@@ -208,6 +214,8 @@ end
 
 -- Blizzard's item update (ContainerFrameMixin:UpdateItems), for one of FlareUI's buttons
 local function FillExtraButton(b)
+    -- (Blizzard's own crafting bag buttons: its bag window fills them)
+    if b.fuiAdopted then return end
     local bagID, slot = b:GetBagID(), b:GetID()
     local info = C_Container.GetContainerItemInfo(bagID, slot)
     local texture = info and info.iconFileID
@@ -271,8 +279,12 @@ local function ParkReagentWindow()
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
         if type(frame) == "table" and frame.GetID then
+            Bags.HookBagWindow(frame)
             local park = frame:IsShown() and frame:GetID() == ReagentID() and ReagentWanted()
                 and Bags:IsCombined() and LayoutWanted()
+            -- its buttons go into the backpack's crafting bag section; when they can't move (a
+            -- protected button in a fight), the window stays where Blizzard put it, usable
+            if park and not Bags.AdoptReagentButtons(frame) then park = false end
             if park then
                 if parked[frame] == nil then parked[frame] = frame:IsClampedToScreen() end
                 frame:SetClampedToScreen(false)
@@ -281,6 +293,7 @@ local function ParkReagentWindow()
                 frame:SetAlpha(0)
             elseif parked[frame] ~= nil then
                 -- the frame holds another bag now (Blizzard places it again)
+                Bags.ReturnReagentButtons(frame)
                 frame:SetClampedToScreen(parked[frame])
                 parked[frame] = nil
                 frame:SetAlpha(1)
@@ -753,7 +766,11 @@ local function Relayout(frame)
             -- The same order as Blizzard's bags: the last slot bottom right.
             for slot = shown, 1, -1 do
                 local b = ExtraButton(e, slot)
-                if b then
+                if b and b.fuiAdopted and InCombatLockdown() and b:IsProtected() then
+                    -- (Blizzard's button can't move in a fight: it keeps its place, its slot is counted)
+                    col = col + 1
+                    if col == columns then col, row = 0, row + 1 end
+                elseif b then
                     b:SetSize(w, h)
                     PlaceSlot(b)
                     b:Show()
@@ -812,6 +829,76 @@ local function Relayout(frame)
     layingOut = false
     Bags.AddSlots.Place(frame, wanted)
     Bags:PlaceBagButtons()
+end
+
+--------------------------------------------------
+-- 3b. THE CRAFTING BAG ON BLIZZARD'S OWN BUTTONS (11-21)
+-- Blizzard's crafting bag window stays open off the screen (ParkReagentWindow); the item buttons it
+-- takes from its pool are moved into the backpack's crafting bag section. They stay Blizzard's: its
+-- window fills them, and a click (a spell aimed at a reagent too) runs its own code untainted. Their
+-- bag is their own "bagid" attribute, so the new parent changes nothing. Each goes back to its window
+-- before that window builds its slots again (the pool may hand it to another bag) or stops holding
+-- the crafting bag. Never moved in a fight when protected: the window is then left where Blizzard puts it.
+--------------------------------------------------
+Bags.adopted = {}   -- Blizzard's button -> the bag window it belongs to
+
+-- false when a button can't move now (the caller leaves the window usable)
+function Bags.AdoptReagentButtons(frame)
+    local id, combined = ReagentID(), Combined()
+    if not (id and combined and type(frame.Items) == "table") then return false end
+    for _, button in ipairs(frame.Items) do
+        if Bags.adopted[button] ~= frame and InCombatLockdown() and button:IsProtected() then return false end
+    end
+    local e = Extra(id, combined)
+    local changed = false
+    for _, button in ipairs(frame.Items) do
+        if Bags.adopted[button] ~= frame then
+            button:SetParent(e.holder)
+            Bags.adopted[button] = frame
+            button.fuiAdopted = true
+            changed = true
+        end
+    end
+    wipe(e.buttons)
+    for _, button in ipairs(frame.Items) do e.buttons[button:GetID()] = button end
+    if changed and not layingOut and combined:IsShown() then Relayout(combined) end
+    return true
+end
+
+-- every button taken from this window (all of them: owner nil) back to it
+function Bags.ReturnReagentButtons(owner)
+    local done = true
+    for button, from in pairs(Bags.adopted) do
+        if not owner or from == owner then
+            if InCombatLockdown() and button:IsProtected() then
+                done = false
+            else
+                button:SetParent(from)
+                button.fuiAdopted = nil
+                Bags.adopted[button] = nil
+            end
+        end
+    end
+    local e = extras[ReagentID()]
+    if e and not next(Bags.adopted) then wipe(e.buttons) end
+    return done
+end
+
+-- once per Blizzard bag window: its buttons come home before it builds its slots again, and a
+-- layout of its own (it anchors them to itself) is followed by the backpack's
+function Bags.HookBagWindow(frame)
+    if frame.fuiBagHooked or not (frame.UpdateItemSlots and frame.UpdateItemLayout) then return end
+    frame.fuiBagHooked = true
+    hooksecurefunc(frame, "ClearItems", function(f) Bags.ReturnReagentButtons(f) end)
+    hooksecurefunc(frame, "UpdateItemLayout", function(f)
+        for _, from in pairs(Bags.adopted) do
+            if from == f then
+                local combined = Combined()
+                if combined and combined:IsShown() and not layingOut then Relayout(combined) end
+                return
+            end
+        end
+    end)
 end
 
 local function ExtraLayoutChanged(event)
@@ -2087,6 +2174,8 @@ function Bags:Init()
         if event == "ITEM_LOCK_CHANGED" then
             local section = slotID and extras[bagID]
             local button = section and section.holder:IsShown() and section.buttons[slotID]
+            -- (Blizzard's own crafting bag buttons: its window greys them itself)
+            if button and button.fuiAdopted then return end
             local frame = button and Combined()
             if frame and frame:IsShown() and button:IsShown() then
                 local info = C_Container.GetContainerItemInfo(bagID, slotID)

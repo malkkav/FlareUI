@@ -1336,6 +1336,11 @@ local function BuildSettings(key)
                   or info.kind == "timer" and L["The time left on the right of the bar."]
                   or L["The seconds left on the right of the bar (and Waiting)."] })
     end
+    -- Show Icon (11-21, Archy; off): the seal's icon at the bar's left end
+    if info.kind == "seal" then
+        add({ name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = false, get = get("showIcon", false), set = set("showIcon"),
+              desc = L["The seal's icon at the left end of the bar, so you know it at a glance."] })
+    end
     -- Health Colour: the health bar's Behaviour, as on the unit frames (a saved Low Health Colour
     -- switch reads as Low Health: LOW_HEALTH.Mode)
     if info.kind == "health" then
@@ -1931,6 +1936,35 @@ local function SealIDs(seal)
     return set
 end
 
+-- Show Icon (off): the seal's own icon at the bar's left end, inside the border, a square as tall as
+-- the bar; the bar and the name start after it, the whole bar keeps its size. The spell's icon, so
+-- it is known in a fight too. owner: a seal's bar, or the holder for the Edit Mode sample.
+function Seal.PlaceIcon(owner, bar, cfg, PADDING, spellID)
+    local show = cfg.showIcon == true
+    local icon = owner.SealIcon
+    if show and not icon then
+        local frame = CreateFrame("Frame", nil, owner)
+        frame:SetFrameLevel(owner:GetFrameLevel() + 2)
+        icon = frame:CreateTexture(nil, "ARTWORK")
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        owner.SealIcon = icon
+    end
+    bar:ClearAllPoints()
+    if show then
+        local size = math.max(1, (owner:GetHeight() or 0) - 2 * PADDING)
+        icon:SetSize(size, size)
+        icon:ClearAllPoints()
+        icon:SetPoint("TOPLEFT", owner, "TOPLEFT", PADDING, -PADDING)
+        icon:SetTexture(C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(spellID) or nil)
+        icon:Show()
+        bar:SetPoint("TOPLEFT", icon, "TOPRIGHT", 1, 0)
+    else
+        if icon then icon:Hide() end
+        bar:SetPoint("TOPLEFT", owner, "TOPLEFT", PADDING, -PADDING)
+    end
+    bar:SetPoint("BOTTOMRIGHT", owner, "BOTTOMRIGHT", -PADDING, PADDING)
+end
+
 -- one seal's bar, in the holder's look (section 6's sizes, texture, border, font)
 local function LayoutPart(part, holder, cfg, font)
     local height = cfg.height or 14
@@ -1944,9 +1978,7 @@ local function LayoutPart(part, holder, cfg, font)
     part.Bar:SetStatusBarTexture(texture)
     part.Bar.bg:SetTexture(texture)
     K.SetBarBackground(part.Bar, cfg.bgOpacity)
-    part.Bar:ClearAllPoints()
-    part.Bar:SetPoint("TOPLEFT", part, "TOPLEFT", PADDING, -PADDING)
-    part.Bar:SetPoint("BOTTOMRIGHT", part, "BOTTOMRIGHT", -PADDING, PADDING)
+    Seal.PlaceIcon(part, part.Bar, cfg, PADDING, part.seal.id)
     local c = RBC[part.seal.key] or { 1, 1, 1 }
     part.Bar:SetStatusBarColor(c[1], c[2], c[3])
     K.ApplyFont(part.Label, font)
@@ -2031,6 +2063,7 @@ local function SampleShown(holder, shown)
     holder.Bar:SetShown(shown)
     holder.Text:SetShown(shown and Cfg("seal").showTimer ~= false)
     holder.Label:SetShown(shown and Cfg("seal").showLabel ~= false)
+    if holder.SealIcon then holder.SealIcon:SetShown(shown and Cfg("seal").showIcon == true) end
 end
 
 function Seal.Update(holder)
@@ -2056,6 +2089,11 @@ function Seal.Preview(holder)
 end
 
 function Seal.Layout(holder, cfg, font)
+    -- the sample (Edit Mode, settings preview) shows the icon too, Seal of Righteousness's
+    if holder.Bar then
+        Seal.PlaceIcon(holder, holder.Bar, cfg, BarPadding(cfg, cfg.height or 14), SEALS[1].id)
+        if holder.SealIcon and not holder.Bar:IsShown() then holder.SealIcon:Hide() end
+    end
     if holder.fuiSample then return end
     for _, part in pairs(Seal.parts) do LayoutPart(part, holder, cfg, font) end
 end

@@ -538,7 +538,7 @@ local function Resolve()
             if def.pet == "WARLOCK" then
                 for _, id in ipairs(WARLOCK_SUMMONS) do if Known(id) then any = true end end
             end
-            if any then entry = { def = def, names = {}, icon = SpellIcon(def.pet == "HUNTER" and CALL_PET or 688) } end
+            if any then entry = { def = def, names = {}, icon = SpellIcon(def.pet == "HUNTER" and CALL_PET or BR.WarlockPick() or 688) } end
             usable = false
         end
         if entry then active[#active + 1] = entry end
@@ -1275,6 +1275,9 @@ local function PetFix(entry)
         end
         if next(names) and HasBuff("player", names, 0) then return nil end
     end
+    -- the pet picked in the icon's menu (11-21), else the last one summoned
+    local picked = BR.WarlockPick()
+    if picked then return picked, "player" end
     local me = ns.CharDB and ns.CharDB()
     local last = me and me.lastSummon
     if last and Known(last) then return last, "player" end
@@ -1934,8 +1937,29 @@ function BR.Menu(owner)
             Radio(L["Only Tanks"], "thorns", "tank")
             Radio(L["Only Me"], "thorns", "self")
             Radio(L["Everyone"], "thorns", "all")
+        elseif entry.def.pet == "WARLOCK" then
+            -- (11-21, Bremerton) which demon a click summons, as the weapon buffs pick theirs
+            root:CreateDivider()
+            root:CreateTitle(L["Pet to Summon"])
+            Radio(L["Last Used"], "warlockPet", "auto")
+            for _, id in ipairs(WARLOCK_SUMMONS) do
+                local name = SpellName(id)
+                if name and (Known(id) or db.warlockPet == id) then Radio(name, "warlockPet", id) end
+            end
         end
+        -- the Buff Reminders page (11-21, Tride)
+        root:CreateDivider()
+        root:CreateButton(L["FlareUI Settings"], function()
+            if ns.SettingsPanel then ns.SettingsPanel:Open("br") end
+        end)
     end)
+end
+
+-- the demon picked in the warlock pet icon's menu, if you know it (nil: Last Used)
+function BR.WarlockPick()
+    local db = GetDb()
+    local id = db and db.warlockPet
+    if type(id) == "number" and Known(id) then return id end
 end
 
 -- the counts' and timers' fonts, for the page's Fonts tab (key "countFont" or "timeFont")

@@ -41,7 +41,9 @@ function Widget:HookScript(event, callback)
 end
 for _, name in ipairs({'SetPoint', 'ClearAllPoints', 'SetTexture', 'SetAtlas', 'SetTextColor',
         'SetAllPoints', 'SetTexCoord', 'SetRotation', 'SetJustifyH', 'SetFrameLevel', 'SetNormalTexture',
-        'SetHighlightTexture', 'RegisterForClicks', 'SetVertexColor', 'SetWordWrap', 'EnableMouse'}) do Widget[name] = noop end
+        'SetHighlightTexture', 'RegisterForClicks', 'SetVertexColor', 'SetWordWrap', 'EnableMouse', 'SetAlpha',
+        'SetClampedToScreen'}) do Widget[name] = noop end
+function Widget:IsClampedToScreen() return true end
 function Widget:GetFrameLevel() return 1 end
 Widget.IsProtected = no
 
@@ -52,6 +54,7 @@ local contents = {[1] = {itemID = 101}, [2] = {itemID = 102}}
 local keyringAvailable, secured = true, true
 local env = setmetatable({
     CreateFrame = widget, InCombatLockdown = no,
+    wipe = function(t) for k in pairs(t) do t[k] = nil end return t end,
     C_AddOns = {IsAddOnLoaded = function(name) return name == 'Hide2FABagSlots' end},
     C_Timer = {After = function(_, callback) callback() end},
     C_CVar = {GetCVarBool = yes}, C_ActionBar = {ShouldShowKeyring = function() return keyringAvailable end},
@@ -97,10 +100,22 @@ local function startSession(char)
     Bags.DecorateButton, Bags.PlaceBagButtons, Bags.FollowWindows = noop, noop, noop
     Bags.StyleMoney, Bags.StyleFreeSlots, Bags.GoldList.Hook, Bags.Bank.Hook, Bags.Sort.Hook = noop, noop, noop, noop, noop
     Bags:Init()
+    -- Blizzard's crafting bag window, parked off the screen: its own buttons go into the backpack
+    local reagentWindow = widget('Frame')
+    reagentWindow:SetID(5)
+    reagentWindow.Items = {}
+    for slot = 1, 2 do
+        local b = widget('ItemButton', nil, reagentWindow)
+        b:SetID(slot)
+        reagentWindow.Items[slot] = b
+    end
+    reagentWindow.ClearItems, reagentWindow.UpdateItemSlots, reagentWindow.UpdateItemLayout = noop, noop, noop
+    env.ContainerFrame1 = reagentWindow
+    env.UpdateContainerFrameAnchors()
 end
 startSession({})
 
-local function layout() combined:UpdateItemLayout() end
+local function layout() env.UpdateContainerFrameAnchors(); combined:UpdateItemLayout() end
 local function bagUpdate()
     for _, f in ipairs(frames) do
         if f.events.BAG_UPDATE_DELAYED then f.scripts.OnEvent(f, 'BAG_UPDATE_DELAYED') end
@@ -227,3 +242,23 @@ assert(not items[1]:IsShown() and items[2]:IsShown() and items[3]:IsShown()
 login(secondCharacter)
 assert(items[1]:IsShown() and not items[3]:IsShown(), 'another character retains its own folds')
 print('PASS: backpack section folds survive reload and login per character')
+
+-- 11-21: the crafting bag section shows Blizzard's own buttons (a spell aimed at a reagent in a
+-- button made by FlareUI was blocked), and they go back to their window when it stops holding the bag
+do
+    local window = env.ContainerFrame1
+    local own = {}
+    for _, b in ipairs(window.Items) do own[b] = true end
+    db.bagReagent = true
+    layout()
+    for _, b in ipairs(frames) do
+        if b.kind == 'ItemButton' and b:GetBagID() == 5 then
+            assert(own[b], 'a crafting bag button FlareUI made')
+            assert(b:GetParent() ~= window, 'Blizzard crafting bag button not in the backpack')
+        end
+    end
+    db.bagReagent = false
+    layout()
+    for _, b in ipairs(window.Items) do assert(b:GetParent() == window, 'button not given back to its window') end
+    print('PASS: the crafting bag section uses Blizzard\'s own buttons and gives them back')
+end

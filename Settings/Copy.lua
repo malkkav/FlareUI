@@ -1090,7 +1090,7 @@ ns.Copy = {
             tags = { "aura swipe", "yellow overlay" },
         },
         ["ch.border"] = {
-            desc = L["The border around the chat and its edit box. None hides it."],
+            desc = L["The border around the chat. None hides it."],
             label = L["Border"],
             section = "ch.frame",
             tags = { "frame border" },
@@ -1119,10 +1119,25 @@ ns.Copy = {
             section = "ch.editBoxSection",
             tip = L["Below and Above keep the latest messages in view."],
         },
+        ["ch.editBoxBorder"] = {
+            choices = { L["None"], L["FlareUI Thick"], L["FlareUI Thin"] },
+            desc = L["The border around the Modern edit box. None leaves the dark box without an edge."],
+            label = L["Edit Box Border"],
+            section = "ch.editBoxSection",
+            tags = { "edit box border", "typing box border" },
+        },
         ["ch.editBoxOpacity"] = {
-            desc = L["How dark the edit box's background is."],
+            desc = L["How see-through the edit box is."],
             label = L["Edit Box Opacity"],
             section = "ch.editBoxSection",
+        },
+        ["ch.editBoxStyle"] = {
+            choices = { L["FlareUI"], L["Modern"] },
+            desc = L["How the box you type in looks:\n* FlareUI: Blizzard's own edit box\n* Modern: a dark box with the border of your choice"],
+            label = L["Edit Box Style"],
+            section = "ch.editBoxSection",
+            tags = { "edit box style", "typing box", "input box", "blizzard edit box" },
+            tip = L["Edit Box Border shows with Modern only."],
         },
         ["ch.em.fadeDelay"] = {
             desc = L["How long the chat stays, in seconds, after it was last needed. Then it fades."],

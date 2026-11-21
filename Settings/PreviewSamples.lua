@@ -429,7 +429,7 @@ function R.tooltip(c, spec)
     c:Text('tooltipTitle', item and '|cffa335ee' .. L["Robes of the Archmage"] .. '|r' or (Get('tooltips.nameColor') == 'class' and '|cff69ccf0Aeloria|r' or 'Aeloria'), 16, 18, c.width - 32, Font('tooltips.titleFont')):SetWordWrap(false)
     local lines = {}
     if item then
-        lines = { L["Binds when picked up"], L["Chest"] .. ' · ' .. L["Cloth"], '96 ' .. L["Armor"],
+        lines = { L["Binds when picked up"], L["Chest"] .. ' ' .. ns.DOT .. ' ' .. L["Cloth"], '96 ' .. L["Armor"],
             Get('tooltips.shortItemStats') and '+12 ' .. L["Intellect"] or L["Increases Intellect by 12."],
             '+10 ' .. L["Stamina"], L["Requires Level 57"], '|cff1eff00' .. L["Increases spell damage by 40."] .. '|r' }
         if Get('tooltips.showItemID') then lines[#lines + 1] = 'ID: 14152' end

@@ -58,6 +58,9 @@ ns.WINDOW_STYLE = {
 
 -- Blizzard's health green and mana blue, toned down; other powers keep Blizzard's colours
 ns.HEALTH_GREEN = { 0.15, 0.82, 0.15 }
+-- The dot between parts of a line ("Chest · Cloth"): the Russian client's fonts have no middle dot and
+-- draw a box, so a dash there (11-21, Archy)
+ns.DOT = (GetLocale and GetLocale() == "ruRU") and "-" or "\194\183"
 ns.MANA_BLUE = { 0.18, 0.48, 1.00 }   -- bright, to stand out from the deep blue of shaman health bars
 
 -- A power's bar colour (r, g, b), or nil when Blizzard has none for it
@@ -488,6 +491,7 @@ local defaults = {
             -- Edit Box (fixed look: black background + tooltip border tinted ns.BORDER_COLOR)
             editBoxOpacity = 1.0,
             editBoxPosition = "inside",  -- inside | below | above the chat window
+            editBoxStyle = "modern",     -- Edit Box Style: modern | flareui (Blizzard's own art); Edit Box Border: editBoxBorder, unset reads the chat's (Chat.lua Chat.EditBoxBorder)
 
             -- Header buttons
             showVolume = true,

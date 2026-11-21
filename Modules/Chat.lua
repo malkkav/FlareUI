@@ -19,6 +19,34 @@ LibStub("AceEvent-3.0"):Embed(Chat)
 LibStub("AceTimer-3.0"):Embed(Chat)
 LibStub("AceHook-3.0"):Embed(Chat)
 
+-- The header's own frames (the tab bar, the header buttons, the drag marker) over the window: the
+-- chat's strata, high up in it, and the meter's strata while the Meter tab raises it (DamageMeter.lua
+-- ApplyChatTabStrata calls Chat.ApplyHeaderStrata). They were DIALOG before 11-21, over every quest,
+-- merchant and crafting window (MEDIUM), so those windows' buttons under the chat took no clicks.
+Chat.headerFrames = setmetatable({}, { __mode = "k" })   -- frame -> its level
+function Chat.HeaderStrata()
+    local meter = _G.DamageMeter
+    local raised = meter and meter.FlareUI_ChatStrata
+    if raised and raised ~= "BACKGROUND" then return raised end
+    local chat = _G.ChatFrame1
+    local strata = chat and chat:GetFrameStrata()
+    return (canaccessvalue(strata) and strata) or "LOW"
+end
+function Chat.SetHeaderStrata(frame, level)
+    Chat.headerFrames[frame] = level
+    frame:SetFrameStrata(Chat.HeaderStrata())
+    frame:SetFrameLevel(level)
+end
+function Chat.ApplyHeaderStrata()
+    local strata = Chat.HeaderStrata()
+    for frame, level in pairs(Chat.headerFrames) do
+        if not frame:IsForbidden() and frame:GetFrameStrata() ~= strata then
+            frame:SetFrameStrata(strata)
+            frame:SetFrameLevel(level)
+        end
+    end
+end
+
 --------------------------------------------------
 -- 2. UPVALUES
 --------------------------------------------------
@@ -1158,8 +1186,7 @@ local function StartHeaderDrag(key, header)
         if not holder then
             holder = CreateFrame("Frame", nil, header)
             holder:SetAllPoints()
-            holder:SetFrameStrata("DIALOG")
-            holder:SetFrameLevel(230)
+            Chat.SetHeaderStrata(holder, 230)
             header.FlareUI_DragMarker = holder
         end
         local marker = holder.bar
@@ -1285,8 +1312,7 @@ function Chat:StyleHeaderButtonsBody(chatFrame)
         btn:ClearAllPoints()
         btn:SetPoint("TOPRIGHT", header, "TOPRIGHT", HeaderButtonX(db, key), HEADER_ICON_Y)
         btn:SetScale(HEADER_ICON_SCALE)
-        btn:SetFrameStrata("DIALOG")
-        btn:SetFrameLevel(210)
+        Chat.SetHeaderStrata(btn, 210)
 
         btn:SetSize(22, 22)
 
@@ -1929,8 +1955,7 @@ function Chat:CreateCustomTabBar(chatFrame)
     scrollFrame:SetHeight(24)
     scrollFrame:SetPoint("TOPLEFT", chatFrame.FlareUI_Skin, "TOPLEFT", 10, 0)
     scrollFrame:SetPoint("TOPRIGHT", chatFrame.FlareUI_Skin, "TOPRIGHT", -20, 0)
-    scrollFrame:SetFrameStrata("DIALOG")
-    scrollFrame:SetFrameLevel(200)
+    Chat.SetHeaderStrata(scrollFrame, 200)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetHeight(24)
@@ -1957,15 +1982,13 @@ function Chat:CreateCustomTabBar(chatFrame)
 end
 
 -- Reordering tabs by drag: a drop moves the window in Blizzard's dock list and FCF_SaveDock keeps
--- the order. General stays first and the shown Combat Log second, as in Blizzard's chat.
+-- the order. General stays first, as in Blizzard's chat.
 local TAB_MARKER_WIDTH, TAB_MARKER_HEIGHT = 2, 16
 
--- How many windows lead the dock list and stay put
+-- How many windows lead the dock list and stay put: General only. (Until 11-21 the Combat Log was
+-- held second too; Blizzard only docks it there on a chat reset and lets it move, and players asked
+-- to move it to the end. KeepCombatLogSecond is a no-op with one fixed window.)
 local function FixedWindowCount()
-    local db = GetDb()
-    local list = GeneralDockManager and GeneralDockManager.DOCKED_CHAT_FRAMES
-    local combatLog = _G.ChatFrame2
-    if combatLog and list and tIndexOf(list, combatLog) and not (db and db.hideCombatLog) then return 2 end
     return 1
 end
 
@@ -3152,14 +3175,82 @@ function Chat.MisspelledFollow(eb)
     C_Timer.After(1, function() Chat.MisspelledRedraw(eb) end)
 end
 
--- The edit box's look on its backdrop frame: black fill inside the chat's border (also the settings
--- preview's sample box)
+-- Blizzard's own edit box art (ChatFrameEditBoxTemplate), for a chat with no border
+Chat.EDIT_BOX_ART = {
+    Left = "Interface\\ChatFrame\\UI-ChatInputBorder-Left2", Right = "Interface\\ChatFrame\\UI-ChatInputBorder-Right2",
+    Mid = "Interface\\ChatFrame\\UI-ChatInputBorder-Mid2",
+    FocusLeft = "Interface\\ChatFrame\\UI-ChatInputBorderFocus-Left", FocusRight = "Interface\\ChatFrame\\UI-ChatInputBorderFocus-Right",
+    FocusMid = "Interface\\ChatFrame\\UI-ChatInputBorderFocus-Mid",
+}
+
+-- EDIT BOX STYLE (11-21, Malkkav): FlareUI = Blizzard's own edit box art, always; Modern (default) =
+-- a dark box with its own Edit Box Border (None, FlareUI Thick, FlareUI Thin; shown with Modern only).
+-- Edit Box Opacity fades either. Before 11-21 the box took the chat's Border: a setup that never
+-- picked an Edit Box Border keeps the edge it had (FlareUI Thick stays Thick, None stays None, any
+-- other border becomes Thin).
+Chat.EDIT_BOX_BORDERS = { none = "None", thick = "FlareUI Thick", thin = "FlareUI Thin" }
+function Chat.EditBoxStyle(db)
+    return (db and db.editBoxStyle == "flareui") and "flareui" or "modern"
+end
+function Chat.EditBoxBorder(db)
+    local v = db and db.editBoxBorder
+    if Chat.EDIT_BOX_BORDERS[v] then return v end
+    local chat = db and (db.frameStyle == "flareui" and "FlareUI Thick" or db.borderTexture)
+    if chat == "None" then return "none" end
+    if chat == "FlareUI Thick" then return "thick" end
+    return "thin"
+end
+local function EditBoxBorderFile(db)
+    local name = Chat.EDIT_BOX_BORDERS[Chat.EditBoxBorder(db)]
+    if name == "None" or not LSM:IsValid("border", name) then return nil end
+    return LSM:Fetch("border", name)
+end
+
+-- The Modern edit box's look on its backdrop frame: a dark fill inside its Edit Box Border (also the
+-- settings preview's sample box)
 function Chat.EditBoxBackdrop(bg, db)
-    local edgeFile = GetBorderFile(db)
-    local inset = BORDER_INSET
-    bg:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = edgeFile, tile = true, tileSize = 16, edgeSize = ns.BorderEdgeSize(edgeFile, BORDER_SIZE), insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    local edgeFile = EditBoxBorderFile(db)
+    local inset = edgeFile and BORDER_INSET or 0
+    bg:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = edgeFile, tile = true, tileSize = 16,
+        edgeSize = edgeFile and ns.BorderEdgeSize(edgeFile, BORDER_SIZE) or nil, insets = { left = inset, right = inset, top = inset, bottom = inset } })
     bg:SetBackdropColor(0, 0, 0, db.editBoxOpacity or 1)
-    bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
+    if edgeFile then bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1) end
+end
+
+-- (11-21, Malkkav) Blizzard's silver edit box art in FlareUI's bronze: greyed, then tinted the border
+-- bronze brightened by a third (a greyed texture at full bronze comes out darker), as the minimap's eye
+function Chat.TintEditArt(tex)
+    local c = ns.BORDER_COLOR
+    tex:SetDesaturated(true)
+    tex:SetVertexColor(math_min(1, c.r * 1.35), math_min(1, c.g * 1.35), math_min(1, c.b * 1.35))
+end
+
+-- the FlareUI style on the settings preview's sample box: Blizzard's three pieces, as its template has them
+function Chat.SampleEditArt(eb, db)
+    local show = Chat.EditBoxStyle(db) == "flareui"
+    if show and not eb.ArtLeft then
+        eb.ArtLeft = eb:CreateTexture(nil, "BACKGROUND")
+        eb.ArtLeft:SetTexture(Chat.EDIT_BOX_ART.Left)
+        eb.ArtLeft:SetSize(32, 32)
+        eb.ArtLeft:SetPoint("LEFT")
+        eb.ArtRight = eb:CreateTexture(nil, "BACKGROUND")
+        eb.ArtRight:SetTexture(Chat.EDIT_BOX_ART.Right)
+        eb.ArtRight:SetSize(32, 32)
+        eb.ArtRight:SetPoint("RIGHT")
+        eb.ArtMid = eb:CreateTexture(nil, "BACKGROUND")
+        eb.ArtMid:SetTexture(Chat.EDIT_BOX_ART.Mid, "REPEAT")
+        eb.ArtMid:SetHorizTile(true)
+        eb.ArtMid:SetPoint("TOPLEFT", eb.ArtLeft, "TOPRIGHT")
+        eb.ArtMid:SetPoint("BOTTOMRIGHT", eb.ArtRight, "BOTTOMLEFT")
+    end
+    for _, tex in ipairs({ eb.ArtLeft or {}, eb.ArtRight or {}, eb.ArtMid or {} }) do
+        if tex.SetShown then
+            tex:SetShown(show)
+            tex:SetAlpha(db.editBoxOpacity or 1)
+            Chat.TintEditArt(tex)
+        end
+    end
+    eb.Bg:SetShown(not show)
 end
 
 function Chat:StyleEditBox(chatFrame, db)
@@ -3167,11 +3258,35 @@ function Chat:StyleEditBox(chatFrame, db)
     local eb = chatFrame.editBox or _G[chatFrame:GetName() .. "EditBox"]
     if not eb then return end
     local name = eb:GetName()
+    -- Edit Box Style FlareUI: Blizzard's own art (Edit Box Opacity fades it); Modern: FlareUI's box
+    local blizzardArt = Chat.EditBoxStyle(db) == "flareui"
+    -- Blizzard colours the inner frame you see while typing by channel (white for Say, blue for
+    -- Party...) on every channel change: in the FlareUI style it goes back to the bronze (11-21,
+    -- Malkkav); the "Say:" text keeps the channel's colour
+    if not eb.FlareUI_FocusTintHooked and eb.SetFocusRegionVertexColors then
+        eb.FlareUI_FocusTintHooked = true
+        hooksecurefunc(eb, "SetFocusRegionVertexColors", function(self)
+            if Chat.EditBoxStyle(GetDb()) ~= "flareui" then return end
+            for _, key in ipairs({ "focusLeft", "focusMid", "focusRight" }) do
+                if self[key] then Chat.TintEditArt(self[key]) end
+            end
+        end)
+    end
     if name then
         local texNames = { "Left", "Right", "Mid", "FocusLeft", "FocusRight", "FocusMid" }
         for _, tName in ipairs(texNames) do
             local tex = _G[name .. tName]
-            if tex then tex:Hide(); if tex.SetAlpha then tex:SetAlpha(0) end; if tex.SetTexture then tex:SetTexture(nil) end end
+            if tex then
+                if blizzardArt then
+                    tex:SetTexture(Chat.EDIT_BOX_ART[tName])
+                    tex:SetAlpha(db.editBoxOpacity or 1)
+                    Chat.TintEditArt(tex)
+                    -- (the focus pieces: Blizzard shows them while you type)
+                    if not tName:find("^Focus") then tex:Show() end
+                else
+                    tex:Hide(); if tex.SetAlpha then tex:SetAlpha(0) end; if tex.SetTexture then tex:SetTexture(nil) end
+                end
+            end
         end
     end
     if eb.headerSuffix then eb.headerSuffix:Hide(); if eb.headerSuffix.SetAlpha then eb.headerSuffix:SetAlpha(0) end; if eb.headerSuffix.SetTexture then eb.headerSuffix:SetTexture(nil) end end
@@ -3223,6 +3338,7 @@ function Chat:StyleEditBox(chatFrame, db)
     end
 
     Chat.EditBoxBackdrop(bg, db)
+    bg:SetShown(not blizzardArt)
 
     eb:SetHistoryLines(100)
     eb:SetAltArrowKeyMode(false)
@@ -3328,8 +3444,7 @@ function Chat:SetupVolumeButton(chatFrame, db)
     btn:SetScale(HEADER_ICON_SCALE)
     btn:SetPoint("TOPRIGHT", chatFrame.FlareUI_Skin, "TOPRIGHT", HeaderButtonX(db, "volume"), HEADER_ICON_Y)
 
-    btn:SetFrameStrata("DIALOG")
-    btn:SetFrameLevel(210)
+    Chat.SetHeaderStrata(btn, 210)
     EnableHeaderDrag(btn, "volume")
 
     UpdateIcon()
@@ -5032,6 +5147,7 @@ function Chat.DrawSample(f)
         eb:SetPoint("TOPRIGHT", text, "BOTTOMRIGHT", 2, 30)
     end
     Chat.EditBoxBackdrop(eb.Bg, db)
+    if eb.Bg and Chat.SampleEditArt then Chat.SampleEditArt(eb, db) end
     local ePath, eSize, eFlags = GetFontData(db.editBoxFont)
     for _, fs in ipairs({ eb.Header, eb.Typed }) do
         ns.SetFont(fs, ePath, eSize, eFlags)

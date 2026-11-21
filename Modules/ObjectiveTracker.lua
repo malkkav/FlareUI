@@ -125,11 +125,9 @@ local TEXT = {
     timeLeft = _G.TIME_REMAINING or "Time Remaining:",
     clickComplete = _G.QUEST_WATCH_CLICK_TO_COMPLETE or "Click to complete quest",
     waypoint = _G.WAYPOINT_OBJECTIVE_FORMAT_OPTIONAL or "%s",
-    showMap = _G.OBJECTIVES_SHOW_QUEST_MAP or "Show on Map",
     linkChat = _G.SHARE_IN_CHAT or "Link to Chat",
     focus = _G.SUPER_TRACK_QUEST or "Focus",
     unfocus = _G.STOP_SUPER_TRACK_QUEST or "Stop Focusing",
-    openLog = _G.OBJECTIVES_VIEW_IN_QUESTLOG or "Open Quest Log",
     untrack = _G.OBJECTIVES_STOP_TRACKING or "Untrack Quest",
     track = _G.TRACK_QUEST or "Track Quest",
     share = _G.SHARE_QUEST or "Share Quest",
@@ -663,23 +661,6 @@ local function CanOpenPanels()
     return not refusal
 end
 
--- A map addon that finishes opening the map a moment later (OpenMap) can reset the quest panel to
--- the list after the details were shown: the first click then only opened the map. The details are
--- checked again on the next frames and shown again when another quest, or none, is up.
-local OPEN_RECHECKS = { 0, 0.1, 0.3 }
-
-local function OpenToDetails(questID)
-    QuestMapFrame_OpenToQuestDetails(questID)
-    for _, delay in ipairs(OPEN_RECHECKS) do
-        C_Timer.After(delay, function()
-            if InCombatLockdown() or not (WorldMapFrame and WorldMapFrame:IsShown()) then return end
-            local shown = QuestMapFrame_GetDetailQuestID and QuestMapFrame_GetDetailQuestID()
-            local detailsUp = QuestMapFrame.DetailsFrame and QuestMapFrame.DetailsFrame:IsShown()
-            if shown ~= questID or not detailsUp then QuestMapFrame_OpenToQuestDetails(questID) end
-        end)
-    end
-end
-
 -- The Gamepad UI: FlareUI must not open the quest log itself (a panel opened from addon code
 -- taints the pad's binding stack), so a click picks the quest and the details show when the
 -- player opens the quest log the pad's own way (the radial's Quests & Maps, or its key). Only
@@ -725,16 +706,12 @@ local function OpenQuest(questID)
     if info and info.isAutoComplete and C_QuestLog.IsComplete(questID) then
         ShowQuestComplete(questID)
         if RemoveAutoQuestPopUp then RemoveAutoQuestPopUp(questID) end
-    elseif QuestMapFrame_OpenToQuestDetails then
-        OpenToDetails(questID)
+    elseif UIErrorsFrame then
+        -- (11-21) the map and the details open only through Blizzard's own tracker (OT.ShowSecureClick,
+        -- a plain left click): opened from here they would taint the map's pins. A quest Blizzard's
+        -- tracker doesn't list has no header to click: the player opens the log themself.
+        UIErrorsFrame:AddMessage(L["Open your quest log to read this quest."], 1, 0.82, 0)
     end
-end
-
--- The world map on the quest's zone
-local function ShowOnMap(questID)
-    if not CanOpenPanels() then return end
-    local mapID = GetQuestUiMapID(questID)
-    if mapID and mapID ~= 0 then OpenWorldMap(mapID) elseif QuestMapFrame_OpenToQuestDetails then QuestMapFrame_OpenToQuestDetails(questID) end
 end
 
 local function LinkToChat(questID)
@@ -925,8 +902,8 @@ local function ShowQuestMenu(owner, questID)
         root:CreateTitle(C_QuestLog.GetTitleForQuestID(questID) or "?")
         local focused = C_SuperTrack.GetSuperTrackedQuestID() == questID
         root:CreateButton(focused and TEXT.unfocus or TEXT.focus, function() ToggleFocus(questID) end)
-        root:CreateButton(TEXT.openLog, function() OpenQuest(questID) end)
-        root:CreateButton(TEXT.showMap, function() ShowOnMap(questID) end)
+        -- (no Open Quest Log or Show on Map since 11-21: from a menu they would taint the map's pins;
+        -- a left click on the quest opens both through Blizzard's own tracker)
         root:CreateButton(TEXT.linkChat, function() LinkToChat(questID) end)
         local share = root:CreateButton(TEXT.share, function()
             QuestUtil.ShareQuest(questID)
@@ -1222,6 +1199,81 @@ function Build.LineLook(line, text, kind, cfg, color, w, wrap)
     return h
 end
 
+-- SECURE CLICK INTO BLIZZARD'S TRACKER (11-21). Opening the map or a quest's details from addon code
+-- builds the map's quest pins under FlareUI's taint, and pins made that way stay tainted: in a fight
+-- the game then blocks them (SetPassThroughButtons) even when the map is opened by its key. Even
+-- C_Map.OpenWorldMap runs Blizzard's opener tainted on Forever (tested 11-21). So one secure button
+-- covers the quest line under the mouse and clicks that quest's header in Blizzard's parked tracker:
+-- Blizzard's own code opens the map and the details (or completes an auto-complete quest), untainted.
+-- Only a plain left click goes there; every other click reaches the line's own handler (PostClick).
+-- Out of fights only (attributes can't change in one; the button hides as a fight starts, and the
+-- line's click then refuses to open panels, as before). Placed by screen position, never anchored to
+-- the line: a line anchored to a secure button could not move in a fight. The idea is EllesmereUI's
+-- tracker's (ideas only).
+C.QUEST_MODULES = { "QuestObjectiveTracker", "CampaignQuestObjectiveTracker" }
+function OT.BlizzardQuestHeader(questID)
+    for _, name in ipairs(C.QUEST_MODULES) do
+        local module = _G[name]
+        local ok, block = false, nil
+        if module and module.GetExistingBlock then ok, block = pcall(module.GetExistingBlock, module, questID) end
+        local headerButton = ok and block and block.HeaderButton
+        if headerButton and not headerButton:IsForbidden() then return headerButton end
+    end
+end
+function OT.HideSecureClick()
+    local o = OT.secureClick
+    if o and o:IsShown() and not InCombatLockdown() then o:Hide() end
+end
+function OT.ShowSecureClick(line)
+    if InCombatLockdown() or state.editMode or ns.IsGamepadUI() then return end
+    local questID = line.questID
+    if not questID or line.popupQuestID or line.zone or line.recipeID then OT.HideSecureClick() return end
+    local headerButton = OT.BlizzardQuestHeader(questID)
+    if not headerButton then OT.HideSecureClick() return end
+    local o = OT.secureClick
+    if not o then
+        o = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
+        o:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
+        o:SetAttribute("useOnKeyDown", false)
+        o:SetAttribute("type1", "click")
+        -- (only the plain left click: a modified one finds no "shift-type1" and takes the line's path)
+        o:SetScript("PostClick", function(self, button)
+            local l = self.line
+            if not l then return end
+            if button == "LeftButton" and not IsModifierKeyDown() then return end   -- Blizzard's header took it
+            OnLineClick(l, button)
+        end)
+        o:SetScript("OnEnter", function(self)
+            local l = self.line
+            local onEnter = l and l:GetScript("OnEnter")
+            if onEnter then onEnter(l) end
+        end)
+        o:SetScript("OnLeave", function(self)
+            local l = self.line
+            local onLeave = l and l:GetScript("OnLeave")
+            if onLeave then onLeave(l) end
+            OT.HideSecureClick()
+        end)
+        OT.secureClick = o
+    end
+    -- only the part of the line inside the list (it clips what scrolls out)
+    local left, right, top, bottom = line:GetLeft(), line:GetRight(), line:GetTop(), line:GetBottom()
+    if not (left and right and top and bottom) then return end
+    if scroll and scroll:GetTop() then
+        top, bottom = math.min(top, scroll:GetTop()), math.max(bottom, scroll:GetBottom())
+    end
+    if top <= bottom then OT.HideSecureClick() return end
+    local s = line:GetEffectiveScale() / o:GetEffectiveScale()
+    o:SetFrameStrata(line:GetFrameStrata())
+    o:SetFrameLevel(line:GetFrameLevel() + 1)
+    o:ClearAllPoints()
+    o:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * s, top * s)
+    o:SetSize((right - left) * s, (top - bottom) * s)
+    o:SetAttribute("clickbutton1", headerButton)
+    o.line = line
+    o:Show()
+end
+
 local function GetLine(i)
     local line = lines[i]
     if line then return line end
@@ -1230,6 +1282,8 @@ local function GetLine(i)
     line:SetScript("OnClick", OnLineClick)
     line:SetScript("OnEnter", function(self)
         if state.editMode then return end
+        -- (a quest line: the secure click goes over it; from it, this runs again for the tooltip)
+        if not (OT.secureClick and OT.secureClick.line == self and OT.secureClick:IsShown()) then OT.ShowSecureClick(self) end
         state.hover = self.group
         if state.shownGroup == self.group then return end
         state.shownGroup = self.group
@@ -1557,26 +1611,55 @@ function Build.FoldIcon(line, show, folded, cfg)
     icon:Show()
 end
 
--- Voice lines from the Spoken addon's quest part, when it is installed, switched on and has this quest
-local function VoiceOverReady()
+-- Voice lines from the Spoken addon's quest part, when it is installed, switched on and has this quest;
+-- or (11-21, Archy) from Wayfarer, the Russian voice-over (global WayfarerRU), through the calls its
+-- player described: Core:QuestVoice, QuestLog:Play, Queue.items / Queue:RemoveWhere, UI:Refresh. Every
+-- one guarded: Wayfarer isn't installed here, so a change on its side only hides the button.
+local function SpokenReady()
     local spoken, voice = _G.Spoken, _G.VoiceOver
     return spoken and voice and voice.DataModules and voice.QuestOverlayUI and voice.Player
         and spoken.IsPartOn and spoken:IsPartOn("quests")
 end
+function OT.Wayfarer()
+    local w = _G.WayfarerRU
+    if type(w) == "table" and type(w.Core) == "table" and type(w.QuestLog) == "table" and type(w.Queue) == "table" then return w end
+end
+local function VoiceOverReady()
+    return SpokenReady() or OT.Wayfarer() ~= nil
+end
 
-local function HasVoice(questID)
+local function SpokenHas(questID)
     local voice = _G.VoiceOver
-    if not voice then return false end
+    if not (voice and SpokenReady()) then return false end
     local ok, sound = pcall(voice.DataModules.PrepareSound, voice.DataModules,
         { event = voice.Enums.SoundEvent.QuestAccept, questID = questID })
     return ok and sound
 end
+function OT.WayfarerHas(questID)
+    local w = OT.Wayfarer()
+    if not (w and questID) then return false end
+    local ok, line = pcall(w.Core.QuestVoice, w.Core, questID)
+    return ok and line ~= nil
+end
+local function HasVoice(questID)
+    return SpokenHas(questID) or OT.WayfarerHas(questID)
+end
 
 local function VoiceQueued(questID)
+    if not questID then return nil end
     local voice = _G.VoiceOver
-    if not (voice and questID) then return nil end
-    local ok, queued = pcall(voice.QuestOverlayUI.QueuedLine, voice.QuestOverlayUI, questID)
-    return ok and queued or nil
+    if voice and SpokenHas(questID) then
+        local ok, queued = pcall(voice.QuestOverlayUI.QueuedLine, voice.QuestOverlayUI, questID)
+        return ok and queued or nil
+    end
+    local w = OT.Wayfarer()
+    local items = w and type(w.Queue.items) == "table" and w.Queue.items
+    if items then
+        for _, item in pairs(items) do
+            if type(item) == "table" and item.questID == questID then return item end
+        end
+    end
+    return nil
 end
 
 -- The voice button: a small square box at the right end of a quest's title, its glyph inside at
@@ -1679,6 +1762,19 @@ local function TogglePlay(self)
     -- the previews' buttons do nothing
     if state.editMode or not (questID and VoiceOverReady() and HasVoice(questID)) then return end
     local queued = VoiceQueued(questID)
+    -- Wayfarer's line (Spoken has none for this quest): its own queue plays and stops it
+    if not SpokenHas(questID) then
+        local w = OT.Wayfarer()
+        if not w then return end
+        if queued then
+            pcall(w.Queue.RemoveWhere, w.Queue, function(item) return type(item) == "table" and item.questID == questID end)
+            state.voicePlayed[questID] = true
+        else
+            pcall(w.QuestLog.Play, w.QuestLog, questID)
+        end
+        PaintPlayButton(self)
+        return
+    end
     if queued then
         voice.Player:Remove(queued)
         state.voicePlayed[questID] = true
@@ -2133,6 +2229,9 @@ function OT:Render()
     state.pending = false
     local db = GetDb()
     if not (db and holder) then return end
+    -- (the lines may move: the secure click over one would point at another quest; the next hover
+    -- puts it back)
+    OT.HideSecureClick()
     if OT.ApplyColorScheme(db) then
         state.difficultyColors = nil
         if header then SetColor(header.title, C.HEADING) end
@@ -3615,6 +3714,8 @@ function OT:Init()
             if state.itemsDirty then OT:UpdateItemButtons() end
             return
         elseif event == "PLAYER_REGEN_DISABLED" then
+            -- (the secure click over a quest line: hidden while it still can be)
+            OT.HideSecureClick()
             OT.SetPadScroll(false)
             OT:CheckContext()
             OT:FreezeForCombat()
@@ -3653,6 +3754,16 @@ function OT:Init()
     end)
     C_Timer.NewTicker(C.SORT_TICK, OnSortTick)
 
+    -- Wayfarer's queue changed (a line started, ended or was stopped): the buttons repaint
+    local wayfarer = OT.Wayfarer()
+    if wayfarer and type(wayfarer.UI) == "table" and type(wayfarer.UI.Refresh) == "function" then
+        hooksecurefunc(wayfarer.UI, "Refresh", function()
+            for _, line in ipairs(lines) do
+                local b = line.playButton
+                if b and b:IsShown() then PaintPlayButton(b) end
+            end
+        end)
+    end
     -- The voice addon's packs load after the first draw; its play state changes on its own
     local spoken = _G.Spoken
     if spoken and spoken.RegisterCallback then

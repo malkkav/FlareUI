@@ -2717,6 +2717,8 @@ function ApplyChatTabStrata(meter, raised)
     end
     -- docked tabs that aren't shown go one strata under again (23b)
     if Dock.List() then SafeCall(Dock.Stack) end
+    -- the chat's header (its tabs and buttons) stays over the meter, in its strata
+    if ns.Chat and ns.Chat.ApplyHeaderStrata then SafeCall(ns.Chat.ApplyHeaderStrata) end
 end
 
 --------------------------------------------------

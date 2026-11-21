@@ -120,6 +120,99 @@ function dropdownMixin:Setup(data)
 	end
 end
 
+-- FlareUI (11-21): in the Gamepad UI a Blizzard menu opened from these boxes hands the controller's
+-- focus manager an addon call; closing Edit Mode later ends in a forbidden SetPreferredGamepadInteractTarget
+-- blamed on FlareUI. Every box opens FlareUI's own list instead (PadNav, as the settings panel does),
+-- built from the same choices. A box that builds its own menu (data.generator) runs it against a
+-- stand-in that records what it adds: radios and checkboxes with their own get and set, a submenu as
+-- a heading with its choices under it, a disabled choice greyed out.
+local PAD_INDENT = '    '
+local function MenuRecorder(entries, depth, parentEntry)
+	local rec = {}
+	local function Add(entry)
+		if parentEntry then parentEntry.isHeader = true end
+		entry.depth = depth
+		entries[#entries + 1] = entry
+		local child = MenuRecorder(entries, depth + 1, entry)
+		child.SetEnabled = function(_, on) entry.disabled = not on end
+		return child
+	end
+	function rec:CreateRadio(text, isSelected, setSelected, data)
+		return Add({ text = text, checked = function() return isSelected(data) end, pick = function() setSelected(data) end })
+	end
+	function rec:CreateCheckbox(text, isSelected, setSelected, data)
+		return Add({ text = text, multi = true, checked = function() return isSelected(data) end, pick = function() setSelected(data) end })
+	end
+	function rec:CreateButton(text, callback, data)
+		return Add({ text = text, pick = callback and function() callback(data) end })
+	end
+	function rec:CreateTitle(text)
+		return Add({ text = text, isHeader = true })
+	end
+	function rec:CreateDivider()
+		entries[#entries + 1] = { divider = true }
+		return rec
+	end
+	-- anything else (scroll mode, initializers, tooltips) does nothing here
+	return setmetatable(rec, { __index = function() return function() end end })
+end
+
+local function PadFromGenerator(dropdown, data)
+	local recorded = {}
+	pcall(data.generator, dropdown, MenuRecorder(recorded, 0), data)
+	local entries = {}
+	for _, e in ipairs(recorded) do
+		if e.divider then
+			entries[#entries + 1] = e
+		else
+			local text = PAD_INDENT:rep(e.depth or 0) .. tostring(e.text or '')
+			if e.isHeader then
+				-- a submenu's name: a heading, nothing to pick
+				entries[#entries + 1] = { text = '|cffffd100' .. text .. '|r', multi = true }
+			elseif e.disabled then
+				entries[#entries + 1] = { text = '|cff808080' .. text .. '|r', multi = true }
+			else
+				local pick = e.pick
+				entries[#entries + 1] = {
+					text = text, multi = e.multi, checked = e.checked,
+					-- (the box's other rows follow, as after Blizzard's menu)
+					pick = function()
+						pick()
+						lib.internal:GetDialogOf(dropdown:GetParent()):RefreshWidgets()
+					end,
+				}
+			end
+		end
+	end
+	return entries
+end
+
+function dropdownMixin:PadEntries()
+	local data = self.setting
+	if data and data.generator then return PadFromGenerator(self.Dropdown, data) end
+	local values = data and data.values
+	if type(values) == 'function' then values = values() end
+	local entries = {}
+	for _, value in next, values or {} do
+		if value.isDivider then
+			entries[#entries + 1] = { divider = true }
+		else
+			local opt = { get = data.get, set = data.set, value = value.value or value.text, multiple = data.multiple, widget = self }
+			local fontFace = value.fontFace
+			entries[#entries + 1] = {
+				text = value.text,
+				multi = data.multiple and true or nil,
+				checked = function() return get(opt) end,
+				pick = function() set(opt) end,
+				font = fontFace and ns.SetFontFamily and ns.GetFontPath and function(fs)
+					ns.SetFontFamily(fs, ns.GetFontPath(fontFace), 13, '')
+				end or nil,
+			}
+		end
+	end
+	return entries
+end
+
 function dropdownMixin:Refresh()
 	local data = self.setting
 	if type(data.disabled) == 'function' then
@@ -158,6 +251,10 @@ lib.internal:CreatePool(lib.SettingType.Dropdown, function()
 	dropdown:SetPoint('LEFT', label, 'RIGHT', 5, 0)
 	dropdown:SetSize(200, 30)
 	frame.Dropdown = dropdown
+	-- FlareUI: the Gamepad UI's plain list (PadEntries); only in the Gamepad UI
+	if ns.PadNav and ns.PadNav.GuardDropdown then
+		ns.PadNav.GuardDropdown(dropdown, function() return frame:PadEntries() end)
+	end
 
 	return frame
 end, function(_, frame)

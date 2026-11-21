@@ -98,8 +98,53 @@ function colorPickerMixin:SetEnabled(enabled)
 	self.Label:SetTextColor((enabled and WHITE_FONT_COLOR or DISABLED_FONT_COLOR):GetRGB())
 end
 
+-- FlareUI (11-21): in the Gamepad UI Blizzard's colour picker reports itself to the controller's focus
+-- manager as it shows (GamepadMode.FrameControlsManager:FrameShown); opened from addon code that taints
+-- the manager, and closing Edit Mode later ends in a forbidden SetPreferredGamepadInteractTarget blamed
+-- on FlareUI. A swatch there opens FlareUI's own list (PadNav) of ready colours instead: the setting's
+-- Default and the class colours, named by the game's own class names. The opacity stays as it is.
+local PAD_CLASSES = { 'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'DEATHKNIGHT', 'SHAMAN', 'MAGE',
+	'WARLOCK', 'MONK', 'DRUID', 'DEMONHUNTER', 'EVOKER' }
+local function padColorEntries(parent)
+	local data, info = parent.setting, parent.colorInfo
+	local a = info.opacity
+	local entries = {}
+	local function Add(text, r, g, b)
+		entries[#entries + 1] = {
+			text = text,
+			checked = function()
+				local cur = parent.colorInfo
+				return math.abs(cur.r - r) < 0.005 and math.abs(cur.g - g) < 0.005 and math.abs(cur.b - b) < 0.005
+			end,
+			pick = function()
+				parent.oldValue = CreateColor(info.r, info.g, info.b, info.opacity)
+				parent:OnColorChanged(info.hasOpacity and CreateColor(r, g, b, a) or CreateColor(r, g, b))
+			end,
+			font = function(fs)
+				fs:SetFontObject('GameFontHighlight')
+				fs:SetTextColor(r, g, b)
+			end,
+		}
+	end
+	if data.default and data.default.GetRGB then
+		local r, g, b = data.default:GetRGB()
+		Add(_G.DEFAULT or (ns.L and ns.L['Default']) or 'Default', r, g, b)
+		entries[#entries + 1] = { divider = true }
+	end
+	local names = _G.LOCALIZED_CLASS_NAMES_MALE or {}
+	for _, class in ipairs(PAD_CLASSES) do
+		local c = _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[class]
+		if c and names[class] then Add(names[class], c.r, c.g, c.b) end
+	end
+	return entries
+end
+
 local function onSwatchClick(self)
 	local parent = self:GetParent()
+	if ns.IsGamepadUI and ns.IsGamepadUI() and ns.PadNav and ns.PadNav.OpenList then
+		ns.PadNav.OpenList(self, padColorEntries(parent))
+		return
+	end
 	local info = parent.colorInfo
 
 	-- store current/previous colors for reset capabilities

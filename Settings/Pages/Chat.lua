@@ -59,6 +59,16 @@ S:Row{ key = "ch.headerButtons", kind = "dropdown", section = "ch.frame", apply 
 -- type in (Modules/Chat.lua TAB SETS CHANNEL). Read on each tab pick, so no apply needed.
 
 S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.editBoxSection" }
+-- Edit Box Style (11-21, Malkkav): FlareUI (Blizzard's own art, always) or Modern (default, a dark
+-- box). Edit Box Border: Modern's edge only, hidden with FlareUI; unset, it reads the edge the box had
+-- from the chat's Border (Chat.lua Chat.EditBoxBorder)
+S:Row{ key = "ch.editBoxStyle", kind = "choice", path = "chat.editBoxStyle", choices = { "flareui", "modern" },
+    apply = Refresh, section = "ch.editBoxSection" }
+S:Row{ key = "ch.editBoxBorder", kind = "choice", choices = { "none", "thick", "thin" }, apply = Refresh, section = "ch.editBoxSection",
+    get = function() return ns.Chat and ns.Chat.EditBoxBorder(S:GetPath("chat")) or "thin" end,
+    set = function(v) S:SetPath("chat.editBoxBorder", v) end,
+    resetValue = function() return "thin" end,
+    hidden = function() return S:GetPath("chat.editBoxStyle") == "flareui" end }
 S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
     choices = { "inside", "below", "above" }, apply = Refresh, section = "ch.editBoxSection" }
 -- Notifications (11-20, Malkkav): Tab Glow and Whisper Sound, a section of their own below Edit Box

@@ -1,3 +1,91 @@
+# FlareUI 7.0.1
+
+Sorry, everyone. The new nameplates came with more bugs than they should have, and the fixes took longer than I wanted. This update fixes every nameplate bug you reported, plus a long list of other fixes. Thank you for your patience and for all the reports.
+
+A big thank you to this release's contributors: **alex47** (the Items section, Healing & Damage, the preview fix), **parchinskiy** (collapsible backpack sections), **Braincell1980** (the French translation) and **Archy** (the complete Russian translation).
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Quest Tracker:** the right-click menu no longer has **Open Quest Log** or **Show on Map**. A left click on a quest opens both.
+- **Chat:** **Border** now only borders the chat window. The edit box has its own border option and keeps the look it had.
+- **Chat:** the Combat Log tab can be moved like any other tab. General stays first.
+- **Tooltips:** **Show Item Level**, **Compare with Shift** and **Simplified Item Stats** moved to a new **Items** section on the Content tab.
+
+## Highlights
+- **Nameplates:** every bug you reported is fixed, including the stutter when combat starts and ends.
+- **Bags:** collapsible backpack sections, and filling crates from the crafting bag works again.
+- **Nameplates:** NPC titles like "General Goods" under Name Only names.
+
+## New
+
+### Nameplates
+- NPC titles under the name on Name Only plates, in a soft tan. Always on.
+- **Threat Percentage** now shows during fights.
+
+### Bags
+- Click a section header in **Category Rows** and **Category Rows + Sets** to collapse or expand it. By parchinskiy.
+  - Each character remembers its own sections.
+
+### Tooltips
+- **Items** section on the Content tab. By alex47.
+- **Healing & Damage** (Off): shortens item lines with both healing and damage. By alex47.
+  - **Spell Healing / Spell Damage:** both numbers as they are.
+  - **Spell Healing / Spell Power:** the damage as Spell Power, plus the extra healing.
+
+### Chat
+- **Edit Box Style** (Modern):
+  - **FlareUI:** Blizzard's own edit box, in FlareUI's bronze.
+  - **Modern:** a dark box.
+- **Edit Box Border** (follows your old chat border): **None**, **FlareUI Thick** or **FlareUI Thin**. Shows with Modern only.
+
+### Resource Bars
+- **Paladin Seals:** **Show Icon** (off) in Edit Mode puts the seal's icon at the bar's left end.
+
+### Buff Reminders
+- **Warlock pet:** right-click the icon to pick the demon a click summons: **Last Used** (default) or any demon you know.
+- Every icon's right-click menu has a **FlareUI Settings** link.
+
+### Quest Tracker
+- The **Voice Button** also plays quest lines from Wayfarer (Russian voice-over).
+
+### Minimap
+- **Info Bar:** gold shows with coin icons, like in your bags.
+
+## Changed
+- **Unit Frames (Forever Style):** your own name box takes your class colour when that frame's **Class Colours** is on, as on target and party.
+- **Languages:**
+  - Russian: complete (739 new strings). By Archy.
+  - French: 7.0 strings translated. By Braincell1980.
+- **Russian client:** a dash replaces the middle dot "·", which Russian fonts draw as a box.
+
+## Fixed
+
+### Nameplates
+- A stutter when combat started and ended.
+- **Show Friendly Plates** reset to Off when you picked **Always**. **In Combat** and Quality of Life's **Combat Friendly Plates** didn't work either.
+- Chairs, signs, mailboxes and herb or ore nodes got enemy plates.
+- Pet and minor names were tiny, even at 200%.
+- **Full Name** in Bar Text showed only the first name.
+- The raid marker sat far from the name on Name Only plates.
+- Friendly players showed two names with the Musician addon.
+- Quest marks stayed beside plates when another nameplate addon was running, and couldn't be turned off.
+
+### Bags
+- Filling a crate, milling or prospecting from the crafting bag was blocked (**Crafting Bag in Backpack**).
+
+### Quest Tracker
+- After you opened a quest from the tracker, the world map could be blocked in a fight.
+
+### Gamepad
+- A "blocked action" popup after closing Edit Mode. In Gamepad mode, Edit Mode dropdowns and colour swatches now open FlareUI's own lists. Colour swatches offer ready colours.
+
+### Chat
+- The chat tabs took clicks meant for quest, merchant and crafting windows above them.
+
+### Other
+- **XP Bar:** a small gap stayed at the bottom of the screen.
+- **Settings previews:** squeezed previews cut their text short. By alex47.
+
 # FlareUI 7.0
 
 **Restart the game fully after updating** (not just /reload): this version adds new files.
@@ -407,149 +495,3 @@ Some things look different even if you change nothing:
 ## Translations
 - Chinese (Simplified and Traditional): updated. By AreChen.
 - French: the 6.11 text. By Braincell1980.
-
-# FlareUI 6.11
-
-**Restart the game fully after updating** (not just /reload): this version adds new files.
-
-This is the biggest patch yet. Put any text on any side of your bars, give the minimap an Info Bar, pick your action bar and XP bar colours, hide the auras you never want to see, and get flag carrier frames that look like the rest of your UI. Plus a long list of things you asked for on Discord. Grab a drink: the list below is long.
-
-## Heads up
-Some things look different even if you change nothing:
-- **Buffs and debuffs:** each frame now shows a set number: 6 (8 in Addon Style; 4 on focus, party and boss frames; 3 on the pet). Wide frames used to show more. Raise **Buff Amount** and **Debuff Amount** in each frame's Edit Mode settings.
-- **Target of Target and Target of Focus** frames are on by default.
-- **Default font sizes** changed on most unit frames (only if you never set them yourself):
-  - Player and target: 12 name, 12 health, 10 power.
-  - Focus and pet: 10, 10, 8.
-  - Target-of frames: 8, 8, 6.
-  - Raid: 10, 8, 6.
-  - Cast bars (all but the player's): 10.
-- **Flip Portrait** now moves the portrait to the other side of the frame instead of mirroring the picture. It's on (portrait on the right) by default.
-- **Options removed:**
-  - **Status Colouring** switch: pick the **Disabled** palette in **Status Colours** instead.
-  - **Full Player Names**: pick **First Name** or **Full Name** in the bars' **Health Text**.
-  - **Portrait Size** (FlareUI Style): the ring now grows with the frame's height.
-  - Minimap **Framerate**, **Latency** and **Coordinates**: they're now Info Bar cells.
-
-## Highlights
-- **Bar Text:** put the name, health, power and level on the left, middle or right of each bar.
-- **Minimap Info Bar:** gold, bags, durability, framerate, latency or coordinates on the map. By Celbrund (GregDuhamel).
-- **Hide Auras:** hide any buff or debuff on any frame.
-- **Colours:** pick your own action bar status colours and XP bar colours.
-- **Flag Carrier Frames:** rebuilt in your frame style, with cast bars.
-
-## New
-
-### Unit Frames
-- **Bar Text**, in each frame's Edit Mode settings: **Health Text**, **Power Text** and **Druid Mana Text**.
-  - Each has Left, Middle and Right spots. Tick what goes in each one.
-  - Health: First Name, Full Name, Health Percent, Health Value, Health Max, Health Lost.
-  - Power: Power Percent, Power Value, Power Max.
-  - Several items in one spot are split by " / ".
-  - On the player, target, focus, pet and target-of frames, and the Resource Bars' health, power and druid mana bars.
-- **Show Name** (on), above **Show Level**, on every unit frame, party, raid and boss frame.
-- **Buff Amount** and **Debuff Amount** (1 to 12), under Buff Size and Debuff Size: how many show.
-  - On the unit frames, and on the party and boss frames when their auras sit above or below the frame.
-- **Show Speed** and **Hide Speed** in the Fading section of the player, pet, target, focus and target-of frames. They start at Instant.
-- **Damage Trail** (on), under **Bar Edge Glow**: turn off the light strip that shows the health you just lost.
-- **Threat Glow** and **Combat Glow** (on), in the Look section, after Class Colours.
-- Target of Target and Target of Focus: **Mirror Bars** (on) and **Flip Portrait** (on).
-- Cast bars: **Background** slider in every frame style.
-- Forever Style:
-  - **Power Height**: moves the line between health and power. The lowest step hides the power bar.
-  - **Mana on Shapeshift**: in Cat or Bear Form the power bar splits in two, with your mana in the lower half.
-  - Power Text: **> Value** and **> Percent** put the number at the bar's right end, as on Blizzard's frame.
-  - Another player's name box takes their class colour while the frame's **Class Colours** is on.
-  - **Dispel Highlight**: the plate's border lights up in the debuff's colour.
-- Far-higher mobs and bosses show the skull on the level, as on Blizzard's frames.
-
-### Party, Raid and Boss Frames
-- Party: **Show When Solo** (off): your own party frame shows when you're not in a group. Needs **Show Player**.
-- Party and raid: **PvP Flag** icon (off), in the Icons section: the member's faction crest while flagged.
-- Raid: **Hide Player Frame in a Raid** (off): your player and pet frames hide in a raid.
-- Boss frames, Addon Style: **Elite & Rare** icon (on), in the Icons section.
-- With **Hide Player Frame in a Party** on, your pet's happiness shows on your pet's party frame.
-
-### Flag Carrier Frames
-- Rebuilt as FlareUI frames in your frame style: name, health, power, class portrait and a big faction crest.
-- **Cast bar** (on).
-- Left-click targets the carrier, right-click sets your focus, as on Blizzard's frames.
-- **Flip Portrait** and **Mirror Bars** (on), and their own fonts in Unit Frames › Fonts.
-- They show nothing Blizzard's frames don't: no range fading, no raid markers.
-
-### Buffs & Debuffs
-- **Hide Auras** tab: hide any aura on any frame.
-  - Pick one of your buffs or debuffs, or add one by its spell ID.
-  - Each hidden aura has a **Hide On** list: Buffs & Debuffs, Player, Pet, Target, Focus, Party, Raid, Boss.
-  - The game lets addons hide buffs on you, your pet and your group, and debuffs on enemies. Debuffs on you or a friend only hide for a few spells, such as Sated.
-- Edit Mode: the Buffs sample shows the weapon enchant row too.
-
-### Action Bars
-- **Status Colours** button, in Bars Appearance: pick the colours for Out of Range, Out of Mana, Unusable and On Cooldown.
-  - Palettes: FlareUI, Blizzard, **Disabled** (the game's own colours) or your own.
-  - The opacity slider sets how strong each colour is. On Cooldown at 0 means no dimming.
-- **Equipped Item Border** (off), after Show Button Art: the button of an item you're wearing gets a border in its quality colour.
-- **XP Bar Colours** button, at the bottom of Other Bars › XP Bar: XP, Rested XP, Rested Bonus, Quest XP, every reputation standing, Renown and Honor.
-- Bag buttons bar: **Smaller Size** (Off), in its Edit Mode settings: 50% to 70%, below Blizzard's smallest Size.
-- Combo Points bar (Resource Bars): **Style** in Edit Mode: **Classic** gems or the **Modern** bar, in any frame style.
-
-### Minimap
-- **Info Bar**: up to three cells along the bottom of the square map: **Left**, **Center**, **Right**. By Celbrund (GregDuhamel).
-  - Each shows Gold, Bags, Durability, Framerate, Latency or Coordinates.
-  - **Show Box** (on) and **On Mouseover** (off). Its own font in Minimap › Fonts.
-  - Round minimap: the Center cell, inside the circle.
-- **FPS/Ping on Clock**, in Map Tools: framerate and latency on the clock's tooltip.
-- **Vehicle Exit Button** (off): Blizzard's exit arrow as a round icon on the map's edge.
-- **Durability Warning** (off): a repair icon on the map's edge, yellow or red as your gear wears down.
-- **Sundial Icon** (on): turn the day and night badge off.
-- **Drawer Style**, first in Addon Buttons: **Disabled**, **Sundial** or **Blizzard** (a button under the calendar).
-- **Faded Opacity** and fade groups for the minimap. Its icons hide while it's faded.
-- Round minimap: the Group Finder, Vehicle Exit and Durability icons sit around the circle's lower left.
-
-### Tooltips
-- **Show PvP** (on), in Tweaks: the "PvP" line on flagged players and creatures is back.
-
-### Quality of Life
-- New **Systems** tab, with Camera and Gamepad.
-- **Craft Batch Time** (off), in Gameplay › Convenience: the cast bar also shows the time left for the whole batch.
-- **Accept Summons** (off), in Convenience: takes a summon for you after 10 seconds. A small window lets you cancel or go at once.
-- **Combat Friendly Plates** (off), in Nameplates: friendly players' nameplates show only during a fight.
-- **UI Scale**: a new scale asks you to keep it, and goes back after 15 seconds if you don't. `/fui scale reset` puts it back to the game's own.
-
-### Other
-- **Combat Text Size**, under Combat Text Font in General › Interface.
-- **FlareUI Button** (off), in General › ESC Menu: a FlareUI button in the game menu.
-- Buff Reminders: **Remind Before It Ends** also offers 15, 30 and 45 seconds.
-- Bags: **BoE Text** (off): items that bind when equipped show BoE until bound.
-- Bags: **Plain Empty Slots** (off): every empty slot in the combined backpack looks the same.
-- Radial editor: spell tooltips show the rank, and pet spells are listed at the end of Spells.
-
-## Changed
-- Edit Mode:
-  - Switches sit in two columns.
-  - Cast bar sections share one order: Position, Bar Texture, Border Texture, Background, Height, Show Icon, Show Spell Timer, Show Spell Pushback.
-  - The Player Cast Bar's own section is now **Behaviour**.
-  - Width and Height sliders move in steps of 1. Your sizes stay as they are.
-  - Percent sliders show plain numbers, so "100" fits its box.
-  - **Off** is the first choice in every dropdown.
-- Action Bars: **Status Colouring** never dims a button for the global cooldown, so wand shots no longer grey the whole bar.
-- Action Bars: a button on cooldown is 25% grey by default, so its colour still shows.
-- Unit frames: the level uses the name's size in Addon Style.
-- Raid frames: **Power Height** defaults to 10.
-- Default positions and sizes in FlareUI Style and Forever Style: focus, pet, target-of frames, totems and flag carriers.
-- Addon Style: party frames' role icon sits bottom left; the pet's happiness face sits right of the frame.
-- General page: tabs are **General** (with ESC Menu on top) and **Interface**.
-- Quality of Life: Other is now **Convenience**; Map & Mail sits above it in Gameplay.
-- Quest tracker with a gamepad: the right stick scrolls only after you click the tracker.
-- Loot rolls: tighter padding, and the header matches the chat's and the meter's. By Nico-Mayer.
-- French translation updated. By Brainc3ll.
-
-## Fixed
-- Action Bars: keybind text shows right after logging in, on every bar.
-- Action Bars: stance and pet buttons no longer show a second border inside FlareUI's.
-- Action Bars: no more Lua errors from the gamepad action bars.
-- Round minimap: quest areas no longer draw past the circle.
-- Quest Tracker: elite quests show their **+** again.
-- Unit Frames: **Bar Edge Glow** no longer shows on a full health bar.
-- Forever Style: the portrait ring no longer bends when Power Height changes.
-- Edit Mode: the boss frames' sample buffs show right after a reload.
