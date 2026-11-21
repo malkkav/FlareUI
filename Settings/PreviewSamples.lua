@@ -85,6 +85,13 @@ local function Sample(c, id, create, draw, y, width, maxHeight)
     if not w or w <= 0 or not h or h <= 0 then f:Hide() return nil, 0 end
     local k = math.min(1, (width or c.width - 16) / w, (maxHeight or c.height - y - 4) / h)
     f:SetScale(k)
+    -- shrunk text can wrap onto one more line (and be cut): measure again at the size it shows
+    if k < 1 then
+        w, h = draw(f)
+        if not w or w <= 0 or not h or h <= 0 then f:Hide() return nil, 0 end
+        k = math.min(k, (width or c.width - 16) / w, (maxHeight or c.height - y - 4) / h)
+        f:SetScale(k)
+    end
     f:ClearAllPoints()
     f:SetPoint('TOPLEFT', c.frame, 'TOPLEFT', (c.width - w * k) / 2 / k, -y / k)
     c.used = math.max(c.used or 0, y + h * k)
