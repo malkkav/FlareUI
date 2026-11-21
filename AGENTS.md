@@ -23,6 +23,7 @@ These rules apply to any change to FlareUI, whether a person or an AI tool write
 ## Options and text
 
 - New options start **off**, unless the maintainer says otherwise. Switching an option off must not force a Blizzard setting either way.
+- When you change an option that has a preview, check it against what players see in game. If it is out of date, update it when possible. For a new option, add a preview when its effect can be shown accurately in the settings panel.
 - Labels are short and in Title Case. Don't indent a row under another to show it depends on it; rework the options instead.
 - Panel text lives in `Settings/Copy.lua`, which is generated from the maintainer's copy document. Add new strings there and list them in your PR; the maintainer moves them into the document.
 - Every player-facing string goes through `L["..."]`. After changing strings, run `node tools/enus.js`. Don't edit the other languages unless you speak them.
