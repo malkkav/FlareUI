@@ -1,4 +1,4 @@
-local _, ns = ...
+local ADDON_NAME, ns = ...
 local L = ns.L
 
 --------------------------------------------------
@@ -231,6 +231,7 @@ end
 local function HideExtras(except)
     for bagID, e in pairs(extras) do
         if not (except and except[bagID]) then
+            e.shownSlots = nil
             e.holder:Hide()
             if bagID == highlightedExtraBag then UpdateExtraBagHighlight(bagID, e) end
         end
@@ -482,6 +483,14 @@ local CATEGORY_NAMES = {
     consumables = L["Consumables"], junk = L["Junk"], other = L["Other"],
 }
 local categoryHeaders = {}
+local CATEGORY_HEADER_HEIGHT = 20
+local categoryHidden = setmetatable({}, { __mode = "k" })
+
+local function GetCollapsedSections()
+    local char = ns.CharDB()
+    char.collapsedBagSections = char.collapsedBagSections or {}
+    return char.collapsedBagSections
+end
 
 -- Equipment sets as categories of their own (the Equipment Manager's sets, in its order), each just
 -- after Equipment. An item in more than one set goes in the first. Read on each layout:
@@ -556,23 +565,60 @@ local function ItemCategory(button, setOf)
     return "other"
 end
 
-local function CategoryHeader(frame, key, label)
-    local header = categoryHeaders[key]
-    if not header then
-        header = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-        header:SetTextColor(1, 0.82, 0.3)
-        categoryHeaders[key] = header
-    end
-    header:SetParent(frame)
-    header:SetText(label or CATEGORY_NAMES[key])
+local function ExtraSectionLabel(bagID)
+    return bagID == KeyringID() and L["Keyring"] or L["Crafting Bag"]
+end
+
+local function CreateCategoryHeader(frame, onClick)
+    local header = CreateFrame("Button", nil, frame)
+    header:SetHeight(CATEGORY_HEADER_HEIGHT)
+    header.arrow = header:CreateTexture(nil, "ARTWORK")
+    header.arrow:SetTexture("Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\Panel\\Chevron.tga")
+    header.arrow:SetSize(11, 11)
+    header.arrow:SetPoint("LEFT")
+    header.arrow:SetVertexColor(1, 0.82, 0.3)
+    header.label = header:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    header.label:SetPoint("LEFT", header.arrow, "RIGHT", 4, 0)
+    header.label:SetPoint("RIGHT", header, "RIGHT")
+    header.label:SetJustifyH("LEFT")
+    header.label:SetWordWrap(false)
+    header.label:SetTextColor(1, 0.82, 0.3)
+    header:EnableMouse(onClick ~= nil)
+    if onClick then header:SetScript("OnClick", onClick) end
     return header
+end
+
+local function SetCategoryHeader(header, label, collapsed)
+    header.label:SetText(label)
+    header.arrow:SetRotation(collapsed and math.pi / 2 or 0)
+end
+
+-- A pooled button can belong to another slot on the next layout. Only change the
+-- visibility of currently enumerated slots, and only restore buttons we hid.
+local function SetCategorySlotCollapsed(button, folded)
+    if folded then
+        if button:IsShown() then
+            if InCombatLockdown() and button:IsProtected() then return false end
+            button:Hide()
+            categoryHidden[button] = true
+        end
+        return true
+    elseif categoryHidden[button] then
+        if not button:IsShown() then
+            if InCombatLockdown() and button:IsProtected() then return true end
+            button:Show()
+        end
+        categoryHidden[button] = nil
+    end
+    return false
 end
 
 local function ExtraSectionChanged(bagID, wanted, columns)
     local section = bagID and extras[bagID]
-    local visible = section and section.holder:IsShown()
-    if not wanted then return visible end
-    return not visible or section.shownSlots ~= ShownSlots(bagID, columns)
+    -- A folded section is still in the layout with its header above the money frame.
+    local slots = section and section.shownSlots
+    if not wanted then return slots ~= nil end
+    return slots ~= ShownSlots(bagID, columns)
 end
 
 -- Blizzard's "+" button for an account without an authenticator (ContainerFrameExtendedSlotPack:
@@ -601,9 +647,18 @@ end
 local layingOut = false
 local extraButtonsDeferred = false
 local lastLayoutColumns, lastLayoutGaps, lastLayoutSecured
+local hadCategoryLayout = false
 local function Relayout(frame)
     if layingOut or not frame or frame ~= Combined() or not frame:IsShown() then return end
-    if not (Bags:IsCombined() and LayoutWanted()) then
+    local wanted = Bags:IsCombined() and LayoutWanted()
+    -- Restore the ordinary grid immediately when Category Rows was the last active layout option.
+    local restoreGrid = hadCategoryLayout and Bags:IsCombined() and not GamepadUI() and not Bags:GetOtherBagAddon()
+    if not (wanted or restoreGrid) then
+        if hadCategoryLayout then
+            for _, header in pairs(categoryHeaders) do header:Hide() end
+            for _, button in frame:EnumerateValidItems() do SetCategorySlotCollapsed(button, false) end
+            hadCategoryLayout = false
+        end
         extraButtonsDeferred = false
         lastLayoutColumns = nil
         HideExtras()
@@ -611,6 +666,8 @@ local function Relayout(frame)
         return
     end
     local db = GetDb()
+    local categorized = CategoryRows(db)
+    local collapsedSections = categorized and GetCollapsedSections()
     local items = {}
     for _, button in frame:EnumerateValidItems() do items[#items + 1] = button end
     if #items == 0 then return end
@@ -630,26 +687,19 @@ local function Relayout(frame)
     layingOut = false
     if #items == 0 then return end
 
-    local categorized = CategoryRows(db)
-    local groups, setNames, categoryOf
+    local groups, order, setNames
     if categorized then
-        categoryOf = {}
         local sets, setOf = {}, nil
         if Bags.View(db) == "rowsSets" then sets, setOf = Bags.SetCategories.Read() end
-        local order = Bags.SetCategories.Order(sets)
+        order = Bags.SetCategories.Order(sets)
         setNames = {}
         for _, set in ipairs(sets) do setNames[set.key] = set.name end
         groups = {}
         for _, key in ipairs(order) do groups[key] = {} end
         for _, button in ipairs(items) do
             local key = ItemCategory(button, setOf)
-            categoryOf[button] = key
             local group = groups[key]
             group[#group + 1] = button
-        end
-        items = {}
-        for _, key in ipairs(order) do
-            for _, button in ipairs(groups[key]) do items[#items + 1] = button end
         end
     end
 
@@ -661,83 +711,106 @@ local function Relayout(frame)
     if not anchor then return end
 
     layingOut = true
+    hadCategoryLayout = categorized
     extraButtonsDeferred = false
     local col, row, gapCount, prevBag = 0, 0, 0, nil
-    -- the keyring and crafting bag sections first (the bottom rows), each with a gap above it
+    local headerSpace, visibleHeaders = 0, {}
+    local gridWidth = columns * stepX - ITEM_SPACING
+    local function FinishRow()
+        if col > 0 then col, row = 0, row + 1 end
+    end
+    local function PlaceSlot(button)
+        Bags.GridPoint(button, anchor, col, row, gapCount, stepX, stepY, headerSpace)
+        col = col + 1
+        if col == columns then col, row = 0, row + 1 end
+    end
+    local function PlaceHeader(key, label)
+        local header = categoryHeaders[key]
+        if not header then
+            header = CreateCategoryHeader(frame, function()
+                local sections = GetCollapsedSections()
+                sections[key] = not sections[key] or nil
+                Relayout(frame)
+            end)
+            categoryHeaders[key] = header
+        end
+        SetCategoryHeader(header, label, collapsedSections[key])
+        header:SetWidth(gridWidth)
+        header:ClearAllPoints()
+        header:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 4 + row * stepY + gapCount * BAG_GAP + headerSpace)
+        header:Show()
+        visibleHeaders[key] = true
+        headerSpace = headerSpace + CATEGORY_HEADER_HEIGHT
+    end
+    -- The bottom sections keep their usual gap outside the category views.
     local shownBags = {}
     for _, bagID in ipairs(ExtraBags()) do
         local e = Extra(bagID, frame)
         local shown = ShownSlots(bagID, columns)
         e.shownSlots = shown
-        -- the same order as Blizzard's bags: the last slot bottom right
-        for slot = shown, 1, -1 do
-            local b = ExtraButton(e, slot)
-            if b then
-                b:SetSize(w, h)
-                Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
-                b:Show()
-                FillExtraButton(b)
-                col = col + 1
-                if col >= columns then col, row = 0, row + 1 end
-            else
-                extraButtonsDeferred = true
+        local folded = categorized and collapsedSections[bagID]
+        if not folded then
+            -- The same order as Blizzard's bags: the last slot bottom right.
+            for slot = shown, 1, -1 do
+                local b = ExtraButton(e, slot)
+                if b then
+                    b:SetSize(w, h)
+                    PlaceSlot(b)
+                    b:Show()
+                    FillExtraButton(b)
+                else
+                    extraButtonsDeferred = true
+                end
             end
+            for slot, b in pairs(e.buttons) do if slot > shown then b:Hide() end end
         end
-        for slot, b in pairs(e.buttons) do if slot > shown then b:Hide() end end
-        if col > 0 then col, row = 0, row + 1 end
-        gapCount = gapCount + 1
-        e.holder:Show()
+        e.holder:SetShown(not folded)
+        FinishRow()
+        if categorized then
+            PlaceHeader(bagID, ExtraSectionLabel(bagID))
+        else
+            gapCount = gapCount + 1
+        end
         if bagID == highlightedExtraBag then UpdateExtraBagHighlight(bagID, e) end
         shownBags[bagID] = true
     end
     HideExtras(shownBags)
-    -- (Hide 2FA Bag Slots, without gaps: the rows stay full and the spare room sits bottom right, as
-    -- that addon lays them out)
-    if h2fa and not gaps and col == 0 then col = (columns - #items % columns) % columns end
-    local visibleHeaders = {}
-    local currentCategory
-    -- a section's title above its top row: only the text's height, not a whole row of slots
-    -- (about 12 for the text, the rest a little air above it, from the section over it)
-    local HEADER_H, headerSpace = 20, 0
-    local function CloseSection()
-        if col > 0 then col, row = 0, row + 1 end
-        local header = CategoryHeader(frame, currentCategory, setNames[currentCategory])
-        header:ClearAllPoints()
-        header:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 4 + row * stepY + gapCount * BAG_GAP + headerSpace)
-        header:Show()
-        visibleHeaders[currentCategory] = true
-        headerSpace = headerSpace + HEADER_H
-    end
-    for _, button in ipairs(items) do
-        local category = categorized and categoryOf[button]
-        if categorized and category and category ~= currentCategory then
-            if currentCategory then CloseSection() end
-            col, prevBag, currentCategory = 0, nil, category
-        elseif categorized and not category then
-            currentCategory = nil
+    if categorized then
+        for _, key in ipairs(order) do
+            local group = groups[key]
+            if #group > 0 then
+                for _, button in ipairs(group) do
+                    if not SetCategorySlotCollapsed(button, collapsedSections[key]) then PlaceSlot(button) end
+                end
+                FinishRow()
+                PlaceHeader(key, setNames[key] or CATEGORY_NAMES[key])
+            end
         end
-        local bag = button:GetBagID()
-        if not categorized and gaps and prevBag and bag ~= prevBag then
-            if col > 0 then col, row = 0, row + 1 end
-            gapCount = gapCount + 1
+    else
+        -- Hide 2FA Bag Slots leaves the spare room at the bottom right in a plain grid.
+        if h2fa and not gaps then col = (columns - #items % columns) % columns end
+        for _, button in ipairs(items) do
+            SetCategorySlotCollapsed(button, false)
+            local bag = button:GetBagID()
+            if gaps and prevBag and bag ~= prevBag then
+                FinishRow()
+                gapCount = gapCount + 1
+            end
+            PlaceSlot(button)
+            prevBag = bag
         end
-        Bags.GridPoint(button, anchor, col, row, gapCount, stepX, stepY, headerSpace)
-        col = col + 1
-        if col >= columns then col, row = 0, row + 1 end
-        prevBag = bag
     end
-    if currentCategory then CloseSection() end
     for key, header in pairs(categoryHeaders) do if not visibleHeaders[key] then header:Hide() end end
     local rows = row + (col > 0 and 1 or 0)
 
-    local width = columns * w + (columns - 1) * ITEM_SPACING + frame:GetPaddingWidth()
-    local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + headerSpace
+    local width = gridWidth + frame:GetPaddingWidth()
+    local height = rows * h + math_max(0, rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + headerSpace
         + frame:GetPaddingHeight() + frame:CalculateExtraHeight()
     frame:SetSize(width, height)
     if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then NineSliceUtil.UpdateCornerCropping(frame, height) end
     lastLayoutColumns, lastLayoutGaps, lastLayoutSecured = columns, gaps, secured
     layingOut = false
-    Bags.AddSlots.Place(frame, true)
+    Bags.AddSlots.Place(frame, wanted)
     Bags:PlaceBagButtons()
 end
 
@@ -784,6 +857,7 @@ function Bags.H2FA.Items(items)
     for _, button in ipairs(items) do
         if button.IsExtended and button:IsExtended() then
             if button:IsShown() and not (InCombatLockdown() and button:IsProtected()) then button:Hide() end
+            categoryHidden[button] = nil
         elseif compact and C_Container.GetContainerItemInfo(button:GetBagID(), button:GetID()) then
             filled[#filled + 1] = button
         else
@@ -810,6 +884,16 @@ function Bags.CombineEmptyOn()
 end
 
 local function SetSlotShown(button, shown)
+    if categoryHidden[button] then
+        if shown then
+            -- The category pass decides whether this eligible slot should be visible.
+            Bags.combineHidden[button] = nil
+            return
+        end
+        -- An empty slot now hidden by Combine Empty Slots no longer belongs to its old fold.
+        categoryHidden[button] = nil
+        Bags.combineHidden[button] = true
+    end
     if button:IsShown() == shown then return end
     if InCombatLockdown() and button:IsProtected() then return end
     button:SetShown(shown)
@@ -2010,30 +2094,24 @@ function Bags:Init()
             end
             return
         end
-        -- Auto Open Containers, and Combine Empty Slots: a filled or emptied slot moves the grid
-        if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED" then
-            -- (turning the option on runs it from the settings)
-            if db and db.bagAutoOpen then C_Timer.After(0.3, Bags.AutoOpen.Next) end
-            -- (By Category too: an item moved, equipped or taken off changes its section)
-            if Bags.CombineEmptyOn() or next(Bags.combineHidden) or byCategory then
-                local backpack = Combined()
-                if backpack and backpack:IsShown() then Relayout(backpack) end
-            end
-        end
+        local contentsChanged = event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
+        if contentsChanged and db and db.bagAutoOpen then C_Timer.After(0.3, Bags.AutoOpen.Next) end
         -- Slot counts can arrive after login or grow when a bag is replaced.
         if event == "PLAYER_ENTERING_WORLD" then self:UnregisterEvent(event) end
-        local refreshLayout = event == "PLAYER_ENTERING_WORLD" or event == "BAG_CONTAINER_UPDATE"
-            or event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
+        local refreshLayout = event == "PLAYER_ENTERING_WORLD" or event == "BAG_CONTAINER_UPDATE" or contentsChanged
         if refreshLayout then
             WarmExtraButtons()
             RefreshBagClickProxies()
         end
+        -- Reclassify moved items even if the number of slots in the bags did not change.
+        if contentsChanged and (CategoryRows(db) or Bags.CombineEmptyOn() or next(Bags.combineHidden)) then
+            Relayout(Combined())
+            return
+        end
         if not next(extras) and not (KeyringWanted() or ReagentWanted()) then return end
         local frame = Combined()
         -- On content updates, refill the buttons when the existing layout still fits.
-        if (event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED")
-            and frame and frame:IsShown() and not ExtraLayoutChanged(event)
-        then
+        if contentsChanged and frame and frame:IsShown() and not ExtraLayoutChanged(event) then
             FillExtras()
             return
         end
@@ -2269,24 +2347,40 @@ do
     -- by bag, from the last to the backpack (Blizzard's order); slot -> { icon, quality, count, ... }
     local SAMPLE_BAGS = {
         { bag = 1, slots = 8, items = {
-            [1] = { icon = ICON .. "INV_Misc_Pelt_Wolf_01", quality = 1, count = 6 },
-            [2] = { icon = ICON .. "INV_Misc_Bone_HumanSkull_01", quality = 0 },
-            [4] = { icon = ICON .. "INV_Ore_Copper_01", quality = 1, count = 8 },
+            [1] = { icon = ICON .. "INV_Misc_Pelt_Wolf_01", category = "materials", quality = 1, count = 6 },
+            [2] = { icon = ICON .. "INV_Misc_Bone_HumanSkull_01", category = "junk", quality = 0 },
+            [4] = { icon = ICON .. "INV_Ore_Copper_01", category = "materials", quality = 1, count = 8 },
         } },
         { bag = 0, slots = 16, items = {
-            [1] = { icon = ICON .. "INV_Misc_Rune_01", quality = 1 },
-            [2] = { icon = ICON .. "INV_Sword_04", quality = 2, ilvl = 24 },
-            [3] = { icon = ICON .. "INV_Chest_Cloth_17", quality = 3, ilvl = 31, uncollected = true },
-            [4] = { icon = ICON .. "INV_Jewelry_Ring_15", quality = 4, ilvl = 40 },
-            [5] = { icon = ICON .. "INV_Misc_Food_15", quality = 1, count = 20, petFood = true },
-            [6] = { icon = ICON .. "INV_Potion_51", quality = 1, count = 5 },
-            [7] = { icon = ICON .. "INV_Fabric_Linen_01", quality = 1, count = 12 },
-            [9] = { icon = ICON .. "INV_Misc_Bone_HumanSkull_01", quality = 0 },
+            [1] = { icon = ICON .. "INV_Misc_Rune_01", category = "quest", quality = 1 },
+            [2] = { icon = ICON .. "INV_Sword_04", category = "equipment", quality = 2, ilvl = 24 },
+            [3] = { icon = ICON .. "INV_Chest_Cloth_17", category = "equipment", quality = 3, ilvl = 31, uncollected = true },
+            [4] = { icon = ICON .. "INV_Jewelry_Ring_15", category = "equipment", quality = 4, ilvl = 40 },
+            [5] = { icon = ICON .. "INV_Misc_Food_15", category = "consumables", quality = 1, count = 20, petFood = true },
+            [6] = { icon = ICON .. "INV_Potion_51", category = "consumables", quality = 1, count = 5 },
+            [7] = { icon = ICON .. "INV_Fabric_Linen_01", category = "materials", quality = 1, count = 12 },
+            [9] = { icon = ICON .. "INV_Misc_Bone_HumanSkull_01", category = "junk", quality = 0 },
         } },
     }
     local KEYS = { [1] = { icon = ICON .. "INV_Misc_Key_03", quality = 1 }, [2] = { icon = ICON .. "INV_Misc_Key_11", quality = 1 } }
     local REAGENTS = { [1] = { icon = ICON .. "INV_Misc_Herb_10", quality = 1, count = 14 },
                        [2] = { icon = ICON .. "INV_Misc_Dust_01", quality = 1, count = 3 } }
+    local SAMPLE_CATEGORIES = {}
+    for _, key in ipairs(CATEGORY_ORDER) do
+        local section = { key = key, label = CATEGORY_NAMES[key], items = {}, slots = 0 }
+        -- The draw loop walks each section backwards, like the real backpack.
+        for i = #SAMPLE_BAGS, 1, -1 do
+            local bag = SAMPLE_BAGS[i]
+            for slot = 1, bag.slots do
+                local item = bag.items[slot]
+                if (item and item.category or "other") == key then
+                    section.slots = section.slots + 1
+                    section.items[section.slots] = item
+                end
+            end
+        end
+        if section.slots > 0 then SAMPLE_CATEGORIES[#SAMPLE_CATEGORIES + 1] = section end
+    end
     local PAW = "Interface\\Icons\\Ability_Hunter_BeastTraining"   -- Pet Food in Bags (Tweaks.lua)
     local SLOT_SIZE = 37                 -- an item button's own size
     -- Blizzard's combined backpack paddings (ContainerFrameCombinedBagsMixin), the money box's height
@@ -2363,7 +2457,7 @@ do
         f.fuiSample = true
         f:EnableMouse(false)
         f:SetFrameLevel(parent:GetFrameLevel() + 1)
-        f.items, f.bagButtons = {}, {}
+        f.items, f.bagButtons, f.sectionHeaders = {}, {}, {}
 
         local panel = CreateFrame("Frame", nil, f)
         panel:SetFrameLevel(f:GetFrameLevel() + 1)
@@ -2447,41 +2541,54 @@ do
         local anchor = panel.money
 
         -- Relayout's walk: the keyring and crafting bag sections first (the bottom rows), then the bags
-        local index, col, row, gapCount, prevBag = 0, 0, 0, 0, nil
+        local index, col, row, gapCount, headerSpace = 0, 0, 0, 0, 0
+        local categorized = CategoryRows(db) and Bags:IsCombined()
+        local collapsedSections = categorized and GetCollapsedSections()
         local sections = {}
-        if db.bagKeyring and KeyringID() then sections[#sections + 1] = KEYS end
-        if db.bagReagent and ReagentID() then sections[#sections + 1] = REAGENTS end
-        for _, items in ipairs(sections) do
-            for slot = columns, 1, -1 do
-                index = index + 1
-                local b = SampleButton(f, index)
-                Fill(b, items[slot], db)
-                Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
-                col = col + 1
-                if col >= columns then col, row = 0, row + 1 end
-            end
-            if col > 0 then col, row = 0, row + 1 end
-            gapCount = gapCount + 1
+        if db.bagKeyring and KeyringID() then
+            sections[#sections + 1] = { key = KeyringID(), items = KEYS, slots = columns }
         end
-        for _, bag in ipairs(SAMPLE_BAGS) do
-            for slot = bag.slots, 1, -1 do
-                if gaps and prevBag and bag.bag ~= prevBag then
-                    if col > 0 then col, row = 0, row + 1 end
-                    gapCount = gapCount + 1
+        if db.bagReagent and ReagentID() then
+            sections[#sections + 1] = { key = ReagentID(), items = REAGENTS, slots = columns }
+        end
+        for _, section in ipairs(categorized and SAMPLE_CATEGORIES or SAMPLE_BAGS) do
+            sections[#sections + 1] = section
+        end
+        for _, header in pairs(f.sectionHeaders) do header:Hide() end
+        for i, section in ipairs(sections) do
+            local collapsed = categorized and collapsedSections[section.key]
+            if not collapsed then
+                for slot = section.slots, 1, -1 do
+                    index = index + 1
+                    local b = SampleButton(f, index)
+                    Fill(b, section.items[slot], db)
+                    Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY, headerSpace)
+                    col = col + 1
+                    if col >= columns then col, row = 0, row + 1 end
                 end
-                index = index + 1
-                local b = SampleButton(f, index)
-                Fill(b, bag.items[slot], db)
-                Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY)
-                col = col + 1
-                if col >= columns then col, row = 0, row + 1 end
-                prevBag = bag.bag
+            end
+            if categorized then
+                if col > 0 then col, row = 0, row + 1 end
+                local header = f.sectionHeaders[section.key]
+                if not header then
+                    header = CreateCategoryHeader(panel)
+                    f.sectionHeaders[section.key] = header
+                end
+                SetCategoryHeader(header, section.label or ExtraSectionLabel(section.key), collapsed)
+                header:ClearAllPoints()
+                header:SetWidth(columns * stepX - ITEM_SPACING)
+                header:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 4 + row * stepY + gapCount * BAG_GAP + headerSpace)
+                header:Show()
+                headerSpace = headerSpace + CATEGORY_HEADER_HEIGHT
+            elseif section.key or (gaps and i < #sections) then
+                if col > 0 then col, row = 0, row + 1 end
+                gapCount = gapCount + 1
             end
         end
         for i = index + 1, #f.items do f.items[i]:Hide() end
         local rows = row + (col > 0 and 1 or 0)
         local width = columns * w + (columns - 1) * ITEM_SPACING + PAD_W
-        local height = rows * h + (rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + PAD_H + MONEY_H + 12
+        local height = rows * h + math_max(0, rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + headerSpace + PAD_H + MONEY_H + 12
         panel:SetSize(width, height)
         if NineSliceUtil and NineSliceUtil.UpdateCornerCropping then pcall(NineSliceUtil.UpdateCornerCropping, panel, height) end
         DrawSampleTools(panel, width)
