@@ -169,7 +169,7 @@ C.TYPE_KEYS = {
     healthColor = true, castbar = true, castHeight = true, debuffs = true, debuffSize = true, debuffMax = true,
     buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true, clickThrough = true,
     -- (11-20, Malkkav: every row on the Style tab is the type's own) the look rows and Name Only Size
-    texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true,
+    texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true, fullPlayerNames = true,
     -- (11-20, Malkkav: every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
     -- Targeting, Visibility and Fonts stay shared. Role stays shared: it is yours, not the plate's;
     -- so do the colours, picked in their own window)
@@ -757,8 +757,20 @@ function NP.BlizzardHealthDefault()
     return set
 end
 
--- Bar text slots, as the unit frames' (BarText.lua): the saved picks, or Left = First Name and Right =
--- Blizzard's default health text. Plates always show the first name only.
+function NP.FullPlayerNames(db)
+    if db.kind ~= "friendlyPlayer" and db.kind ~= "enemyPlayer" then return false end
+    if db.fullPlayerNames ~= nil then return db.fullPlayerNames end
+    -- Before format and placement were separate, the first name-bearing slot decided.
+    local stored = db.barText and db.barText.health
+    if not stored or not stored.left then return false end
+    for _, slot in ipairs(BT.SLOTS) do
+        local pick = stored[slot] and BT.NameOf(stored[slot])
+        if pick then return pick == "fullname" end
+    end
+    return false
+end
+
+-- Slot placement is independent of the player-name format.
 function NP.TextSlots(db)
     local stored = db.barText and db.barText.health
     local out = {}
@@ -767,10 +779,9 @@ function NP.TextSlots(db)
         if not set then
             set = (slot == "left" and { firstname = 1 }) or (slot == "right" and NP.BlizzardHealthDefault()) or {}
         end
-        -- (Full Name stays Full Name: before 11-21 it was read as First Name, so plates never showed
-        -- surnames; NP.UpdateName reads p.nameFull)
         local copy = {}
         for k, v in pairs(set) do copy[k] = v end
+        if copy.fullname then copy.firstname, copy.fullname = 1, nil end
         out[slot] = copy
     end
     return out
@@ -1315,10 +1326,10 @@ function NP.Layout(p)
     -- Bar text: Left, Middle and Right inside the bar. The name is one slot's pick and stands alone
     -- there; it gives way to the numbers in the other slots.
     p.slots = NP.TextSlots(db)
-    p.nameSlot, p.nameFull = nil, false
+    p.nameSlot, p.nameFull = nil, NP.FullPlayerNames(db)
     for _, slot in ipairs(BT.SLOTS) do
         local pick = BT.NameOf(p.slots[slot])
-        if pick then p.nameSlot, p.nameFull = slot, pick == "fullname" break end
+        if pick then p.nameSlot = slot break end
     end
     local POINT = { left = "LEFT", middle = "CENTER", right = "RIGHT" }
     local X = { left = 3, middle = 0, right = -3 }
@@ -1728,7 +1739,7 @@ end
 function NP.UpdateName(p)
     local db, unit = PDB(p), p.unit
     if not p.nameSlot then return end
-    -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
+    -- the first name, or the surname too when Show Full Name is on; Follow Name puts the level in
     -- front, in its colour
     local name = ns.UnitDisplayName(unit, nil, p.nameFull and true or false)
     local prefix = p.levelFollow and NP.LevelPrefix(unit)
@@ -2962,10 +2973,15 @@ function NP.DrawSample(f, kind)
     p.name:SetTextColor(1, 1, 1)
     -- players: a player's name in your class colour
     -- (the friendly sample is a player: you, in your class colour)
-    if db.kind == "friendlyPlayer" then
+    if db.kind == "friendlyPlayer" or db.kind == "enemyPlayer" then
         local _, class = UnitClass("player")
         local cc = class and C_ClassColor.GetClassColor(class)
-        p.name:SetText(UnitName("player"))
+        local name = ns.UnitDisplayName("player", nil, p.nameFull)
+        if p.levelFollow then
+            p.name:SetFormattedText("|cff%02x%02x%02x12|r %s", color.r * 255 + 0.5, color.g * 255 + 0.5, color.b * 255 + 0.5, name)
+        else
+            p.name:SetText(name)
+        end
         if cc then p.name:SetTextColor(cc:GetRGB()) end
     end
     local questOn = NP.QuestOn() and (st.quest or type(kind) ~= "table")

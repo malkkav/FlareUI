@@ -555,7 +555,7 @@ Row{ key = "np.healthColor", kind = "choice", path = "healthColor", choices = { 
 Row{ key = "np.pickColors", kind = "button", buttonText = L["Pick Your Colours"], tab = "style", section = "np.look", lead = true,
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("np") end end }
 -- Bar text: Left, Middle and Right inside the bar, the unit frames' Health Text items, in the order
--- ticked. First Name stands alone in its slot (ticking it clears the numbers; a number clears it).
+-- ticked. Either name stands alone in its slot (ticking it clears the numbers; a number clears it).
 -- One dropdown, as on the unit frames: Left, Middle and Right submenus of ticks, numbered in the
 -- order ticked; the box sums the three up. The row's value is the three slots in one string,
 -- "left=firstname;middle=;right=value,max" (what Reset compares and writes back).
@@ -591,20 +591,20 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         local out = { left = all.left, middle = all.middle, right = all.right }
         local list, n = ns.BarText.Ordered(all[slot])
         local set = {}
-        if value == "firstname" then
-            if not all[slot].firstname then set = { firstname = 1 } end
+        if ns.BarText.NAMES[value] then
+            if not all[slot][value] then set = { [value] = 1 } end
         elseif value ~= "none" then
             local k = 0
             for i = 1, n do
                 local item = list[i]
-                if item ~= "firstname" and item ~= value then k = k + 1; set[item] = k end
+                if not ns.BarText.NAMES[item] and item ~= value then k = k + 1; set[item] = k end
             end
             if not all[slot][value] then set[value] = k + 1 end
         end
         out[slot] = set
         return EncodeSlots(out)
     end,
-    boxText = function() return ns.BarText.Summary(TextSlotsNow()) end,
+    boxText = function() return ns.BarText.Summary(TextSlotsNow(), L["Name"]) end,
     get = function() return EncodeSlots(TextSlotsNow()) end,
     set = function(value)
         local np = NP()
@@ -616,6 +616,8 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
                 for item in items:gmatch("[^,]+") do n = n + 1; health[slot][item] = n end
             end
         end
+        local db = np.TypeDB(PIN.kind)
+        if db.fullPlayerNames == nil and np.FullPlayerNames(db) then np.TypeSet(PIN.kind, "fullPlayerNames", true) end
         np.TypeSet(PIN.kind, "barText", { health = health })
     end,
     resetValue = function()
@@ -624,6 +626,13 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         return EncodeSlots({ left = { firstname = true }, middle = {}, right = right })
     end }
 Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health" }
+
+-- Independent of bar layout: also editable when Name Only locks the health slots.
+S:Row{ key = "np.fullPlayerNames", tab = "style", section = "np.health",
+    hidden = function() return PIN.kind ~= "friendlyPlayer" and PIN.kind ~= "enemyPlayer" end,
+    get = function() return NP().FullPlayerNames(NP().TypeDB(PIN.kind)) end,
+    set = function(on) NP().TypeSet(PIN.kind, "fullPlayerNames", on) end,
+    resetValue = function() return false end, apply = Refresh }
 
 -- NAME ONLY MODE (11-20): the switch (the type's Plate: Name Only, as the Name Only preset), the name's
 -- size, and which types get their whole plate back in a fight (shared: one list of types)

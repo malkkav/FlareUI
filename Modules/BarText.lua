@@ -309,11 +309,11 @@ end
 BT.MENU_SLOTS = { left = L["Left"], middle = L["Centre"], right = L["Right"] }
 BT.SHORT = { firstname = L["First Name"], fullname = L["Full Name"], percent = "%", value = L["Value"],
              max = L["Max"], lost = L["Lost"] }
-function BT.Summary(slots)
+function BT.Summary(slots, nameLabel)
     local parts = {}
     for _, slot in ipairs(BT.SLOTS) do
         local items = {}
-        for _, item in ipairs((BT.Ordered(slots[slot]))) do items[#items + 1] = BT.SHORT[item] end
+        for _, item in ipairs((BT.Ordered(slots[slot]))) do items[#items + 1] = (BT.NAMES[item] and nameLabel) or BT.SHORT[item] end
         parts[#parts + 1] = #items > 0 and table.concat(items, " / ") or "\226\128\148"   -- an em dash
     end
     return table.concat(parts, "  " .. (ns.DOT or "\194\183") .. "  ")   -- a middle dot between the slots (Core.lua ns.DOT)

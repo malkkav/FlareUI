@@ -1634,8 +1634,8 @@ ns.Copy = {
             tags = { "smooth", "smooth bars", "animation", "edge glow", "damage trail" },
         },
         ["np.barText"] = {
-            choices = { L["None"], L["First Name"], L["Health Percent"], L["Health Value"], L["Health Max"], L["Health Lost"] },
-            desc = L["What the left, middle and right of the bar show. Several numbers show together, split by /, in the order you tick them. First Name stands alone."],
+            choices = { L["None"], L["Name"], L["Health Percent"], L["Health Value"], L["Health Max"], L["Health Lost"] },
+            desc = L["Each slot shows either the name or health numbers. Numbers appear in the order you tick them, separated by /."],
             label = L["Health Text"],
             section = "np.health",
             tags = { "health percent", "health value", "bar text" },
@@ -1840,6 +1840,11 @@ ns.Copy = {
             section = "np.specialColors",
             tags = { "group colour", "party members" },
             tip = L["Shows on friendly plates outside dungeons and raids: inside them the game keeps friendly plates its own."],
+        },
+        ["np.fullPlayerNames"] = {
+            label = L["Show Full Name"],
+            desc = L["Include the player's surname when available. Also applies in Name Only mode."],
+            section = "np.health",
         },
         ["np.healthColor"] = {
             choices = { L["Off"], L["Reaction"], L["Class & Reaction"], L["Health"] },
