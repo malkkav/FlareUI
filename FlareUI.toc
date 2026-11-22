@@ -92,6 +92,7 @@ Modules\Bags.lua
 Modules\Movers.lua
 Modules\LootFeed.lua
 Modules\LootRolls.lua
+Modules\LootWindow.lua
 Modules\ZoneText.lua
 Modules\Tooltips.lua
 Modules\ItemStats.lua

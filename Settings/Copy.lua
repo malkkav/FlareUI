@@ -32,7 +32,7 @@ ns.Copy = {
         bl = {
             desc = L["Your bags and what you loot."],
             offCard = L["* FlareUI's bag and bank windows\n* Category filters and item levels\n* A loot roll window and a loot feed"],
-            tabs = { L["Bags"], L["Looting"], L["Fonts"] },
+            tabs = { L["Bags"], L["Looting"], L["Loot Window"], L["Fonts"] },
             title = L["Bags & Looting"],
         },
         br = {
@@ -775,6 +775,11 @@ ns.Copy = {
             label = L["Loot Rolls"],
             section = "bl.fontsLoot",
         },
+        ["bl.font.lootWindow"] = {
+            desc = L["The item names and the free bag slots in the loot window."],
+            label = L["Loot Window"],
+            section = "bl.fontsLoot",
+        },
         ["bl.font.money"] = {
             desc = L["The gold, silver and copper at the bottom of your bags. Default keeps Blizzard's font."],
             label = L["Gold"],
@@ -828,6 +833,67 @@ ns.Copy = {
             desc = L["How dark the loot roll window's background is."],
             label = L["Background Opacity"],
             section = "bl.lootRollsSection",
+        },
+        ["bl.lootWindow"] = {
+            desc = L["FlareUI's loot window in place of Blizzard's when you loot a corpse or a chest."],
+            label = L["Loot Window"],
+            reload = true,
+            section = "bl.lootWindowSection",
+            tags = { "loot window", "corpse", "chest" },
+            tip = L["Placed and scaled in Edit Mode as \"FlareUI Loot Window\"."],
+        },
+        ["bl.lootWindowBoE"] = {
+            label = L["BoE Text"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowBorder"] = {
+            desc = L["The border around the loot window. None hides it."],
+            label = L["Border"],
+            section = "bl.lootWindowSection",
+            tags = { "frame border" },
+        },
+        ["bl.lootWindowColor"] = {
+            choices = { L["Icon Only"], L["Whole Row"] },
+            desc = L["Colour only the icon's border, or the whole row, in the item's quality colour."],
+            label = L["Quality Colour"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowFreeSlots"] = {
+            desc = L["Your free bag space at the window's foot, in red when the bags are full."],
+            label = L["Free Bag Slots"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowItemLevel"] = {
+            label = L["Item Level"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowJunk"] = {
+            label = L["Junk Coin"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowOpacity"] = {
+            desc = L["How dark the loot window's background is."],
+            label = L["Background Opacity"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowOwned"] = {
+            desc = L["How many of the item you already carry, after its name."],
+            label = L["Owned Count"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowSort"] = {
+            choices = { L["As Dropped"], L["By Quality"], L["By Item Level"] },
+            desc = L["Money always stays on top."],
+            label = L["Sort Items"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowThick"] = {
+            label = L["Thick Icon Borders"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowUncollected"] = {
+            label = L["Uncollected Appearances"],
+            section = "bl.lootWindowSection",
         },
         ["bl.petFood"] = {
             desc = L["A paw marks the food your hunter pet eats."],
@@ -3347,6 +3413,7 @@ ns.Copy = {
         ["bl.itemSlots"] = L["Item Slots"],
         ["bl.lootFeedSection"] = L["Loot Feed"],
         ["bl.lootRollsSection"] = L["Loot Rolls"],
+        ["bl.lootWindowSection"] = L["Loot Window"],
         ["bl.looting"] = L["Looting"],
         ["bl.tools"] = L["Tools"],
         ["br.alertsSection"] = L["Alerts"],

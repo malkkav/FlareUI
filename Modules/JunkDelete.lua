@@ -69,11 +69,9 @@ local function CheapestJunk()
     return best, bestBag, bestSlot
 end
 
--- in the loot button's click: makes room if the item needs it
-local function BeforeLootClick(button)
+-- in a loot slot's click (Blizzard's loot button or FlareUI's loot window): makes room if the item needs it
+function JunkDelete.BeforeLootSlot(index)
     if not On() or InCombatLockdown() or GetCursorInfo() or IsModifiedClick() then return end
-    local element = button:GetParent()
-    local index = element and element.GetSlotIndex and element:GetSlotIndex()
     if not index or GetLootSlotType(index) ~= Enum.LootSlotType.Item then return end
     local link = GetLootSlotLink(index)
     local itemID = link and C_Item.GetItemInfoInstant(link)
@@ -88,6 +86,11 @@ local function BeforeLootClick(button)
     elseif CursorHasItem() then
         ClearCursor()
     end
+end
+
+local function BeforeLootClick(button)
+    local element = button:GetParent()
+    JunkDelete.BeforeLootSlot(element and element.GetSlotIndex and element:GetSlotIndex())
 end
 
 -- each loot button once, as the loot window's list makes it

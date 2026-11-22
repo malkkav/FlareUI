@@ -595,12 +595,16 @@ end
 
 -- A module that draws its own lower Info panel (module.sidePanel = { top, show(host), hover(rowKey) };
 -- Nameplates): the text keeps the top part, the module's frame the rest. Not in search results, nor
--- while the module is off.
+-- while the module is off; with side.tab only on that tab (Bags & Looting's Loot Window).
 local function SidePanel()
     if searchText ~= "" then return nil end
     local module = S.modules[current]
     local side = module and module.sidePanel
     if not side or (module.enabled and not module:IsOn()) then return nil end
+    if side.tab then
+        local tab = Panel:ActiveTab(module)
+        if not (tab and tab.key == side.tab) then return nil end
+    end
     return side
 end
 Panel.SidePanel = SidePanel
@@ -637,6 +641,10 @@ end
 -- a picture shows the current settings; only the minimap drawer rows try a value on (value)
 local function ShowVisual(row, value)
     if not preview.canvas then return end
+    -- (before the side panel's return: a tab with one must not keep the last tab's help text)
+    if preview.module ~= current or preview.tab ~= currentTab[current] then
+        preview.spec = nil; preview.helpRow = nil; preview.module = current; preview.tab = currentTab[current]
+    end
     local side = SidePanel()
     if side then
         preview.canvas.frame:Hide()
@@ -649,9 +657,6 @@ local function ShowVisual(row, value)
             if not ok and geterrorhandler then geterrorhandler()(err) end
         end
         return
-    end
-    if preview.module ~= current or preview.tab ~= currentTab[current] then
-        preview.spec = nil; preview.helpRow = nil; preview.module = current; preview.tab = currentTab[current]
     end
     if preview.dirty and not row and preview.spec and S.rows and S.rows[preview.spec.key] then
         preview.spec = ns.SettingsPreview.Resolve(S.rows[preview.spec.key]) or preview.spec
@@ -2298,7 +2303,7 @@ function Panel:Refresh()
     end
     page.offCard:Hide()
     page.scroll:Show()
-    if preview.side then preview.side:Hide() end
+    for _, host in pairs(preview.sides or {}) do host:Hide() end
     SideBoxes(false)
     if searchText ~= "" then
         S:EndNewVisit()
@@ -2344,11 +2349,14 @@ function Panel:Refresh()
         -- the module's own lower Info panel (SidePanel above), drawn again on every refresh
         local side = SidePanel()
         if side then
-            if not preview.side then
-                preview.side = CreateFrame("Frame", nil, page.right)
-                preview.side:SetFrameLevel(page.right:GetFrameLevel() + 5)
+            -- (a host per module: each builds its own frames on it)
+            preview.sides = preview.sides or {}
+            local host = preview.sides[current]
+            if not host then
+                host = CreateFrame("Frame", nil, page.right)
+                host:SetFrameLevel(page.right:GetFrameLevel() + 5)
+                preview.sides[current] = host
             end
-            local host = preview.side
             host:ClearAllPoints()
             -- where the module's part starts: from its height (the text box gets the rest), or a top
             local top = side.top or 200

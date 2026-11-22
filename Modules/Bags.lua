@@ -1063,6 +1063,8 @@ Bags.AutoOpen = { skip = {} }
 
 function Bags.AutoOpen.Blocked()
     if InCombatLockdown() or UnitIsDeadOrGhost("player") or ns.IsGamepadUI() then return true end
+    -- a loot open in FlareUI's loot window, where Blizzard's LootFrame stays hidden
+    if ns.LootWindow and ns.LootWindow.looting then return true end
     for _, name in ipairs({ "MerchantFrame", "BankFrame", "MailFrame", "TradeFrame", "AuctionHouseFrame",
                             "AuctionFrame", "GuildBankFrame", "LootFrame" }) do
         local frame = _G[name]
@@ -1258,6 +1260,7 @@ end
 --------------------------------------------------
 -- edge size and outset per border: each art's bright band lands on the slot's edge
 local BORDERS = { thin = { "FlareUI Thin", 8, 3 }, thick = { "FlareUI Thick", 16, 2 } }
+Bags.ITEM_BORDERS = BORDERS
 
 local function UpdateFilteredQuestBorder(button, ov, bagID, slotID, dimmed)
     local mark = button.IconQuestTexture
@@ -1420,6 +1423,7 @@ local function ItemLevelOf(link)
     end
     return level or nil
 end
+Bags.ItemLevelOf = ItemLevelOf
 
 -- only weapons and armour worn where it shows can have an appearance; Forever's appearance lookup
 -- answers for anything (potions, scrolls), so the item's kind is checked first
@@ -1452,6 +1456,7 @@ local function Uncollected(link)
     uncollected[link] = known
     return known
 end
+Bags.Uncollected = Uncollected
 
 local function ShowItemLevel(ov, level, quality)
     ov.ilvl:SetText(level)
@@ -1462,17 +1467,17 @@ end
 
 -- what needs the item's data: its level, its appearance, its BoE text
 local BIND_ON_EQUIP = Enum.ItemBind and Enum.ItemBind.OnEquip or 2
+function Bags.IsBoE(link)
+    -- GetItemInfo's 14th value, after pcall's status (nil if it failed): no closure per item
+    return select(15, pcall(C_Item.GetItemInfo, link)) == BIND_ON_EQUIP
+end
 local function ShowItemData(ov, db, bagID, slotID, link, quality, isBound)
     if db.bagItemLevel then
         local level = ItemLevelOf(link)
         if level then ShowItemLevel(ov, level, quality) end
     end
     if db.bagUncollected and Uncollected(link) then ov.eye:Show() end
-    if db.bagBoE and not isBound then
-        -- GetItemInfo's 14th value, after pcall's status (nil if it failed): no closure per item
-        local bind = select(15, pcall(C_Item.GetItemInfo, link))
-        if bind == BIND_ON_EQUIP then ov.boe:Show() end
-    end
+    if db.bagBoE and not isBound and Bags.IsBoE(link) then ov.boe:Show() end
 end
 
 local function UpdateButton(button, db)
@@ -1511,6 +1516,7 @@ local function StyleIconText(fs, font)
     ns.ApplyShadow(fs, font)
     fs.fuiFont = { path = path, size = size, flags = flags, sh = font.enableShadow, x = font.shadowX, y = font.shadowY, got = fs:GetFont() }
 end
+Bags.StyleIconText = StyleIconText   -- (the loot window's item levels, LootWindow.lua)
 -- the money at the bags' foot (Bags and Looting > Fonts > Gold): Blizzard's gold, silver and copper
 -- texts on the combined bags and the backpack; their widths follow the new text
 function Bags.StyleMoney()

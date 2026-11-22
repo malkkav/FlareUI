@@ -6,7 +6,8 @@ local S = ns.Settings
 -- BAGS & LOOTING (out of Quality of Life)
 -- Bags tab: the bag window (Modules/Bags.lua's layout), what is drawn on the item slots, and the
 -- tools. Looting tab: Faster Auto Loot, Skip Loot Confirmations (Tweaks.lua), the Loot Roll Window
--- (LootRolls.lua) and the Loot Feed (LootFeed.lua). Fonts tab: the bags' texts, Loot Rolls and Loot Feed. The saved values stay in tweaks.*; the module's
+-- (LootRolls.lua) and the Loot Feed (LootFeed.lua). Loot Window tab: the loot window (LootWindow.lua)
+-- with its Live Preview. Fonts tab: the bags' texts, Loot Rolls and Loot Feed. The saved values stay in tweaks.*; the module's
 -- own switch is tweaks.bagModule (ns.BagModuleOn: on for anyone who had Quality of Life on).
 --------------------------------------------------
 local function Refresh() if ns.Tweaks then ns.Tweaks:Refresh() end end
@@ -15,9 +16,81 @@ local function RefreshBags() if ns.Bags then ns.Bags:Refresh() end end
 local function BagAddon() return ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bags:GetOtherBagAddon() and true or false end
 local function NotCombined() return BagAddon() or not (ns.Bags and ns.Bags:IsCombined()) end
 
+-- The Loot Window tab's Live Preview (Panel.lua module.sidePanel, as Nameplates'): the loot window's
+-- picture (PreviewSamples.lua R.lootWindow) in the current settings, greyed while it is off. New Loot
+-- above it rolls random sample rows (LootWindow.lua LW.RandomLoot); until then R.lootWindow's own.
+local LOOT_PREVIEW = { pad = 12, maxScale = 1.5 }   -- rows: the rolled sample rows; host: the panel's frame
+local DrawLootPreview
+local function NewLoot()
+    local LW = ns.LootWindow
+    if not (LW and LW.RandomLoot) then return end
+    LOOT_PREVIEW.rows = LW.RandomLoot()
+    DrawLootPreview()
+end
+DrawLootPreview = function()
+    local host, P, Panel = LOOT_PREVIEW.host, ns.SettingsPreview, ns.SettingsPanel
+    if not (host and host:IsShown() and P and Panel) then return end
+    local pad = LOOT_PREVIEW.pad
+    if not host.box then
+        host.box = CreateFrame("Frame", nil, host, "BackdropTemplate")
+        Panel.Box(host.box, 0.40)
+        host.box:SetFrameLevel(host:GetFrameLevel())
+        host.box:SetAllPoints()
+        host.title = host.box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        host.title:SetText(L["Live Preview"])
+        host.title:SetPoint("TOPLEFT", host.box, "TOPLEFT", pad, -12)
+        -- a small text link beside the title, as Nameplates' Test in Game
+        local b = CreateFrame("Button", nil, host.box)
+        b:SetNormalFontObject("GameFontNormalSmall")
+        b:SetHighlightFontObject("GameFontHighlightSmall")
+        b:SetDisabledFontObject("GameFontDisableSmall")
+        b:SetText(L["New Loot"])
+        b:SetHeight(18)
+        b:SetPoint("RIGHT", host.box, "RIGHT", -pad + 3, 0)
+        b:SetPoint("BOTTOM", host.title, "BOTTOM", 0, -2)
+        b:SetScript("OnClick", function()
+            if ns.ButtonSound then ns.ButtonSound() end
+            NewLoot()
+        end)
+        host.newLoot = b
+        host.area = CreateFrame("Frame", nil, host.box)
+        host.area:SetPoint("TOPLEFT", host.box, "TOPLEFT", pad, -36)
+        host.area:SetPoint("BOTTOMRIGHT", host.box, "BOTTOMRIGHT", -pad, pad)
+        -- (as wide as the column's own picture)
+        host.canvas = P.Create(host.area, (Panel.RIGHT_W or 280) - 2 * (Panel.PAD or 12), 400)
+    end
+    local LW = ns.LootWindow
+    host.newLoot:SetEnabled(LW and LW.RandomLoot and true or false)
+    host.newLoot:SetWidth((host.newLoot:GetFontString():GetStringWidth() or 60) + 6)
+    local canvas = host.canvas
+    canvas.frame:SetScale(1)
+    if not P.Show(canvas, { kind = "lootWindow", key = "bl.lootWindowPreview", rows = LOOT_PREVIEW.rows, bare = true }) then return end
+    canvas.frame:SetAlpha(S:GetPath("tweaks.lootWindow") and 1 or 0.4)
+    -- scaled to fit the area (up to maxScale) and centred
+    local w, h = canvas.width, canvas.used or canvas.height
+    canvas.frame:SetHeight(h)
+    local aw, ah = host.area:GetWidth(), host.area:GetHeight()
+    local k = LOOT_PREVIEW.maxScale
+    if aw and aw > 0 then k = math.min(k, aw / w) end
+    if ah and ah > 0 then k = math.min(k, ah / h) end
+    canvas.frame:SetScale(k)
+    canvas.frame:ClearAllPoints()
+    canvas.frame:SetPoint("CENTER", host.area, "CENTER", 0, 0)
+end
+
 S:Module{
     key = "bl", group = "interface", order = 35, enabled = "tweaks.bagModule",
-    tabs = { { key = "bags" }, { key = "looting" }, { key = "fonts" } },
+    tabs = { { key = "bags" }, { key = "looting" }, { key = "lootWindow" }, { key = "fonts" } },
+    sidePanel = {
+        tab = "lootWindow",
+        height = 360,   -- (the fixed rows at full size; seven rolled rows a little smaller)
+        show = function(host)
+            LOOT_PREVIEW.host = host
+            DrawLootPreview()
+            C_Timer.After(0, DrawLootPreview)   -- (again once the column is laid out)
+        end,
+        hover = function() DrawLootPreview() end,
+    },
 }
 
 -- BAGS: the window ------------------------------
@@ -139,6 +212,34 @@ S:Row{ key = "bl.skipLoot", half = true, tab = "looting", path = "tweaks.skipLoo
 S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload = true }
 S:Row{ key = "bl.lootRollsOpacity", kind = "range", tab = "looting", path = "tweaks.lootRollsOpacity", choices = S:OpacityChoices(),
     parent = "bl.lootRolls", apply = function() if ns.LootRolls and ns.LootRolls.ApplyOpacity then ns.LootRolls:ApplyOpacity() end end }
+-- Loot Window: FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off take a reload.
+-- Its own tab, with the Live Preview beside it (the module's sidePanel above).
+S:Row{ key = "bl.lootWindow", tab = "lootWindow", path = "tweaks.lootWindow", reload = true }
+local function LootWindowCall(name)
+    return function() if ns.LootWindow and ns.LootWindow[name] then ns.LootWindow[name](ns.LootWindow) end end
+end
+S:Row{ key = "bl.lootWindowBorder", kind = "choice", tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowBorder",
+    choices = S.BorderChoices, apply = LootWindowCall("ApplyLook") }
+S:Row{ key = "bl.lootWindowOpacity", kind = "range", tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowOpacity",
+    choices = S:OpacityChoices(), apply = LootWindowCall("ApplyLook") }
+S:Row{ key = "bl.lootWindowSort", kind = "choice", tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowSort",
+    choices = { "loot", "quality", "ilvl" }, apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowColor", kind = "choice", tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowColor",
+    choices = { "icon", "row" }, apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowItemLevel", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowItemLevel",
+    apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowJunk", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowJunk",
+    apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowBoE", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowBoE",
+    apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowUncollected", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowUncollected",
+    apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowOwned", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowOwned",
+    apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowThick", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowThick",
+    apply = LootWindowCall("Refresh") }
+S:Row{ key = "bl.lootWindowFreeSlots", half = true, tab = "lootWindow", parent = "bl.lootWindow", path = "tweaks.lootWindowFreeSlots",
+    apply = LootWindowCall("Refresh") }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
 -- Loot Feed (11-20, was a switch): Off, Square Icons or Round Icons. Saved as before: tweaks.lootFeed,
 -- and the shape in tweaks.lootFeedIcons (square unset). Turning it on or off asks for a reload; the shape is live.
@@ -176,9 +277,13 @@ S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     -- the stack counts and cooldown numbers on the bag icons (Bags.lua StyleIconTexts)
     { key = "bagItems", path = "tweaks.bagItemFont", optional = true, disabled = BagAddon },
-    -- Item Level's numbers, in the bags and on the character sheet: shown while it's on
+    -- Item Level's numbers, in the bags, on the character sheet and in the loot window: shown while
+    -- either Item Level is on
     { key = "itemLevel", path = "tweaks.bagItemLevelFont", optional = true,
-      hidden = function() return not S:GetPath("tweaks.bagItemLevel") end },
+      hidden = function()
+          return not (S:GetPath("tweaks.bagItemLevel")
+              or (S:GetPath("tweaks.lootWindow") and S:GetPath("tweaks.lootWindowItemLevel")))
+      end },
     -- the free bag slots on the backpack button (too small to read)
     { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
     -- the gold, silver and copper at the bags' foot
@@ -186,12 +291,16 @@ S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
 }, apply = function()
     if ns.Bags and ns.Bags.Refresh then ns.Bags:Refresh() end
     if ns.Bags and ns.Bags.StyleFreeSlots then ns.Bags.StyleFreeSlots() end
+    -- (the loot window's item levels take the Item Level font too)
+    if ns.LootWindow and ns.LootWindow.ApplyFont then ns.LootWindow:ApplyFont() end
 end }
--- the loot roll window and the loot feed in a section of their own (Loot Rolls)
+-- the loot roll window, the loot feed and the loot window in a section of their own (Loot Rolls)
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fontsLoot", fonts = {
     { key = "lootRolls", path = "tweaks.lootRollFont" },
     { key = "lootFeed", path = "tweaks.lootFeedFont" },
+    { key = "lootWindow", path = "tweaks.lootWindowFont" },
 }, apply = function()
+    if ns.LootWindow and ns.LootWindow.ApplyFont then ns.LootWindow:ApplyFont() end
     if ns.LootRolls and ns.LootRolls.ApplyFont then ns.LootRolls:ApplyFont() end
     if ns.LootFeed and ns.LootFeed.ApplyFont then ns.LootFeed:ApplyFont() end
 end }
