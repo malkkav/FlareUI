@@ -94,12 +94,13 @@ local function SafeCall(fn, ...)
 end
 
 local function GetFontData(fontDB)
-    if not fontDB then return "Fonts\\FRIZQT__.TTF", 12, "" end
+    if not fontDB then return ns.CyrillicTwin("Fonts\\FRIZQT__.TTF"), 12, "" end
     local face = fontDB.face or "Friz Quadrata TT"
     local size = fontDB.size or 12
     local flags = fontDB.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    local path = ns.GetFontPath(face)
+    -- Cyrillic names on a non-Russian client: the meter takes the Cyrillic twin (Core.lua)
+    local path = ns.CyrillicTwin(ns.GetFontPath(face))
     return path, size, flags
 end
 

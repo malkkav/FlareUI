@@ -1326,7 +1326,8 @@ end
 -- (11-22, Aleksandr Vasinskyi) Blizzard's Latin-only fonts have Cyrillic twins: the same Latin letters
 -- plus Russian. The game draws a whole string with one font, so a meter row like "1. Имя" (a Russian
 -- name on an English client) took the Latin-only font and drew boxes; the twin draws both. Only where
--- the client has the file.
+-- the client has the file. Used by the meter only (Modules/DamageMeter.lua): the twins miss some glyphs
+-- (the middle dot "·" draws as a box) and space letters differently, which showed everywhere else.
 ns.CYRILLIC_TWINS = {
     ["fonts\\frizqt__.ttf"] = "Fonts\\FRIZQT___CYR.TTF",
     ["fonts\\morpheus.ttf"] = "Fonts\\MORPHEUS_CYR.TTF",
@@ -1341,7 +1342,7 @@ end
 
 -- The client's own font for this language: always loaded, and it has the language's letters
 local function BaseFont()
-    return ns.CyrillicTwin(_G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF")
+    return _G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 end
 
 -- Global Font: a font whose face is ns.GLOBAL_FONT uses the profile's Global Font. Every
@@ -1376,7 +1377,6 @@ do
             end
             local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
             if success and found and C_UIFileAsset.IsKnownFile(found) then
-                found = ns.CyrillicTwin(found)
                 if face ~= nil then foundPaths[face] = found end
                 return found
             end
