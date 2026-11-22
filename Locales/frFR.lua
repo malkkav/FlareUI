@@ -645,7 +645,6 @@ L[ [=[How channels show in chat:
 * Court : « [1. Général] », « [G] » pour Guilde, « [P] » pour Groupe
 * Numéro : « [1] », « [G] », « [P] »]=]
 L["How dark the chat's background is."] = "L'assombrissement du fond du chat."
-L["How dark the edit box's background is."] = "L'assombrissement du fond de la zone de saisie."
 L["How dark the empty part of the bars is."] = "L'assombrissement de la partie vide des barres."
 L["How dark the meter's background is."] = "L'assombrissement du fond du compteur."
 L["How dark the tracker's background is."] = "L'assombrissement du fond du suivi."
@@ -1676,7 +1675,6 @@ L["Right-click a colour to put it back."] = "Clic droit sur une couleur pour la 
 L["Rogues and druids: Action Bar 1 doesn't turn to the stealth page in Stealth or Prowl. Druids keep their Cat Form page."] = "Voleurs et druides : la barre d'action 1 ne passe pas sur la page de camouflage en Camouflage ou en Rôder. Les druides gardent leur page de Forme de félin."
 L["Short item stats, like \"+12 Spell Power\" instead of the long \"Equip: Increases…\" line. Set bonuses are shortened too."] = "Stats d'objet courtes, comme « +12 Puissance des sorts » au lieu de la longue ligne « Équipé : Augmente… ». Les bonus d'ensemble sont aussi raccourcis."
 L["The bar turns red while your target is out of reach of this attack."] = "La barre devient rouge tant que votre cible est hors de portée de cette attaque."
-L["The border around the chat and its edit box. None hides it."] = "La bordure autour du chat et de sa zone de saisie. Aucun la masque."
 L["The border around the meter. None hides it."] = "La bordure autour du compteur. Aucun la masque."
 L["The border around the tracker. None hides it."] = "La bordure autour du suivi. Aucun la masque."
 L["The cast bar's border. Frame Border matches the frame's own border."] = "La bordure de la barre d'incantation. Bordure du cadre reprend la bordure propre au cadre."
@@ -2611,3 +2609,19 @@ L["Which messages make a chat tab glow when you're on another tab. The glow take
 L["World Markers"] = "Marqueurs du monde"
 L["Yellow"] = "Jaune"
 L["Your threat on the unit as a number, in the middle of the bar. Coloured as the unit frames' Threat Text. With something already in the middle, it sits to its right, in brackets."] = "Votre menace sur l'unité sous forme de nombre, au milieu de la barre. Colorée comme le Texte de menace des cadres d'unité. Si le milieu est déjà occupé, il se place à sa droite, entre parenthèses."
+
+-- phrases added by Braincell1980
+L["Edit Box Border"] = "Bordure de la zone de saisie"
+L["Edit Box Border shows with Modern only."] = "Bordure de la zone de saisie ne s'affiche qu'avec Moderne."
+L["Edit Box Style"] = "Style de la zone de saisie"
+L["Healing & Damage"] = "Soins et dégâts"
+L["How Simplified Item Stats shortens lines with both healing and damage:\n* Off: the long line, unchanged\n* Spell Healing / Spell Damage: both numbers as they are\n* Spell Healing / Spell Power: the damage as Spell Power, plus the extra healing"] = "Comment Stats d'objet simplifiées raccourcit les lignes qui donnent à la fois des soins et des dégâts :\n* Désactivé : la longue ligne, inchangée\n* Soins des sorts / Dégâts des sorts : les deux nombres tels quels\n* Soins des sorts / Puissance des sorts : les dégâts en Puissance des sorts, plus les soins en plus"
+L["How see-through the edit box is."] = "La transparence de la zone de saisie."
+L["How the box you type in looks:\n* FlareUI: Blizzard's own edit box\n* Modern: a dark box with the border of your choice"] = "L'aspect de la zone où vous écrivez :\n* FlareUI : la zone de saisie de Blizzard\n* Moderne : une zone sombre avec la bordure de votre choix"
+L["Needs Simplified Item Stats on."] = "Nécessite Stats d'objet simplifiées activé."
+L["Pet to Summon"] = "Familier à invoquer"
+L["Spell Healing / Spell Damage"] = "Soins des sorts / Dégâts des sorts"
+L["Spell Healing / Spell Power"] = "Soins des sorts / Puissance des sorts"
+L["The border around the Modern edit box. None leaves the dark box without an edge."] = "La bordure autour de la zone de saisie Moderne. Aucune laisse la zone sombre sans bord."
+L["The border around the chat. None hides it."] = "La bordure autour du chat. Aucune la masque."
+L["The seal's icon at the left end of the bar, so you know it at a glance."] = "L'icône du sceau à l'extrémité gauche de la barre, pour le reconnaître d'un coup d'œil."
