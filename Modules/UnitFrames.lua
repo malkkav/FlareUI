@@ -6254,6 +6254,28 @@ local function BuildSettings(unit)
             end,
             get = function() local u = GetUnitDb(unit); local v = u and u.portrait or "none"; if v == "model" then v = "3d" end; return v end, set = set("portrait") }
     end
+    -- Portrait Frame (the player, the ring styles; None by default): the dragon round the ring, as an
+    -- elite, rare elite or boss target has it (UnitFramesRing.lua Ring.PORTRAIT_FRAME_ART)
+    if unit == "player" and ns.UFRing then
+        settings[#settings + 1] = { name = L["Portrait Frame"], kind = LEM.SettingType.Dropdown, default = "none",
+            values = {
+                { text = L["None"],       value = "none",      isRadio = true },
+                { text = L["Elite"],      value = "elite",     isRadio = true },
+                { text = L["Rare Elite"], value = "rareelite", isRadio = true },
+                { text = L["Boss"],       value = "worldboss", isRadio = true },
+            },
+            get = function() local u = GetUnitDb(unit); return u and u.portraitFrame or "none" end,
+            set = function(_, value)
+                local u = GetUnitDb(unit)
+                if not u then return end
+                u.portraitFrame = value ~= "none" and value or nil
+                local f = frames[unit]
+                if f then UF.Redraw(f) end
+            end,
+            desc = L["Blizzard's dragon round your portrait, as on an elite, rare elite or boss target."],
+            -- (Addon Style's square portrait has no ring to wrap)
+            hidden = function() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end }
+    end
     -- Bar Text: Left, Middle and Right on each bar, several picks each (BarText.lua);
     -- Druid Mana for the player (shown for every class, as class options are)
     for _, item in ipairs(UF.BarTextSettings(unit, function() return (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and "plate" or "plain" end)) do

@@ -150,6 +150,30 @@ function Ring.SampleBossArt(index)
     if art then return art[1], art[2], art[3] end
 end
 local BLIZZ_FRAME_W = 232   -- Blizzard's target frame width (the elite frame anchors to its right edge)
+-- Portrait Frame (the player's Look, none by default): the target's dragon for each pick, with
+-- Forever's offsets (GetBossPortraitFrameData's, as in SAMPLE_BOSS_ART)
+Ring.PORTRAIT_FRAME_ART = {
+    elite     = { "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold", 0, 1 },
+    rareelite = { "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Silver-Winged", 8, -7 },
+    worldboss = { "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged", 11, -4 },
+}
+function Ring.PortraitFrameArt(pick)
+    local art = Ring.PORTRAIT_FRAME_ART[pick or ""]
+    if art then return art[1], art[2], art[3] end
+end
+-- The dragon's anchor on Blizzard's frame of this kind: TOPRIGHT at the target frame's top-right
+-- corner plus Forever's offsets; mirrored on a frame with its ring on the left (the player's). The
+-- art wraps a ring on the right: the second value is true when it is drawn mirrored on this side.
+function Ring.BossArtSpot(kind, side, ox, oy)
+    ox, oy = ox or 0, oy or 0
+    local e
+    if BLIZZ[kind].side == "LEFT" then
+        e = { point = "TOPLEFT", x = -ox, y = oy }
+    else
+        e = { point = "TOPRIGHT", x = BLIZZ_FRAME_W + ox, y = oy }
+    end
+    return e, side ~= ART[kind].side
+end
 local SKULL = "UI-HUD-UnitFrame-Target-HighLevelTarget_Icon"
 local PVP_ICONS = {
     Horde = "UI-HUD-UnitFrame-SmallCircle-Horde",
@@ -1588,32 +1612,36 @@ function Ring.Update(f)
         end
     end
 
-    -- the elite / rare frame, as Forever picks it (gold elite, silver rare, winged gold boss)
+    -- the elite / rare frame, as Forever picks it (gold elite, silver rare, winged gold boss); the
+    -- player's is its own pick (Look > Portrait Frame), none by default
     ring.Boss:Hide()
+    local bossAtlas, ox, oy
     -- not on the flag carriers (ctx.noRank): they borrow the boss ring, not its art
     if blizz.boss and not (f.ctx and f.ctx.noRank) and (exists or sample) and GetBossPortraitFrameData then
-        local ok, atlas, ox, oy
+        local ok
         if sample then
-            ok, atlas, ox, oy = true, Ring.SampleBossArt(f.index)
+            ok, bossAtlas, ox, oy = true, Ring.SampleBossArt(f.index)
         else
             local classification = Readable(UnitClassification(unit))
-            ok, atlas, ox, oy = pcall(GetBossPortraitFrameData, unit, classification)
+            ok, bossAtlas, ox, oy = pcall(GetBossPortraitFrameData, unit, classification)
         end
-        if ok and atlas and SetAtlasSafe(ring.Boss, atlas) then
-            local g = Geometry(f)
-            local info = C_Texture.GetAtlasInfo(atlas)
-            -- TOPRIGHT at Blizzard's frame's top-right corner plus Forever's offsets
-            local e = { point = "TOPRIGHT", x = BLIZZ_FRAME_W + (ox or 0), y = oy or 0 }
-            local dx, dy, w, h = Place(f, g, e, atlas)
-            if dx then
-                ring.Boss:ClearAllPoints()
-                ring.Boss:SetSize(w, h)
-                ring.Boss:SetPoint("CENTER", ring, "CENTER", dx, dy)
-                if g.side ~= blizz.side then ring.Boss:SetTexCoord(1, 0, 0, 1) else ring.Boss:SetTexCoord(0, 1, 0, 1) end
-                -- the dragon in the same bronze as the ring
-                Ring.TintPlateArt(ring.Boss)
-                ring.Boss:SetShown(info ~= nil)
-            end
+        if not ok then bossAtlas = nil end
+    elseif kind == "player" then
+        bossAtlas, ox, oy = Ring.PortraitFrameArt(udb and udb.portraitFrame)
+    end
+    if bossAtlas and SetAtlasSafe(ring.Boss, bossAtlas) then
+        local g = Geometry(f)
+        local info = C_Texture.GetAtlasInfo(bossAtlas)
+        local e, mirrored = Ring.BossArtSpot(kind, g.side, ox, oy)
+        local dx, dy, w, h = Place(f, g, e, bossAtlas)
+        if dx then
+            ring.Boss:ClearAllPoints()
+            ring.Boss:SetSize(w, h)
+            ring.Boss:SetPoint("CENTER", ring, "CENTER", dx, dy)
+            if mirrored then ring.Boss:SetTexCoord(1, 0, 0, 1) else ring.Boss:SetTexCoord(0, 1, 0, 1) end
+            -- the dragon in the same bronze as the ring
+            Ring.TintPlateArt(ring.Boss)
+            ring.Boss:SetShown(info ~= nil)
         end
     end
 

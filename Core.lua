@@ -2254,7 +2254,7 @@ do
         -- dropdowns
         "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
-        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text",
+        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Portrait Frame", "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text",
         "Tint Health", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         -- the Cast Bar section's rows have no prefix: placed by their canon names
@@ -2387,7 +2387,7 @@ do
         size = { "Scale", "Width", "Height", "Portrait Scale", "Power Height", "Size",
                  "Power Bar for Mana Users Only", "Only Mana Power Bars" },
         -- the frame's look picks (11-20): first in its Look section (ns.EditSections takes them there)
-        look = { "Portrait", "Flip Portrait", "Mirror Bars" },
+        look = { "Portrait", "Portrait Frame", "Flip Portrait", "Mirror Bars" },
         text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
                  "Threat Text", "Bar Text", "Show Timer", "Level Disc Size", "Values on Mouseover" },
     }
