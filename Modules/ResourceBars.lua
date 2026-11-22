@@ -2572,7 +2572,6 @@ function RB:Init()
 
     HideBlizzardCounterparts()
     EnableSwingRange()
-    if bars.flight then Flight.Init() end
     if bars.timer then Timer.Init() end
     if bars.seal then
         local sealEvents = CreateFrame("Frame")
@@ -2589,4 +2588,5 @@ function RB:Init()
         end)
     end
     self:Refresh()
+    if bars.flight then Flight.Init() end
 end
