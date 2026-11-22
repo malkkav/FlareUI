@@ -92,7 +92,7 @@ local function LayoutWanted()
     if not db or Bags:GetOtherBagAddon() then return false end
     if GamepadUI() then return false end
     return (db.bagColumns or 0) > 0 or db.bagGaps == true or db.bagKeyring == true or db.bagReagent == true
-        or db.bagCombineEmpty == true or CategoryRows(db)
+        or db.bagCombineEmpty == true or db.bagReverse == true or CategoryRows(db)
 end
 
 --------------------------------------------------
@@ -210,6 +210,28 @@ end
 
 -- a slot's place in the combined backpack: filled from the bottom right, right to left, upwards
 -- extra: more height below this row (By Category's section titles)
+-- REVERSE BAG FILL (11-22, Malkkav, from zbee's idea; tweaks.bagReverse, off): the plain grid turned
+-- round, so it starts at the top left and reads left to right, downwards; the Combine Empty Slots
+-- slot ends it, at the bottom. Same order, same rows and gaps: each slot's spot is mirrored once the
+-- grid is laid out (Bags.placedSlots, reused). Not with Category Rows, whose headers sit above their
+-- sections.
+Bags.placedSlots = {}
+function Bags.ReverseOn(db)
+    return db and db.bagReverse == true or false
+end
+function Bags.Reverse(placed, count, anchor, stepX, h, columns)
+    local top = 0
+    for i = 1, count do top = math_max(top, placed[i].y + h) end
+    for i = 1, count do
+        local spot = placed[i]
+        local b = spot.button
+        if not (InCombatLockdown() and b:IsProtected()) then
+            b:ClearAllPoints()
+            b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -(columns - 1 - spot.col) * stepX, 4 + top - (spot.y + h))
+        end
+        spot.button = nil
+    end
+end
 function Bags.GridPoint(b, anchor, col, row, gapCount, stepX, stepY, extra)
     b:ClearAllPoints()
     b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -col * stepX, 4 + row * stepY + gapCount * BAG_GAP + (extra or 0))
@@ -735,8 +757,13 @@ local function Relayout(frame)
     local function FinishRow()
         if col > 0 then col, row = 0, row + 1 end
     end
+    local placed, placedCount = Bags.placedSlots, 0
     local function PlaceSlot(button)
         Bags.GridPoint(button, anchor, col, row, gapCount, stepX, stepY, headerSpace)
+        placedCount = placedCount + 1
+        local spot = placed[placedCount] or {}
+        placed[placedCount] = spot
+        spot.button, spot.col, spot.y = button, col, 4 + row * stepY + gapCount * BAG_GAP + headerSpace
         col = col + 1
         if col == columns then col, row = 0, row + 1 end
     end
@@ -822,6 +849,7 @@ local function Relayout(frame)
     end
     for key, header in pairs(categoryHeaders) do if not visibleHeaders[key] then header:Hide() end end
     local rows = row + (col > 0 and 1 or 0)
+    if Bags.ReverseOn(db) and not categorized then Bags.Reverse(placed, placedCount, anchor, stepX, h, columns) end
 
     local width = gridWidth + frame:GetPaddingWidth()
     local height = rows * h + math_max(0, rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + headerSpace
@@ -2811,4 +2839,73 @@ do
         local frame = _G.CharacterFrame
         if frame and frame:IsShown() then Bags.UpdateCharacterLevels() end
     end)
+
+    -- THE INSPECT WINDOW (11-22, Malkkav, Ryder's idea): Item Level puts each item's level on the
+    -- inspected player's slots too, and their average under the level line (Forever's inspect window
+    -- shows none). The game sends another player's gear only after INSPECT_READY; an item not in the
+    -- cache yet is asked again once it loads.
+    local inspectAverage
+    local function InspectUnit()
+        local frame = _G.InspectFrame
+        if not (frame and frame:IsShown()) then return nil end
+        local unit = frame.GetInspectUnit and frame:GetInspectUnit() or frame.unit
+        return unit and UnitExists(unit) and unit or nil
+    end
+    local function UpdateInspectSlot(button, unit)
+        local slotID = button:GetID()
+        local fs = Label(button)
+        fs:Hide()
+        local link = slotID and GetInventoryItemLink(unit, slotID)
+        if not (link and Wanted()) then return end
+        StyleIconText(fs, GetDb().bagItemLevelFont)
+        local itemID = GetInventoryItemID(unit, slotID)
+        if itemID and not C_Item.IsItemDataCachedByID(itemID) then
+            Item:CreateFromItemLink(link):ContinueOnItemLoad(function()
+                if InspectUnit() == unit and GetInventoryItemLink(unit, slotID) == link then UpdateInspectSlot(button, unit) end
+            end)
+            return
+        end
+        local level = ItemLevelOf(link)
+        if not level then return end
+        local r, g, b = C_Item.GetItemQualityColor(GetInventoryItemQuality(unit, slotID) or 1)
+        fs:SetText(level)
+        fs:SetTextColor(r or 1, g or 1, b or 1)
+        fs:Show()
+    end
+    function Bags.UpdateInspectLevels()
+        local unit = InspectUnit()
+        if not unit then return end
+        for _, name in ipairs(SLOTS) do
+            local button = _G["Inspect" .. name .. "Slot"]
+            if button then UpdateInspectSlot(button, unit) end
+        end
+        -- the average, under the name and level
+        local anchor = _G.InspectLevelText
+        if not anchor then return end
+        if not inspectAverage then
+            inspectAverage = anchor:GetParent():CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            inspectAverage:SetPoint("TOP", anchor, "BOTTOM", 0, -2)
+        end
+        local ok, average = false, nil
+        if Wanted() and C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel then
+            ok, average = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
+        end
+        if ok and canaccessvalue(average) and type(average) == "number" and average > 0 then
+            inspectAverage:SetFormattedText(L["Item Level %d"], math.floor(average + 0.5))
+            inspectAverage:Show()
+        else
+            inspectAverage:Hide()
+        end
+    end
+    if EventUtil and EventUtil.ContinueOnAddOnLoaded then EventUtil.ContinueOnAddOnLoaded("Blizzard_InspectUI", function()
+        local watch = CreateFrame("Frame")
+        watch:RegisterEvent("INSPECT_READY")
+        watch:RegisterEvent("UNIT_INVENTORY_CHANGED")
+        -- (a moment after Blizzard's own handler, which shows the window)
+        watch:SetScript("OnEvent", function()
+            local frame = _G.InspectFrame
+            if frame and frame:IsShown() then C_Timer.After(0.1, Bags.UpdateInspectLevels) end
+        end)
+        if _G.InspectFrame then _G.InspectFrame:HookScript("OnShow", function() C_Timer.After(0.1, Bags.UpdateInspectLevels) end) end
+    end) end
 end

@@ -1047,7 +1047,7 @@ local function UpdateName(f)
     local name = ns.UnitDisplayName(unit, nil, UF.ShowsFullName(f))
     if canaccessvalue(name) and not name then name = "" end
     f.Name:SetText(name)
-    ns.NameAbove.SetName(f, GetUnitDb(unit), unit)   -- Name Above Plates (BarText.lua)
+    ns.NameAbove.SetName(f, GetUnitDb(unit), unit)   -- Name Above Frames (BarText.lua)
 end
 
 -- BAR TEXT (BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
@@ -1519,7 +1519,7 @@ local function GetCastStyle(udb, standalone, plate)
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = true,
             -- (its own border in every style, Forever Style too)
             texture = udb.texture, border = true, borderTexture = udb.borderTexture,
-            bgOpacity = udb.bgOpacity,
+            bgOpacity = udb.bgOpacity, glow = ns.CastGlowOn(udb.castGlow),
         }
     end
     local castTexture = udb.castTexture
@@ -1534,6 +1534,7 @@ local function GetCastStyle(udb, standalone, plate)
         -- on the plate the frame's Background is 0 (its slots are the bars' background),
         -- but the cast bar hangs outside the plate: its own Background there (the Cast Bar section)
         bgOpacity = udb.castBgOpacity or (plate and UF.BAR_BG_OPACITY) or udb.bgOpacity,
+        glow = ns.CastGlowOn(udb.castGlow),   -- Edge Glow (Core.lua ns.CastGlowOn)
     }
 end
 
@@ -1607,9 +1608,11 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     cast:SetStatusBarTexture(texture)
     cast.bg:SetTexture(texture)
     UF.SetBarBackground(cast, style.bgOpacity)
+    -- Edge Glow: the health bars' bright edge, at the cast's front (style.glow; Core.lua ns.CastGlowOn)
+    UF.BarLook(cast, false, style.glow)
     cast:ClearAllPoints()
     if mode == "TOP" then
-        -- above Name Above Plates' name when the frame has one
+        -- above Name Above Frames' name when the frame has one
         local lift = CAST_GAP + (anchor.nameAboveLift or 0)
         cast:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", PADDING + iconOffset + leftExtra, lift)
         cast:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -PADDING - rightExtra, lift)
@@ -2982,7 +2985,7 @@ function AURA.Placement(f, corner)
         local reach = (udb.castHeight or CAST_HEIGHT) + 2 * CAST_GAP
         y = isTop and reach or -reach
     end
-    -- Name Above Plates: auras above the frame go over the name (BarText.lua)
+    -- Name Above Frames: auras above the frame go over the name (BarText.lua)
     if isTop then y = y + (f.nameAboveLift or 0) end
     if ns.UFRing and ns.UFRing.Applies(f) and (ns.UFRing.Side(f) == "LEFT") == isLeft then
         local clear = ns.UFRing.Clearance(f, math.abs(y))
@@ -3002,6 +3005,19 @@ function AURA.Clash(a, b)
     if not a or not b or a == "OFF" or b == "OFF" then return false end
     if a == b then return true end
     return (a:find("^TOP") ~= nil) == (b:find("^TOP") ~= nil) and (AURA.FULL[a] or AURA.FULL[b]) or false
+end
+
+-- STACKED AURAS (11-22, Malkkav): Buffs and Debuffs may pick clashing places; they stack instead.
+-- The one that was in its place first stays nearer the frame, the one picked after it goes one row
+-- further out (udb.auraOuter = "buffs" | "debuffs", saved when the clashing pick is made). The same
+-- place: one container, the nearer kind's rows first (LayoutAuras). Top / Bottom with a corner on that
+-- edge: two containers, the outer one hung under the inner one (PositionAuraContainers), on its own side.
+-- Returns the nearer and the further kind, or nil when they don't clash.
+function AURA.Stack(udb)
+    local b, d = udb and udb.buffs or "OFF", udb and udb.debuffs or "OFF"
+    if not AURA.Clash(b, d) then return nil end
+    if udb.auraOuter == "buffs" then return "debuffs", "buffs" end
+    return "buffs", "debuffs"
 end
 
 function UF.RestackAuras(f)
@@ -3042,6 +3058,29 @@ local function PositionAuraContainers(f)
         -- (FlareUI Style lifts them over the ring's art: f.auraLift, UnitFramesRing.lua Ring.Layout)
         c:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 4))
     end
+    -- Top / Bottom and a corner on that edge (AURA.Stack): the further one hangs past the nearer one.
+    -- A strip as wide as the frame takes the nearer container's far edge, so the further one keeps its
+    -- own side; nothing is measured (aura sizes can be secret in a fight).
+    local udb = GetUnitDb(f.fuiUnit)
+    local near, far = AURA.Stack(udb)
+    local nearCorner, farCorner = near and udb[near], far and udb[far]
+    if near and nearCorner ~= farCorner and f.Auras[nearCorner] and f.Auras[farCorner] then
+        local inner, outer = f.Auras[nearCorner].container, f.Auras[farCorner].container
+        local isTop, isLeft, x = AURA.Placement(f, farCorner)
+        local strip = f.AuraStackStrip
+        if not strip then
+            strip = CreateFrame("Frame", nil, f)
+            f.AuraStackStrip = strip
+        end
+        strip:ClearAllPoints()
+        strip:SetHeight(1)
+        strip:SetPoint("LEFT", f, "LEFT")
+        strip:SetPoint("RIGHT", f, "RIGHT")
+        strip:SetPoint(isTop and "BOTTOM" or "TOP", inner, isTop and "TOP" or "BOTTOM", 0, isTop and AURA_SPACING or -AURA_SPACING)
+        local side = isLeft and "LEFT" or "RIGHT"
+        outer:ClearAllPoints()
+        outer:SetPoint((isTop and "BOTTOM" or "TOP") .. side, strip, (isTop and "BOTTOM" or "TOP") .. side, x, 0)
+    end
     if f.enchantLead then UF.PlaceEnchants(f) end
 end
 
@@ -3059,6 +3098,22 @@ LayoutAuras = function(f)
         if list then
             list[#list + 1] = lane
             if editing then UF.PreviewFillLanes(list, lane, UF.AuraAmount(udb, lane.isDebuff, f.fuiUnit)) end
+        end
+    end
+    -- a shared place: the nearer kind's lanes first (AURA.Stack; a stable sort keeps each kind's order)
+    local near = AURA.Stack(udb)
+    if near and udb.buffs == udb.debuffs then
+        local list = perCorner[udb.buffs]
+        if list then
+            local nearDebuff = near == "debuffs"
+            local first, after = {}, {}
+            for _, lane in ipairs(list) do
+                local into = ((lane.isDebuff and true or false) == nearDebuff) and first or after
+                into[#into + 1] = lane
+            end
+            wipe(list)
+            for _, lane in ipairs(first) do list[#list + 1] = lane end
+            for _, lane in ipairs(after) do list[#list + 1] = lane end
         end
     end
     UF.LeadBuffs(f, perCorner, editing)
@@ -4146,6 +4201,15 @@ function UF.BarLook(bar, mirror, on)
     look.edgeClip:SetShown(edgeOn)
 end
 
+-- Edge Glow in a frame's Cast Bar section (unit, party, boss and flag carrier frames): db() the
+-- frame's saved table, set its castGlow setter, hidden the section's own (no cast bar)
+function UF.CastGlowSetting(db, set, hidden)
+    return { name = L["Edge Glow"], kind = LEM.SettingType.Checkbox, default = ns.CastGlowDefault(),
+        get = function() local u = db() return ns.CastGlowOn(u and u.castGlow) end,
+        set = set, hidden = hidden,
+        desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."] }
+end
+
 -- Smooth Animated Bars took or gave back the bar (ns.SAB.Pass)
 function UF.BarLookOwnerChanged(bar)
     if bar and bar.fuiLookMirror ~= nil then UF.BarLook(bar, bar.fuiLookMirror, bar.fuiLookOn) end
@@ -5164,7 +5228,7 @@ local function LayoutFrame(f)
     -- a settings preview's sample stops here: no cast bar, auras or icons
     if f.fuiSample then return end
 
-    -- Name Above Plates (BarText.lua): not on Forever Style's plate, which has its name box
+    -- Name Above Frames (BarText.lua): not on Forever Style's plate, which has its name box
     ns.NameAbove.Layout(f, not (ns.UFRing and ns.UFRing.Plate(f)) and udb or nil, f, f.Name)
     if f.NameAboveText and f.NameAboveText:IsShown() then
         if f.fuiSample or not UnitExists(f.fuiUnit) then
@@ -5416,8 +5480,8 @@ end
 function UF.ApplyRangeAlpha(f, unit)
     if not f then return end
     local u = GetUnitDb(unit)
-    -- (the pet's Range Check, 11-20, starts off: on only once switched on)
-    local off = (u and u.rangeCheck == false) or (unit == "pet" and not (u and u.rangeCheck))
+    -- (UF.RANGE_OFF_FIRST: the pet's and target-of frames' Range Check starts off)
+    local off = (u and u.rangeCheck == false) or (UF.RANGE_OFF_FIRST[unit] and not (u and u.rangeCheck))
     if ns.EditPreviewing() or off or not UnitExists(unit)
             or canaccessvalue(UnitIsUnit(unit, "player")) and UnitIsUnit(unit, "player") then
         f:SetAlpha(1)
@@ -5499,8 +5563,11 @@ function UF.RangeReport()
     end
 end
 
--- target, focus and pet re-check five times a second while shown (range has no event for them)
-UF.RANGE_UNITS = { "target", "focus", "pet" }   -- (the pet since 11-20, off by default)
+-- target, focus, pet and the target-of frames re-check five times a second while shown (range has no event for them)
+UF.RANGE_UNITS = { "target", "focus", "pet", "targettarget", "focustarget" }
+-- the ones whose Range Check starts off (the pet since 11-20; Target of Target and Target of Focus
+-- since 11-22, Kelvan): on only once switched on
+UF.RANGE_OFF_FIRST = { pet = true, targettarget = true, focustarget = true }
 function UF.UpdateFrameRanges()
     for _, unit in ipairs(UF.RANGE_UNITS) do
         local f = frames[unit]
@@ -6150,6 +6217,8 @@ local function BuildPlayerCastSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
+        -- (11-22, Malkkav: here under Look; on the frames, in their Cast Bar section)
+        UF.CastGlowSetting(GetPlayerCastDb, set("castGlow")),
     })
     -- the bar is the frame here: no Cast Bar section, its rows are Behaviour
     Section("Behaviour", castItems)
@@ -6288,7 +6357,7 @@ local function BuildSettings(unit)
     for _, item in ipairs(UF.BarTextSettings(unit, function() return (ns.UFRing and ns.UFRing.PlateOn() and onPlate()) and "plate" or "plain" end)) do
         settings[#settings + 1] = item
     end
-    -- Name Above Plates (BarText.lua): hidden on Forever Style's plate, which has its name box
+    -- Name Above Frames (BarText.lua): hidden on Forever Style's plate, which has its name box
     settings[#settings + 1] = ns.NameAbove.Setting({
         db = function() return GetUnitDb(unit) end,
         hidden = onPlate,
@@ -6422,11 +6491,11 @@ local function BuildSettings(unit)
     -- Range Check: the frames that fade out of range (target and focus); with the frame's own rows
     -- (it changes how the frame behaves, not how it looks)
     if tContains(UF.RANGE_UNITS, unit) then
-        settings[#settings + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = unit ~= "pet",
+        settings[#settings + 1] = { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = not UF.RANGE_OFF_FIRST[unit],
             desc = L["The frame fades while the unit is out of range."],
             get = function()
                 local u = GetUnitDb(unit)
-                if unit == "pet" then return u and u.rangeCheck == true or false end
+                if UF.RANGE_OFF_FIRST[unit] then return u and u.rangeCheck == true or false end
                 return not (u and u.rangeCheck == false)
             end,
             set = function(_, value)
@@ -6548,6 +6617,7 @@ local function BuildSettings(unit)
               set = set("castTimer"),
               hidden = noCast,
               desc = L["The time left, at the right end of the bar."] },
+            UF.CastGlowSetting(function() return GetUnitDb(unit) end, set("castGlow"), noCast),
         }
         if unit == "player" then
             -- the FlareUI Player Cast Bar's extras, on the bar on the player frame too
@@ -6575,23 +6645,30 @@ local function BuildSettings(unit)
             { text = L["Below the Frame, Left"],  value = "BOTTOMLEFT" },
             { text = L["Below the Frame, Right"], value = "BOTTOMRIGHT" },
         }
-        -- buffs and debuffs never share a place: one that clashes with the other kind's (the same
-        -- corner, or Top / Bottom and anything on that edge) is greyed out
+        -- buffs and debuffs may share a place or an edge: they stack, the one picked later further
+        -- out (AURA.Stack); a pick that clashes with the other kind's records itself as the further one
+        local function SetPlace(field, other)
+            local base = set(field)
+            return function(layoutName, value)
+                local u = GetUnitDb(unit)
+                if u and AURA.Clash(value, get(other)()) then u.auraOuter = field end
+                base(layoutName, value)
+            end
+        end
         local function Corner(field, other)
             return function(_, rootDescription, data)
                 for _, p in ipairs(positions) do
                     local radio = rootDescription:CreateRadio(p.text,
                         function(value) return (get(field)() or "OFF") == value end,
                         function(value) data.set(nil, value) end, p.value)
-                    if AURA.Clash(p.value, get(other)()) and radio.SetEnabled then radio:SetEnabled(false) end
                 end
             end
         end
         local auraItems = {
             { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = defaults.buffs or "OFF", values = positions,
-              generator = Corner("buffs", "debuffs"), get = get("buffs"), set = set("buffs") },
+              generator = Corner("buffs", "debuffs"), get = get("buffs"), set = SetPlace("buffs", "debuffs") },
             { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = defaults.debuffs or "OFF", values = positions,
-              generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = set("debuffs") },
+              generator = Corner("debuffs", "buffs"), get = get("debuffs"), set = SetPlace("debuffs", "buffs") },
             { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = defaults.auraSize or 22, minValue = 8, maxValue = 48, valueStep = 1,
               get = function() return ns.AuraSize(GetUnitDb(unit), false, defaults.auraSize or 22) end, set = set("buffSize") },
             { name = L["Max Buffs"], kind = LEM.SettingType.Slider, default = UF.AuraAmountDefault(unit),

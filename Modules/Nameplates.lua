@@ -180,6 +180,7 @@ C.TYPE_KEYS = {
     castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
     -- (11-22) the Auras and Aura Positions sections
     auraStyle = true, auraSwipe = true, auraTimer = true, auraTimerColor = true, auraRows = true,
+    nameAbove = true, nameOnlyFull = true, castGlow = true,
 }
 -- these were one shared value before 11-20: a preset reads the profile's old shared value, so every
 -- type keeps the look it had; a type's Custom keeps its own from then on
@@ -402,10 +403,30 @@ function NP.PulseTick(self)
     local wave = 0.5 + 0.5 * math.cos((GetTime() % C.PULSE_PERIOD) / C.PULSE_PERIOD * 2 * math.pi)
     self:SetAlpha(C.PULSE_LOW + (1 - C.PULSE_LOW) * wave)
 end
+-- (11-22, perf pass) one shared clock for every pulse: the wave is worked out once a frame and set
+-- on each playing frame that shows (it was one OnUpdate per frame); the clock stops with none playing
+NP.Pulse = { set = {}, driver = CreateFrame("Frame") }
+NP.Pulse.driver:Hide()
+NP.Pulse.driver:SetScript("OnUpdate", function()
+    local wave = 0.5 + 0.5 * math.cos((GetTime() % C.PULSE_PERIOD) / C.PULSE_PERIOD * 2 * math.pi)
+    local a = C.PULSE_LOW + (1 - C.PULSE_LOW) * wave
+    for f in pairs(NP.Pulse.set) do
+        if f:IsVisible() then f:SetAlpha(a) end
+    end
+end)
 function NP.ClockPulse(frame)
     local pulse = {}
-    function pulse:Play() frame:SetScript("OnUpdate", NP.PulseTick) self.on = true end
-    function pulse:Stop() frame:SetScript("OnUpdate", nil) frame:SetAlpha(1) self.on = false end
+    function pulse:Play()
+        NP.Pulse.set[frame] = true
+        NP.Pulse.driver:Show()
+        self.on = true
+    end
+    function pulse:Stop()
+        NP.Pulse.set[frame] = nil
+        frame:SetAlpha(1)
+        self.on = false
+        if not next(NP.Pulse.set) then NP.Pulse.driver:Hide() end
+    end
     function pulse:IsPlaying() return self.on end
     return pulse
 end
@@ -430,7 +451,7 @@ function NP.ImportantGlow(cast)
         g.soft.parts[i] = t
     end
     g.pulse = NP.ClockPulse(g.edge)
-    g.pulse:Play()
+    -- (played by the layout only with Highlight Important Casts on: NP.Layout)
     return g
 end
 function NP.PaintImportantGlow(g, c)
@@ -1211,7 +1232,7 @@ local function LayoutAuras(p, db)
             container:ClearAllPoints()
             local point = (row == "left" and "BOTTOMLEFT") or (row == "right" and "BOTTOMRIGHT") or "BOTTOM"
             container:SetPoint(point, p.box, (row == "left" and "TOPLEFT") or (row == "right" and "TOPRIGHT") or "TOP", 0,
-                C.AURA_GAP + NP.AuraLift(db, place))
+                C.AURA_GAP + NP.AuraLift(db, place) + (p.nameAboveLift or 0))
         end
         -- (crowd control and defensives beside the plate: NP.PlaceSides)
         pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
@@ -1296,6 +1317,7 @@ function NP.NameRoom() return 0 end
 function NP.Layout(p)
     local db = PDB(p)
     if not db then return end
+    p.barDirty, p.borderDirty = true, true   -- (painted again after a layout: NP.BarColor, NP.PaintBorder)
     local _, textureName, borderName = Look(db)
     local w, h = db.width, db.height
     local edgeFile, edge, pad = NP.Edge(db)
@@ -1444,7 +1466,7 @@ function NP.Layout(p)
         K.LayoutCastBar(p.cast, {
             height = db.castHeight, icon = db.castIcon, timer = db.castTimer ~= false, name = true,
             texture = textureName, border = false, borderTexture = borderName,
-            bgOpacity = db.bgOpacity,
+            bgOpacity = db.bgOpacity, glow = ns.CastGlowOn(db.castGlow),
         }, p.castAnchor, "BOTTOM")
         if edgeFile then
             -- (a Thick plate keeps the Thin border on its cast bar: the slimmer bar reads better)
@@ -1472,6 +1494,7 @@ function NP.Layout(p)
         NP.LayoutPulseBorder(glow, p.cast.Border, p.cast.Backdrop, edgeFile)
         if edgeFile then glow:SetFrameLevel(p.cast.Border:GetFrameLevel() + 1) end
         NP.PaintImportantGlow(glow, glow.color or NP.Color("important"))
+        if db.castImportant then glow.pulse:Play() else glow.pulse:Stop() end
         -- Flash When Targeted: the frame's whole inside, under its border, corners cut as the
         -- border's (as the plate's background, from the cast bar's own edge)
         local castEdge = edgeFile and math.min(edge, math_max(6, db.castHeight)) or 0
@@ -1490,6 +1513,7 @@ function NP.Layout(p)
         p.cast.kickSpark:SetVertexColor(kick[1], kick[2], kick[3])
     end
 
+    NP.LayoutNameAbove(p, db)
     LayoutAuras(p, db)
     NP.PlaceBelow(p)
     -- Plate: Bar (all of the above), Name Only (the name alone, centred, in its colour) or Hidden
@@ -1507,6 +1531,8 @@ function NP.Layout(p)
         p.level:Hide()
         p.levelShown, p.levelAnchor = false, nil
         p.nameSlot = p.nameSlot or "middle"
+        -- Show Full Name (11-22, Malkkav; per type, on): a player's surname too, or the first name only
+        p.nameFull = db.nameOnlyFull ~= false
         p.name:ClearAllPoints()
         p.name:SetPoint("CENTER", p.box, "CENTER", 0, 0)
         -- Name Only Size (11-20): this type's name alone, scaled; the Names font itself stays as set
@@ -1650,8 +1676,13 @@ function NP.ApplyScale(p)
 end
 
 -- The bar's colour, and the Outer Glow's with it (the glow always takes the bar's colour)
+-- (11-22, perf pass) the bar, border and level art are painted only when their colour changed; a
+-- layout or a claim paints them again (p.barDirty, p.borderDirty). A colour Lua can't read is always written.
 function NP.BarColor(p, r, g, b)
+    if not p.barDirty and p.barR == r and p.barG == g and p.barB == b and canaccessvalue(r)
+        and canaccessvalue(g) and canaccessvalue(b) then return end
     p.health:SetStatusBarColor(r, g, b)
+    p.barDirty = false
     p.barR, p.barG, p.barB = r, g, b
     if p.targetGlow:IsShown() then NP.PaintGlow(p) end
 end
@@ -1808,7 +1839,60 @@ function NP.UpdateHeals(p)
     if okA then pcall(p.absorb.SetValue, p.absorb, absorbs) end
 end
 
+-- NAMES ABOVE PLATE (11-22, Malkkav; per type): the name above the plate, as the unit frames' Name
+-- Above Frames: Off, or Left / Centre / Right with First Name or Full Name (nameAbove =
+-- "<slot>:<firstname|fullname>"). Debuffs and buffs above the plate move up by its height
+-- (p.nameAboveLift). Never on a Name Only or hidden plate: the name is the plate there.
+function NP.NameAbovePick(db)
+    local v = db.nameAbove
+    if type(v) ~= "string" then return nil end
+    local slot, kind = v:match("^(%a+):(%a+)$")
+    if (slot == "left" or slot == "middle" or slot == "right") and (kind == "firstname" or kind == "fullname") then
+        return slot, kind
+    end
+end
+function NP.LayoutNameAbove(p, db)
+    local slot, kind = NP.NameAbovePick(db)
+    local nameOnly = db.plate == "name" and not NP.CombatFull(db.kind)
+    if not slot or nameOnly or db.plate == "hidden" then
+        if p.aboveName then p.aboveName:Hide() end
+        p.nameAboveLift, p.aboveKind = 0, nil
+        return
+    end
+    local fs = p.aboveName
+    if not fs then
+        fs = p.root:CreateFontString(nil, "OVERLAY")
+        fs:SetWordWrap(false)
+        p.aboveName = fs
+    end
+    ApplyFontTo(fs, db.nameFont)
+    local at = (slot == "left" and "LEFT") or (slot == "right" and "RIGHT") or ""
+    fs:ClearAllPoints()
+    fs:SetPoint("BOTTOM" .. at, p.box, "TOP" .. at, (slot == "left" and 1) or (slot == "right" and -1) or 0, C.AURA_GAP)
+    fs:SetJustifyH(at == "" and "CENTER" or at)
+    fs:SetWidth(math_max(20, p.plateW or db.width))
+    fs:Show()
+    local _, size = fs:GetFont()
+    p.aboveKind = kind
+    p.nameAboveLift = math_floor((tonumber(size) or 12) + C.AURA_GAP + 1)
+end
+-- its text and colour: the unit's, in the bar name's colour (a settings sample: the sample's name)
+function NP.UpdateNameAbove(p)
+    local fs = p.aboveName
+    if not (fs and p.aboveKind and fs:IsShown()) then return end
+    if p.unit and UnitExists(p.unit) then
+        fs:SetText(ns.UnitDisplayName(p.unit, nil, p.aboveKind == "fullname"))
+    else
+        fs:SetText(p.sampleName or "")
+    end
+    fs:SetTextColor(p.name:GetTextColor())
+end
+
 function NP.UpdateName(p)
+    NP.UpdateBarName(p)
+    NP.UpdateNameAbove(p)
+end
+function NP.UpdateBarName(p)
     local db, unit = PDB(p), p.unit
     if not p.nameSlot then return end
     -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
@@ -1856,6 +1940,7 @@ end
 -- level. Read once per NPC name (C.TITLES), never in instances (tooltip data can be secret there),
 -- never a secret line. Friendly and enemy NPCs only (a pet's second line is its owner).
 C.TITLE_SIZE = 0.8
+C.SAMPLE_SECONDS = { 24, 8, 75, 3, 42, 130, 15, 6 }   -- the settings preview's aura times
 C.TITLES = {}   -- NPC name -> its title, or false for none
 function NP.NPCTitle(unit)
     if IsInInstance() then return nil end
@@ -1945,6 +2030,10 @@ function NP.PaintBorder(p)
     elseif db.threatGlow and p.threatRGB then c = p.threatRGB end
     -- Threat Glow: the pulsing border and its glow too (not over your target's own border)
     local threat = c ~= nil and c == p.threatRGB and not p.nameOnly
+    local r1, g1, b1 = c and c[1], c and c[2], c and c[3]
+    if not p.borderDirty and p.paintedThreat == threat and p.paintedR == r1 and p.paintedG == g1 and p.paintedB == b1 then return end
+    p.paintedThreat, p.paintedR, p.paintedG, p.paintedB = threat, r1, g1, b1
+    p.borderDirty = false
     p.threatFx:SetShown(threat)
     if threat then
         NP.PaintImportantGlow(p.threatFx, c)
@@ -2296,14 +2385,21 @@ end
 
 -- Out of Range Opacity: your class's spells by name (any rank); in range if any one is. A secret
 -- answer goes to the holder's alpha unread.
+-- (11-22, perf pass) the alpha is written only when it changes (p.rangeAlphaNow; nil after a claim
+-- or a secret answer), friendly plates are never checked (the list is attack spells)
+function NP.SetRangeAlpha(p, a)
+    if p.rangeAlphaNow == a then return end
+    p.rangeAlphaNow = a
+    p.holder:SetAlpha(a)
+end
 function NP.UpdateRange(p)
     local db = PDB(p)
     local alpha = db and db.rangeAlpha or 1
-    if alpha >= 1 or not p.unit then p.holder:SetAlpha(1) return end
+    if alpha >= 1 or not p.unit or C.FRIENDLY[p.kind] then NP.SetRangeAlpha(p, 1) return end
     local _, class = UnitClass("player")
     local list = C.RANGE[class]
     if class == "DRUID" and C.MELEE_FORMS[GetShapeshiftFormID and GetShapeshiftFormID() or 0] then list = C.RANGE.DRUID_MELEE end
-    if not list then p.holder:SetAlpha(1) return end
+    if not list then NP.SetRangeAlpha(p, 1) return end
     local out, hasSecret, secret = false, false, nil
     for _, id in ipairs(list) do
         -- (spell names by ID never change: looked up once)
@@ -2318,15 +2414,15 @@ function NP.UpdateRange(p)
             if not canaccessvalue(r) then
                 if not hasSecret then hasSecret, secret = true, r end
             elseif r == true then
-                p.holder:SetAlpha(1)
+                NP.SetRangeAlpha(p, 1)
                 return
             elseif r == false then
                 out = true
             end
         end
     end
-    if hasSecret and pcall(p.holder.SetAlphaFromBoolean, p.holder, secret, 1, alpha) then return end
-    p.holder:SetAlpha(out and alpha or 1)
+    if hasSecret and pcall(p.holder.SetAlphaFromBoolean, p.holder, secret, 1, alpha) then p.rangeAlphaNow = nil return end
+    NP.SetRangeAlpha(p, out and alpha or 1)
 end
 
 function NP.UpdateAll(p)
@@ -2355,6 +2451,21 @@ local UNIT_EVENTS = {
 }
 local CAST_EVENTS = (K and K.CAST_EVENTS) or {}
 
+-- threat and flag changes, repainted once per frame per plate (the plate still shows that unit)
+NP.colorQueue = { plates = {}, driver = CreateFrame("Frame") }
+NP.colorQueue.driver:Hide()
+NP.colorQueue.driver:SetScript("OnUpdate", function(self)
+    self:Hide()
+    local q = NP.colorQueue.plates
+    for p, unit in pairs(q) do
+        q[p] = nil
+        if p.unit == unit then NP.UpdateColor(p) end
+    end
+end)
+function NP.ColorSoon(p)
+    NP.colorQueue.plates[p] = p.unit
+    NP.colorQueue.driver:Show()
+end
 local function OnUnitEvent(self, event)
     local p = self.plate
     if not p.unit then return end
@@ -2381,7 +2492,8 @@ local function OnUnitEvent(self, event)
             NP.Claim(unit)
             return
         end
-        NP.UpdateColor(p)
+        -- (11-22, perf pass) a pull sends many of these per mob in one frame: one repaint per frame
+        NP.ColorSoon(p)
     elseif event == "UNIT_NAME_UPDATE" then
         NP.UpdateName(p)
         NP.UpdateColor(p)
@@ -2622,6 +2734,8 @@ function NP.Claim(unit)
         p.holder:ClearAllPoints()
         p.holder:SetAllPoints(plate)
         p.holder:SetAlpha(1)
+        p.rangeAlphaNow = 1
+        p.barDirty, p.borderDirty = true, true   -- (a new unit: its colours painted afresh)
         p.holder:Show()
         p.root:ClearAllPoints()
         -- the name and bar together sit in the middle of the game plate's box
@@ -2995,6 +3109,7 @@ function NP.DrawSample(f, kind)
     p.holder:ClearAllPoints()
     p.holder:SetAllPoints(f)
     p.holder:SetAlpha(1)
+    p.rangeAlphaNow = 1
     p.holder:Show()
     p.root:ClearAllPoints()
     -- (room above for the aura lines the preview draws)
@@ -3007,7 +3122,7 @@ function NP.DrawSample(f, kind)
     local dLines = Lines(db.debuffs ~= "off" and "debuff", db.debuffSize, db.debuffMax)
     local bLines = Lines(db.buffs ~= "off" and "buff", db.buffSize, db.buffMax)
     -- (stacked rows: one above the other)
-    local top = 12 + (NP.AuraStack(db) and (dLines + bLines) or math_max(dLines, bLines))
+    local top = 12 + (NP.AuraStack(db) and (dLines + bLines) or math_max(dLines, bLines)) + (p.nameAboveLift or 0)
     p.root:SetPoint("TOP", f, "TOP", 0, -top)
     p.root:Show()
     -- sample values
@@ -3052,9 +3167,13 @@ function NP.DrawSample(f, kind)
     if db.kind == "friendlyPlayer" then
         local _, class = UnitClass("player")
         local cc = class and C_ClassColor.GetClassColor(class)
-        p.name:SetText(UnitName("player"))
-        if cc then p.name:SetTextColor(cc:GetRGB()) end
+        -- (Full Name in Bar Text, or Show Full Name on a Name Only plate: your surname too)
+        p.name:SetText(ns.UnitDisplayName("player", nil, p.nameFull and true or false))
+        -- (as the real plates: the class colour only on a Name Only plate)
+        if cc and p.nameOnly then p.name:SetTextColor(cc:GetRGB()) end
     end
+    p.sampleName = (db.kind == "friendlyPlayer") and ns.UnitDisplayName("player", nil, p.aboveKind == "fullname") or L["Forest Spider"]
+    NP.UpdateNameAbove(p)
     local questOn = NP.QuestOn() and (st.quest or type(kind) ~= "table")
     local questIcon, questProgress = NP.QuestParts(p)
     p.quest:SetShown(questOn and questIcon)
@@ -3180,8 +3299,13 @@ function NP.DrawSample(f, kind)
             local c = look.colors and (look.colors[dispelType] or look.colors.None)
             if c then b.FlareUI_Border:SetVertexColor(c:GetRGBA()) end
             b.FlareUI_Count:SetText("")
-            b.FlareUI_Duration:SetText("")
-            b.FlareUI_Cooldown:Clear()
+            -- (11-22) a sample time and swipe, so Aura Timer, Timer Colour and Aura Swipe show here
+            local secs = C.SAMPLE_SECONDS[(n - 1) % #C.SAMPLE_SECONDS + 1]
+            b.FlareUI_Duration:SetText(look.timer ~= "none" and ns.FormatAuraTime(secs) or "")
+            if look.timerColor and secs < 5 then b.FlareUI_Duration:SetTextColor(1, 0.2, 0.2)
+            elseif look.timerColor and secs < 10 then b.FlareUI_Duration:SetTextColor(1, 0.82, 0)
+            else b.FlareUI_Duration:SetTextColor(1, 1, 1) end
+            b.FlareUI_Cooldown:SetCooldown(GetTime() - (secs % 7), secs + (secs % 7))
         else
             -- (no aura look: a plain icon on a black edge)
             if not b.FlareUI_Icon then
@@ -3207,7 +3331,7 @@ function NP.DrawSample(f, kind)
         local look = AuraLook(size, isDebuff, db)
         local cell = (look and look.cellHeight or size) + C.AURA_GAP
         local place = isDebuff and "debuffs" or "buffs"
-        local x, y = (i - 1) % per * (size + C.AURA_GAP), C.AURA_GAP + math_floor((i - 1) / per) * cell + NP.AuraLift(db, place)
+        local x, y = (i - 1) % per * (size + C.AURA_GAP), C.AURA_GAP + math_floor((i - 1) / per) * cell + NP.AuraLift(db, place) + (p.nameAboveLift or 0)
         local row = NP.AuraRowSide(db, place)
         if row == "right" then return "BOTTOMRIGHT", "TOPRIGHT", -x, y end
         if row == "left" then return "BOTTOMLEFT", "TOPLEFT", x, y end

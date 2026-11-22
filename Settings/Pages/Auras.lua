@@ -60,11 +60,26 @@ S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled
 -- saved apart, in auras.hidden and auras.shown)
 local HA = ns.HiddenAuras
 
+-- (11-22, zbee's Boosted Rest) a debuff the game won't let addons filter on you or a friend (see the
+-- Restrictions note): not marked never-secret, and harmful (by the spell, or as it sits on you now:
+-- passive effects such as Boosted Rest don't call themselves harmful)
+local function BlockedOnYou(id)
+    local okS, secrecy = pcall(C_Secrets.GetSpellAuraSecrecy, id)
+    if okS and Enum.SecrecyLevel and secrecy == Enum.SecrecyLevel.NeverSecret then return false end
+    local okH, harmful = pcall(C_Spell.IsSpellHarmful, id)
+    if okH and canaccessvalue(harmful) and harmful then return true end
+    local okA, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, id)
+    return okA and aura and canaccessvalue(aura) and aura.isHarmful == true or false
+end
+
 local function SpellLabel(id, withId)
     local name = C_Spell.GetSpellName(id) or ("#" .. id)
     local icon = C_Spell.GetSpellTexture(id) or 134400
     local text = ("|T%s:16:16:0:0:64:64:5:59:5:59|t %s"):format(icon, name)
-    if withId then text = text .. "  |cff808080" .. id .. "|r" end
+    if withId then
+        text = text .. "  |cff808080" .. id .. "|r"
+        if BlockedOnYou(id) then text = text .. "  |cffff8040" .. L["Not on You"] .. "|r" end
+    end
     return text
 end
 

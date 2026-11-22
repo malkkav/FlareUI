@@ -95,6 +95,25 @@ local function PlacesClash(a, b)
     if a == b then return true end
     return PLACE_EDGE[a] ~= nil and PLACE_EDGE[a] == PLACE_EDGE[b] and (WIDE_PLACES[a] or WIDE_PLACES[b]) or false
 end
+-- STACKED AURAS (11-22, Malkkav; as the unit frames' AURA.Stack): Buffs and Debuffs may pick clashing
+-- places and stack; the one placed first stays nearer, the later pick (st.auraOuter) goes one row
+-- further. Dispel Icons still never share a place. Returns the nearer and the further kind, or nil.
+function PF.AuraStack(st)
+    local b, d = st and st.buffs or "OFF", st and st.debuffs or "OFF"
+    if not PlacesClash(b, d) then return nil end
+    if st.auraOuter == "buffs" then return "debuffs", "buffs" end
+    return "buffs", "debuffs"
+end
+-- a Buffs / Debuffs set function that saves itself as the further one when it clashes with the other
+-- (st: the tile settings' table now; set: the plain setter)
+function PF.StackSetter(field, st, set)
+    local other = field == "buffs" and "debuffs" or "buffs"
+    return function(layoutName, value)
+        local t = st()
+        if t and PlacesClash(value, t[other]) then t.auraOuter = field end
+        set(layoutName, value)
+    end
+end
 -- the places below the frame (the cast bar goes past the auras there)
 local BELOW_PLACES = { "BELOW", "BELOW_RIGHT", "BELOW_WIDE" }
 local ABOVE_PLACES = { "ABOVE", "ABOVE_RIGHT", "ABOVE_WIDE" }
@@ -1276,7 +1295,7 @@ local function AuraAnchor(f, pos)
     else -- INSIDE_BOTTOMRIGHT
         point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", health, "BOTTOMRIGHT", -inset, inset, H.Left, H.Up
     end
-    -- Name Above Plates (BarText.lua): the places above the frame go over the name
+    -- Name Above Frames (BarText.lua): the places above the frame go over the name
     if pos == "ABOVE" or pos == "ABOVE_RIGHT" or pos == "ABOVE_WIDE" then y = y + (f.nameAboveLift or 0) end
     return point, rel, relPoint, x, y, growH, growV
 end
@@ -1295,6 +1314,32 @@ local function PlaceAuraContainer(f, pos, container, size, perRow)
     pcall(container.SetFlowLayoutGrowthDirection, container, growH, V)
     pcall(container.SetFlowLayoutMaximumLineSize, container, lineSize)
     pcall(container.SetFlowLayoutPadding, container, 0, 0, 0, 0)
+end
+
+-- Two clashing places (PF.AuraStack): the further container hangs past the nearer one, on its own
+-- side, through a strip as wide as the place's anchor (nothing measured: sizes can be secret)
+function PF.PlaceStackedAuras(f)
+    local st = TS(f)
+    local near, far = PF.AuraStack(st)
+    if not near or st[near] == st[far] or not f.AuraPos then return end
+    local inner, outer = f.AuraPos[st[near]], f.AuraPos[st[far]]
+    if not (inner and outer) then return end
+    local point, rel, _, x, _, _, growV = AuraAnchor(f, st[far])
+    local up = growV == AnchorUtil.FlowDirection.Up
+    local side = (point:find("LEFT") and "LEFT") or (point:find("RIGHT") and "RIGHT") or "LEFT"
+    local strip = f.AuraStackStrip
+    if not strip then
+        strip = CreateFrame("Frame", nil, f)
+        f.AuraStackStrip = strip
+    end
+    strip:ClearAllPoints()
+    strip:SetHeight(1)
+    strip:SetPoint("LEFT", rel, "LEFT")
+    strip:SetPoint("RIGHT", rel, "RIGHT")
+    strip:SetPoint(up and "BOTTOM" or "TOP", inner.container, up and "TOP" or "BOTTOM", 0, up and AURA_SPACING or -AURA_SPACING)
+    local at = (up and "BOTTOM" or "TOP") .. side
+    outer.container:ClearAllPoints()
+    outer.container:SetPoint(at, strip, at, x, 0)
 end
 
 -- Dispel icons alone in their place: one icon per type you can dispel, as Forever's raid frames show
@@ -1457,7 +1502,7 @@ local function ConfigureAuras(f)
     -- look as computed, so a new aura rule or look setting can't be missed here
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
         ns.AuraGroups.Sig(K.Font(PF.FontKey(f), "auras")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
-        st.buffAmount, st.debuffAmount, PF.TileAmountDefault(),
+        st.buffAmount, st.debuffAmount, PF.TileAmountDefault(), st.auraOuter,
         ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false, f)))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
@@ -1475,6 +1520,19 @@ local function ConfigureAuras(f)
             end
         end
     end
+    -- a shared place (PF.AuraStack): the nearer kind's lanes first
+    local near = PF.AuraStack(st)
+    if near and st.buffs == st.debuffs and perPos[st.buffs] then
+        local list, first, after = perPos[st.buffs], {}, {}
+        local nearDebuff = near == "debuffs"
+        for _, lane in ipairs(list) do
+            local into = ((lane.isDebuff and true or false) == nearDebuff) and first or after
+            into[#into + 1] = lane
+        end
+        wipe(list)
+        for _, lane in ipairs(first) do list[#list + 1] = lane end
+        for _, lane in ipairs(after) do list[#list + 1] = lane end
+    end
     -- the processing policy is per container: set before its groups are built
     for _, pos in ipairs(AURA_POSITIONS) do
         local rec, placeLanes = f.AuraPos[pos], perPos[pos]
@@ -1488,6 +1546,7 @@ local function ConfigureAuras(f)
     end
     ns.AuraPolicy.Begin(f)
     for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
+    PF.PlaceStackedAuras(f)
     -- the groups were just given their filters: reach applies on top (enemy tiles: never)
     if not hostile then ns.AuraPolicy.Done(f, f.fuiUnit) end
 end
@@ -1788,6 +1847,7 @@ local function CastStyle(st, f)
         texture = castTexture, border = true, borderTexture = PF.TileBorder(f, castBorder),
         -- (11-20) the cast bar's own Background, as on the unit frames; unset, the frame's
         bgOpacity = st.castBgOpacity or st.bgOpacity,
+        glow = ns.CastGlowOn(st.castGlow),   -- Edge Glow (Core.lua ns.CastGlowOn)
     }
 end
 
@@ -1876,7 +1936,7 @@ end
 -- The Right slot is the old HealthText / PowerText; Left and Middle are made here.
 PF.SLOT_RIGHT = { health = "HealthText", power = "PowerText" }
 -- (11-20: the party's Classic tiles too, with no ctx; Raid Style keeps the single Health / Power Text)
--- the table holding a tile's Name Above Plates pick: its Bar Text's
+-- the table holding a tile's Name Above Frames pick: its Bar Text's
 function PF.NameAboveDb(f) return f.ctx and f.ctx.TextDb and f.ctx.TextDb() or TS(f) end
 function PF.SlotOn(f)
     if not (f and ns.BarText) then return false end
@@ -2187,7 +2247,7 @@ local function LayoutMember(f)
     LayoutHealClip(f)
     K.PlaceDamageTrail(f.DamageTrail, Mirrored(f, true))
     LayoutTexts(f)
-    -- Name Above Plates (BarText.lua): the bar text tiles (party Classic, boss, flag carriers), not
+    -- Name Above Frames (BarText.lua): the bar text tiles (party Classic, boss, flag carriers), not
     -- Forever Style's plate (its name box)
     ns.NameAbove.Layout(f, (PF.SlotOn(f) and not OnPlate(f)) and PF.NameAboveDb(f) or nil, f, f.Name)
     LayoutIcons(f)
@@ -2212,6 +2272,7 @@ local function LayoutMember(f)
                     entry.container:SetPoint(point, rel, relPoint, x, y)
                 end
             end
+            PF.PlaceStackedAuras(f)
         end
     end
     ConfigureAuras(f)
@@ -3409,7 +3470,7 @@ local function BuildSettings()
             item.hidden = IsRaidStyle
             return item
         end)(),
-        -- Name Above Plates (BarText.lua): Classic tiles, not Raid Style nor Forever Style's plate
+        -- Name Above Frames (BarText.lua): Classic tiles, not Raid Style nor Forever Style's plate
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
         { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText"),
@@ -3468,7 +3529,9 @@ local function BuildSettings()
                         function(value) data.set(nil, value) end, p.value)
                     if st and radio.SetEnabled then
                         for _, other in ipairs(AURA_FIELDS) do
-                            if other ~= field and PlacesClash(p.value, st[other]) then radio:SetEnabled(false) end
+                            -- (Buffs and Debuffs stack: PF.AuraStack; Dispel Icons never share a place)
+                            local stacks = (field == "buffs" and other == "debuffs") or (field == "debuffs" and other == "buffs")
+                            if other ~= field and not stacks and PlacesClash(p.value, st[other]) then radio:SetEnabled(false) end
                         end
                     end
                 end
@@ -3533,14 +3596,18 @@ local function BuildSettings()
           set = function(layoutName, value) setS("castTimer")(layoutName, value and true or false) end,
           hidden = noCast,
           desc = L["The time left, at the right end of the bar."] },
+        { name = L["Edge Glow"], kind = LEM.SettingType.Checkbox, default = ns.CastGlowDefault(),
+          get = function() return ns.CastGlowOn(getS("castGlow")()) end,
+          set = function(layoutName, value) setS("castGlow")(layoutName, value and true or false) end,
+          hidden = noCast, desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."] },
     })
 
     Section("Auras", ns.AuraOrder.With({
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = PARTY_PLACES, generator = Place("buffs"),
-          get = getS("buffs"), set = setS("buffs"),
+          get = getS("buffs"), set = PF.StackSetter("buffs", S, setS("buffs")),
           desc = L["Buffs as Blizzard's raid frames pick them: mostly your own heals over time and buffs."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = PARTY_PLACES, generator = Place("debuffs"),
-          get = getS("debuffs"), set = setS("debuffs"),
+          get = getS("debuffs"), set = PF.StackSetter("debuffs", S, setS("debuffs")),
           desc = L["Debuffs as Blizzard's raid frames pick them: boss and role debuffs, priority debuffs, and the ones you can dispel."] },
         K.HideBuffsSetting("OFF", function() return getS("hideBuffs")() or "OFF" end, setS("hideBuffs")),
         { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = D.dispelHighlight,

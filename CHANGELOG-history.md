@@ -1,6 +1,71 @@
 # FlareUI changelog history
 
-Versions 6.13 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 6.14 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 6.14
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+A new page joins the Combat list: **Cooldowns**, built by brudi, brings FlareUI's look and a few handy extras to Blizzard's Cooldown Manager. Your backpack can now sort itself into rows, and the Edit Mode windows finally stay where you put them.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Skin Cooldown Manager** moved from Action Bars to the new **Cooldowns** page. If it was on, Cooldowns is on too.
+- **Category Filters** is now a choice in **Bag View** (Bags & Looting › Bag Window). If you had filters on, you get Category Filters: the buttons by the search box when there's room, the drawer otherwise.
+- **XP Bar:** **FlareUI XP Bar** is now called **Bar Style**, and its tooltip is gone. It covered the bar's own text.
+- **Edit Mode:** settings windows no longer jump next to the frame you click. They open at the top right, then wherever you last dragged one.
+
+## Highlights
+- **Cooldowns:** Blizzard's Cooldown Manager in FlareUI's style. By brudi.
+- **Bag View:** the combined backpack sorted into category rows. By andrzejskibinski.
+- **In a Capital City:** a new Visibility condition on every frame.
+
+## New
+
+### Cooldowns (new page, off)
+- First in the Combat list. It changes Blizzard's own Cooldown Manager bars.
+- **Cooldown Manager** section:
+  - **Enable Blizzard Cooldown Manager**: the same switch as in the game's options.
+  - **Advanced Cooldown Settings**: opens Blizzard's window where you pick what each bar tracks.
+- **Skin Cooldown Manager** (off): Tracked Bars like FlareUI's cast bars, icons with FlareUI's borders.
+- **Bar Colour**: the Tracked Bars' colour, in FlareUI's colour window.
+- Icons (all off):
+  - **Show Keybind Text**: your keybinds on the Essential and Utility icons.
+  - **Show Button Presses**: an icon lights up while you hold its key.
+  - **Soften Active Overlay**: a faint swipe over a running effect, so you can see the icon.
+  - **Show Cooldown During Effect**: the ability's own cooldown in the icon's corner.
+- Fonts tab: **Keybinds**, **Counts**, **Cooldown Numbers** and **Bar Text**.
+- Edit Mode, on each Cooldown Manager bar:
+  - **Growth** (Blizzard): Tracked Buffs and Tracked Bars packed together, growing right, left, down, up or from the middle.
+  - **Icon Shape** (Square): Square or Rectangle.
+  - **Fading**, as on every other frame.
+
+### Bags
+- **Bag View** (All Items), in Bags & Looting › Bag Window:
+  - **Category Filters**: the filter buttons, as before.
+  - **Category Rows**: the combined backpack in sections: Quest Items, Equipment, Materials, Consumables, Junk and Other.
+  - **Category Rows + Sets**: a section for each equipment set too.
+- The **+** button (more bag space) sits at the left end of the gold bar.
+
+### Visibility
+- **In a Capital City**: last on every Visibility list. Shows the frame in Stormwind, Ironforge, Darnassus, Orgrimmar, Thunder Bluff and Undercity.
+
+### Edit Mode
+- The FlareUI layout code (About page and setup tour) has the new layout.
+
+## Changed
+- Settings window: a little taller, so every page fits in the list.
+- Minimap › Addon Buttons: the preview follows **Drawer Button Size**, **FlareUI Minimap Button** and **Drawer Style** as you change them. By parchinskiy.
+- XP Bar settings: **Bar Texture**, **Border**, **Separators** and **Pick Your Colours** sit right under **Bar Style**.
+- French: the 6.13 phrases. By Brainc3ll.
+
+## Fixed
+- Custom fonts: text drawn before its font loaded no longer stays blank after login (the Info Bar, keybinds and more).
+- Chat: the **Copy Chat** button opens Copy Chat again.
+- Quest Tracker: a plain "Ready for turn-in" line is grey, as on Blizzard's tracker.
+- Quest Tracker on Visibility **Never**: no more tooltips or clicks where it was.
+- Buff Reminders: the food reminder remembers food you eat anywhere, also from /use macros.
+- Fake CM: its Visibility names were one place off.
 
 # FlareUI 6.13
 

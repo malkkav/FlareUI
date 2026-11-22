@@ -71,6 +71,8 @@ end
 -- Show Box (on): the plates behind the cells; off, the text alone
 S:Row{ key = "mm.barBox", path = "minimap.infoBarBox", apply = Refresh, half = true }
 S:Row{ key = "mm.barHover", path = "minimap.infoBarHover", apply = Refresh, half = true }
+-- Below the Map (off; 11-22): the bar under the map's frame, clear of the quest arrow (Minimap.lua Bar.Below)
+S:Row{ key = "mm.barBelow", path = "minimap.infoBarBelow", apply = Refresh, half = true }
 -- Tweaks: Auto Zoom Out, then the two switches in two columns
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu", half = true,

@@ -378,7 +378,7 @@ local function BuildSettings()
             style = function() return onPlate() and "plate" or "plain" end }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "boss", db = GetDb, changed = Refresh,
             style = function() return onPlate() and "plate" or "plain" end }),
-        -- Name Above Plates (BarText.lua): not on Forever Style's plate (its name box)
+        -- Name Above Frames (BarText.lua): not on Forever Style's plate (its name box)
         ns.NameAbove.Setting({ db = GetDb, changed = Refresh, hidden = onPlate }),
         -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
@@ -475,6 +475,10 @@ local function BuildSettings()
           set = function(layoutName, value) set("castTimer")(layoutName, value and true or false) end,
           hidden = noCast,
           desc = L["The time left, at the right end of the bar."] },
+        { name = L["Edge Glow"], kind = LEM.SettingType.Checkbox, default = ns.CastGlowDefault(),
+          get = function() return ns.CastGlowOn(get("castGlow")()) end,
+          set = function(layoutName, value) set("castGlow")(layoutName, value and true or false) end,
+          hidden = noCast, desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."] },
     })
 
     -- no Right of the Frame (the frames sit at the screen's right edge); clashing places grey out
@@ -491,15 +495,15 @@ local function BuildSettings()
                 local radio = rootDescription:CreateRadio(p.text,
                     function(value) return get(field)() == value end,
                     function(value) data.set(nil, value) end, p.value)
-                if radio.SetEnabled and Tile.PlacesClash(p.value, get(other)()) then radio:SetEnabled(false) end
+                -- (11-22) Buffs and Debuffs may share a place: they stack (PartyFrames.lua PF.AuraStack)
             end
         end
     end
     Section("Auras", ns.AuraOrder.With({
         { name = L["Buffs"], kind = LEM.SettingType.Dropdown, default = D.buffs, values = places, generator = Place("buffs", "debuffs"),
-          get = get("buffs"), set = set("buffs"), desc = L["Every buff on the boss, such as enrages and shields."] },
+          get = get("buffs"), set = PF.StackSetter("buffs", GetDb, set("buffs")), desc = L["Every buff on the boss, such as enrages and shields."] },
         { name = L["Debuffs"], kind = LEM.SettingType.Dropdown, default = D.debuffs, values = places, generator = Place("debuffs", "buffs"),
-          get = get("debuffs"), set = set("debuffs"), desc = L["Debuffs on the boss. With Only My Debuffs, just yours."] },
+          get = get("debuffs"), set = PF.StackSetter("debuffs", GetDb, set("debuffs")), desc = L["Debuffs on the boss. With Only My Debuffs, just yours."] },
         K.HideBuffsSetting("OFF", function() return get("hideBuffs")() or "OFF" end, set("hideBuffs")),
         { name = L["Buff Size"], kind = LEM.SettingType.Slider, default = D.auraSize, minValue = 8, maxValue = 48, valueStep = 1,
           get = function() return ns.AuraSize(GetDb(), false, D.auraSize) end, set = set("buffSize") },

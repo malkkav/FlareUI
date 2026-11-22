@@ -1225,18 +1225,62 @@ function OT.HideSecureClick()
     local o = OT.secureClick
     if o and o:IsShown() and not InCombatLockdown() then o:Hide() end
 end
+-- QUESTS BLIZZARD'S TRACKER HAS NO HEADER FOR (11-22, GitHub #141): it builds only the quests that fit
+-- its height. For those the overlay runs a macro instead: Blizzard's own quest log button opens the
+-- map (untainted, as a click on it), then a secure button clicks that quest's title in the log, which
+-- Blizzard's code opens (QuestMapLogTitleButton_OnClick). The picker aims at its target in its
+-- PreClick, out of a fight: the details' Back button when another quest's details are open (the
+-- macro clicks it twice: back, then the quest), else the quest's title. If the log hides the quest
+-- (collapsed, filtered), the map and log still open. Idea from the tracker research (11-22).
+function OT.QuestPicker()
+    local picker = OT.questPicker
+    if picker then return picker end
+    picker = CreateFrame("Button", "FlareUIQuestPick", UIParent, "SecureActionButtonTemplate")
+    picker:SetAttribute("type", "click")
+    picker:SetScript("PreClick", function(self)
+        if InCombatLockdown() then return end
+        local want, target = self.questID, nil
+        local details = QuestMapFrame and QuestMapFrame.DetailsFrame
+        if details and details:IsVisible() then
+            if details.questID ~= want then target = details.BackFrame and details.BackFrame.BackButton end
+        elseif want and QuestLogQuests_GetQuestButton then
+            local b = QuestLogQuests_GetQuestButton(want)
+            if b and b:IsVisible() then target = b end
+        end
+        self:SetAttribute("clickbutton", target)
+    end)
+    OT.questPicker = picker
+    return picker
+end
+-- (#141: in the Gamepad UI a mouse click goes here too; the controller's own press keeps
+-- OT.PickForQuestLog)
 function OT.ShowSecureClick(line)
-    if InCombatLockdown() or state.editMode or ns.IsGamepadUI() then return end
+    if InCombatLockdown() or state.editMode then return end
     local questID = line.questID
     if not questID or line.popupQuestID or line.zone or line.recipeID then OT.HideSecureClick() return end
     local headerButton = OT.BlizzardQuestHeader(questID)
-    if not headerButton then OT.HideSecureClick() return end
+    if not headerButton then
+        -- (a finished auto-complete quest completes from the line's own click)
+        local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+        local info = logIndex and C_QuestLog.GetInfo(logIndex)
+        if not (QuestLogQuests_GetQuestButton and _G.QuestLogMicroButton) or not logIndex
+            or (info and info.isAutoComplete and C_QuestLog.IsComplete(questID)) then
+            OT.HideSecureClick()
+            return
+        end
+    end
     local o = OT.secureClick
     if not o then
         o = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
         o:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
         o:SetAttribute("useOnKeyDown", false)
-        o:SetAttribute("type1", "click")
+        -- the picker path: the macro, written as the click comes (the map open or not)
+        o:SetScript("PreClick", function(self, button)
+            if InCombatLockdown() or self:GetAttribute("type1") ~= "macro" or button ~= "LeftButton" then return end
+            local open = WorldMapFrame and WorldMapFrame:IsShown()
+            self:SetAttribute("macrotext1", (open and "" or "/click QuestLogMicroButton\n")
+                .. "/click FlareUIQuestPick\n/click FlareUIQuestPick")
+        end)
         -- (only the plain left click: a modified one finds no "shift-type1" and takes the line's path)
         o:SetScript("PostClick", function(self, button)
             local l = self.line
@@ -1270,7 +1314,14 @@ function OT.ShowSecureClick(line)
     o:ClearAllPoints()
     o:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * s, top * s)
     o:SetSize((right - left) * s, (top - bottom) * s)
-    o:SetAttribute("clickbutton1", headerButton)
+    if headerButton then
+        o:SetAttribute("type1", "click")
+        o:SetAttribute("clickbutton1", headerButton)
+    else
+        OT.QuestPicker().questID = questID
+        o:SetAttribute("type1", "macro")
+        o:SetAttribute("clickbutton1", nil)
+    end
     o.line = line
     o:Show()
 end

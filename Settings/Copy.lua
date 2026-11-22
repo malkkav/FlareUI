@@ -424,7 +424,7 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* |cffffd100Kabaday|r for the loot roll window.\n* |cffffd100Celbrund|r for the minimap Info Bar."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* |cffffd100Kabaday|r for the loot roll window and the Cooldown Manager.\n* |cffffd100Celbrund|r for the minimap Info Bar."],
         },
         ["about.layout"] = {
             kind = "text",
@@ -538,7 +538,7 @@ ns.Copy = {
             kind = "text",
             label = L["Restrictions"],
             section = "au.hideRules",
-            text = L["Blizzard limits which auras can be filtered. If one here doesn't hide or show, this is why:\n* Allowed: buffs on you, your pet and your group, and debuffs on enemies.\n* Blocked: debuffs on you or a friend, except a few harmless ones such as Sated."],
+            text = L["Blizzard limits which auras can be filtered. If one here doesn't hide or show, this is why:\n* Allowed: buffs on you, your pet and your group, and debuffs on enemies.\n* Blocked: debuffs on you or a friend, except a few harmless ones such as Sated.\nA debuff marked Not on You is one of those: it still hides on enemies."],
         },
         ["au.mineFirst"] = {
             desc = L["Your own auras lead the row. Works with Time Left or Name."],
@@ -657,10 +657,11 @@ ns.Copy = {
             tip = L["Needs Combined Backpack on."],
         },
         ["bl.bagItemLevel"] = {
-            desc = L["In your bags and on the character sheet, weapons and armour show their item level in the bottom left corner, in their quality colour."],
+            desc = L["In your bags, on the character sheet and in the inspect window, weapons and armour show their item level in the bottom left corner, in their quality colour. The inspect window also shows the player's average item level."],
             label = L["Item Level"],
             section = "bl.itemSlots",
-            tip = L["On the character sheet it works with another bag addon too."],
+            tags = { "ilvl", "gear score", "inspect item level", "average item level" },
+            tip = L["On the character sheet and in the inspect window it works with another bag addon too."],
         },
         ["bl.bagJunkIcon"] = {
             desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
@@ -684,6 +685,13 @@ ns.Copy = {
             label = L["Crafting Bag in Backpack"],
             section = "bl.bagWindow",
             tip = L["Needs Combined Backpack on."],
+        },
+        ["bl.bagReverse"] = {
+            desc = L["The backpack starts at the top left and fills left to right, downwards. Combine Empty Slots' slot comes last, at the bottom."],
+            label = L["Reverse Bag Fill"],
+            section = "bl.bagWindow",
+            tags = { "reverse bags", "fill from top", "bag order", "sort direction" },
+            tip = L["Not with Category Rows, whose headers sit above their sections."],
         },
         ["bl.bagSkinSlots"] = {
             choices = { L["Off"], L["Thin Borders"], L["Thick Borders"], L["Colour by Rarity"] },
@@ -1460,7 +1468,8 @@ ns.Copy = {
             desc = L["The font for all FlareUI text set to Global. Pick Global in any Fonts tab to make that text use it."],
             label = L["Font"],
             section = "language.fonts",
-            tags = { "global font", "all text", "every font", "typeface" },
+            tags = { "global font", "all text", "every font", "typeface", "crisp", "sharp font" },
+            tip = L["Friz Quadrata TT (Crisp) is Blizzard's sharper copy of the game font. It lacks a few symbols, so some show as boxes (the dot in \"Honored · -10%\", for one)."],
         },
         ["fonts.nameplate.face"] = {
             desc = L["The names on Blizzard's nameplates and over characters in the world. Default keeps their font (or the Global Font, with Game Text on)."],
@@ -1493,6 +1502,13 @@ ns.Copy = {
             desc = L["The drawer opens while you point at the day/night badge and closes when you move away. Clicking still works."],
             label = L["Open on Mouseover"],
             section = "mm.addonButtons",
+        },
+        ["mm.barBelow"] = {
+            desc = L["The Info Bar sits under the minimap instead of over its bottom edge."],
+            label = L["Below the Map"],
+            section = "mm.infoBar",
+            tags = { "info bar position", "info bar under map", "quest arrow" },
+            tip = L["Over the map, the bar can hide the quest arrow when it points down."],
         },
         ["mm.barBox"] = {
             desc = L["The plate behind the Info Bar's text. Off shows the text alone, straight on the map."],
@@ -1671,7 +1687,7 @@ ns.Copy = {
             label = L["Health Text"],
             section = "np.health",
             tags = { "health percent", "health value", "bar text", "full name", "surname", "last name" },
-            tip = L["Full Name adds the surname, on Name Only plates too."],
+            tip = L["Full Name adds the surname. Name Only plates have their own Show Full Name."],
         },
         ["np.bgOpacity"] = {
             desc = L["How dark the empty part of the bar is."],
@@ -1699,6 +1715,12 @@ ns.Copy = {
             label = L["Buffs"],
             section = "np.buffSection",
             tags = { "purgeable", "important buffs", "my buffs", "filters" },
+        },
+        ["np.castGlow"] = {
+            desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."],
+            label = L["Edge Glow"],
+            section = "np.castFrame",
+            tags = { "spark", "cast glow", "cast progress" },
         },
         ["np.castHeight"] = {
             desc = L["How tall the cast bar is."],
@@ -1931,6 +1953,20 @@ ns.Copy = {
             desc = L["Where the mob type colours show."],
             label = L["Colour Where"],
             section = "np.specialColors",
+        },
+        ["np.nameAbove"] = {
+            choices = { L["Off"], L["Left: First Name"], L["Left: Full Name"], L["Centre: First Name"], L["Centre: Full Name"], L["Right: First Name"], L["Right: Full Name"] },
+            desc = L["The name above the plate, on its left, centre or right. Buffs and debuffs above the plate move up to make room."],
+            label = L["Names Above Plate"],
+            section = "np.health",
+            tags = { "name above", "name on top", "name outside bar" },
+            tip = L["Take the name out of Health Text if you only want it above."],
+        },
+        ["np.nameOnlyFull"] = {
+            desc = L["Players' surnames show in Name Only Mode. Off, only the first name shows."],
+            label = L["Show Full Name"],
+            section = "np.nameOnlySection",
+            tags = { "full name", "surname", "last name", "first name" },
         },
         ["np.nameOnlyMode"] = {
             desc = L["This unit's plates show only the name: no bar, cast bar or auras. This unit's other options grey out."],

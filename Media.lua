@@ -75,6 +75,16 @@ for mediaType, entries in pairs(ASSETS) do
     end
 end
 
+-- Friz Quadrata TT (Crisp) (11-22, Malkkav): Blizzard's Russian copy of Friz Quadrata, which draws
+-- sharper. 7.0.3 used it everywhere by accident and players liked it, so it is a pick of its own.
+-- It lacks a few symbols (the middle dot "·" shows as a box): the Font row's tip says so.
+do
+    local CRISP = "Fonts\\FRIZQT___CYR.TTF"
+    if C_UIFileAsset and C_UIFileAsset.IsKnownFile and C_UIFileAsset.IsKnownFile(CRISP) then
+        pcall(LSM.Register, LSM, "font", "Friz Quadrata TT (Crisp)", CRISP, LATIN_CYRILLIC)
+    end
+end
+
 --------------------------------------------------
 -- 3. DROPDOWN LISTS
 --------------------------------------------------

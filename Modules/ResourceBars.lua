@@ -324,6 +324,12 @@ end
 local function IsAvailable(holder)
     local info = BARS[holder.key]
     if info.kind == "mana" then
+        -- Show in Caster Form (11-22, Pedrix): up whenever you have mana, not only in Bear or Cat Form
+        local cfg = Cfg(holder.key)
+        if cfg and cfg.casterForm then
+            local max = readable(UnitPowerMax("player", MANA))
+            if max == nil or max > 0 then return true end
+        end
         return ManaIsSecondary()
     elseif info.kind == "combo" then
         return BuildsComboPoints()
@@ -1335,6 +1341,12 @@ local function BuildSettings(key)
                   or info.kind == "seal" and L["The seal's time left on the right of the bar."]
                   or info.kind == "timer" and L["The time left on the right of the bar."]
                   or L["The seconds left on the right of the bar (and Waiting)."] })
+    end
+    -- Show in Caster Form (11-22, Malkkav; off): the Druid Mana bar in every form, for players whose
+    -- power bar is off (IsAvailable)
+    if info.kind == "mana" then
+        add({ name = L["Show in Caster Form"], kind = LEM.SettingType.Checkbox, default = false, get = get("casterForm", false), set = set("casterForm"),
+              desc = L["The bar stays up in caster form too, not only in Bear and Cat Form."] })
     end
     -- Show Icon (11-21, Archy; off): the seal's icon at the bar's left end
     if info.kind == "seal" then

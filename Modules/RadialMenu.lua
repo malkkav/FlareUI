@@ -2190,6 +2190,18 @@ local MACRO_SNIPPET = [[
         end
         if not id then return false end
     end
+    -- (11-22) in the Gamepad UI the macro opens it for the controller: the right stick aims, B closes
+    -- (in click mode only the mouse could aim it)
+    if control:GetAttribute("flare-padui") then
+        if MODE == "pad" and ACTIVE == id then
+            control:RunAttribute("flare-closepad")
+            return false
+        end
+        control:RunAttribute("flare-closeclick", true)
+        control:RunAttribute("flare-closepad", true)
+        control:RunAttribute("flare-openpad", id)
+        return false
+    end
     -- the same macro again closes the radial it opened, as Toggle's key does
     if MODE == "click" and ROOT == id then
         control:RunAttribute("flare-closeclick")
@@ -3324,6 +3336,7 @@ local function ApplyBinding()
     -- by the keys the controller bar put them on
     padStickIndex = RightStickIndex()
     header:SetAttribute("flare-padstick", padStickIndex)
+    header:SetAttribute("flare-padui", ns.IsGamepadUI() or nil)
     header:SetAttribute("flare-padrelease", RM:IsPadReleaseOn() or nil)
     header:SetAttribute("flare-padrepeat", RM:IsPadRepeatOn() or nil)
     for attribute, side in pairs({ ["flare-ltindex"] = "LT", ["flare-rtindex"] = "RT" }) do
