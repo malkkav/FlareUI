@@ -629,6 +629,8 @@ local defaults = {
         -- [[ UNIT FRAMES MODULE ]]
         unitframes = {
             enabled = false,
+            rpHealth = false,
+            rpNames = false,
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
             levelSize = 1,              -- Level Badge Size: the ring styles' level disc, 0.5-1 of its size (UnitFramesRing.lua LayoutLevel)
@@ -995,6 +997,7 @@ local defaults = {
         -- [[ NAMEPLATES MODULE ]] (Modules/Nameplates.lua): FlareUI's own plates (enemy and friendly); a reload turns it on or off
         nameplates = {
             enabled = false,
+            rpNames = false, rpColours = false,
             width = 160, height = 16,   -- the health bar (tall enough for the name inside it)
             texture = "FlareUI Light", -- Bar Texture (the unit frames' list)
             border = "FlareUI Thick",   -- Border: "FlareUI Thick", "FlareUI Frames" (shown as FlareUI Thin), Shared Media, "None"

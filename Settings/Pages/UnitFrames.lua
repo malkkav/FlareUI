@@ -76,6 +76,8 @@ S:Row{
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("uf") end end,
 }
 -- (each frame's fading is in its Edit Mode dialog: Visibility.lua, UnitFrames.lua section 14)
+S:Row{ key = "uf.rpHealth", path = "unitframes.rpHealth", hidden = ns.Roleplay.Hidden, apply = ns.Roleplay.Refresh }
+S:Row{ key = "uf.rpNames", path = "unitframes.rpNames", hidden = ns.Roleplay.Hidden, apply = ns.Roleplay.Refresh }
 -- frames are made at login: the pet's style applies on reload
 -- (two columns: Simple Pet Frame | Simple Target of Target; hidden in Modern, where every frame is plain)
 local function ModernStyle() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end

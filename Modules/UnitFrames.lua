@@ -909,8 +909,13 @@ end
 -- NPCs. A secret reaction falls back to friendly. The class is secret for a chained unit
 -- (targettarget, focustarget) whenever a unit in the chain is an NPC: it keeps Blizzard's class
 -- colour then (no custom class colours, which need a readable class).
-local function GetHealthColor(unit, classColor)
+local function GetHealthColor(unit, classColor, provider)
     if not UnitIsConnected(unit) then return GREY[1], GREY[2], GREY[3] end
+    if provider and (unit == "player" or unit == "target") and Readable(UnitIsPlayer(unit)) then
+        local r, g, b = provider(unit)
+        if r == "class" then classColor = true
+        elseif r then return r, g, b end
+    end
     if UnitIsPlayer(unit) and not classColor then return ns.HEALTH_GREEN[1], ns.HEALTH_GREEN[2], ns.HEALTH_GREEN[3] end
     if UnitIsPlayer(unit) then
         local _, classFile = UnitClass(unit)
@@ -1041,13 +1046,28 @@ end
 --------------------------------------------------
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
+function UF.DisplayName(unit, _, full)
+    if ns.UnitFrameNameProvider then
+        local name = ns.UnitFrameNameProvider(unit, full)
+        if name then return name end
+    end
+    return ns.UnitDisplayName(unit, nil, full)
+end
+
 local function UpdateName(f)
     -- First Name or Full Name by the frame's pick (UF.ShowsFullName)
     local unit = f.fuiUnit
-    local name = ns.UnitDisplayName(unit, nil, UF.ShowsFullName(f))
+    local name = UF.DisplayName(unit, nil, UF.ShowsFullName(f))
     if canaccessvalue(name) and not name then name = "" end
     f.Name:SetText(name)
-    ns.NameAbove.SetName(f, GetUnitDb(unit), unit)   -- Name Above Plates (BarText.lua)
+    ns.NameAbove.SetName(f, GetUnitDb(unit), unit, UF.DisplayName)
+end
+
+function ns.RefreshUnitFrameNames()
+    for _, unit in ipairs({ "player", "target" }) do
+        local f = frames[unit]
+        if f and f:IsShown() and UnitExists(unit) then UpdateName(f) end
+    end
 end
 
 -- BAR TEXT (BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
@@ -1328,13 +1348,14 @@ local function UpdateHealth(f, glide)
         UF.BarLookUpdate(bar, nil, false, false)
         -- (Health Colour: the sample's colour at the sample's health)
         if UnitExists(unit) and not f.fuiSample then
-            bar:SetStatusBarColor(UF.SampleHealthColor(udb, health, GetHealthColor(unit, ns.ClassColorsOn(udb))))
+            bar:SetStatusBarColor(UF.SampleHealthColor(udb, health, GetHealthColor(unit, ns.ClassColorsOn(udb), ns.UnitFrameHealthColorProvider)))
         elseif unit == "pet" then
             local c = REACTION[5]
             bar:SetStatusBarColor(UF.SampleHealthColor(udb, health, c[1], c[2], c[3]))
         else
             -- no unit: yours, so Class Colours shows here too
-            bar:SetStatusBarColor(UF.SampleHealthColor(udb, health, GetHealthColor("player", ns.ClassColorsOn(udb))))
+            local provider = (unit == "player" or unit == "target") and ns.UnitFrameHealthColorProvider or nil
+            bar:SetStatusBarColor(UF.SampleHealthColor(udb, health, GetHealthColor("player", ns.ClassColorsOn(udb), provider)))
         end
         UF.FillSlots(f, "health", UF.SampleSource(health, 24000))
         return
@@ -1362,10 +1383,10 @@ local function UpdateHealth(f, glide)
     end
     -- (Health Colour on: the colour changes with the health, so every tick sets it)
     if UF.HealthColorLive(udb) then
-        bar:SetStatusBarColor(UF.HealthBarColor(unit, classOn, udb))
+        bar:SetStatusBarColor(UF.HealthBarColor(unit, classOn, udb, ns.UnitFrameHealthColorProvider))
         f.colorClass = nil
     elseif not (classFile and f.colorClass == classFile and f.colorPalette == UF.paletteVersion and f.colorClassOn == classOn) then
-        bar:SetStatusBarColor(GetHealthColor(unit, classOn))
+        bar:SetStatusBarColor(GetHealthColor(unit, classOn, ns.UnitFrameHealthColorProvider))
         f.colorClass, f.colorPalette, f.colorClassOn = classFile, UF.paletteVersion, classOn
     end
 
@@ -4193,11 +4214,14 @@ function UF.HealthTint.Gradient()
     end
     return T.gradient or nil
 end
-function UF.HealthTint.Step(r, g, b)
+function UF.HealthTint.Step(r, g, b, unitCache)
     local T = UF.HealthTint
     if not (canaccessvalue(r) and canaccessvalue(g) and canaccessvalue(b)) then return nil end
     local key = string.format("%.3f:%.3f:%.3f", r, g, b)
-    local curve = T.steps[key]
+    -- Provider colours aren't a finite class palette. Keep only the latest curve per unit.
+    local slot = unitCache or key
+    local curve = T.steps[slot]
+    if unitCache and T[unitCache] ~= key then curve = nil; T[unitCache] = key end
     if curve == nil then
         curve = false
         local ok, made = pcall(C_CurveUtil.CreateColorCurve)
@@ -4207,7 +4231,7 @@ function UF.HealthTint.Step(r, g, b)
             made:AddPoint(T.AT, CreateColor(r, g, b, 1))
             curve = made
         end
-        T.steps[key] = curve
+        T.steps[slot] = curve
     end
     return curve or nil
 end
@@ -4216,17 +4240,31 @@ function UF.HealthTint.CurveRGB(unit, curve)
     return color:GetRGB()
 end
 -- The health bar's colour with the frame's Health Colour (db: the frame's settings)
-function UF.HealthBarColor(unit, classOn, db)
+function UF.HealthBarColor(unit, classOn, db, provider)
     local mode = UF.HealthColorMode(db)
-    local r, g, b = GetHealthColor(unit, classOn)
+    local r, g, b = GetHealthColor(unit, classOn, provider)
     if mode == "off" or not (C_CurveUtil and C_CurveUtil.CreateColorCurve and UnitHealthPercent) then return r, g, b end
     if not UnitIsConnected(unit) or UnitIsTapDenied(unit) then return r, g, b end
     local curve
-    if mode == "health" then curve = UF.HealthTint.Gradient() else curve = UF.HealthTint.Step(r, g, b) end
+    if mode == "health" then curve = UF.HealthTint.Gradient()
+    else curve = UF.HealthTint.Step(r, g, b, provider and (unit == "player" or unit == "target") and unit or nil) end
     if not curve then return r, g, b end
     local ok, cr, cg, cb = pcall(UF.HealthTint.CurveRGB, unit, curve)
     if ok then return cr, cg, cb end   -- (never test cr itself: a secret number cannot be tested)
     return r, g, b
+end
+
+function ns.RefreshUnitFrameHealthColor()
+    for _, unit in ipairs({ "player", "target" }) do
+        local f = frames[unit]
+        if f and f:IsShown() and UnitExists(unit) then
+            f.colorClass = nil
+            if not f.fuiSample and not ns.EditPreviewing() then
+                local db = GetUnitDb(unit)
+                f.Health:SetStatusBarColor(UF.HealthBarColor(unit, ns.ClassColorsOn(db), db, ns.UnitFrameHealthColorProvider))
+            end
+        end
+    end
 end
 -- Edit Mode samples: the same colours from the sample's plain health (0..1) and base colour
 function UF.SampleHealthColor(db, health, r, g, b)
@@ -5142,7 +5180,7 @@ local function LayoutFrame(f)
             local s = UNITS[f.fuiUnit].sample or {}
             ns.NameAbove.SetSample(f, udb, s.name or UNITS[f.fuiUnit].label, s.surname)
         else
-            ns.NameAbove.SetName(f, udb, f.fuiUnit)
+            ns.NameAbove.SetName(f, udb, f.fuiUnit, UF.DisplayName)
         end
     end
 
@@ -5739,7 +5777,7 @@ function UF.DrawSample(f, style, opts)
     local ok, result = pcall(function()
         LayoutFrame(f)
         ApplySample(f)
-        if unit == "player" then f.Name:SetText(ns.UnitDisplayName("player", nil, UF.ShowsFullName(f)) or "") end
+        if unit == "player" then UpdateName(f) end
         UpdatePortrait(f)
         local w, h = f:GetSize()
         local left, right, top = 0, 0, 0

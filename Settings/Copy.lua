@@ -1841,6 +1841,16 @@ ns.Copy = {
             tags = { "group colour", "party members" },
             tip = L["Shows on friendly plates outside dungeons and raids: inside them the game keeps friendly plates its own."],
         },
+        ["np.rpNames"] = {
+            label = L["RP Profile Names"],
+            desc = L["Show Total RP 3 profile names on player nameplates. Players without a profile keep their game name."],
+            section = "np.platesBehaviour",
+        },
+        ["np.rpColours"] = {
+            label = L["RP Name Colours"],
+            desc = L["Use the RP profile colour for a player's name, even when showing the game name. It overrides party, raid and class name colours. Without a profile colour, the usual name colour applies."],
+            section = "np.platesBehaviour",
+        },
         ["np.healthColor"] = {
             choices = { L["Off"], L["Reaction"], L["Class & Reaction"], L["Health"] },
             desc = L["How each plate's bar is coloured:\n* Off: Blizzard's own colours\n* Reaction: red for enemies, yellow for neutral\n* Class & Reaction: players in their class colour, everyone else by reaction\n* Health: green at full, yellow at half, red when nearly dead"],
@@ -3264,6 +3274,16 @@ ns.Copy = {
         ["uf.simplePet"] = {
             desc = L["The plain pet frame in every style. Off: a small pet frame in Forever or FlareUI Style."],
             label = L["Simple Pet Frame"],
+            section = "uf.look",
+        },
+        ["uf.rpHealth"] = {
+            label = L["RP Health Colours"],
+            desc = L["Use the Total RP 3 profile colour on player and target health bars, or class colour if unavailable. Health tints still apply."],
+            section = "uf.look",
+        },
+        ["uf.rpNames"] = {
+            label = L["RP Profile Names"],
+            desc = L["Show Total RP 3 names on the player and target frames. Each name inside or above the frame follows its First Name or Full Name setting. Without a profile name, the game name is shown."],
             section = "uf.look",
         },
         ["uf.simpleTargetOf"] = {

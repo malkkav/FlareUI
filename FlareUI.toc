@@ -18,6 +18,7 @@
 ## Category-zhCN: 界面
 ## Category-zhTW: 介面
 ## SavedVariables: FlareUI2_DB, FlareUI_DB
+## OptionalDeps: totalRP3
 ## LoadSavedVariablesFirst: 1
 ## IconTexture: Interface\AddOns\FlareUI\Media\Art\Icon.png
 ## AddonCompartmentFunc: FlareUI_OnAddonCompartmentClick
@@ -86,6 +87,7 @@ Modules\MinimapDurability.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
 Modules\Nameplates.lua
+Modules\Roleplay.lua
 Modules\JunkDelete.lua
 Modules\Fishing.lua
 Modules\Bags.lua

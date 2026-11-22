@@ -1731,12 +1731,16 @@ function NP.UpdateName(p)
     -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
     -- front, in its colour
     local name = ns.UnitDisplayName(unit, nil, p.nameFull and true or false)
+    local player = Readable(UnitIsPlayer(unit))
+    local override, r, g, b
+    if player and ns.NameplateTextProvider then override, r, g, b = ns.NameplateTextProvider(unit, p.nameFull) end
+    if override then name = override end
     local prefix = p.levelFollow and NP.LevelPrefix(unit)
     if prefix then p.name:SetFormattedText("%s%s", prefix, name) else p.name:SetText(name) end
+    if r then p.name:SetTextColor(r, g, b) return end
     -- Party Colour (groupColor) and Raid Colour: your party or raid members' names in their own
     -- colour; other players by class, everyone else white. (Raid Colour never set follows the old
     -- Group Colour switch, which covered both.)
-    local player = Readable(UnitIsPlayer(unit))
     if player then
         local raidOn = db.raidColor
         if raidOn == nil then raidOn = db.groupColor end
@@ -1763,6 +1767,12 @@ function NP.UpdateName(p)
         if r then p.name:SetTextColor(r, g, b) return end
     end
     p.name:SetTextColor(1, 1, 1)
+end
+
+function ns.RefreshNameplateText()
+    for _, p in pairs(byPlate) do
+        if p.unit then NP.UpdateName(p) end
+    end
 end
 
 -- NPC TITLES (11-21, Malkkav: always on, no option): an NPC's title ("General Goods", "Blacksmithing
@@ -2954,19 +2964,25 @@ function NP.DrawSample(f, kind)
     -- the execute tint below its threshold
     p.execTint:SetAlpha((p.execAt and share < p.execAt) and 1 or 0)
     local color = GetQuestDifficultyColor and GetQuestDifficultyColor(12) or { r = 1, g = 0.82, b = 0 }
-    if p.levelFollow then
-        p.name:SetFormattedText("|cff%02x%02x%02x12|r %s", color.r * 255 + 0.5, color.g * 255 + 0.5, color.b * 255 + 0.5, L["Forest Spider"])
-    else
-        p.name:SetText(L["Forest Spider"])
-    end
+    local sampleName = L["Forest Spider"]
     p.name:SetTextColor(1, 1, 1)
     -- players: a player's name in your class colour
     -- (the friendly sample is a player: you, in your class colour)
     if db.kind == "friendlyPlayer" then
         local _, class = UnitClass("player")
         local cc = class and C_ClassColor.GetClassColor(class)
-        p.name:SetText(UnitName("player"))
+        sampleName = ns.UnitDisplayName("player", nil, p.nameFull)
         if cc then p.name:SetTextColor(cc:GetRGB()) end
+        if ns.NameplateTextProvider then
+            local name, red, green, blue = ns.NameplateTextProvider("player", p.nameFull)
+            if name then sampleName = name end
+            if red then p.name:SetTextColor(red, green, blue) end
+        end
+    end
+    if p.levelFollow then
+        p.name:SetFormattedText("|cff%02x%02x%02x12|r %s", color.r * 255 + 0.5, color.g * 255 + 0.5, color.b * 255 + 0.5, sampleName)
+    else
+        p.name:SetText(sampleName)
     end
     local questOn = NP.QuestOn() and (st.quest or type(kind) ~= "table")
     local questIcon, questProgress = NP.QuestParts(p)

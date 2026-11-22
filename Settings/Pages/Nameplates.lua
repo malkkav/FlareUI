@@ -989,6 +989,10 @@ Row{ key = "np.showOffscreen", tab = "visibility", section = "np.platesBehaviour
 Row{ key = "np.clickThrough", path = "clickThrough", tab = "visibility", section = "np.platesBehaviour", half = true }
 -- (11-20: Realm Names removed, Forever has no realms) Name Only While Unattackable, off (Nameplates.lua NP.Peaceful)
 Row{ key = "np.peacefulNames", path = "peacefulNames", tab = "visibility", section = "np.platesBehaviour", half = true }
+Row{ key = "np.rpNames", path = "rpNames", tab = "visibility", section = "np.platesBehaviour",
+    hidden = ns.Roleplay.Hidden, apply = ns.Roleplay.Refresh }
+Row{ key = "np.rpColours", path = "rpColours", tab = "visibility", section = "np.platesBehaviour",
+    hidden = ns.Roleplay.Hidden, apply = ns.Roleplay.Refresh }
 
 -- WORLD NAMES: the names over units' heads (Blizzard's own switches)
 local function SetNameCVar(cvar, on) if not InCombatLockdown() then SetCVar(cvar, on and "1" or "0") end end

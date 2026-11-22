@@ -477,13 +477,14 @@ function NA.Layout(f, udb, anchor, font)
 end
 
 -- The name's text (secret names go to the widget as they are)
-function NA.SetName(f, udb, unit)
+function NA.SetName(f, udb, unit, displayName)
     local fs = f.NameAboveText
     local slot, kind = NA.Get(udb)
     if not (fs and slot) then return end
-    local name = unit and UnitExists(unit) and ns.UnitDisplayName(unit, nil, kind == "fullname") or nil
+    local name = ""
+    if unit and UnitExists(unit) then name = (displayName or ns.UnitDisplayName)(unit, nil, kind == "fullname") end
     if canaccessvalue(name) and not name then name = "" end
-    fs:SetText(name or "")
+    fs:SetText(name)
 end
 -- a sample's name in Edit Mode (first, surname)
 function NA.SetSample(f, udb, first, surname)
