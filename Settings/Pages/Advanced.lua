@@ -122,7 +122,8 @@ local COUNT_LIMITS = { max = 100, perRow = 100, rows = 100, columns = 100 }
 local function Sanitize(profile, defaults, depth, budget)
     for key, value in pairs(profile) do
         budget.nodes = budget.nodes + 1
-        local default = type(defaults) == "table" and defaults[key] or nil
+        local default
+        if type(defaults) == "table" then default = defaults[key] end
         local kind = type(value)
         local keep = budget.nodes <= MAX_NODES and (type(key) == "string" or type(key) == "number")
         if keep and default ~= nil and kind ~= type(default) then keep = false end
