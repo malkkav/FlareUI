@@ -816,6 +816,7 @@ L["From the Middle"] = true
 L["Frostbolt"] = true
 L["Full"] = true
 L["Full Name"] = true
+L["Full Name adds the surname, on Name Only plates too."] = true
 L["Game Menu"] = true
 L["Game Text"] = true
 L["gamepad"] = true
@@ -2253,7 +2254,7 @@ L["What each member is targeting, in a small frame under theirs or beside it. Cl
 L["What shows in the portrait circle."] = true
 L["What the icons show:\n* Glow When Missing: a gold glow round a missing buff\n* Glow When Running Out: an orange glow round a buff about to run out\n* Time Left: the time left on a buff about to run out, at the top of its icon"] = true
 L["What the left side of the Info Bar shows."] = true
-L["What the left, middle and right of the bar show. Several numbers show together, split by /, in the order you tick them. First Name stands alone."] = true
+L["What the left, middle and right of the bar show. Several numbers show together, split by /, in the order you tick them. A name stands alone."] = true
 L["What the middle of the Info Bar shows."] = true
 L["What the right side of the Info Bar shows."] = true
 L["What the Threat tab shows beside each name."] = true

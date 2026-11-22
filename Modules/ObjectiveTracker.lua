@@ -706,11 +706,12 @@ local function OpenQuest(questID)
     if info and info.isAutoComplete and C_QuestLog.IsComplete(questID) then
         ShowQuestComplete(questID)
         if RemoveAutoQuestPopUp then RemoveAutoQuestPopUp(questID) end
-    elseif UIErrorsFrame then
-        -- (11-21) the map and the details open only through Blizzard's own tracker (OT.ShowSecureClick,
-        -- a plain left click): opened from here they would taint the map's pins. A quest Blizzard's
-        -- tracker doesn't list has no header to click: the player opens the log themself.
-        UIErrorsFrame:AddMessage(L["Open your quest log to read this quest."], 1, 0.82, 0)
+    elseif QuestMapFrame_OpenToQuestDetails then
+        -- Blizzard's own tracker opens the map and details untainted where it can (OT.ShowSecureClick, a
+        -- plain left click). Its parked tracker only builds the quests that fit in its height, so most
+        -- have no header to click: those open from here, as before 7.0.1 (11-22: 7.0.1 only showed
+        -- "Open your quest log" for them, and the click did nothing)
+        QuestMapFrame_OpenToQuestDetails(questID)
     end
 end
 

@@ -160,27 +160,30 @@ end
 local function Extra(bagID, frame)
     local e = extras[bagID]
     if e then return e end
-    e = { buttons = {} }
+    -- buttons: the ones shown (FlareUI's own, e.own, or Blizzard's while adopted)
+    e = { own = {} }
+    e.buttons = e.own
     e.holder = CreateFrame("Frame", nil, frame)
     e.holder:Hide()
     e.holder:SetAllPoints(frame)
     e.holder:SetID(bagID)
     -- (11-21) the crafting bag holds reagents that spells target (filling a crate, milling,
-    -- prospecting): a button made by addon code runs that use tainted, and the game blocked it. Its
-    -- section shows Blizzard's own buttons instead (Bags.AdoptReagentButtons); the keyring's stay ours.
-    e.blizzardButtons = bagID == ReagentID()
+    -- prospecting): a button made by addon code runs that use tainted, and the game blocked it. While
+    -- Blizzard's crafting bag window is open (the bag key opens it with the others) its section shows
+    -- Blizzard's own buttons (Bags.AdoptReagentButtons); otherwise (the backpack alone opened, 11-22:
+    -- 7.0.1 then showed an empty section) FlareUI's own, as before. The keyring's are always ours.
     extras[bagID] = e
     return e
 end
 
 local function ExtraButton(e, slot)
     local b = e.buttons[slot]
-    -- the crafting bag shows Blizzard's own buttons, once its window has made them (Bags.AdoptReagentButtons)
-    if b or InCombatLockdown() or e.blizzardButtons then return b end
+    -- (Blizzard's adopted buttons: the ones its window made, nothing to add)
+    if b or InCombatLockdown() or e.adopted then return b end
     b = CreateFrame("ItemButton", nil, e.holder, "ContainerFrameItemButtonTemplate")
     b:SetID(slot)
     Bags.AddSlotArt(b)
-    e.buttons[slot] = b
+    e.own[slot] = b
     return b
 end
 
@@ -191,7 +194,7 @@ local function WarmExtraButtons()
     if not frame then return end
     for _, bagID in ipairs(ExtraBags()) do
         local section = Extra(bagID, frame)
-        -- (the keyring only: the crafting bag's buttons are Blizzard's, ExtraButton makes none)
+        -- (the crafting bag's too: they show while Blizzard's window isn't open)
         for slot = 1, C_Container.GetContainerNumSlots(bagID) do
             ExtraButton(section, slot)
         end
@@ -859,8 +862,15 @@ function Bags.AdoptReagentButtons(frame)
             changed = true
         end
     end
-    wipe(e.buttons)
-    for _, button in ipairs(frame.Items) do e.buttons[button:GetID()] = button end
+    -- FlareUI's own buttons step aside while Blizzard's are in
+    if not e.adopted then
+        for _, b in pairs(e.own) do
+            if not (InCombatLockdown() and b:IsProtected()) then b:Hide() end
+        end
+    end
+    local shown = {}
+    for _, button in ipairs(frame.Items) do shown[button:GetID()] = button end
+    e.buttons, e.adopted = shown, true
     if changed and not layingOut and combined:IsShown() then Relayout(combined) end
     return true
 end
@@ -879,8 +889,13 @@ function Bags.ReturnReagentButtons(owner)
             end
         end
     end
+    -- none left: FlareUI's own buttons again (the next layout shows them)
     local e = extras[ReagentID()]
-    if e and not next(Bags.adopted) then wipe(e.buttons) end
+    if e and e.adopted and not next(Bags.adopted) then
+        e.buttons, e.adopted = e.own, nil
+        local combined = Combined()
+        if combined and combined:IsShown() and not layingOut then Relayout(combined) end
+    end
     return done
 end
 

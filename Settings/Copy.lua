@@ -1634,11 +1634,12 @@ ns.Copy = {
             tags = { "smooth", "smooth bars", "animation", "edge glow", "damage trail" },
         },
         ["np.barText"] = {
-            choices = { L["None"], L["First Name"], L["Health Percent"], L["Health Value"], L["Health Max"], L["Health Lost"] },
-            desc = L["What the left, middle and right of the bar show. Several numbers show together, split by /, in the order you tick them. First Name stands alone."],
+            choices = { L["None"], L["First Name"], L["Full Name"], L["Health Percent"], L["Health Value"], L["Health Max"], L["Health Lost"] },
+            desc = L["What the left, middle and right of the bar show. Several numbers show together, split by /, in the order you tick them. A name stands alone."],
             label = L["Health Text"],
             section = "np.health",
-            tags = { "health percent", "health value", "bar text" },
+            tags = { "health percent", "health value", "bar text", "full name", "surname", "last name" },
+            tip = L["Full Name adds the surname, on Name Only plates too."],
         },
         ["np.bgOpacity"] = {
             desc = L["How dark the empty part of the bar is."],

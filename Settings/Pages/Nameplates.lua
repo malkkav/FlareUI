@@ -572,7 +572,8 @@ local function EncodeSlots(all)
     return table.concat(parts, ";")
 end
 Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health",
-    choices = { "none", { divider = true }, "firstname", "percent", "value", "max", "lost" },
+    -- (11-22) Full Name too: 7.0.1 drew it but left it out of this list
+    choices = { "none", { divider = true }, "firstname", "fullname", "percent", "value", "max", "lost" },
     slots = { { key = "left", text = L["Left"] }, { key = "middle", text = L["Centre"] }, { key = "right", text = L["Right"] } },
     slotTicked = function(slot, value)
         local set = TextSlotsNow()[slot]
@@ -591,13 +592,14 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         local out = { left = all.left, middle = all.middle, right = all.right }
         local list, n = ns.BarText.Ordered(all[slot])
         local set = {}
-        if value == "firstname" then
-            if not all[slot].firstname then set = { firstname = 1 } end
+        if ns.BarText.NAMES[value] then
+            -- one name at a time: First Name and Full Name replace each other and the numbers
+            if not all[slot][value] then set = { [value] = 1 } end
         elseif value ~= "none" then
             local k = 0
             for i = 1, n do
                 local item = list[i]
-                if item ~= "firstname" and item ~= value then k = k + 1; set[item] = k end
+                if not ns.BarText.NAMES[item] and item ~= value then k = k + 1; set[item] = k end
             end
             if not all[slot][value] then set[value] = k + 1 end
         end

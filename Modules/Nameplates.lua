@@ -892,25 +892,28 @@ function NP.PlaceSides(p)
     local pad = { left = 0, right = 0 }
     if outer[p.questSide] == p.quest then pad[p.questSide] = p.questPad or 0 end
     local auras = p.auras
-    local db = PDB(p)
     if auras then
         if auras.cc then
             auras.cc.container:ClearAllPoints()
             auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", gap - pad.right, 0)
         end
         if auras.defensives then
+            -- (11-22) past the raid marker on a full plate: the marker sits right beside the plate, and
+            -- the room kept for two defensive icons no longer pushes it far to the left
             auras.defensives.container:ClearAllPoints()
-            auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left, 0)
+            if p.nameOnly then
+                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left, 0)
+            else
+                auras.defensives.container:SetPoint("RIGHT", p.raid, "LEFT", -gap, 0)
+            end
         end
     end
-    -- (the raid marker clear of the defensives: two icons at most)
-    local room = (db and db.defensives) and (2 * db.ccSize + C.AURA_GAP + gap) or 0
     if p.nameOnly then
         -- Name Only: the box is a whole plate wide round a short name, so beside it the marker stood
         -- far off (11-21); it sits over the name instead (a name's width can't be measured on a plate)
         p.raid:SetPoint("BOTTOM", p.name, "TOP", 0, 2)
     else
-        p.raid:SetPoint("RIGHT", outer.left, "LEFT", -gap - room - 1 + pad.left, 0)
+        p.raid:SetPoint("RIGHT", outer.left, "LEFT", -gap - 1 + pad.left, 0)
     end
     p.sideLeft, p.sideRight, p.sidePad = outer.left, outer.right, pad
     local arrows = p.arrows

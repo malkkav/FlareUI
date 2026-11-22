@@ -251,14 +251,39 @@ do
     for _, b in ipairs(window.Items) do own[b] = true end
     db.bagReagent = true
     layout()
+    local visible = 0
     for _, b in ipairs(frames) do
-        if b.kind == 'ItemButton' and b:GetBagID() == 5 then
-            assert(own[b], 'a crafting bag button FlareUI made')
+        if b.kind == 'ItemButton' and b:GetBagID() == 5 and b:IsVisible() then
+            visible = visible + 1
+            assert(own[b], 'a crafting bag button FlareUI made shows while Blizzard\'s are in')
             assert(b:GetParent() ~= window, 'Blizzard crafting bag button not in the backpack')
         end
     end
+    assert(visible == 2, 'Blizzard\'s two crafting bag buttons show')
     db.bagReagent = false
     layout()
     for _, b in ipairs(window.Items) do assert(b:GetParent() == window, 'button not given back to its window') end
     print('PASS: the crafting bag section uses Blizzard\'s own buttons and gives them back')
+end
+
+-- 11-22: with Blizzard's crafting bag window closed (the backpack opened alone), the section shows
+-- FlareUI's own buttons instead of staying empty (7.0.1)
+do
+    local window = env.ContainerFrame1
+    local blizzard = {}
+    for _, b in ipairs(window.Items) do blizzard[b] = true end
+    db.bagReagent = true
+    window:Hide()
+    layout()
+    local visible = 0
+    for _, b in ipairs(frames) do
+        if b.kind == 'ItemButton' and b:GetBagID() == 5 and b:IsVisible() then
+            visible = visible + 1
+            assert(not blizzard[b], 'a hidden Blizzard button counted')
+        end
+    end
+    assert(visible == 2, 'the crafting bag section is empty without Blizzard\'s window (' .. visible .. ' shown)')
+    window:Show()
+    layout()
+    print('PASS: without Blizzard\'s crafting bag window the section shows FlareUI\'s own buttons')
 end
