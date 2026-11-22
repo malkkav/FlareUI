@@ -722,7 +722,16 @@ Bar.sources = {
 }
 Bar.PAD = 8   -- a cell's room around its widest text
 
+-- Below the Map (minimap.infoBarBelow, off; 11-22, Raikoh: over the map it covered the quest arrow,
+-- which the game draws on the map itself): the bar hangs under the map's frame instead, with no
+-- room for the sundial, and the map's own texts don't move up for it
+Bar.BELOW_GAP = 2
+function Bar.Below()
+    local db = GetDb()
+    return db and db.infoBarBelow == true or false
+end
 function Bar.Lift()
+    if Bar.Below() then return 0 end
     return Bar.shown and (MM.SquareBorder().barBottom + (Bar.height or HEADER_HEIGHT) - 4) or 0
 end
 
@@ -806,7 +815,11 @@ function Bar.PlaceRound(f)
     local width = Bar.ROUND_CELL * #Bar.SIDES
     f:ClearAllPoints()
     f:SetWidth(width)
-    f:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, Bar.ROUND_UP)
+    if Bar.Below() then
+        f:SetPoint("TOP", MinimapFrame, "BOTTOM", 0, -Bar.BELOW_GAP)
+    else
+        f:SetPoint("BOTTOM", MinimapFrame, "BOTTOM", 0, Bar.ROUND_UP)
+    end
     return width
 end
 
@@ -819,6 +832,7 @@ function Bar.Place()
     -- it by its look, so the frame still counts as shown
     local bag = ns.MinimapBag
     local sunShown = sun and sun:IsShown() and not (bag and bag.SundialShown and not bag.SundialShown()) or false
+    if Bar.Below() then sunShown = false end   -- (under the map: clear of the sundial)
     -- the bar's height follows its font (never below the header buttons' height); first, as the
     -- sundial's room depends on the bar's band
     local size = Bar.cells[1] and select(2, ns.GetWantedFont(Bar.cells[1]))
@@ -830,9 +844,14 @@ function Bar.Place()
     local inner
     if squareStyle then
         f:ClearAllPoints()
-        local bottom = style.border.barBottom
-        f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, bottom)
-        f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -right + shift, bottom)
+        if Bar.Below() then
+            f:SetPoint("TOPLEFT", MM.Frame, "BOTTOMLEFT", left + shift, -Bar.BELOW_GAP)
+            f:SetPoint("TOPRIGHT", MM.Frame, "BOTTOMRIGHT", -right + shift, -Bar.BELOW_GAP)
+        else
+            local bottom = style.border.barBottom
+            f:SetPoint("BOTTOMLEFT", MM.Frame, "BOTTOMLEFT", left + shift, bottom)
+            f:SetPoint("BOTTOMRIGHT", MM.Frame, "BOTTOMRIGHT", -right + shift, bottom)
+        end
         inner = MM.Frame:GetWidth() - left - right
     else
         inner = Bar.PlaceRound(f)

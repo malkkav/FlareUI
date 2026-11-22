@@ -1798,6 +1798,80 @@ function ActionBars:CatchUpRanks()
     if #pendingRanks > 0 then FlushRanks() end
 end
 
+-- PET SPELLS (11-22, zbee: a warlock's Torment stayed rank 1 on the bars after the grimoire). The
+-- pet's ranks are in the pet's own book, which teaches them with no LEARNED_SPELL_IN_SKILL_LINE: so
+-- whenever the pet's book may have changed (a new pet, SPELLS_CHANGED), its ranks above the top one
+-- the bars were brought up to (kept per character as "pet:<name>") move the slots up, by the same
+-- rule as the player's. Out of combat, with nothing on the cursor.
+ActionBars.PetRanks = { wait = CreateFrame("Frame") }
+function ActionBars.PetRanks.Known()
+    local known, bank = {}, Enum.SpellBookSpellBank.Pet
+    local count = C_SpellBook.HasPetSpells and C_SpellBook.HasPetSpells() or 0
+    for index = 1, count or 0 do
+        local info = C_SpellBook.GetSpellBookItemInfo(index, bank)
+        local spellID = info and (info.spellID or info.actionID)
+        local name = spellID and C_Spell.GetSpellName(spellID)
+        local rank = name and RankOf(spellID)
+        if rank then
+            known[name] = known[name] or {}
+            known[name][rank] = index
+        end
+    end
+    return known
+end
+function ActionBars.PetRanks.Scan()
+    local P = ActionBars.PetRanks
+    P.queued = false
+    local db = GetBarConfig()
+    if not (db and db.enabled and db.autoRanks) then return end
+    if InCombatLockdown() then P.wait:RegisterEvent("PLAYER_REGEN_ENABLED") return end
+    if GetCursorInfo() then P.wait:RegisterEvent("CURSOR_CHANGED") return end
+    local tops, ordered = TopRanks(), {}
+    for name, ranks in pairs(P.Known()) do
+        local top, list = tops["pet:" .. name] or 0, {}
+        for rank in pairs(ranks) do
+            if rank > top then list[#list + 1] = rank end
+        end
+        if #list > 0 then
+            table.sort(list)
+            ordered[name] = { list = list, ranks = ranks }
+            tops["pet:" .. name] = list[#list]
+        end
+    end
+    if not next(ordered) then return end
+    for slot = 1, MAX_ACTION_SLOT do
+        local kind, id = GetActionInfo(slot)
+        local name = kind == "spell" and id and C_Spell.GetSpellName(id)
+        local entry = name and ordered[name]
+        local rank = entry and RankOf(id)
+        if rank then
+            local target = TargetRank(rank, entry.list, entry.ranks)
+            if target ~= rank and entry.ranks[target] then
+                C_SpellBook.PickupSpellBookItem(entry.ranks[target], Enum.SpellBookSpellBank.Pet)
+                if GetCursorInfo() then PlaceAction(slot) end
+                ClearCursor()
+            end
+        end
+    end
+end
+function ActionBars.PetRanks.Soon()
+    local P = ActionBars.PetRanks
+    if P.queued then return end
+    P.queued = true
+    C_Timer.After(0.5, P.Scan)
+end
+ActionBars.PetRanks.wait:SetScript("OnEvent", function(self, event)
+    if event == "CURSOR_CHANGED" and GetCursorInfo() then return end
+    self:UnregisterEvent(event)
+    ActionBars.PetRanks.Soon()
+end)
+do
+    local watch = CreateFrame("Frame")
+    watch:RegisterEvent("SPELLS_CHANGED")
+    watch:RegisterUnitEvent("UNIT_PET", "player")
+    watch:SetScript("OnEvent", function() ActionBars.PetRanks.Soon() end)
+end
+
 -- the book is complete at the first SPELLS_CHANGED after login; a moment later the rank texts are too
 local rankScan = CreateFrame("Frame")
 rankScan:RegisterEvent("SPELLS_CHANGED")

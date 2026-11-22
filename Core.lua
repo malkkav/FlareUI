@@ -610,6 +610,7 @@ local defaults = {
             sundial = true,             -- Sundial (Map Tools): the day/night badge shown (MinimapBag.lua)
             infoBarHover = false,       -- Info Bar On Mouseover: the bar only while pointing at the map
             infoBarBox = true,          -- Info Bar Show Box: the plates behind the cells
+            infoBarBelow = false,       -- Info Bar Below the Map: under the map's frame, not over it
             barFont = { face = "__global", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Info Bar font, as Info Text
             bagHover = false,           -- Open on Mouseover: pointing at the badge opens the bag (MinimapBag.lua)
             bagButtonSize = 100,        -- Drawer Button Size: 100..150 percent of the drawer's buttons (MinimapBag.lua Bag.ButtonSize)
@@ -1052,6 +1053,8 @@ local defaults = {
             -- icon | border | both, Aura Timer none | below | bottom | middle, Timer Colour
             auraStyle = "square", auraSwipe = "both", auraTimer = "none", auraTimerColor = true,
             auraRows = "one",           -- Aura Positions (per type, both rows on): one | buffsTop | debuffsTop
+            -- nameAbove = "<left|middle|right>:<firstname|fullname>" once picked: Names Above Plate (per type)
+            nameOnlyFull = true,        -- Show Full Name (per type): a Name Only plate's player surnames
             nameFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             healthFont = { face = "__global", size = 9, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             levelFont = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
@@ -1094,6 +1097,7 @@ local defaults = {
             bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
             bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
             bagCombineEmpty = false,    -- Combine Empty Slots: one empty slot with the free count
+            bagReverse = false,         -- Reverse Bag Fill: the grid from the top left
             bagAutoOpen = false,        -- Auto Open Containers: clams, loot bags, opened lockboxes
             bankColumns = 0,            -- Bank Window Columns; 0 = Blizzard's (8) (Bags.lua 4e)
             bankGaps = false,           -- Bank Window: each bank bag starts a new row, with a gap
@@ -1242,6 +1246,27 @@ function ns.BagModuleOn()
     return tweaks.bagModule == true
 end
 
+-- CAST BAR EDGE GLOW (11-22, Malkkav, Kelvan's idea): Blizzard's bright edge at the cast's front, on
+-- every cast bar (each frame's Cast Bar section; the Player Cast Bar's Look). On for new players only:
+-- decided once per profile (castGlowNew), on when FlareUI has never shown its What's New (a fresh
+-- install), so existing players' cast bars stay as they were. Each bar's own switch (castGlow), never
+-- set, reads this.
+function ns.CastGlowDefault()
+    local profile = ns.db and ns.db.profile
+    if not profile then return false end
+    local v = rawget(profile, "castGlowNew")
+    if v == nil then
+        local global = ns.db.global
+        v = not (global and global.whatsNewSeen)
+        profile.castGlowNew = v
+    end
+    return v
+end
+function ns.CastGlowOn(v)
+    if v == nil then return ns.CastGlowDefault() end
+    return v and true or false
+end
+
 -- For a time Lua can read (weapon enchants)
 function ns.FormatAuraTime(seconds)
     for _, band in ipairs(AURA_TIME_BANDS) do
@@ -1339,7 +1364,8 @@ end
 -- (11-22, Aleksandr Vasinskyi) Blizzard's Latin-only fonts have Cyrillic twins: the same Latin letters
 -- plus Russian. The game draws a whole string with one font, so a meter row like "1. Имя" (a Russian
 -- name on an English client) took the Latin-only font and drew boxes; the twin draws both. Only where
--- the client has the file.
+-- the client has the file. (7.0.3 swapped every font: the twin looks crisper and has no "·", so
+-- tooltips drew boxes and every text changed. 7.0.4: only the meter's rows use it, DamageMeter.lua)
 ns.CYRILLIC_TWINS = {
     ["fonts\\frizqt__.ttf"] = "Fonts\\FRIZQT___CYR.TTF",
     ["fonts\\morpheus.ttf"] = "Fonts\\MORPHEUS_CYR.TTF",
@@ -1354,7 +1380,7 @@ end
 
 -- The client's own font for this language: always loaded, and it has the language's letters
 local function BaseFont()
-    return ns.CyrillicTwin(_G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF")
+    return _G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
 end
 
 -- Global Font: a font whose face is ns.GLOBAL_FONT uses the profile's Global Font. Every
@@ -1389,7 +1415,6 @@ do
             end
             local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
             if success and found and C_UIFileAsset.IsKnownFile(found) then
-                found = ns.CyrillicTwin(found)
                 if face ~= nil then foundPaths[face] = found end
                 return found
             end
@@ -2295,7 +2320,7 @@ do
         -- dropdowns
         "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
-        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text",
+        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text",
         "Tint Health", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         -- the Cast Bar section's rows have no prefix: placed by their canon names
@@ -2319,7 +2344,7 @@ do
         "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid",
         "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Show Icon", "Show Spell Timer", "Show Spell Pushback",
+        "Show Icon", "Show Spell Timer", "Show Spell Pushback", "Edge Glow",
         "Class Colours", "Threat Glow", "Combat Glow", "Bar Animations", "Bar Edge Glow", "Damage Trail",
         -- the aura filters together, then the sort switches
         "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Dispellable Debuffs Only", "Show Weapon Enchants",
@@ -2429,7 +2454,7 @@ do
                  "Power Bar for Mana Users Only", "Only Mana Power Bars" },
         -- the frame's look picks (11-20): first in its Look section (ns.EditSections takes them there)
         look = { "Portrait", "Flip Portrait", "Mirror Bars" },
-        text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Plates", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
+        text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
                  "Threat Text", "Bar Text", "Show Timer", "Level Disc Size", "Values on Mouseover" },
     }
     -- the section titles reach ns.L as variables (EditSections): listed here for the phrase list
@@ -3229,6 +3254,7 @@ f:SetScript("OnEvent", function(self, event, ...)
 
         ns.db = db
         ns.defaults = defaults
+        ns.CastGlowDefault()   -- (decided before What's New marks this install as seen)
 
         -- 11-19: the bar textures FlareUI Forever and FlareUI Forever (Light) became FlareUI Dark and
         -- FlareUI Light: saved values in every profile are renamed once

@@ -435,8 +435,13 @@ local function NameOnlyLocked()
     end
     return true
 end
+-- (11-22, AstroFox) the Visibility tab is Blizzard's own nameplate settings, and In Combat keeps
+-- working with the module off: its rows stay usable then, so it can be switched back. Only these
+-- two act on FlareUI's plates alone.
+local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true }
 local function Row(def)
     def.apply = def.apply or Refresh
+    if def.tab == "visibility" and not FLAREUI_ONLY[def.key] and def.ignoreModule == nil then def.ignoreModule = true end
     if OWN_TABS[def.tab] and def.section ~= "np.nameOnlySection" then
         local own = def.disabled
         def.disabled = function()
@@ -626,6 +631,14 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         return EncodeSlots({ left = { firstname = true }, middle = {}, right = right })
     end }
 Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health" }
+-- NAMES ABOVE PLATE (11-22, Malkkav): as the unit frames' Name Above Frames, per type (Nameplates.lua
+-- NP.LayoutNameAbove); saved as "<slot>:<firstname|fullname>", nothing for Off
+Row{ key = "np.nameAbove", kind = "choice", tab = "style", section = "np.health",
+    choices = { "off", "left:firstname", "left:fullname", "middle:firstname", "middle:fullname", "right:firstname", "right:fullname" },
+    get = function() local np = NP() return np and np.NameAbovePick(np.TypeDB(PIN.kind)) and TV("nameAbove") or "off" end,
+    set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, "nameAbove", v ~= "off" and v or nil) end end,
+    resetValue = function() return "off" end,
+    disabled = function() return TV("plate") == "hidden" end }
 
 -- NAME ONLY MODE (11-20): the switch (the type's Plate: Name Only, as the Name Only preset), the name's
 -- size, and which types get their whole plate back in a fight (shared: one list of types)
@@ -637,6 +650,8 @@ Row{ key = "np.nameOnlyMode", tab = "style", section = "np.nameOnlySection", lea
     apply = function() Refresh() if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end end }
 Row{ key = "np.nameOnlySize", kind = "range", path = "nameOnlySize", choices = Steps(50, 200, 10, function(v) return v .. "%" end),
     tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
+-- Show Full Name (11-22, Malkkav; per type, on): off, a Name Only plate shows the first name only
+Row{ key = "np.nameOnlyFull", path = "nameOnlyFull", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
 Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
     choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
     toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },
@@ -804,7 +819,12 @@ Row{ key = "np.castbar", path = "castbar", tab = "cast", section = "np.castSecti
 Row{ key = "np.castHeight", kind = "range", path = "castHeight", choices = Steps(6, 18, 1), tab = "cast", section = "np.castFrame", disabled = NoCast }
 Row{ key = "np.castIcon", path = "castIcon", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 Row{ key = "np.castTimer", path = "castTimer", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
-Row{ key = "np.castTarget", path = "castTarget", tab = "cast", section = "np.castFrame", disabled = NoCast }
+Row{ key = "np.castTarget", path = "castTarget", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
+-- Edge Glow (11-22, Malkkav; per type): on for new players only (Core.lua ns.CastGlowOn)
+Row{ key = "np.castGlow", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast,
+    get = function() return ns.CastGlowOn(TV("castGlow")) end,
+    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "castGlow", on and true or false) end end,
+    resetValue = function() return ns.CastGlowDefault() end }
 Row{ key = "np.kickReady", path = "kickReady", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
 Row{ key = "np.castKickMark", path = "castKickMark", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
 Row{ key = "np.castTargetedFlash", path = "castTargetedFlash", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }

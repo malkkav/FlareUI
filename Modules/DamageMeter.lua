@@ -786,10 +786,13 @@ local function ApplyBarFont(entry, db)
     local nameFs = statusBar and statusBar.Name or entry.Name
     local valueFs = statusBar and statusBar.Value or entry.Value
 
-    -- a family: other players' names keep their Cyrillic and Chinese / Korean letters
+    -- a family: other players' names keep their Cyrillic and Chinese / Korean letters. A row reads
+    -- "1. Имя": the "1." makes the game pick the Latin member, so that member is the font's Cyrillic
+    -- twin where there is one (ns.CyrillicTwin, Core.lua), which has both alphabets
+    local rowPath = ns.CyrillicTwin(path)
     local function ApplyToFS(fs)
         if fs and fs.SetFont then
-            ns.SetFontFamily(fs, path, size, flags)
+            ns.SetFontFamily(fs, rowPath, size, flags)
             ApplyFontEffects(fs, fontDb)
         end
     end
@@ -2413,6 +2416,20 @@ end
 
 -- Wanted by its Visibility (or its fade group) now; Mouseover ticked (its own driver then shows it
 -- under the pointer). Edit Mode and the settings page are handled in ApplyVisibility.
+function DamageMeter.HideUntilGroup()
+    DamageMeter.hiddenUntilGroup = true
+    if not DamageMeter.groupWatch then
+        local watch = CreateFrame("Frame")
+        watch:RegisterEvent("GROUP_JOINED")
+        watch:SetScript("OnEvent", function()
+            if not DamageMeter.hiddenUntilGroup then return end
+            DamageMeter.hiddenUntilGroup = nil
+            DamageMeter:ApplyVisibility()
+        end)
+        DamageMeter.groupWatch = watch
+    end
+    DamageMeter:ApplyVisibility()
+end
 function DamageMeter.Wanted()
     local V = ns.Visibility
     if not (V and V.ElementShown) then return true end
@@ -2544,7 +2561,7 @@ local function ApplyVisibilityBody(meter)
         ShowMeter(meter)
         meter:SetAlpha(1)
         meter.FlareUI_Up = true
-    elseif not MeterAllowed() then
+    elseif not MeterAllowed() or DamageMeter.hiddenUntilGroup then
         hideWhenFaded = false
         autoFading = false
         meter:Hide()
@@ -3651,6 +3668,13 @@ function DamageMeter:Init()
             SafeCall(Dock.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
             -- Report to Chat
             SafeCall(DamageMeter.Report.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
+            -- Hide Until Next Group (11-22, Malkkav, xjsc16x's idea): the meter away for this group
+            -- (not in the chat, where it is a tab); it comes back when you join another group, or after
+            -- a reload. Its Visibility stays as set.
+            if not DamageMeter:ChatTabAvailable() then
+                rootDescription:CreateDivider()
+                rootDescription:CreateButton(L["Hide Until Next Group"], function() DamageMeter.HideUntilGroup() end)
+            end
             if not ns.SettingsPanel then return end
             rootDescription:CreateDivider()
             rootDescription:CreateButton(L["FlareUI Settings"], function() ns.SettingsPanel:Open("dm") end)

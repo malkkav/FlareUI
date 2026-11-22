@@ -413,7 +413,7 @@ function NA.Setting(o)
     end
     local function Is(value) local udb = o.db() return (udb and udb.nameAbove) == value end
     return {
-        name = L["Name Above Plates"], kind = LEM.SettingType.Dropdown, hidden = o.hidden,
+        name = L["Name Above Frames"], kind = LEM.SettingType.Dropdown, hidden = o.hidden,
         desc = L["The name above the frame, on its left, centre or right. Auras above the frame move up to make room."],
         generator = function(owner, rootDescription)
             rootDescription:CreateRadio(L["Off"], function() return Is(nil) end, function() Pick(owner, nil) end)

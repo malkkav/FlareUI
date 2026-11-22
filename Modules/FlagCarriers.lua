@@ -337,7 +337,7 @@ local function BuildSettings()
             style = function() return onPlate() and "plate" or "plain" end }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", db = GetDb, changed = Refresh,
             style = function() return onPlate() and "plate" or "plain" end }),
-        -- Name Above Plates (BarText.lua): not on Forever Style's plate (its name box)
+        -- Name Above Frames (BarText.lua): not on Forever Style's plate (its name box)
         ns.NameAbove.Setting({ db = GetDb, changed = Refresh, hidden = onPlate }),
         -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
@@ -420,6 +420,10 @@ local function BuildSettings()
           get = function() return get("castTimer")() ~= false end,
           set = function(layoutName, value) set("castTimer")(layoutName, value and true or false) end,
           hidden = noCast, desc = L["The time left, at the right end of the bar."] },
+        { name = L["Edge Glow"], kind = LEM.SettingType.Checkbox, default = ns.CastGlowDefault(),
+          get = function() return ns.CastGlowOn(get("castGlow")()) end,
+          set = function(layoutName, value) set("castGlow")(layoutName, value and true or false) end,
+          hidden = noCast, desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."] },
     })
 
     return settings

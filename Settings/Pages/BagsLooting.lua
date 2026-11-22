@@ -124,6 +124,10 @@ S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButto
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
+-- Reverse Bag Fill (11-22): the grid from the top left, the combined empty slot last (Bags.lua Bags.Reverse);
+-- not with Category Rows, whose headers sit above their sections
+S:Row{ key = "bl.bagReverse", half = true, tab = "bags", path = "tweaks.bagReverse", apply = RefreshBags,
+    disabled = function() return NotCombined() or (ns.Bags and ns.Bags.View and (ns.Bags.View() == "rows" or ns.Bags.View() == "rowsSets")) end }
 -- one empty slot with the free count in place of every empty slot (Bags.lua 1c)
 S:Row{ key = "bl.bagCombineEmpty", half = true, tab = "bags", path = "tweaks.bagCombineEmpty", apply = RefreshBags, disabled = NotCombined }
 -- Bag View (one question: how the bags sort your items): All Items, Category Filters (Bags.lua 4b:
