@@ -546,12 +546,15 @@ ns.AuraLook = {
     Style = StyleButton,
     Hook = HookButton,
     -- fontKey: whose Aura Timers and Aura Stacks fonts (UnitFrames.lua UF.Font), player's by default
-    ForUnit = function(size, isDebuff, canCancel, style, swipe, timer, fontKey)
+    -- own: { swipe, timerColor } in place of the unit frames' (the nameplates' Auras section)
+    ForUnit = function(size, isDebuff, canCancel, style, swipe, timer, fontKey, own)
         local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
         local UFM = ns.UnitFrames
         style, timer = style or "square", timer or "below"
         -- Aura swipe (Unit Frames settings), for every unit, party, raid and boss frame
-        swipe = uf.auraSwipe or swipe or "both"
+        swipe = (own and own.swipe) or uf.auraSwipe or swipe or "both"
+        local timerColor = uf.auraTimerColor ~= false
+        if own and own.timerColor ~= nil then timerColor = own.timerColor end
         local autoSize = math_max(7, math_floor(size * 0.4 + 0.5))
         local timerFont = UFM and UFM.Font and UFM.Font(fontKey, "auras") or uf.auraFont or {}
         local countFont = UFM and UFM.Font and UFM.Font(fontKey, "auraCount") or uf.auraCountFont or timerFont
@@ -567,7 +570,7 @@ ns.AuraLook = {
             timerSize = timerSize,
             isDebuff = isDebuff,
             cancel = canCancel,
-            timerColor = uf.auraTimerColor ~= false,
+            timerColor = timerColor,
             colors = ColorMap(isDebuff, style == "round", swipe == "border"),
             -- room under the icon: autoSize + 3 on Auto, a chosen size gets its own
             cellHeight = size + ((timer == "below") and ((timerFont.size or 0) > 0 and timerSize + 4 or autoSize + 3) or 0),

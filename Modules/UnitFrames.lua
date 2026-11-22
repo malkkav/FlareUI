@@ -1077,6 +1077,35 @@ function UF.ValuesOnHover(f, on, texts)
     end
     f.valuesOnHover = on and true or nil
     layer:SetAlpha((not on or ns.EditPreviewing() or f:IsMouseOver()) and 1 or 0)
+    UF.WatchValuesHover(f, on)
+end
+-- (11-22) the frame's own OnEnter/OnLeave miss the pointer when a part of the frame takes the mouse (the
+-- player frame's numbers never came back), and nothing looked again after Edit Mode closed (one hover
+-- was needed): a light watcher, ten checks a second, only for frames with the option on, follows the
+-- pointer itself
+UF.hoverValueFrames = setmetatable({}, { __mode = "k" })
+function UF.WatchValuesHover(f, on)
+    UF.hoverValueFrames[f] = on and true or nil
+    local watch = UF.hoverWatch
+    if not watch then
+        if not on then return end
+        watch = CreateFrame("Frame")
+        UF.hoverWatch = watch
+        watch:SetScript("OnUpdate", function(self, elapsed)
+            self.wait = (self.wait or 0) + elapsed
+            if self.wait < 0.1 then return end
+            self.wait = 0
+            local previewing = ns.EditPreviewing()
+            for frame in pairs(UF.hoverValueFrames) do
+                local layer = frame.ValueLayer
+                if layer and frame.valuesOnHover then
+                    local a = (previewing or (frame:IsVisible() and frame:IsMouseOver())) and 1 or 0
+                    if layer:GetAlpha() ~= a then layer:SetAlpha(a) end
+                end
+            end
+        end)
+    end
+    watch:SetShown(next(UF.hoverValueFrames) ~= nil)
 end
 -- the row in each frame's Text section
 function UF.ValuesOnHoverSetting(get, set)

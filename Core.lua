@@ -1048,6 +1048,10 @@ local defaults = {
             hideBuffs = "OFF",          -- Hide Buffs: OFF | PERMANENT | longest full duration in seconds (as the unit frames)
             buffSize = 16, buffMax = 3,
             cc = true, ccSize = 28,     -- Crowd Control: one big icon right of the bar
+            -- Auras (per type, the unit frames' four): Aura Icon Shape square | round, Aura Swipe none |
+            -- icon | border | both, Aura Timer none | below | bottom | middle, Timer Colour
+            auraStyle = "square", auraSwipe = "both", auraTimer = "none", auraTimerColor = true,
+            auraRows = "one",           -- Aura Positions (per type, both rows on): one | buffsTop | debuffsTop
             nameFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             healthFont = { face = "__global", size = 9, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             levelFont = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
@@ -1211,11 +1215,17 @@ local AURA_TIME_BANDS = {
     { from = 0, div = 1, unit = "s" },
 }
 
--- Bags & Looting's switch. Until it is set, it follows Quality of Life's, where these options lived.
+-- Bags & Looting's switch. Until it is set, it follows Quality of Life's, where these options lived:
+-- once per profile (bagModuleSeeded). (11-22) Switched off it is saved as false, the default, which the
+-- saved settings drop at logout: read as unset, it copied Quality of Life's switch again at every
+-- login and came back on by itself.
 function ns.BagModuleOn()
     local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
     if not tweaks then return false end
-    if rawget(tweaks, "bagModule") == nil then tweaks.bagModule = rawget(tweaks, "enabled") == true end
+    if not rawget(tweaks, "bagModuleSeeded") then
+        if rawget(tweaks, "bagModule") == nil then tweaks.bagModule = rawget(tweaks, "enabled") == true end
+        tweaks.bagModuleSeeded = true
+    end
     return tweaks.bagModule == true
 end
 
@@ -1313,9 +1323,25 @@ function ns.BorderEdgeSize(edgeFile, size)
     return size
 end
 
+-- (11-22, Aleksandr Vasinskyi) Blizzard's Latin-only fonts have Cyrillic twins: the same Latin letters
+-- plus Russian. The game draws a whole string with one font, so a meter row like "1. Имя" (a Russian
+-- name on an English client) took the Latin-only font and drew boxes; the twin draws both. Only where
+-- the client has the file.
+ns.CYRILLIC_TWINS = {
+    ["fonts\\frizqt__.ttf"] = "Fonts\\FRIZQT___CYR.TTF",
+    ["fonts\\morpheus.ttf"] = "Fonts\\MORPHEUS_CYR.TTF",
+    ["fonts\\skurri.ttf"] = "Fonts\\SKURRI_CYR.TTF",
+}
+function ns.CyrillicTwin(path)
+    if type(path) ~= "string" then return path end
+    local twin = ns.CYRILLIC_TWINS[path:lower():gsub("/", "\\")]
+    if twin and C_UIFileAsset and C_UIFileAsset.IsKnownFile and C_UIFileAsset.IsKnownFile(twin) then return twin end
+    return path
+end
+
 -- The client's own font for this language: always loaded, and it has the language's letters
 local function BaseFont()
-    return _G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+    return ns.CyrillicTwin(_G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF")
 end
 
 -- Global Font: a font whose face is ns.GLOBAL_FONT uses the profile's Global Font. Every
@@ -1350,6 +1376,7 @@ do
             end
             local success, found = pcall(LSM.Fetch, LSM, "font", face, true)
             if success and found and C_UIFileAsset.IsKnownFile(found) then
+                found = ns.CyrillicTwin(found)
                 if face ~= nil then foundPaths[face] = found end
                 return found
             end
@@ -1505,7 +1532,8 @@ ns.FontFamily = {
     -- the client's own alphabet takes the chosen font (on that client it has those letters)
     clientAlphabet = ({ koKR = "korean", zhCN = "simplifiedchinese", zhTW = "traditionalchinese", ruRU = "russian" })[GetLocale()],
     -- files that draw the Russian alphabet (lower case); FlareUI's own register theirs (Media.lua)
-    cyrillic = { ["fonts\\frizqt___cyr.ttf"] = true, ["fonts\\arialn.ttf"] = true },
+    cyrillic = { ["fonts\\frizqt___cyr.ttf"] = true, ["fonts\\arialn.ttf"] = true,
+                 ["fonts\\morpheus_cyr.ttf"] = true, ["fonts\\skurri_cyr.ttf"] = true },
     built = {},
     count = 0,
 }

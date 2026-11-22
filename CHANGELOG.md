@@ -1,3 +1,34 @@
+# FlareUI 7.0.3
+
+More nameplate polish, plus fixes for the bugs you sent in after 7.0.2. Nameplate auras get their own look options and can stack in two lines.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Nameplates:** player names on full plates are white. Class colour stays on Name Only plates, where it is easy to read.
+- **Nameplates:** **Threat Percentage** no longer sits over the name. It shows in the level box instead of the level while you have threat. With **Level** off, it gets its own small box right of the plate, shown only in a fight.
+- **Nameplates:** the raid marker sits on the side opposite the quest icon. **Defensives** and **Crowd Control** go past it on its side.
+
+## New
+
+### Nameplates
+- **Auras** section at the top of the Auras tab, for each plate type:
+  - **Aura Icon Shape** (Square)
+  - **Aura Swipe**, **Aura Timer** and **Timer Colour**: start with your Unit Frames values, so nothing changes.
+- **Aura Positions** section below Debuffs, shown when both Buffs and Debuffs are on:
+  - **Position** (One Line): **One Line** keeps them side by side, as before.
+  - **Buffs on Top** or **Debuffs on Top**: each gets its own line across the whole plate, one line at most.
+
+## Changed
+- **Nameplates:** **Quest Objective** and **Quest Progress** no longer show for the two player plate types.
+- **French:** the 7.0.1 text is translated. By Brainc3ll.
+
+## Fixed
+- **Chat:** with **Fade Old Lines** on, names are clickable again and link tooltips no longer flicker.
+- **Unit Frames:** **Values on Mouseover** works on the player frame again. Other frames no longer need one hover after Edit Mode.
+- **Bags & Looting:** a switched-off module stays off after a reload.
+- **Fonts:** Russian names show in the meter on English clients. FlareUI uses Blizzard's Cyrillic fonts where the game has them. Fix from Aleksandr Vasinskyi.
+- **Buffs & Debuffs:** the **Pick One of Yours** list no longer errors in a fight.
+
 # FlareUI 7.0.2
 
 A quick hotfix for four things 7.0.1 broke or missed. Thanks for reporting them so fast.
@@ -232,151 +263,6 @@ Some things look or work differently even if you change nothing:
 - Buff Reminders: the food reminder remembers food you eat anywhere, also from /use macros.
 - Fake CM: its Visibility names were one place off.
 
-# FlareUI 6.13
-
-**Restart the game fully after updating** (not just /reload): this version adds new art files.
-
-A huge thank-you to parchinskiy, a great collaborator who tracked down and fixed the hardest bug we've had so far: the bags breaking your clicks after a bank visit. This patch is also the big settings clean-up: every page and Edit Mode window got the same order, the same words and the same rules, and the unit frames now offer the same options in every style.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Vendor** options moved to **Bags & Looting**, and now follow that page's switch. If Bags & Looting is off, turn it on to keep Auto Sell Junk, Auto Repair and the rest.
-- **Quest Tracker:** the new **Colour Scheme** starts at **FlareUI**: softer, bronze-toned colours on the FlareUI and Modern styles. Pick **Blizzard** for the old colours.
-- **Quest Tracker:** new installs start with the **Modern** style. Your current style stays as it is.
-- **Names on unit frames:** outside Forever Style, the name is now a pick in **Health Text** only. If you had **Show Name** off, the name is back: untick it in Health Text.
-- **Party (Classic) and boss frames:** **Health Text** and **Power Text** are now the Left / Centre / Right picker. Your old choice carries over.
-- **Gryphons:** the **Same as Action Bar 1** Visibility choice is gone. Gryphons that used it now join bar 1's fade group, or copy its Visibility.
-- **Minimap drawer:** **Addons in the Drawer: None** now keeps every addon button on the minimap's edge. **Drawer Style: Off** turns the drawer off. If you had None, your drawer is now set to Off.
-- **Bar textures** renamed: FlareUI Forever is **FlareUI Dark**, FlareUI Forever (Light) is **FlareUI Light**. Your picks carry over.
-- **Aura Swipe** and **Aura Timer** left the Buffs and Debuffs Edit Mode windows: set them in Settings › Buffs & Debuffs. The totems' are in Buffs & Debuffs › **Totems**.
-- **Shields** over health bars are lighter (40%, was 75%), so the health under them shows.
-
-## Highlights
-- **Settings clean-up:** dropdowns, then sliders, then switches everywhere; one word for each idea; fewer, clearer sections.
-- **Unit frame parity:** the same options on every frame and style where they make sense.
-- **Chat and Meters:** the FlareUI **Frame Style**.
-- **Loot Feed:** square or round icons with a border in the item's quality colour.
-- **Values on Mouseover:** health and power numbers only while you point at a frame, as Blizzard's option.
-
-## New
-
-### Unit Frames
-- **Values on Mouseover** (off), in each frame's Text section in Edit Mode: health and power numbers show only while you point at the frame. On every unit frame, party, raid, boss and flag carrier frame.
-- **Level Disc Size** (100%), in each frame's Text section, FlareUI and Forever Style, with **Show Level** on. It replaces the one slider in Settings. By SSyl.
-- **Show Combat Text** (off), player and pet, FlareUI and Forever Style: Blizzard's hit and heal numbers on the portrait. Its font is in Unit Frames › Fonts › **Combat Text**.
-- **Portrait Scale** (100%) is back on FlareUI Style frames, now on party, boss and flag carrier frames too.
-- **Show Weapon Enchants** (on), player frame: the enchants follow **Hide Buffs** too.
-- **Combo Points** is one dropdown in every style: **Off**, **Classic** (the gems) or **Modern** (a bar). Forever Style's gems can now be turned off.
-- Focus frame: **Leader**, **PvP Flag** and **Quest Objective** icons, as on the target frame.
-- Target and focus: **Dispel Highlight** (Off), for a friendly unit you can dispel.
-- Pet frame: **Range Check** (off).
-- Boss frames: **High Level Skull** (on), FlareUI and Forever Style.
-- Flag carrier frames: **Class Colours**.
-- Party, boss and flag carrier cast bars: their own **Background**; boss and flag carriers also get **Position** (Above or Below). Cast bar **Height** goes up to 40 on every frame.
-- Main Tanks: **Target Frame Width** and **Target Frame Height** for Tank Targets (Auto follows the tank's frame).
-- Player Cast Bar: **Show Speed** and **Hide Speed** in its Fading.
-- Mirror Bars has a description.
-
-### Chat
-- **Frame Style** (Modern): **FlareUI** puts the quest tracker's look on the chat.
-- **Whisper Sound** (Off): Raid Warning, Alarm or Whisper. The speaker button plays it.
-- Middle-click a whisper tab to close it.
-- **Icons** dropdown: **Item and Spell Icons**, **Race Icons**, **Class Icons** (were three switches).
-- **Notifications** section: **Tab Glow** and **Whisper Sound**.
-
-### Meters
-- **Frame Style** (Modern), as on the chat.
-- **Bar Texture** (Blizzard).
-- **Threat Window**: **Off**, **Separate Window** or **In the Meter in Combat** (were two switches).
-
-### Quest Tracker
-- **Colour Scheme**: **Blizzard** or **FlareUI** (default).
-- **Header Buttons**: **Filter**, **Sort**, **Auto Accept** and **Auto Turn-In** box buttons on the header.
-- **Hide Scroll Bar** (off).
-- **Auto Minimize** dropdown: **In Instances**, **In Combat**, **On Flight Paths** (new).
-- **Show Untracked Quests** works without Zone Headings: the untracked ones come after your tracked quests.
-
-### Bags & Looting
-- **Loot Feed** is now **Off**, **Square Icons** or **Round Icons**. Each icon has a border in the item's quality colour.
-- Loot Feed: **Scale** in its Edit Mode window.
-- **Skin Item Slots**: **Colour by Rarity** is back, under a line in the dropdown (on).
-
-### Buffs & Debuffs
-- **Aura Filters** (was Hide Auras): each spell can be **Hide** or **Show**. Shown spells get their own row and skip the other filters.
-- **Totems** section: **Aura Swipe** and **Aura Timer** for your totems.
-- **Never** in the Visibility of the buff and debuff frames.
-
-### Buff Reminders
-- A reminder waits while its spell is on cooldown (Fear Ward).
-- Food: a click eats the food that last gave you Well Fed.
-- **Upkeep** dropdown (was six switches), with **Weapon Oil / Stone** in it.
-- **Icon Alerts** dropdown in Edit Mode: **Glow When Missing**, **Glow When Running Out**, **Time Left**.
-
-### Minimap
-- **Minimap Icons** section: one **Icons** dropdown (**Sundial**, **Group Finder**, **Vehicle Exit**, **Durability Warning**) and **Reset Minimap Icons**.
-- Info Bar: **Experience**.
-- Happy Camper and Lore Forever buttons sit in the minimap's button row.
-- The day/night sundial lights up under your mouse and has a tooltip. By parchinskiy.
-
-### Action Bars
-- Gryphons: **Scale** in each gryphon's Edit Mode window.
-- XP Bar: **Bar Texture** and **Border** are in Settings › Action Bars › XP Bar (were in Edit Mode).
-
-### Everywhere
-- **Never** in every Edit Mode Visibility, first in the list. A unit frame on Never takes no clicks.
-- Sound dropdowns have a speaker button that plays the sound.
-
-## Changed
-
-### Settings
-- Every page and Edit Mode window: dropdowns first, then sliders, then switches.
-- Options that depend on another one sit in line and grey out, no longer indented.
-- Names, one word per idea:
-  - **Background Opacity** (was Frame Opacity), **Scale** for sizes in %, **Max Buffs** and **Max Debuffs** (were Buff Amount and Debuff Amount), **Border** on cast bars (was Border Texture), **Centre**, **Off** first in every list.
-  - **Sync Blizzard UI**, **Keep Page 1 in Stances**, **Threat Text** (was Show Threat, now in the Text section), **At the Cursor** (Tooltips, was Mouseover), **Show My Frame in a Party / Raid** (were Hide Player Frame).
-  - Fonts: **Counts**, **Macro Text**, **Spell Timer**.
-  - Section names: **Bars**, **Buttons**, **Spell Behaviour**, **Frames**, **Controller**, **Consumables**, **Auras** and **Ordering**.
-  - Unit frame aura places read **Above the Frame**, **Below the Frame, Left** and so on.
-  - Quest Tracker style **Custom** is **Modern**; Unit Frames **Addon Style** is **Modern Style**; borders **FlareUI Thin** and **FlareUI Thick**.
-- Quality of Life's **Interface** tab is now **Extras**.
-- Minimap sections: **Look**, **Info Bar**, **Tweaks**, **Minimap Icons**, **Addon Buttons**.
-- Quest Tracker tabs: **Frame**, **Behaviour**, **Fonts**; **Header Buttons** moved to Frame.
-- Buff Reminders: the **Alerts** tab joined **When and Where**.
-- Portrait, Flip Portrait and Mirror Bars moved to each frame's **Look** section in Edit Mode.
-- Simple Pet Frame, Simple Target of Target and Level Disc Size are hidden in Modern Style, where they do nothing.
-- Edit Mode rows that do nothing on a Fake Cooldown Manager bar are hidden there.
-- Aura sizes: 8 to 48 on every frame (raid tiles 8 to 30).
-- Meters: **Match Chat Size** and the Meter Tab rows grey out with Chat off, instead of hiding.
-- **Open Flight Map at Once** moved to Map & Mail.
-
-### Look
-- One bronze for the ring styles' frames, rings and boss dragons, and for the minimap's Blizzard art.
-- Warmer colours across the settings, tooltips and windows; aura borders a lighter bronze.
-- Bronze header icons on the chat, meters and loot rolls are darker.
-- Quest Tracker: a plain "Ready for turn-in" line is grey, as Blizzard's.
-
-## Fixed
-- **Bags:** after a bank visit, right-clicks on items stopped working (Cozy Sleeping Bag, bank tabs). The keyring and crafting bag now use Blizzard's own clicks. By parchinskiy.
-- Gryphons faded with action bar 1 whatever their Visibility said.
-- Raid frames: Width and Height only moved the gaps with Tank Targets on.
-- Chat: an error when switching tabs in a fight; an error in the tab bar under combat restrictions.
-- Edit Mode: an error with hidden auras under restrictions.
-- Minimap FlareUI Thin and Thick borders: the map's corners now follow the border's angled corners.
-- Minimap drawer: takes buttons from EnhanceQoL and HidingBar. By AreChen.
-- Info Bar dividers stay one pixel wide at any UI scale. By Celbrund.
-- Small action buttons (stance, pet, possess, totem): thinner border, no overlap. By Celbrund.
-- Radial Menu: Sub-Radials reset on close kept the last button's name and icon.
-- Radial emote labels in Russian lost their first letter.
-- Keybinds sometimes missing at the first login.
-- The layout restore box: Not Now keeps your layout, and a restore that didn't stick isn't offered again.
-- Details! chat embed fits FlareUI's chat window.
-- Quest Tracker: lines kept their old colours after a Colour Scheme switch.
-- Totem Bar Scale showed with Action Bars off.
-
-## Translations
-- **Hungarian**, new. By Xentinus. Loot roll buttons use FlareUI's Need, Greed, Pass and Transmog words where your language has them.
-- French: the 6.12 phrases. By Brainc3ll.
-
 ---
 
-Older versions (6.12 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
+Older versions (6.13 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

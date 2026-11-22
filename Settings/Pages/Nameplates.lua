@@ -733,13 +733,15 @@ do
         get = get, set = set, resetValue = function() return false end }
 end
 -- Objective Icon (the saved quest switch, shared with Blizzard's plates) and Objective Progress (never
--- set, it follows the icon: NP.QuestParts)
+-- set, it follows the icon: NP.QuestParts). (#128, 11-22) players never carry quest objectives: both
+-- rows hide on the two player types
+local function PlayerType() return PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer" end
 do
     local get, set = TypeSwitch("tweaks.nameplateQuest", "questIcon")
     Row{ key = "np.questMarks", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
-        get = get, set = set, resetValue = function() return false end }
+        get = get, set = set, resetValue = function() return false end, hidden = PlayerType }
 end
-Row{ key = "np.questProgress", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
+Row{ key = "np.questProgress", tab = "extras", section = "np.marks", half = true, apply = TweaksApply, hidden = PlayerType,
     get = function()
         local v = TV("questProgress")
         if v == nil then v = S:GetPath("tweaks.nameplateQuest") and TV("questIcon") ~= false end
@@ -809,6 +811,12 @@ Row{ key = "np.castTargetedFlash", path = "castTargetedFlash", tab = "cast", sec
 Row{ key = "np.castImportant", path = "castImportant", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
 
 -- AURAS
+-- (11-22, Malkkav) the unit frames' four aura look rows, the type's own
+Row{ key = "np.auraStyle", kind = "choice", path = "auraStyle", choices = { "square", "round" }, tab = "auras", section = "np.auraLook" }
+Row{ key = "np.auraSwipe", kind = "choice", path = "auraSwipe", choices = { "none", "icon", "border", "both" }, tab = "auras", section = "np.auraLook" }
+Row{ key = "np.auraTimer", kind = "choice", path = "auraTimer", choices = { "none", "below", "bottom", "middle" }, tab = "auras", section = "np.auraLook" }
+Row{ key = "np.auraTimerColor", path = "auraTimerColor", tab = "auras", section = "np.auraLook",
+    disabled = function() return TV("auraTimer") == "none" end }
 -- Debuffs and Buffs: one dropdown each, Off or All, or filters ticked as toggles (every one
 -- ticked must match: Nameplates.lua AuraLanes)
 Row{ key = "np.buffs", kind = "dropdown", path = "buffs", tab = "auras", section = "np.buffSection",
@@ -828,6 +836,10 @@ Row{ key = "np.debuffSize", kind = "range", path = "debuffSize", choices = Steps
     disabled = function() return TV("debuffs") == "off" end }
 Row{ key = "np.debuffMax", kind = "range", path = "debuffMax", choices = Steps(1, 16, 1), tab = "auras", section = "np.debuffSection",
     disabled = function() return TV("debuffs") == "off" end }
+-- AURA POSITIONS (11-22, Malkkav): shown only with both Buffs and Debuffs on (Nameplates.lua NP.AuraStack)
+Row{ key = "np.auraRows", kind = "choice", path = "auraRows", choices = { "one", "buffsTop", "debuffsTop" },
+    tab = "auras", section = "np.auraRowsSection",
+    hidden = function() return TV("buffs") == "off" or TV("debuffs") == "off" end }
 -- (defensives first: they sit left of the plate, crowd control right)
 Row{ key = "np.defensives", path = "defensives", tab = "auras", section = "np.ccSection", half = true }
 Row{ key = "np.cc", path = "cc", tab = "auras", section = "np.ccSection", half = true }

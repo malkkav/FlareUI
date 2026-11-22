@@ -178,6 +178,8 @@ C.TYPE_KEYS = {
     execute = true, colorBoss = true, colorElite = true, colorCaster = true, colorTrivial = true, mobTypesWhere = true,
     groupColor = true, raidColor = true,
     castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
+    -- (11-22) the Auras and Aura Positions sections
+    auraStyle = true, auraSwipe = true, auraTimer = true, auraTimerColor = true, auraRows = true,
 }
 -- these were one shared value before 11-20: a preset reads the profile's old shared value, so every
 -- type keeps the look it had; a type's Custom keeps its own from then on
@@ -185,7 +187,8 @@ C.WAS_SHARED = { texture = true, border = true, bgOpacity = true, smoothBars = t
     rarityIcon = true, questProgress = true, threat = true, threatGlow = true, aggroFlash = true, threatScale = true, threatPercent = true,
     execute = true, colorBoss = true, colorElite = true, colorCaster = true, colorTrivial = true, mobTypesWhere = true,
     groupColor = true, raidColor = true,
-    castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true }
+    castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
+    auraSwipe = true, auraTimer = true, auraTimerColor = true }
 -- PRESETS: each type picks one (types[kind].preset); a preset is a few values over the Core.lua
 -- defaults. Changing any of the type's settings turns it into Custom: the preset's values are copied
 -- into types[kind].custom, and the change goes there. Custom stays saved while another preset is
@@ -626,6 +629,13 @@ function NP.Build(parent, sample)
     p.levelBorder = CreateFrame("Frame", nil, p.levelFrame, "BackdropTemplate")
     p.levelBorder:SetAllPoints(p.levelFrame)
     p.levelBorder:SetFrameLevel(box:GetFrameLevel() + 5)
+    -- the threat box: Threat Percentage when there is no level box (NP.LayoutThreat), in its look
+    p.threatBox = CreateFrame("Frame", nil, root, "BackdropTemplate")
+    p.threatBox:SetFrameLevel(box:GetFrameLevel())
+    p.threatBoxBorder = CreateFrame("Frame", nil, p.threatBox, "BackdropTemplate")
+    p.threatBoxBorder:SetAllPoints(p.threatBox)
+    p.threatBoxBorder:SetFrameLevel(box:GetFrameLevel() + 5)
+    p.threatBox:Hide()
     p.levelArt = overlay:CreateTexture(nil, "ARTWORK")
     p.level = NewText(overlay)
     p.level:SetJustifyH("CENTER")
@@ -839,25 +849,69 @@ function NP.LayoutLevel(p, db, boxH)
     p.levelAnchor = holder
 end
 
+-- THREAT PERCENTAGE'S PLACE (11-22, Malkkav): never over the name. With a level box (or disc), the
+-- threat takes the level's place while you have some (NP.UpdateThreatText puts the level back
+-- after); with none, a box in the level box's look on the plate's right, shown while there is threat;
+-- the quest icon, marker and Crowd Control on that side move out while it shows. Not on Name Only plates.
+C.THREAT_BOX_WIDTH = 1.7   -- the box's width, in plate heights ("100%" fits)
+function NP.LayoutThreat(p, db)
+    local fs, box = p.threatText, p.threatBox
+    fs:ClearAllPoints()
+    box:ClearAllPoints()
+    box:Hide()
+    p.threatInLevel = db.threatPercent and p.levelShown and p.levelAnchor and not p.nameOnly or false
+    p.threatBoxOn = db.threatPercent and not p.levelShown and not p.nameOnly and not p.hiddenPlate or false
+    if p.threatInLevel then
+        ApplyFontTo(fs, db.levelFont)
+        fs:SetPoint("CENTER", p.levelAnchor, "CENTER", 0, 0)
+    elseif p.threatBoxOn then
+        local boxH = p.boxH or db.height
+        box:SetSize(math_floor(boxH * C.THREAT_BOX_WIDTH + 0.5), boxH)
+        box:SetPoint("LEFT", p.box, "RIGHT", 1, 0)
+        local bgIn = p.bgInset or 0
+        NP.Background(box, bgIn, p.bgCut or bgIn, (db.bgOpacity or 90) / 100)
+        if p.edgeFile then
+            p.threatBoxBorder:SetBackdrop({ edgeFile = p.edgeFile, edgeSize = p.edgeSize })
+            local c = ns.BORDER_COLOR
+            p.threatBoxBorder:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
+            p.threatBoxBorder:Show()
+        else
+            p.threatBoxBorder:Hide()
+        end
+        ApplyFontTo(fs, db.levelFont)
+        fs:SetPoint("CENTER", box, "CENTER", 0, 0)
+    end
+end
+
 -- Debuffs and buffs share the row above the plate, half each; one alone takes the whole width
+-- AURA POSITIONS (11-22, Malkkav; per type, saved as auraRows): with both rows on, One Line (the
+-- default: side by side, half the width each), Buffs on Top or Debuffs on Top (each its own line, the
+-- whole width, one line at most, one above the other). Returns "buffsTop" / "debuffsTop", or nil.
+function NP.AuraStack(db)
+    if db.debuffs == "off" or db.buffs == "off" then return nil end
+    local v = db.auraRows
+    if v == "buffsTop" or v == "debuffsTop" then return v end
+end
 function NP.AuraRowWidth(p, db)
     local w = p.plateW or db.width
-    if db.debuffs ~= "off" and db.buffs ~= "off" then return math_floor((w - C.AURA_GAP) / 2) end
+    if db.debuffs ~= "off" and db.buffs ~= "off" and not NP.AuraStack(db) then return math_floor((w - C.AURA_GAP) / 2) end
     return w
 end
--- where a row above the plate starts: buffs "left", debuffs "right", the one shown alone "center"
--- (nil: not a row above the plate)
+-- where a row above the plate starts: buffs "left", debuffs "right", the one shown alone (or each of
+-- two stacked lines) "center" (nil: not a row above the plate)
 function NP.AuraRowSide(db, place)
     if place ~= "debuffs" and place ~= "buffs" then return nil end
-    if db.debuffs == "off" or db.buffs == "off" then return "center" end
+    if db.debuffs == "off" or db.buffs == "off" or NP.AuraStack(db) then return "center" end
     return place == "buffs" and "left" or "right"
 end
--- how many icons of a size fit one line of it; each takes two lines at most (C.AURA_LINES)
+-- how many icons of a size fit one line of it; each takes two lines at most (C.AURA_LINES), one
+-- when the rows are stacked
 function NP.AuraPerLine(p, db, size)
     return math_max(1, math_floor((NP.AuraRowWidth(p, db) + C.AURA_GAP) / (size + C.AURA_GAP)))
 end
 function NP.AuraCount(p, db, size, max)
-    return math_max(1, math.min(max or 1, C.AURA_LINES * NP.AuraPerLine(p, db, size)))
+    local lines = NP.AuraStack(db) and 1 or C.AURA_LINES
+    return math_max(1, math.min(max or 1, lines * NP.AuraPerLine(p, db, size)))
 end
 
 -- The marks beside the plate (the bar and its level box or disc), SIDE_GAP from it as the level box:
@@ -867,7 +921,8 @@ end
 -- Target Highlight arrows sit right against the plate; everything here draws above them.
 function NP.PlaceSides(p)
     local leftOf = (p.levelAnchor and p.levelSide ~= "right") and p.levelAnchor or p.box
-    p.rightOf = (p.levelAnchor and p.levelSide == "right") and p.levelAnchor or p.box
+    p.rightOf = (p.levelAnchor and p.levelSide == "right") and p.levelAnchor
+        or (p.threatBoxOn and p.threatBox:IsShown() and p.threatBox) or p.box
     local gap = C.SIDE_GAP
     p.quest:ClearAllPoints()
     p.questText:ClearAllPoints()
@@ -891,29 +946,36 @@ function NP.PlaceSides(p)
     -- (the quest art is mostly empty round its mark: what sits past it comes in by that much)
     local pad = { left = 0, right = 0 }
     if outer[p.questSide] == p.quest then pad[p.questSide] = p.questPad or 0 end
+    -- The raid marker (11-22, Malkkav): as the quest icon, on the other side of the plate (quest icon
+    -- right, marker left; level box on the right moves the quest icon left, the marker right), the
+    -- same gap from the plate. The aura row on its side (Defensives left, Crowd Control right) goes past
+    -- it. Name Only: over the name (the box is a whole plate wide round a short name).
+    local markerSide = (not p.nameOnly) and (questRight and "left" or "right") or nil
+    if p.nameOnly then
+        p.raid:SetPoint("BOTTOM", p.name, "TOP", 0, 2)
+    elseif markerSide == "left" then
+        p.raid:SetPoint("RIGHT", leftOf, "LEFT", -gap, 0)
+    else
+        p.raid:SetPoint("LEFT", p.rightOf, "RIGHT", gap, 0)
+    end
     local auras = p.auras
     if auras then
         if auras.cc then
             auras.cc.container:ClearAllPoints()
-            auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", gap - pad.right, 0)
-        end
-        if auras.defensives then
-            -- (11-22) past the raid marker on a full plate: the marker sits right beside the plate, and
-            -- the room kept for two defensive icons no longer pushes it far to the left
-            auras.defensives.container:ClearAllPoints()
-            if p.nameOnly then
-                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left, 0)
+            if markerSide == "right" then
+                auras.cc.container:SetPoint("LEFT", p.raid, "RIGHT", gap, 0)
             else
-                auras.defensives.container:SetPoint("RIGHT", p.raid, "LEFT", -gap, 0)
+                auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", gap - pad.right, 0)
             end
         end
-    end
-    if p.nameOnly then
-        -- Name Only: the box is a whole plate wide round a short name, so beside it the marker stood
-        -- far off (11-21); it sits over the name instead (a name's width can't be measured on a plate)
-        p.raid:SetPoint("BOTTOM", p.name, "TOP", 0, 2)
-    else
-        p.raid:SetPoint("RIGHT", outer.left, "LEFT", -gap - 1 + pad.left, 0)
+        if auras.defensives then
+            auras.defensives.container:ClearAllPoints()
+            if markerSide == "left" then
+                auras.defensives.container:SetPoint("RIGHT", p.raid, "LEFT", -gap, 0)
+            else
+                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left, 0)
+            end
+        end
     end
     p.sideLeft, p.sideRight, p.sidePad = outer.left, outer.right, pad
     local arrows = p.arrows
@@ -1039,9 +1101,23 @@ function NP.PlaceBelow(p)
     p.below:SetPoint("TOPRIGHT", p.box, "BOTTOMRIGHT", 0, -1)
 end
 
-local function AuraLook(size, isDebuff)
-    local uf = ns.db and ns.db.profile and ns.db.profile.unitframes or {}
-    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, uf.auraShape or "square", "both", uf.auraTimer or "none", "target")
+-- The Auras section (11-22, Malkkav; per type, as every Auras tab row): Aura Icon Shape, Aura Swipe,
+-- Aura Timer and Timer Colour, the unit frames' four, saved on the nameplates' own (auraStyle,
+-- auraSwipe, auraTimer, auraTimerColor). Defaults are the look the plates had: square, both, none.
+local function AuraLook(size, isDebuff, db)
+    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, db.auraStyle or "square", nil,
+        db.auraTimer or "none", "target", { swipe = db.auraSwipe or "both", timerColor = db.auraTimerColor ~= false })
+end
+-- the higher of two stacked rows (NP.AuraStack) sits this far further up: the lower row's line
+function NP.AuraLift(db, place)
+    local stack = NP.AuraStack(db)
+    if not stack then return 0 end
+    local top = stack == "buffsTop" and "buffs" or "debuffs"
+    if place ~= top then return 0 end
+    local lowerIsDebuff = top == "buffs"
+    local size = lowerIsDebuff and db.debuffSize or db.buffSize
+    local look = AuraLook(size, lowerIsDebuff, db)
+    return (look and look.cellHeight or size) + C.AURA_GAP
 end
 
 -- the lanes of each aura place, with Aura Filters' Hide / Show lists for "nameplates"
@@ -1107,7 +1183,7 @@ local function LayoutAuras(p, db)
         local size = (place == "cc" or place == "defensives") and db.ccSize or (place == "buffs" and db.buffSize or db.debuffSize)
         local max = (place == "cc" and 1) or (place == "defensives" and 2) or NP.AuraCount(p, db, size, place == "buffs" and db.buffMax or db.debuffMax)
         for index, lane in ipairs(list) do
-            local look = AuraLook(size, lane.isDebuff)
+            local look = AuraLook(size, lane.isDebuff, db)
             if look and lane.stealable then look.stealable = true end
             local key
             for _, filter in ipairs(lane.filters) do
@@ -1134,7 +1210,8 @@ local function LayoutAuras(p, db)
         if row then
             container:ClearAllPoints()
             local point = (row == "left" and "BOTTOMLEFT") or (row == "right" and "BOTTOMRIGHT") or "BOTTOM"
-            container:SetPoint(point, p.box, (row == "left" and "TOPLEFT") or (row == "right" and "TOPRIGHT") or "TOP", 0, C.AURA_GAP)
+            container:SetPoint(point, p.box, (row == "left" and "TOPLEFT") or (row == "right" and "TOPRIGHT") or "TOP", 0,
+                C.AURA_GAP + NP.AuraLift(db, place))
         end
         -- (crowd control and defensives beside the plate: NP.PlaceSides)
         pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
@@ -1353,20 +1430,8 @@ function NP.Layout(p)
     end
     p.textOn = BT.HasNumbers(p.slots.left) or BT.HasNumbers(p.slots.middle) or BT.HasNumbers(p.slots.right)
     p.textHolder:SetShown(p.textOn)
-    -- Threat Percentage: the bar's middle; with something already there (numbers or the name), right
-    -- of it and in brackets
-    ApplyFontTo(p.threatText, db.healthFont)
-    p.threatText:ClearAllPoints()
-    p.threatBesides = nil
-    if p.nameSlot == "middle" then
-        p.threatText:SetPoint("LEFT", p.name, "RIGHT", 2, 0)
-        p.threatBesides = true
-    elseif BT.HasNumbers(p.slots.middle) then
-        p.threatText:SetPoint("LEFT", p.texts.middle, "RIGHT", 2, 0)
-        p.threatBesides = true
-    else
-        p.threatText:SetPoint("CENTER", p.health, "CENTER", 0, 0)
-    end
+    -- (Threat Percentage's place: NP.LayoutThreat, once the level box is laid out)
+    p.boxH = h + 2 * pad
 
     -- cast bar under the bar's frame, as wide as the bar
     if p.cast then
@@ -1468,6 +1533,7 @@ function NP.Layout(p)
     elseif p.npcTitle then
         p.npcTitle:Hide()
     end
+    NP.LayoutThreat(p, db)
     -- (again now that nameOnly is known: the raid marker's place depends on it)
     NP.PlaceSides(p)
     p.layKind = db.kind
@@ -1606,6 +1672,20 @@ function NP.UpdateThreatText(p, db)
     if not fs then return end
     local unit = p.unit
     local display, status
+    -- the threat in the level's place (the level comes back without it), or in its own box
+    local function Place(shown)
+        if p.threatInLevel then p.level:SetShown(not shown and p.levelShown or false) end
+        if p.threatBox then
+            local boxShown = shown and p.threatBoxOn or false
+            if p.threatBox:IsShown() ~= boxShown then
+                p.threatBox:SetShown(boxShown)
+                -- (11-22, Malkkav) the pieces on the right make room only while the box shows: out of a
+                -- fight they sit right beside the plate
+                NP.PlaceSides(p)
+            end
+        end
+        fs:SetShown(shown and (p.threatInLevel or p.threatBoxOn) or false)
+    end
     if db.threatPercent and unit and not p.nameOnly then
         if NP.testKind then
             display, status = 75, 1
@@ -1623,20 +1703,20 @@ function NP.UpdateThreatText(p, db)
                 end
             elseif ok and not canaccessvalue(scaled) and C_StringUtil and C_StringUtil.RoundToNearestString then
                 local okR, text = pcall(C_StringUtil.RoundToNearestString, scaled)
-                if okR and pcall(fs.SetFormattedText, fs, p.threatBesides and "(%s%%)" or "%s%%", text) then
+                if okR and pcall(fs.SetFormattedText, fs, "%s%%", text) then
                     fs:SetTextColor(1, 1, 1)
-                    fs:Show()
+                    Place(true)
                     return
                 end
             end
         end
     end
-    if type(display) ~= "number" or display <= 0 then fs:Hide() return end
+    if type(display) ~= "number" or display <= 0 then Place(false) return end
     local r, g, b = 1, 1, 1
     if status and status >= 1 and GetThreatStatusColor then r, g, b = GetThreatStatusColor(status) end
     fs:SetTextColor(r, g, b)
-    fs:SetFormattedText(p.threatBesides and "(%.0f%%)" or "%.0f%%", display)
-    fs:Show()
+    fs:SetFormattedText("%.0f%%", display)
+    Place(true)
 end
 
 function NP.UpdateColor(p)
@@ -1755,7 +1835,9 @@ function NP.UpdateName(p)
             return
         end
     end
-    if player then
+    -- (11-22, Malkkav) the class colour only on a Name Only plate: on a full plate the bar already
+    -- carries it, and a class-coloured name on a class-coloured bar was hard to read (white instead)
+    if player and p.nameOnly then
         local _, class = UnitClass(unit)
         local ok, color = pcall(C_ClassColor.GetClassColor, class)
         if ok and color then p.name:SetTextColor(color:GetRGB()) return end
@@ -2919,11 +3001,13 @@ function NP.DrawSample(f, kind)
     local function Lines(on, size, max)
         if not on then return 0 end
         local lines = math.ceil(NP.AuraCount(p, db, size, max) / NP.AuraPerLine(p, db, size))
-        local look = AuraLook(size, on == "debuff")
+        local look = AuraLook(size, on == "debuff", db)
         return lines * ((look and look.cellHeight or size) + C.AURA_GAP)
     end
-    local top = 12 + math_max(Lines(db.debuffs ~= "off" and "debuff", db.debuffSize, db.debuffMax),
-                              Lines(db.buffs ~= "off" and "buff", db.buffSize, db.buffMax))
+    local dLines = Lines(db.debuffs ~= "off" and "debuff", db.debuffSize, db.debuffMax)
+    local bLines = Lines(db.buffs ~= "off" and "buff", db.buffSize, db.buffMax)
+    -- (stacked rows: one above the other)
+    local top = 12 + (NP.AuraStack(db) and (dLines + bLines) or math_max(dLines, bLines))
     p.root:SetPoint("TOP", f, "TOP", 0, -top)
     p.root:Show()
     -- sample values
@@ -3089,7 +3173,7 @@ function NP.DrawSample(f, kind)
             b:SetFrameLevel(p.root:GetFrameLevel() + 12)
             icons[n] = b
         end
-        local look = AuraLook(size, isDebuff)
+        local look = AuraLook(size, isDebuff, db)
         if look and ns.AuraLook and ns.AuraLook.Style then
             look.preview = true
             ns.AuraLook.Style(b, look)
@@ -3120,10 +3204,11 @@ function NP.DrawSample(f, kind)
     -- an icon's place: point, the plate's point, x, y (centred: the first line's middle on the plate's)
     local function Spot(i, size, isDebuff, count)
         local per = NP.AuraPerLine(p, db, size)
-        local look = AuraLook(size, isDebuff)
+        local look = AuraLook(size, isDebuff, db)
         local cell = (look and look.cellHeight or size) + C.AURA_GAP
-        local x, y = (i - 1) % per * (size + C.AURA_GAP), C.AURA_GAP + math_floor((i - 1) / per) * cell
-        local row = NP.AuraRowSide(db, isDebuff and "debuffs" or "buffs")
+        local place = isDebuff and "debuffs" or "buffs"
+        local x, y = (i - 1) % per * (size + C.AURA_GAP), C.AURA_GAP + math_floor((i - 1) / per) * cell + NP.AuraLift(db, place)
+        local row = NP.AuraRowSide(db, place)
         if row == "right" then return "BOTTOMRIGHT", "TOPRIGHT", -x, y end
         if row == "left" then return "BOTTOMLEFT", "TOPLEFT", x, y end
         local n = math.min(count, per)
@@ -3469,6 +3554,17 @@ function NP:ShouldLoad()
         end
     end
     NP.MigratePresets()
+    -- (11-22) the plates read the unit frames' Aura Swipe, Aura Timer and Timer Colour before they had
+    -- their own: those values are saved here once as the old shared ones (C.WAS_SHARED), so every
+    -- type's preset keeps them and no plate changes
+    local db = DB()
+    if db and not db.auraLookV1 then
+        db.auraLookV1 = true
+        local uf = ns.db.profile.unitframes or {}
+        for _, key in ipairs({ "auraSwipe", "auraTimer", "auraTimerColor" }) do
+            if uf[key] ~= nil and rawget(db, key) == nil then db[key] = uf[key] end
+        end
+    end
     -- 11-19: the Chevron and Hook arrows went (Chevron was the Yellow one turned)
     if db and (db.targetArrows == "chevron" or db.targetArrows == "hook") then db.targetArrows = "npe" end
     if not (db and db.enabled) then NP.RestoreZoom() return false end

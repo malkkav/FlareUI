@@ -78,8 +78,10 @@ local function OwnAuras()
     for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
         local first = true
         for i = 1, 40 do
-            local aura = C_UnitAuras.GetAuraDataByIndex("player", i, filter)
-            if not aura then break end
+            -- (11-22) while the game keeps auras secret (a fight, a flagged player near) the call errors
+            -- for addon code: the list then simply has none of yours
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, filter)
+            if not ok or not aura or not canaccessvalue(aura) then break end
             local id = aura.spellId
             if canaccessvalue(id) and type(id) == "number" and not HA.ListOf(id) and not seen[id] then
                 seen[id] = true

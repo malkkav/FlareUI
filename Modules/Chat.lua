@@ -3891,12 +3891,16 @@ function Chat.ApplyLineFade()
     Chat.WatchLines(db.enabled and db.fadeLines)
 end
 
--- The faded lines come back with the pointer on a window or its edit box in use: their timers start
--- again. A light watcher, five checks a second, only while Fade Old Lines is on.
+-- The faded lines come back with the pointer on a window or its edit box in use. A light watcher,
+-- five checks a second, only while Fade Old Lines is on. Only the change counts (11-22): on arrival the
+-- lines come back once and stop fading; on leaving they fade again from then. Resetting them on every
+-- check redrew the lines five times a second, so a link's tooltip flickered and a click on a name
+-- or a link was lost.
 function Chat.WatchLines(on)
     local watcher = Chat.lineWatcher
     if not on then
         if watcher then watcher:Hide() end
+        for _, cf in Windows() do if cf then cf.FlareUI_LinesHeld = nil end end
         return
     end
     if not watcher then
@@ -3907,9 +3911,13 @@ function Chat.WatchLines(on)
             if self.wait < 0.2 then return end
             self.wait = 0
             for _, cf in Windows() do
-                if cf and cf.FlareUI_Skin and not cf:IsForbidden() and cf:IsVisible() and cf.ResetAllFadeTimes
-                        and (cf:IsMouseOver() or (cf.editBox and cf.editBox:HasFocus())) then
-                    cf:ResetAllFadeTimes()
+                if cf and cf.FlareUI_Skin and not cf:IsForbidden() and cf.ResetAllFadeTimes then
+                    local held = cf:IsVisible() and (cf:IsMouseOver() or (cf.editBox and cf.editBox:HasFocus())) or false
+                    if held ~= (cf.FlareUI_LinesHeld or false) then
+                        cf.FlareUI_LinesHeld = held or nil
+                        cf:ResetAllFadeTimes()
+                        cf:SetFading(not held)
+                    end
                 end
             end
         end)
