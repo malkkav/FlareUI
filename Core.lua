@@ -1133,6 +1133,19 @@ local defaults = {
             lootRollsOpacity = 1,       -- its Frame Opacity: the background's (100% by default: 60% is hard to read)
             lootRolls = false,          -- Loot Roll Window: FlareUI's loot roll window in place of Blizzard's roll frames (LootRolls.lua); on and off need a reload
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
+            lootWindow = false,         -- Loot Window: FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
+            lootWindowBorder = "FlareUI Thick",
+            lootWindowOpacity = 1,
+            lootWindowSort = "loot",    -- "loot" | "quality" | "ilvl"
+            lootWindowColor = "icon",
+            lootWindowItemLevel = false,
+            lootWindowJunk = false,
+            lootWindowBoE = false,
+            lootWindowUncollected = false,
+            lootWindowOwned = false,
+            lootWindowThick = false,
+            lootWindowFreeSlots = false,
+            lootWindowFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
