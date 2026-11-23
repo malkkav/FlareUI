@@ -1925,7 +1925,8 @@ local function LayoutTexts(f)
         f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
         f.PowerText:SetJustifyH("CENTER")
     end
-    if PF.SlotOn(f) then PF.LayoutSlotTexts(f) end
+    if PF.SlotOn(f) then PF.LayoutSlotTexts(f)
+    else PF.HideSlotTexts(f) end
     -- Values on Mouseover (11-20): the old texts, and the slots' on slot tiles
     local list = { f.HealthText, f.PowerText }
     if PF.SlotOn(f) then
@@ -1990,6 +1991,17 @@ function PF.TileSlots(f, bar)
         f.btSlots[bar] = ns.BarText.Slots(db, bar, OnPlate(f) and "plate" or "plain", nil, nil, f.ctx and f.ctx.textUnit or "party")
     end
     return f.btSlots[bar]
+end
+-- (11-23) a tile that leaves the slots (the party switched from Classic to Raid Style: the same tiles
+-- are kept) clears and hides the Left and Middle texts Classic made; the Right one is its own
+-- HealthText / PowerText, which Raid Style uses
+function PF.HideSlotTexts(f)
+    for _, t in pairs(f.btTexts or {}) do
+        for _, slot in ipairs({ "left", "middle" }) do
+            if t[slot] then t[slot]:SetText("") t[slot]:Hide() end
+        end
+    end
+    f.btSlots = nil
 end
 function PF.TileSlotTexts(f, bar)
     f.btTexts = f.btTexts or {}

@@ -111,6 +111,20 @@ ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(a:GetWidth() == party.raid.width and holder:GetWidth() > a:GetWidth())
 assert(a.Power:IsShown() and not b.Power:IsShown(), "Raid Style's mana-only excludes warriors")
+-- (11-23) the same tiles leave Classic: its Left / Middle texts go, Raid Style's Centre pick shows alone
+assert(a.btTexts and a.btTexts.health, "Classic made its slot texts")
+for _, bar in ipairs({ "health", "power" }) do
+    local t = a.btTexts[bar]
+    if t then assert(not t.left:IsShown() and not t.middle:IsShown(), bar .. ": Classic texts left on a Raid Style tile") end
+end
+ns.BarText.Toggle(party.raid, "health", "middle", "tile", "percent", false, nil, nil, "party")
+pf:Refresh()
+a:RunScript("OnEvent", "UNIT_HEALTH", "party1")
+for _, frame in ipairs(ui.widgets) do
+    if frame:IsVisible() then frame:RunScript("OnUpdate", 0.1) end
+end
+assert((a.HealthText:GetText() or ""):find("%%"), "the Centre pick: " .. tostring(a.HealthText:GetText()))
+assert(not a.btTexts.health.middle:IsShown())
 holder.moved(holder, "Other", "CENTER", 20.6, -30)
 libEdit.callbacks.layout("Other")
 local point, _, _, x, y = holder:GetPoint()
