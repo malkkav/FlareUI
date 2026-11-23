@@ -366,7 +366,8 @@ local function checkOpenExtension(drawer, owner, opensLeft)
     local top = assert(drawer.points["TOP" .. near])
     local bottom = assert(drawer.points["BOTTOM" .. near])
     local margin = math.min(64, owner:GetHeight() / 8)
-    assert(top.relative == (owner.BorderFrame or owner) and top.point == "TOP" .. far and top.x == 0 and top.y == -margin)
+    assert(top.relative == (owner.BorderFrame or owner) and top.point == "TOP" .. far and top.x == 0 and top.y == -margin,
+        "the list must dock against the " .. far .. " edge of the map")
     assert(bottom.relative == top.relative and bottom.point == "BOTTOM" .. far and bottom.x == 0 and bottom.y == margin,
         "the docked list has equal upper and lower margins against the native map")
     local chrome = drawer.body
@@ -434,6 +435,19 @@ checkOpenExtension(panel, map)
 assert(panel:GetWidth() == 214, "minimum docked width reserves the remaining 16 units for the outside tab")
 map.right = 1250
 panel.toggle:Fire("OnUpdate", 0.2)
+checkOpenExtension(panel, map, true)
+panel.toggle:Fire("OnClick")
+checkTab(panel.toggle, map, "LEFT", false)
+panel.toggle:Fire("OnClick")
+checkOpenExtension(panel, map, true)
+
+-- With only 30 units on the right, 230 on the left fits both the list and its tab.
+map.width = map.right - 230
+map:Fire("OnSizeChanged")
+checkOpenExtension(panel, map, true)
+assert(panel:GetWidth() == 214)
+map.width = map.width + 1
+map:Fire("OnSizeChanged")
 local fallback = assert(panel.points.TOPRIGHT)
 assert(map.right + fallback.x + panel.toggle:GetWidth() <= env.UIParent.right
     and panel.points.BOTTOMRIGHT.x == fallback.x and fallback.y == -64 and panel.points.BOTTOMRIGHT.y == 64,
@@ -443,7 +457,7 @@ checkTab(panel.toggle, panel, "RIGHT", true)
 map.height = 360
 map:Fire("OnSizeChanged")
 assert(panel.points.BOTTOMRIGHT.y == 45 and panel.points.TOPRIGHT.y == -45, "shorter maps keep a usable list height")
-map.right = 800
+map.width, map.right = 590, 800
 panel.toggle:Fire("OnUpdate", 0.2)
 checkOpenExtension(panel, map)
 panel.toggle:Fire("OnClick")
@@ -765,9 +779,7 @@ modernMap:Fire("OnSizeChanged")
 checkOpenExtension(panel, modernMap)
 modernMap.scale = 1.35
 panel.toggle:Fire("OnUpdate", 0.2)
-assert(panel.points.TOPRIGHT and panel.body.NineSlice.LeftEdge:IsShown() and panel.body.NineSlice.RightEdge:IsShown(),
-    "rescaling recomputes the available space and restores the floating inset's border")
-checkTab(panel.toggle, panel, "RIGHT", true)
+checkOpenExtension(panel, modernMap, true)
 tweaks.enabled = false
 D:Refresh()
 assert(not D:ShouldLoad() and modernMap:IsVisible() and not panel:IsVisible() and not panel.toggle:IsVisible(),

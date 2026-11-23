@@ -289,6 +289,7 @@ local WIDTH, ROW_HEIGHT = 286, 37
 local SPECIAL_FARE_MAX_WIDTH = 84 -- Keep the zone readable even at the narrowest docked width.
 local LIST_LEFT, LIST_RIGHT = 8, 27 -- room for the scroll thumb
 local TAB_WIDTH, VERTICAL_INSET = 16, 64
+local MIN_DOCK_ROOM = 214 + TAB_WIDTH -- Minimum list width plus its outside tab.
 local panels = {}
 local expanded = true
 
@@ -700,6 +701,7 @@ local function Position(panel)
     local scale = UIParent:GetEffectiveScale() / border:GetEffectiveScale()
     local rightRoom, leftRoom = UIParent:GetRight() * scale - right, left - UIParent:GetLeft() * scale
     local onRight = rightRoom >= TAB_WIDTH or rightRoom >= leftRoom
+    if rightRoom < MIN_DOCK_ROOM and leftRoom >= MIN_DOCK_ROOM then onRight = false end
     local room = onRight and rightRoom or leftRoom
     local topInset, bottomInset = VerticalInsets(top, bottom, scale)
     if panel.lastRoom == room and panel.topInset == topInset and panel.bottomInset == bottomInset
@@ -712,7 +714,7 @@ local function Position(panel)
     local available = room - TAB_WIDTH
     local edge, tabX = border, direction * math.min(0, available)
     if expanded then
-        local joined = available >= 214
+        local joined = room >= MIN_DOCK_ROOM
         local anchor = joined and inner or outer
         local x = joined and 0 or direction * available
         panel:ClearAllPoints()
