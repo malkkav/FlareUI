@@ -3999,6 +3999,8 @@ local function WindowTarget(cf, now, alpha, minAlpha)
     return math_min(alpha, minAlpha)
 end
 
+Chat.windowStages = setmetatable({}, { __mode = "k" })   -- window -> its Slower fade's rest timer
+
 function Chat.ApplyWindowFades(elapsed)
     local now, alpha = GetTime(), Chat.fadeAlpha or 1
     local V, db = ns.Visibility, GetDb()
@@ -4006,6 +4008,7 @@ function Chat.ApplyWindowFades(elapsed)
     local minAlpha = fades and V:GetMinAlpha("chat") / 100 or 1
     local inTime = fades and ns.FadeTime(V:GetFadeIn("chat")) or 0
     local outTime = fades and ns.FadeTime(V:GetFadeOut("chat")) or 0
+    local staged = fades and V:GetFadeOut("chat") == "slower"
     local span = math_max(0.01, 1 - minAlpha)
     local moving = false
     for _, cf in Windows() do
@@ -4020,11 +4023,19 @@ function Chat.ApplyWindowFades(elapsed)
                 value = target                               -- the fader is lower: down with it at once
             elseif elapsed then
                 if value < target then
+                    if Chat.windowStages[cf] then Chat.windowStages[cf].stageHold = nil end
                     value = inTime > 0 and math_min(target, value + span * elapsed / inTime) or target
                 elseif value > target then
-                    value = outTime > 0 and math_max(target, value - span * elapsed / outTime) or target
+                    if staged then
+                        -- Slower: down to the resting opacity, rest, then finish (Core.lua)
+                        Chat.windowStages[cf] = Chat.windowStages[cf] or {}
+                        value = ns.StagedFall(Chat.windowStages[cf], value, target, elapsed)
+                    else
+                        value = outTime > 0 and math_max(target, value - span * elapsed / outTime) or target
+                    end
                 end
             end
+            if value >= target and Chat.windowStages[cf] then Chat.windowStages[cf].stageHold = nil end
             if value == alpha then cf.FlareUI_FadesAlone = nil end
             if value ~= target then moving = true end
             cf.FlareUI_WindowAlpha = value

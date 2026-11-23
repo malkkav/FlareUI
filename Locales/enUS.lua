@@ -986,7 +986,7 @@ L["How far a mouseover tooltip sits from your mouse, down (-) or up (+), in pixe
 L["How far a mouseover tooltip sits from your mouse, left (-) or right (+), in pixels."] = true
 L["How far the camera can zoom out. It starts at Blizzard's own limit."] = true
 L["How fast it comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"] = true
-L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"] = true
+L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds\n* Slower: fades to about half over 2 seconds, then 2 seconds later fades out"] = true
 L["How fast the camera zooms with the mouse wheel. It starts at Blizzard's own speed."] = true
 L["How It Works"] = true
 L["How long before a buff runs out it counts as missing."] = true
@@ -1848,6 +1848,7 @@ L["Slash Commands"] = true
 L["Slots per row in the bank. Default keeps Blizzard's 8."] = true
 L["Slots per row in the combined backpack. Default keeps Blizzard's 10."] = true
 L["Slow"] = true
+L["Slower"] = true
 L["Small helpers that save you clicks."] = true
 L["Smaller Size"] = true
 L["Smooth Bar Animations"] = true
