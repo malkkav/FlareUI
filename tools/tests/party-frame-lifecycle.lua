@@ -130,8 +130,43 @@ libEdit.callbacks.layout("Other")
 local point, _, _, x, y = holder:GetPoint()
 assert(point == "CENTER" and x == 21 and y == -30)
 
+-- Show Target Markers (11-23): off to start; on, the raid marker over the target tile's right border
+local token = targetTile.fuiUnit
+unit[token].mark = 8
+ui:emit("RAID_TARGET_UPDATE")
+assert(not targetTile.RaidIcon:IsShown(), "off to start")
+local row, seenBorder
+for _, entry in ipairs(holder.settings) do
+    if entry.name == "Target Border" then seenBorder = true end
+    if entry.name == "Show Target Markers" then row = assert(seenBorder and entry, "after the sliders and dropdowns") end
+end
+assert(row and row.default == false and row.get() == false)
+row.set(nil, true)
+assert(party.classic.targetMarkers == true, "the dialog was built for Classic")
+party.raid.targetMarkers = true
+pf:Refresh()
+assert(targetTile.RaidIcon:IsShown() and targetTile.RaidIcon.raidMark == 8)
+local point2, anchor2, relative2, offX = targetTile.RaidIcon:GetPoint()
+assert(point2 == "CENTER" and anchor2 == targetTile and relative2 == "RIGHT" and offX == 0, "half over the right border")
+local nameEnd = select(4, targetTile.Name:GetPoint(2))
+unit[token].mark = nil
+ui:emit("RAID_TARGET_UPDATE")
+assert(not targetTile.RaidIcon:IsShown())
+unit[token].mark = 1
+targetTile:RunScript("OnEvent", "UNIT_TARGET", "party1")
+assert(targetTile.RaidIcon:IsShown() and targetTile.RaidIcon.raidMark == 1, "a new target's")
+
 ui.editing = true
 libEdit.callbacks.enter()
+local samples, skulls = 0, 0
+for i = 0, 4 do
+    local t = env["FlareUI_PartyTarget" .. i]
+    if t and t:IsShown() then
+        samples = samples + 1
+        if t.RaidIcon:IsShown() then skulls = skulls + 1 assert(t.RaidIcon.raidMark == 8) end
+    end
+end
+assert(samples > 0 and skulls > 0 and skulls < samples, "the sample enemies wear the skull, the sample friend nothing")
 assert(holder:IsShown() and holder:GetAttribute("visibility") == nil)
 assert(a:IsShown() and not a.unitWatched and a.Name:GetText() ~= "Mira Reed")
 local sample = pf.SampleTile(env.UIParent, nil, nil, 1)
@@ -140,6 +175,10 @@ assert(w == party.raid.width and h == party.raid.height and sample.Name:GetText(
 ui.editing = false
 libEdit.callbacks.exit()
 assert(a.unitWatched and a.Name:GetText() == "Mira Reed")
+assert(targetTile.RaidIcon.raidMark == 1)
+party.raid.targetMarkers = false
+pf:Refresh()
+assert(not targetTile.RaidIcon:IsShown() and select(4, targetTile.Name:GetPoint(2)) > nameEnd, "the name has its room back")
 
 -- the Gamepad UI doubles the target highlight with a second copy; the mouse UI keeps one
 local hl, isGamepad = a.TargetHighlight, ns.IsGamepadUI

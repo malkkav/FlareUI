@@ -1800,6 +1800,7 @@ L["Show Speed"] = true
 L["Show Spell Pushback"] = true
 L["Show Spell Timer"] = true
 L["Show Target"] = true
+L["Show Target Markers"] = true
 L["Show Threat"] = true
 L["Show Timer"] = true
 L["Show Titles"] = true
@@ -2065,6 +2066,7 @@ L["The quest you focus on the map moves to the top. With zone headings, its zone
 L["The quest's level in front of its name."] = true
 L["The quick brown fox jumps over the lazy dog"] = true
 L["The radial's button again"] = true
+L["The raid marker of what each member is targeting, on the right edge of its frame."] = true
 L["The raid's main tanks in a small frame of their own (set by the raid leader)."] = true
 L["The Remind Before It Ends time inside dungeons. Same as Above uses the time above."] = true
 L["The Remind Before It Ends time inside raids. Same as Above uses the time above."] = true

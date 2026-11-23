@@ -1055,10 +1055,24 @@ local function UpdatePet(p, glide)
     p.Name:SetText(SafeName(ns.UnitDisplayName(unit)))
 end
 
+-- Show Target Markers (11-23, s.kud; off): the raid marker of what each member is targeting, on the tile's
+-- right border. Read as the members' own (a secret index goes to the texture unread).
+function PF.UpdateTargetMarker(t)
+    local icon = t.RaidIcon
+    local st = TS(t)
+    if not (st and st.targetMarkers) then icon:Hide() return end
+    local index = GetRaidTargetIndex(t.fuiUnit)
+    local show
+    if not canaccessvalue(index) then show = true else show = index ~= nil and index > 0 end
+    if show then SetRaidTargetIconTexture(icon, index) end
+    icon:SetShown(show)
+end
+
 local function UpdatePartyTarget(t)
     if IsEditing() then return end
     local unit = t.fuiUnit
     if not UnitExists(unit) then return end
+    PF.UpdateTargetMarker(t)
     t.Health:SetMinMaxValues(0, UnitHealthMax(unit))
     t.Health:SetValue(UnitHealth(unit))
     t.Health:SetStatusBarColor(K.HealthBarColor(unit, ns.ClassColorsOn(TS(t)), TS(t)))
@@ -2374,6 +2388,11 @@ function SIDE.Height(st, own, place)
 end
 function SIDE.PetOuter(st) return (st.petHeight or 19) + 2 * K.INSET end
 function SIDE.TargetOuter(st) return st.targetHeight or 25 end
+-- a target's raid marker: its size on the tile's right border, half of it outside (0: off)
+function SIDE.Marker(st)
+    if not st.targetMarkers then return 0 end
+    return math_max(10, math_min(22, math_floor(SIDE.Height(st, SIDE.TargetOuter(st), TargetPlace()) * 0.72)))
+end
 -- the bottom row's height under member i (0: nothing there)
 function SIDE.BottomRow(st, hasPet)
     local h = 0
@@ -2387,6 +2406,7 @@ function SIDE.RightRoom(st)
     if PetPlace() == "RIGHT" then w = math_max(w, st.petWidth or 120) end
     if TargetPlace() == "RIGHT" then w = math_max(w, st.targetWidth or 100) end
     if w == 0 then return 0 end
+    if TargetPlace() == "RIGHT" then w = math_max(w, (st.targetWidth or 100) + SIDE.Marker(st) / 2) end
     return SIDE.RightX(st) + w - LanesExtent(st, { "RIGHT" }, true)
 end
 
@@ -2454,8 +2474,14 @@ local function LayoutTarget(t)
     local names = K.Font("party", "names")
     K.ApplyFont(t.Name, ScaledFont(names, math_max(8, math_min(names.size or 12, height - 2 * PADDING - 4))))
     t.Name:ClearAllPoints()
+    -- the raid marker half over the right border; the name ends before it
+    local marker = SIDE.Marker(st)
+    t.RaidIcon:ClearAllPoints()
+    t.RaidIcon:SetSize(math_max(1, marker), math_max(1, marker))
+    t.RaidIcon:SetPoint("CENTER", t, "RIGHT", 0, 0)
+    if marker == 0 then t.RaidIcon:Hide() end
     t.Name:SetPoint("LEFT", t.Health, "LEFT", K.TEXT_INSET, 0)
-    t.Name:SetPoint("RIGHT", t.Health, "RIGHT", -K.TEXT_INSET, 0)
+    t.Name:SetPoint("RIGHT", t.Health, "RIGHT", -math_max(K.TEXT_INSET, marker / 2 - PADDING + 2), 0)
     t:ClearAllPoints()
     if place == "BOTTOM" then
         t:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, SIDE.BottomY(st, owner))
@@ -3042,6 +3068,11 @@ ApplyPreview = function(f)
         t.Health:SetValue(sample.health)
         t.Health:SetStatusBarColor(K.SampleHealthColor(TS(t), sample.health, r, g, b))
         t.Name:SetText(sample.name)
+        -- (the enemy wears the skull)
+        local st = TS(t)
+        local marked = st and st.targetMarkers and not sample.class
+        if marked then SetRaidTargetIconTexture(t.RaidIcon, 8) end
+        t.RaidIcon:SetShown(marked and true or false)
     end
 end
 
@@ -3305,6 +3336,9 @@ local function CreatePartyTarget(index)
     t.Highlight:SetAllPoints(t.Health)
     t.Highlight:SetColorTexture(1, 1, 1, 0.08)
     t.Highlight:Hide()
+    t.RaidIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 4)
+    t.RaidIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+    t.RaidIcon:Hide()
     -- the member picks a new target (your own: PLAYER_TARGET_CHANGED, in OnGlobalEvent)
     -- hidden (no target, or the holder is): the OnShow hook repaints it when it comes back
     t:SetScript("OnEvent", function(self) if self:IsVisible() then UpdatePartyTarget(self) end end)
@@ -3756,6 +3790,9 @@ local function BuildSettings()
           get = getS("targetHeight"), set = setS("targetHeight"), hidden = noTargets },
         { name = L["Target Border"], kind = LEM.SettingType.Dropdown, default = D.targetBorder, values = K.BuildBorderValues(false),
           get = getS("targetBorder"), set = setS("targetBorder"), hidden = noTargets },
+        { name = L["Show Target Markers"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return getS("targetMarkers")() == true end, set = setS("targetMarkers"), hidden = noTargets,
+          desc = L["The raid marker of what each member is targeting, on the right edge of its frame."] },
     })
     return settings
 end
@@ -3926,6 +3963,12 @@ function PF:OnGlobalEvent(event, ...)
     end
     local own = targets[0]
     if event == "PLAYER_TARGET_CHANGED" and own and own:IsShown() then UpdatePartyTarget(own) end
+    if event == "RAID_TARGET_UPDATE" and not IsEditing() then
+        for i = 0, MAX_MEMBERS do
+            local t = targets[i]
+            if t and t:IsVisible() then PF.UpdateTargetMarker(t) end
+        end
+    end
     for i = 0, MAX_MEMBERS do
         local f = members[i]
         if f and f:IsVisible() then

@@ -703,6 +703,7 @@ local defaults = {
                     castbar = false, castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                     petHeight = 19, petWidth = 120, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
+                    targetMarkers = false,      -- Show Target Markers: raid markers on the party targets
                     threatGlow = true,          -- Threat Glow (Look): the border pulses with aggro
                 },
                 raid = {
@@ -714,6 +715,7 @@ local defaults = {
                     castbar = false, castHeight = 10, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = false, castTimer = false,
                     petHeight = 14, petWidth = 80, petBorder = "FlareUI Thin", icons = {},
                     targetWidth = 100, targetHeight = 25, targetBorder = "FlareUI Thin",
+                    targetMarkers = false,      -- Show Target Markers: raid markers on the party targets
                     threatGlow = true,
                 },
             },
@@ -2428,7 +2430,7 @@ do
         -- the resource bars' two texts right under the sliders, before Range Check
         "Bar Text", "Show Timer",
         "Range Check", "Show Name", "Show Level", "Show Combat Text", "Show Threat", "Threat Text",
-        "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid",
+        "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid", "Show Target Markers",
         "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
         "Show Icon", "Show Spell Timer", "Show Spell Pushback", "Edge Glow",
