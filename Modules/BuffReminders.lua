@@ -1712,13 +1712,7 @@ local function Check(entry, before)
         end
         local fine, running, left = HasBuff("player", entry.names, before, def.own)
         -- food: the last food you ate that gave the buff is remembered (BR.pendingFood; BR.ConfirmFood)
-        if def.key == "food" then
-            local pending = BR.pendingFood
-            if fine and pending and GetTime() - pending.at < 90 then
-                ns.CharDB().buffFood = pending.item
-                BR.pendingFood = nil
-            end
-        end
+        if def.key == "food" and fine and BR.ConfirmFood then BR.ConfirmFood() end
         if fine then return 0, 1 end
         -- food: a click eats that one again while you have it (Bill's and Tride's idea 11-19)
         local food = def.key == "food" and ns.CharDB().buffFood
@@ -2723,10 +2717,14 @@ function BR:Init()
     events:RegisterEvent("UNIT_AURA")
     -- food eaten from the bags or an action button: held for 90 s; if the food buff comes in that
     -- time, the food reminder's click eats it next time (Check). Post-hooks only: nothing is tainted
+    local DRINK_SPELL = 432
     local function NoteFood(itemID)
         if type(itemID) ~= "number" then return end
         local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
-        if classID == 0 and subclassID == 5 then BR.pendingFood = { item = itemID, at = GetTime() } end
+        if classID ~= 0 or subclassID ~= 5 then return end
+        local spellName = C_Item.GetItemSpell and C_Item.GetItemSpell(itemID)
+        if spellName and spellName == C_Spell.GetSpellName(DRINK_SPELL) then return end
+        BR.pendingFood = { item = itemID, at = GetTime() }
     end
     if C_Container and C_Container.UseContainerItem then
         hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
@@ -2755,7 +2753,10 @@ function BR:Init()
         local name = C_Spell.GetSpellName(19705)   -- Well Fed
         if not name then return end
         local ok, aura = pcall(C_UnitAuras.GetAuraDataBySpellName, "player", name, "HELPFUL")
-        if ok and Readable(aura) and aura then
+        if not (ok and Readable(aura) and aura) then return end
+        local expires, duration = aura.expirationTime, aura.duration
+        if not (Readable2(expires, duration) and type(expires) == "number" and type(duration) == "number") then return end
+        if expires - duration >= pending.at then
             ns.CharDB().buffFood = pending.item
             BR.pendingFood = nil
         end
