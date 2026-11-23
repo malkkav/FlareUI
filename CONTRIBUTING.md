@@ -66,6 +66,10 @@ Malkkav fixes bugs fast, so check first:
 
 ### Lua line coverage
 
+The `Lua tests` check requires at least 80% overall Lua line coverage on pull
+requests. CI uploads the LuaCov report before evaluating the threshold so you
+can inspect missed lines when a PR falls below it.
+
 To reproduce the CI coverage report, install LuaCov 0.17.0 and LuaFileSystem 1.8.0
 for LuaJIT. Move aside any existing `luacov.stats.out` before running the suite
 from the repository root so the report measures a fresh run.

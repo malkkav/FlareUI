@@ -2,7 +2,7 @@ name: Tests
 
 # Runs every Lua test in tools/tests with LuaJIT (Lua 5.1, like WoW): on pull requests, on pushes
 # to main, and before each release (release.yml calls it; a failing test stops the upload).
-# Pull requests and main pushes also get a LuaCov report.
+# Pull requests and main pushes get a LuaCov report. Pull requests require at least 80% coverage.
 on:
   pull_request:
   push:
@@ -81,3 +81,20 @@ jobs:
           name: lua-coverage
           path: luacov.report.out
           if-no-files-found: error
+
+      - name: Enforce minimum Lua coverage
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if ! read -r _ covered missed _ < <(grep '^Total ' luacov.report.out) ||
+             [[ ! $covered =~ ^[0-9]+$ || ! $missed =~ ^[0-9]+$ ]] ||
+             (( covered + missed == 0 )); then
+            printf '%s\n' '::error title=Invalid Lua coverage report::Expected nonempty LuaCov totals.'
+            exit 1
+          fi
+          total=$((covered + missed))
+          # Compare counts so a value just below 80% fails even if the report rounds up.
+          if (( covered * 100 < total * 80 )); then
+            printf '::error title=Lua coverage below 80%%::Covered %s of %s executable lines. Pull requests require at least 80%%.\n' "$covered" "$total"
+            exit 1
+          fi
