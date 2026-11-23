@@ -5,14 +5,22 @@ local function yes() return true end
 local frames = {}
 local Widget = {}
 Widget.__index = Widget
-local function widget(kind, _, parent)
-    local f = setmetatable({kind = kind, parent = parent, shown = true, scripts = {}, events = {}}, Widget)
+local function widget(kind, _, parent, templates)
+    local f = setmetatable({parent = parent, shown = true, scripts = {}, events = {}}, Widget)
+    local slotTemplate = templates and (',' .. templates .. ','):match(',%s*ContainerFrameItemButtonTemplate%s*,')
+    f.itemSlot = kind == 'ItemButton' or (kind == 'Button' and slotTemplate ~= nil)
+    if f.itemSlot then f.BagIndicator = {SetShown = noop} end
     frames[#frames + 1] = f
     return f
 end
 function Widget:IsShown() return self.shown end
 function Widget:IsVisible() return self.shown and (not self.parent or self.parent:IsVisible()) end
-function Widget:SetShown(shown) self.shown = shown end
+function Widget:SetShown(shown)
+    if self.shown == shown then return end
+    self.shown = shown
+    local handler = self.scripts[shown and 'OnShow' or 'OnHide']
+    if handler then handler(self) end
+end
 function Widget:Hide() self:SetShown(false) end
 function Widget:Show() self:SetShown(true) end
 function Widget:SetParent(parent) self.parent = parent end
@@ -26,7 +34,13 @@ function Widget:SetWidth(width) self.width = width end
 function Widget:SetText(text) self.text = text end
 function Widget:SetID(id) self.id = id end
 function Widget:GetID() return self.id end
-function Widget:GetBagID() return self.parent.id end
+function Widget:GetBagID() return self.bagID or self.parent.id end
+function Widget:GetBagSize() return #self.Items end
+function Widget:SetPoint(...) self.point = {...} end
+function Widget:GetPoint() if self.point then return unpack(self.point, 1, 5) end end
+function Widget:ClearAllPoints() self.point = nil end
+function Widget:SetScale(scale) self.scale = scale end
+function Widget:GetScale() return self.scale or 1 end
 function Widget:IsExtended() return self.extended end
 function Widget:CreateFontString() return widget('FontString', nil, self) end
 function Widget:CreateTexture() return widget('Texture', nil, self) end
@@ -39,7 +53,7 @@ function Widget:HookScript(event, callback)
         callback(...)
     end
 end
-for _, name in ipairs({'SetPoint', 'ClearAllPoints', 'SetTexture', 'SetAtlas', 'SetTextColor',
+for _, name in ipairs({'SetTexture', 'SetAtlas', 'SetTextColor',
         'SetAllPoints', 'SetTexCoord', 'SetRotation', 'SetJustifyH', 'SetFrameLevel', 'SetNormalTexture',
         'SetHighlightTexture', 'RegisterForClicks', 'SetVertexColor', 'SetWordWrap', 'EnableMouse', 'SetAlpha',
         'SetClampedToScreen'}) do Widget[name] = noop end
@@ -47,43 +61,71 @@ function Widget:IsClampedToScreen() return true end
 function Widget:GetFrameLevel() return 1 end
 Widget.IsProtected = no
 
-local combined, items
+local combined, items, Bags, native, windows
 local db = {bagView = 'rows', bagKeyring = true, bagReagent = true}
-local bagSizes = {[-1] = 2, [5] = 2}
+local bagSizes = {[-1] = 2, [0] = 5, [5] = 2}
 local contents = {[1] = {itemID = 101}, [2] = {itemID = 102}}
 local keyringAvailable, secured = true, true
+local lastKeySlot = 1
 local env = setmetatable({
     CreateFrame = widget, InCombatLockdown = no,
     wipe = function(t) for k in pairs(t) do t[k] = nil end return t end,
     C_AddOns = {IsAddOnLoaded = function(name) return name == 'Hide2FABagSlots' end},
     C_Timer = {After = function(_, callback) callback() end},
+    C_NewItems = {RemoveNewItem = noop},
     C_CVar = {GetCVarBool = yes}, C_ActionBar = {ShouldShowKeyring = function() return keyringAvailable end},
+    GetKeyRingSize = function() return math.min(4 * math.ceil(lastKeySlot / 4), bagSizes[-1]) end,
     IsAccountSecured = function() return secured end, EventRegistry = {RegisterCallback = noop},
     C_Container = {
         GetContainerNumSlots = function(id) return bagSizes[id] or 0 end,
-        GetContainerItemInfo = function(id, slot) if id == 0 then return contents[slot] end end,
+        GetContainerItemInfo = function(id, slot)
+            if id == 0 then return contents[slot] end
+            if id == -1 and slot == lastKeySlot then return {itemID = 103} end
+        end,
     },
     Enum = {BagIndex = {Keyring = -1, ReagentBag = 5}, ItemQuality = {Poor = 0},
         ItemClass = {Weapon = 2, Armor = 4, Consumable = 0, Tradegoods = 7}},
     C_Item = {GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 101 and 0 or 7 end},
 }, {__index = _G})
 env._G = env
+env.UIParent = widget('Frame')
+function env.ContainerFrameUtil_GetShownFrameForID(id)
+    local window = windows[id]
+    if window and window:IsShown() then return window end
+end
 function env.hooksecurefunc(target, method, hook)
     if type(target) == 'string' then target, method, hook = env, target, method end
     local previous = assert(target[method], method)
     target[method] = function(...) previous(...); hook(...) end
 end
-local function startSession(char)
-    frames = {}
-    combined = widget('Frame')
+local function startSession(char, bagsClosed)
+    frames, items, native, windows = {}, {}, {}, {}
+    combined = widget('Frame', nil, env.UIParent)
+    if bagsClosed then combined:Hide() end
     combined.MoneyFrame = widget('Frame', nil, combined)
-    local bag = widget('Frame', nil, combined)
-    bag:SetID(0)
-    items = {}
-    for slot = 1, 5 do
-        items[slot] = widget('ItemButton', nil, bag)
-        items[slot]:SetID(slot)
-        items[slot]:SetSize(36, 36)
+    -- Capture each widget when the simulated client creates it, before loading FlareUI.
+    for id = -1, 5 do
+        local separate = id == -1 or id == 5
+        local bag = combined
+        native[id] = {}
+        if separate then
+            bag = widget('Frame', nil, env.UIParent)
+            bag:SetID(id)
+            bag:SetSize(178, 80)
+            if bagsClosed then bag:Hide() end
+            windows[id] = bag
+            bag.Items = {}
+            bag.ClearItems, bag.UpdateItemSlots, bag.UpdateItemLayout = noop, noop, noop
+        end
+        local count = id == -1 and env.GetKeyRingSize() or bagSizes[id] or 0
+        for slot = 1, count do
+            local button = widget('ItemButton', nil, bag)
+            button.bagID = id
+            button:SetID(slot)
+            button:SetSize(36, 36)
+            native[id][slot] = button
+            if separate then bag.Items[slot] = button else items[#items + 1] = button end
+        end
     end
     items[5].extended = true
     function combined:EnumerateValidItems() return ipairs(items) end
@@ -92,33 +134,23 @@ local function startSession(char)
     function combined:GetPaddingHeight() return 20 end
     function combined:CalculateExtraHeight() return 30 end
     env.ContainerFrameCombinedBags, env.UpdateContainerFrameAnchors = combined, noop
+    env.ContainerFrame1, env.ContainerFrame2 = windows[5], windows[-1]
 
     local ns = {L = setmetatable({}, {__index = function(_, key) return key end}), modules = {},
         db = {profile = {tweaks = db}}, CharDB = function() return char end, BagModuleOn = yes, IsGamepadUI = no}
     setfenv(assert(loadstring(H.read('Modules/Bags.lua'), '@Modules/Bags.lua')), env)('FlareUI', ns)
-    local Bags = ns.Bags
+    Bags = ns.Bags
     Bags.DecorateButton, Bags.PlaceBagButtons, Bags.FollowWindows = noop, noop, noop
     Bags.StyleMoney, Bags.StyleFreeSlots, Bags.GoldList.Hook, Bags.Bank.Hook, Bags.Sort.Hook = noop, noop, noop, noop, noop
     Bags:Init()
-    -- Blizzard's crafting bag window, parked off the screen: its own buttons go into the backpack
-    local reagentWindow = widget('Frame')
-    reagentWindow:SetID(5)
-    reagentWindow.Items = {}
-    for slot = 1, 2 do
-        local b = widget('ItemButton', nil, reagentWindow)
-        b:SetID(slot)
-        reagentWindow.Items[slot] = b
-    end
-    reagentWindow.ClearItems, reagentWindow.UpdateItemSlots, reagentWindow.UpdateItemLayout = noop, noop, noop
-    env.ContainerFrame1 = reagentWindow
     env.UpdateContainerFrameAnchors()
 end
 startSession({})
 
 local function layout() env.UpdateContainerFrameAnchors(); combined:UpdateItemLayout() end
-local function bagUpdate()
+local function fireBagEvent(event)
     for _, f in ipairs(frames) do
-        if f.events.BAG_UPDATE_DELAYED then f.scripts.OnEvent(f, 'BAG_UPDATE_DELAYED') end
+        if f.events[event] then f.scripts.OnEvent(f, event) end
     end
 end
 local function visibleHeader(text)
@@ -137,7 +169,10 @@ end
 local function slotsVisible(id)
     local n = 0
     for _, b in ipairs(frames) do
-        if b.kind == 'ItemButton' and b:GetBagID() == id and b:IsVisible() then n = n + 1 end
+        if b.itemSlot and b:GetBagID() == id and b:IsVisible() then
+            local parent = b:GetParent()
+            if parent == combined or parent:GetParent() == combined then n = n + 1 end
+        end
     end
     return n
 end
@@ -202,10 +237,10 @@ db.bagView, db.bagCombineEmpty, db.bagKeyring, db.bagReagent = 'rows', false, fa
 layout()
 if items[2]:IsShown() then click('Materials') end
 contents[2] = {itemID = 101}
-bagUpdate()
+fireBagEvent('BAG_UPDATE_DELAYED')
 assert(items[2]:IsShown() and not visibleHeader('Materials'), 'new contents moved into expanded Consumables')
 contents[2] = {itemID = 102}
-bagUpdate()
+fireBagEvent('BAG_UPDATE_DELAYED')
 assert(not items[2]:IsShown(), 'material folded before leaving the custom layout')
 db.bagView = 'all'
 layout()
@@ -243,47 +278,234 @@ login(secondCharacter)
 assert(items[1]:IsShown() and not items[3]:IsShown(), 'another character retains its own folds')
 print('PASS: backpack section folds survive reload and login per character')
 
--- 11-21: the crafting bag section shows Blizzard's own buttons (a spell aimed at a reagent in a
--- button made by FlareUI was blocked), and they go back to their window when it stops holding the bag
+-- The combined backpack owns bags 0-4. The keyring and crafting bag each have a separate native
+-- window and button pool. An ordinary backpack click opens neither window. Open All Bags opens 5.
 do
-    local window = env.ContainerFrame1
-    local own = {}
-    for _, b in ipairs(window.Items) do own[b] = true end
-    db.bagReagent = true
-    layout()
-    local visible = 0
-    for _, b in ipairs(frames) do
-        if b.kind == 'ItemButton' and b:GetBagID() == 5 and b:IsVisible() then
-            visible = visible + 1
-            assert(own[b], 'a crafting bag button FlareUI made shows while Blizzard\'s are in')
-            assert(b:GetParent() ~= window, 'Blizzard crafting bag button not in the backpack')
-        end
-    end
-    assert(visible == 2, 'Blizzard\'s two crafting bag buttons show')
-    db.bagReagent = false
-    layout()
-    for _, b in ipairs(window.Items) do assert(b:GetParent() == window, 'button not given back to its window') end
-    print('PASS: the crafting bag section uses Blizzard\'s own buttons and gives them back')
-end
+    for id = 1, 4 do bagSizes[id] = 2 end
+    bagSizes[-1] = 32 -- The keyring initially provides four actual buttons for these 32 possible slots.
+    db.bagKeyring, db.bagReagent = true, true
+    startSession({}, true)
 
--- 11-22: with Blizzard's crafting bag window closed (the backpack opened alone), the section shows
--- FlareUI's own buttons instead of staying empty (7.0.1)
-do
-    local window = env.ContainerFrame1
-    local blizzard = {}
-    for _, b in ipairs(window.Items) do blizzard[b] = true end
-    db.bagReagent = true
-    window:Hide()
-    layout()
-    local visible = 0
-    for _, b in ipairs(frames) do
-        if b.kind == 'ItemButton' and b:GetBagID() == 5 and b:IsVisible() then
-            visible = visible + 1
-            assert(not blizzard[b], 'a hidden Blizzard button counted')
+    local pending, opens = {}, {[-1] = 0, [5] = 0}
+    local keyPool = {unpack(native[-1])}
+    env.C_Timer.After = function(_, callback) pending[#pending + 1] = callback end
+    local function nextFrame()
+        local callbacks = pending
+        pending = {}
+        for _, callback in ipairs(callbacks) do callback() end
+    end
+    local function openNative(id)
+        windows[id]:Show()
+        env.UpdateContainerFrameAnchors()
+    end
+    function env.OpenBag(id, force)
+        assert(windows[id] and not env.InCombatLockdown())
+        opens[id] = opens[id] + 1
+        if id == -1 and force then
+            local window = windows[id]
+            window:ClearItems()
+            local count = env.GetKeyRingSize()
+            for slot = #window.Items, count + 1, -1 do
+                window.Items[slot]:Hide()
+                window.Items[slot], native[id][slot] = nil, nil
+            end
+            for slot = 1, count do
+                local b = keyPool[slot] or widget('ItemButton', nil, window)
+                assert(b:GetParent() == window, 'pooled key slot not returned to its window')
+                b.bagID = id
+                b:SetID(slot)
+                b:Show()
+                keyPool[slot], window.Items[slot], native[id][slot] = b, b, b
+            end
+        end
+        openNative(id)
+    end
+    function env.CloseBag(id)
+        assert(windows[id] and not env.InCombatLockdown())
+        windows[id]:Hide()
+        env.UpdateContainerFrameAnchors()
+    end
+    local function closeBags()
+        combined:Hide()
+        for _, window in pairs(windows) do window:Hide() end
+        env.UpdateContainerFrameAnchors()
+    end
+    local function openBackpack()
+        combined:Show()
+        layout()
+    end
+    local function checkSlots(keyringVisible, reagentVisible)
+        -- Include hidden buttons. A replacement with the correct bag and slot is still a replacement.
+        for _, b in ipairs(frames) do
+            if b.itemSlot then
+                local id, slot = b:GetBagID(), b:GetID()
+                if id == -1 and not native[id][slot] and keyPool[slot] == b then
+                    assert(not b:IsShown() and b:GetParent() == windows[id], 'released key slot still in use')
+                else
+                    assert(native[id] and native[id][slot] == b,
+                        ('substitute item button for bag %s slot %s'):format(tostring(id), tostring(slot)))
+                end
+            end
+        end
+        for id = -1, 5 do
+            local window = windows[id]
+            local expected = id == -1 and keyringVisible or id == 5 and reagentVisible
+            assert(#native[id] > 0, 'missing native fixture for bag ' .. id)
+            for slot, b in ipairs(native[id]) do
+                local parent = b:GetParent()
+                assert(b:GetBagID() == id and b:GetID() == slot, 'native item button changed slot')
+                if not window then
+                    assert(parent == combined and b:IsVisible() == combined:IsShown())
+                else
+                    assert(window.Items[slot] == b)
+                    local embedded = parent:GetParent() == combined
+                    if embedded then assert(parent:GetID() == id, 'native slot in the wrong section') end
+                    assert((embedded and b:IsVisible()) == expected,
+                        ('unexpected backpack visibility for bag %d slot %d'):format(id, slot))
+                    if not window:IsShown() then assert(parent == window, 'native button not returned') end
+                end
+            end
         end
     end
-    assert(visible == 2, 'the crafting bag section is empty without Blizzard\'s window (' .. visible .. ' shown)')
-    window:Show()
-    layout()
-    print('PASS: without Blizzard\'s crafting bag window the section shows FlareUI\'s own buttons')
+
+    for i = 1, 2 do
+        closeBags()
+        openBackpack()
+        checkSlots(false, false)
+        nextFrame()
+        checkSlots(true, true)
+        assert(opens[5] == i and opens[-1] == i, 'ordinary open must open both extra bags once')
+    end
+    combined:Hide()
+    assert(not windows[-1]:IsShown(), 'Toggle All Bags would count the automatically opened keyring')
+    nextFrame()
+    assert(not windows[-1]:IsShown() and not windows[5]:IsShown(), 'backpack left its own windows open')
+
+    -- Each native window keeps its own owner even when the other one belongs to FlareUI.
+    for _, id in ipairs({5, -1}) do
+        closeBags()
+        local before = opens[id]
+        if id == 5 then
+            openBackpack()
+            openNative(id) -- Blizzard opens bag 5 after the backpack during Open All Bags.
+        else
+            openNative(id)
+            assert(native[id][1]:IsVisible() and native[id][1]:GetParent() == windows[id],
+                'opening the keyring on its own hid its buttons')
+            openBackpack()
+        end
+        nextFrame()
+        checkSlots(true, true)
+        assert(opens[id] == before, 'reopened a native window already supplied by the game')
+        combined:Hide()
+        assert(windows[id]:IsShown(), 'hiding the backpack synchronously closed a player-owned bag')
+        nextFrame()
+        assert(windows[id]:IsShown() and not windows[id == 5 and -1 or 5]:IsShown(),
+            'closing the backpack must close only the window it opened')
+        if id == -1 then
+            assert(native[id][1]:IsVisible() and native[id][1]:GetParent() == windows[id],
+                'closing the backpack did not restore the independently opened keyring')
+        end
+    end
+
+    openBackpack()
+    nextFrame()
+    checkSlots(true, true)
+    for _, name in ipairs({keys, reagents}) do click(name) end
+    checkSlots(false, false)
+    closeBags()
+    openBackpack()
+    nextFrame()
+    checkSlots(false, false)
+    click(keys)
+    nextFrame()
+    checkSlots(true, false)
+    click(reagents)
+    nextFrame()
+    checkSlots(true, true)
+
+    -- Only the native bag API can rebuild the open keyring's pool after its contents change.
+    local keyring = windows[-1]
+    assert(#keyring.Items == 4)
+    for _, last in ipairs({9, 1}) do
+        lastKeySlot = last
+        local before = opens[-1]
+        fireBagEvent('BAG_UPDATE_DELAYED')
+        nextFrame()
+        nextFrame()
+        assert(#keyring.Items == env.GetKeyRingSize(), 'native keyring did not resize after a bag update')
+        assert(opens[-1] == before + 1, 'resizing should rebuild the native keyring once')
+        checkSlots(true, true)
+    end
+
+    closeBags()
+    openBackpack()
+    closeBags()
+    nextFrame()
+    assert(not windows[-1]:IsShown() and not windows[5]:IsShown(), 'queued open ran after backpack closed')
+    checkSlots(false, false)
+    env.InCombatLockdown = yes
+    openBackpack()
+    nextFrame()
+    checkSlots(false, false)
+    env.InCombatLockdown = no
+    fireBagEvent('PLAYER_REGEN_ENABLED')
+    nextFrame()
+    checkSlots(true, true)
+
+    native[5][1].IsProtected, native[-1][1].IsProtected = yes, yes
+    env.InCombatLockdown = yes
+    closeBags()
+    for id, window in pairs(windows) do
+        assert(native[id][1]:GetParent() ~= window, 'protected button moved during combat')
+    end
+    env.InCombatLockdown = no
+    fireBagEvent('PLAYER_REGEN_ENABLED')
+    nextFrame()
+    checkSlots(false, false)
+
+    openBackpack()
+    openNative(5)
+    nextFrame()
+    db.bagReagent, db.bagKeyring = false, false
+    Bags:Refresh()
+    nextFrame()
+    assert(windows[5]:IsShown() and not keyring:IsShown(), 'disabling the options lost window ownership')
+    checkSlots(false, false)
+
+    db.bagReagent, db.bagKeyring = true, true
+    Bags:Refresh()
+    closeBags()
+    openBackpack()
+    nextFrame()
+    checkSlots(true, true)
+    db.bagReagent = false
+    Bags:Refresh()
+    nextFrame()
+    assert(not windows[5]:IsShown(), 'disabling the section left its automatically opened window visible')
+    checkSlots(true, false)
+
+    -- In Blizzard's stacked layout the next window's right edge follows the one below it.
+    openNative(5)
+    local function rightOffset(frame)
+        if frame == env.UIParent then return 0 end
+        local _, relative, _, x = frame:GetPoint(1)
+        return rightOffset(relative) + x
+    end
+    for i = 1, 2 do
+        keyring:SetPoint('BOTTOMRIGHT', env.UIParent, 'BOTTOMRIGHT', -40, 10)
+        windows[5]:SetPoint('BOTTOMRIGHT', keyring, 'TOPRIGHT', 0, 5)
+        env.UpdateContainerFrameAnchors()
+        assert(rightOffset(windows[5]) == -40, 'parking the keyring moved the separate crafting bag')
+    end
+    local anchor = select(2, windows[5]:GetPoint(1))
+    windows[5].IsProtected, env.InCombatLockdown = yes, yes
+    db.bagKeyring = false
+    Bags:Refresh()
+    assert(select(2, windows[5]:GetPoint(1)) == anchor, 'reanchored a protected separate bag in combat')
+    env.InCombatLockdown = no
+    fireBagEvent('PLAYER_REGEN_ENABLED')
+    nextFrame()
+    assert(rightOffset(windows[5]) == -40 and windows[5]:IsShown(), 'separate bag moved after combat')
+    print('PASS: backpack, equipped bags, crafting bag and keyring keep their native item buttons')
 end
