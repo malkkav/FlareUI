@@ -74,6 +74,7 @@ Modules\RaidFrames.lua
 Modules\BossFrames.lua
 Modules\FlagCarriers.lua
 Modules\ResourceBars.lua
+Modules\FlightDestinations.lua
 Modules\Totems.lua
 Modules\Auras.lua
 Modules\CooldownManager.lua

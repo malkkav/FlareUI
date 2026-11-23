@@ -43,8 +43,9 @@ S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.train
 S:Row{ key = "qol.way", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mailBook", apply = Refresh }
--- (Open Flight Map at Once: a map, so in Map & Mail; 5 + 5 switches became 4 + 6)
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.taxiMap" }
+S:Row{ key = "qol.flightDestinations", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.flightDestinations",
+    apply = function() if ns.FlightDestinations then ns.FlightDestinations:Refresh() end end }
 S:Row{ key = "qol.zoneLevels", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.zoneLevels" }
 -- Coordinates on the World Map: Blizzard's own two options (your position and the
 -- cursor's) behind one switch, nothing of FlareUI's drawn. Its Interface options show the same values.
