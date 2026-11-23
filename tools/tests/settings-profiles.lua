@@ -46,6 +46,7 @@ assert(#ui.errors == 1 and db:GetCurrentProfile() == "Main", "an existing profil
 D.FLAREUI_DUPLICATE_PROFILE.OnAccept({ from = "Main" }, "  Backup  ")
 assert(db:GetCurrentProfile() == "Backup" and db.sv.profiles.Backup ~= active and db.sv.profiles.Backup.chat.opacity == 0.2,
     "duplication trims the new name and copies the selected profile")
+db:SetProfile("Main")
 D.FLAREUI_DELETE_PROFILE.OnAccept({ name = "Backup" })
 assert(db.sv.profiles.Backup == nil, "accepting delete removes the selected copy")
 
