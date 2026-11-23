@@ -88,11 +88,14 @@ picker.checks[2]:Click()
 picker.checks[3]:Click()
 picker.intoRadio:Click()
 assert(not picker.name:IsEnabled(), "importing into the current profile disables the new name")
+local plateRefreshes = 0
+ns.Nameplates = { ProfileChanged = function() plateRefreshes = plateRefreshes + 1 end }
 picker.import:Click()
 assert(not picker:IsShown() and ui.dialogs[#ui.dialogs].key == "FLAREUI_RELOAD")
 assert(active.chat.opacity == 0.4 and active.chat.frameStyle == "modern" and active.chat.copyButton == false and active.chat.columns == nil,
     "selected roots merge with defaults and discard the invalid boolean and oversized count")
 assert(active.tweaks.fasterLoot and active.extra == nil, "unticked parts are untouched")
+assert(plateRefreshes == 0, "an unrelated import keeps the active plate cache")
 
 ns.ShowImportPicker(payload)
 picker.import:Click()
@@ -100,5 +103,30 @@ local imported = db.sv.profiles["Renamed (2)"]
 assert(db:GetCurrentProfile() == "Renamed (2)" and imported.chat.opacity == 0.4 and imported.extra.count == 2)
 assert(imported.tweaks.fasterLoot == false and imported.tweaks.other == nil and imported.extra.invalidNumber == nil,
     "a new profile keeps valid false values and removes invalid lengths and numbers")
+
+ns.ShowImportPicker(payload)
+picker.intoRadio:Click()
+picker.import:Click()
+assert(plateRefreshes == 1, "importing shared plate options refreshes the cache once")
+
+-- The current profile is edited in place. The cache callback must see all selected
+-- sections from the same import, even when only nameplate settings were selected.
+local observed = {}
+ns.Nameplates.ProfileChanged = function()
+    local saved = db.sv.profiles[db:GetCurrentProfile()]
+    observed[#observed + 1] = { alpha = saved.nameplates.rangeAlpha, quest = saved.tweaks.nameplateQuest }
+end
+local function importIntoCurrent(changes)
+    ns.ShowImportPicker({ addon = "FlareUI", name = "Plate settings", profile = changes })
+    picker.intoRadio:Click()
+    picker.import:Click()
+end
+imported.tweaks.nameplateQuest = true
+importIntoCurrent({ nameplates = { rangeAlpha = 0.45 } })
+assert(#observed == 1 and observed[1].alpha == 0.45 and observed[1].quest == true,
+    "a nameplates-only import notifies the cache with the new range setting")
+importIntoCurrent({ nameplates = { rangeAlpha = 0.8 }, tweaks = { nameplateQuest = false } })
+assert(#observed == 2 and observed[2].alpha == 0.8 and observed[2].quest == false,
+    "the cache is notified once, after both plate-related sections have been replaced")
 
 print("PASS: profile dialogs, selective import, defaults and validation")

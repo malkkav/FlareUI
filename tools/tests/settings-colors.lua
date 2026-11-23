@@ -35,8 +35,11 @@ ns.XPBar = { Palette = function() return profile.actionbars.xpbar.palette or "fl
 ns.CooldownManager = { Palette = function() return profile.cooldownmanager.palette or "flareui" end,
     Color = function(key) return color(profile.cooldownmanager, key) end,
     CreateSample = createSample, DrawSample = drawSample }
+-- The new profile is pending in combat: only a refresh makes its edits available to the preview.
+local livePlateColors, previewPlateColors = {}, {}
 ns.Nameplates = { Palette = function() return profile.nameplates.palette or "flareui" end,
-    Color = function(key) return color(profile.nameplates, key) end,
+    Color = function(key, preview) return color(preview and previewPlateColors or livePlateColors, key) end,
+    Refresh = function() previewPlateColors = E.CopyTable(profile.nameplates) end,
     CreateSample = createSample, DrawSample = painted }
 ns.ResourceBars = { PaletteName = function() return profile.unitframes.resource.palette end,
     ApplyPalette = function() end, colors = {}, CreateSample = createSample, DrawSample = drawSample }
@@ -132,8 +135,16 @@ assert(colorRow("swingMain").label:GetText() == "Main-Hand Swing")
 open("xp")
 assert(colorRow("quest").label:GetText() == "Quest XP")
 open("np")
-assert(colorRow("offtank").label:GetText() == "Another Tank Has It")
+local offtank = colorRow("offtank")
+assert(offtank.label:GetText() == "Another Tank Has It")
 assert(ui:find(function(w) return w.painted == "nokick" and w:IsVisible() end))
+local hostileHex = colorRow("hostile").hex:GetText()
+offtank:Click()
+picker.info.swatchFunc()
+assert(profile.nameplates.palette == "custom" and offtank.own:IsShown())
+assert(offtank.hex:GetText() == "1A334D", "editing a threat color refreshes the swatch from the pending profile")
+assert(colorRow("hostile").hex:GetText() == hostileHex and not colorRow("hostile").own:IsShown())
+window.apply:Click()
 open("cdm")
 assert(colorRow("bar").label:GetText() == "Bar" and #window.palette:OpenMenu().entries == 2)
 window.apply:Click()

@@ -154,7 +154,7 @@ local KINDS = {
             db.customColors = db.customColors or {}
             return db.customColors
         end,
-        color = function(key) return ns.Nameplates.Color(key) end,
+        color = function(key) return ns.Nameplates.Color(key, true) end,
         palette = function() return ns.Nameplates.Palette() end,
         base = function() return "flareui" end,
         setPalette = function(p) ns.db.profile.nameplates.palette = p ~= "flareui" and p or nil end,

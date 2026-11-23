@@ -74,7 +74,10 @@ function NP.SameValue(a, b)
 end
 function NP.TextSlots(data) return data.barText and data.barText.health or { left = {}, middle = {}, right = {} } end
 function NP.NameAbovePick(data) return data.nameAbove end
-function NP.QuestOn() return S:GetPath("tweaks.nameplateQuest") end
+-- A pending profile can enable quest marks while the active plates still have them off.
+local previewQuest
+function NP.Refresh() previewQuest = S:GetPath("tweaks.nameplateQuest") end
+function NP.QuestOn(preview) return preview and previewQuest or false end
 function NP.CreateSample(parent) return E.CreateFrame("Frame", nil, parent) end
 function NP.DrawSample(frame, states) frame.states = states; return 150, 60 end
 function NP.SampleHit(frame) frame.hits = (frame.hits or 0) + 1 end
@@ -132,7 +135,10 @@ assert(NP.PresetOf("enemyNpc") == "full" and not side.undo:IsEnabled())
 
 P:Open("np", "extras")
 assert(not row("questMarks"):IsHidden() and row("mobTypesWhere"):IsDisabled())
-set("questMarks", true)
+widgetFor("questMarks").control:Click()
+widgetFor("questMarks"):RunScript("OnLeave")
+assert(row("questMarks"):Get() and side.sample.states.quest and not side.sample.states.combo,
+    "toggling Objective Icon refreshes the selected profile in the pinned preview")
 set("comboPoints", true)
 set("mobTypes", "boss,caster")
 assert(not row("mobTypesWhere"):IsDisabled() and row("mobTypes"):Get() == "boss,caster")
@@ -198,6 +204,9 @@ assert(row("npcNames"):IsDisabled() and row("npcNames"):Get() == "interactive" a
 ui.combat = false
 side.test:Click()
 assert(NP.testing and NP.testedKind == "enemyNpc" and NP.fullTest and not P:IsShown())
+local lastDraw = side.sample.states
+ui:flushTimers()
+assert(side.sample.states == lastDraw, "a queued panel redraw skips the preview while testing in game")
 local stop = assert(ui:find(function(w) return w:IsObjectType("Button") and w:GetText() == "Stop Testing" and w:IsVisible() end))
 stop:Click()
 assert(not NP.testing and P:IsShown() and side.undo:IsEnabled(), "ending the live test keeps the original undo snapshot")

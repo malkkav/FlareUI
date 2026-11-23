@@ -4,6 +4,7 @@ local ui, ns = dofile("tools/tests/fixtures/unitframes-ui.lua")({
     frameFontsSeeded = true, castTimeSeeded = true,
 })
 local env = ui.env
+ns.PALETTE = { bronze5 = { 0.85, 0.68, 0.47 } }
 local db = {
     enabled = true,
     types = {
@@ -48,6 +49,7 @@ function Widget:SetTimerDuration(duration, interpolation, direction)
     self.timerDuration, self.timerInterpolation, self.timerDirection = duration, interpolation, direction
 end
 H.loadSections("Core.lua", {
+    {"local function LoggedResult(", "-- /fui errors:"},
     {"function ns.CastGlowDefault(", "-- For a time Lua can read"},
 }, env)
 ui:load("Modules/Nameplates.lua", ns)
@@ -164,13 +166,22 @@ env.SetCVar = function(name, value) cvars[name] = tostring(value) end
 env.C_AddOns.DoesAddOnExist = function() return false end
 env.IsInGroup, env.IsInRaid, env.IsInInstance = function() return false end, function() return false end, function() return false end
 env.UnitExists = function(unit) return unit == "player" or units[unit] ~= nil or aliases[unit] ~= nil end
-env.UnitIsTapDenied = function(unit) return units[unit] and units[unit].tapped end
 env.UnitIsDeadOrGhost = function() return false end
 env.UnitReaction = function() return 2 end
-env.UnitHealth = function(unit) return assert(units[unit]).health end
-env.UnitHealthMax = function() return 100 end
-env.UnitGetIncomingHeals = function() return 8 end
-env.UnitGetTotalAbsorbs = function() return 12 end
+local reads = {}
+local function counted(key, get)
+    return function(...)
+        reads[key] = (reads[key] or 0) + 1
+        return get(...)
+    end
+end
+env.UnitIsTapDenied = counted("color", function(unit) return units[unit] and units[unit].tapped end)
+testMob.max, testMob.incoming, testMob.absorb = 100, 8, 12
+env.UnitHealth = counted("health", function(unit) return units[unit].health end)
+env.UnitHealthMax = counted("max", function(unit) return units[unit].max end)
+env.UnitHealthMissing = counted("missing", function(unit) return units[unit].max - units[unit].health end)
+env.UnitGetIncomingHeals = counted("incoming", function(unit) return units[unit].incoming end)
+env.UnitGetTotalAbsorbs = counted("absorb", function(unit) return units[unit].absorb end)
 env.UnitThreatSituation = function(_, unit) return units[unit].threat end
 env.UnitAffectingCombat = function() return true end
 env.UnitThreatPercentageOfLead = function() return 18 end
@@ -179,7 +190,7 @@ env.canaccessallvalues = function(...)
     for i = 1, select("#", ...) do if select(i, ...) == secret then return false end end
     return true
 end
-env.GetRaidTargetIndex = function(unit) return units[unit].raid end
+env.GetRaidTargetIndex = counted("raid", function(unit) return units[unit].raid end)
 env.SetRaidTargetIconTexture = function(tex, raid) tex.raid = raid end
 env.UnitCastingInfo, env.UnitChannelInfo = function() end, function() end
 env.Enum = {
@@ -195,7 +206,7 @@ env.C_CurveUtil = { CreateCurve = function()
     }
 end }
 env.UnitHealthPercent = function(unit, _, curve)
-    local share = units[unit].health / 100
+    local share = units[unit].health / units[unit].max
     if curve == env.CurveConstants.ScaleTo100 then return share * 100 end
     local result
     for _, point in ipairs(curve.points) do if share >= point[1] then result = point[2] end end
@@ -212,6 +223,8 @@ ns.SetBarValue = function(bar, value) bar:SetValue(value) end
 ns.LogError = function(where, err) error(where .. ": " .. err, 0) end
 ns.db.global = {}
 db.role, db.rangeAlpha, db.targetScale, db.nonTargetAlpha, db.clampTarget = "damage", 0.35, 1.25, 0.55, true
+db.notTargetScale = 0.88
+db.palette, db.customColors = "custom", { tapped = { 0.4, 0.5, 0.6 } }
 env.UsefulPlatesAndTooltips_API = {}
 function plates:RegisterEvent(event, cb) callbacks[event] = cb end
 function plates:UnregisterAllEvents() callbacks = {} end
@@ -219,7 +232,23 @@ local function send(event, arg)
     local cb = assert(callbacks[event], "event not registered: " .. event)
     if type(cb) == "string" then plates[cb](plates, event, arg) else cb(event, arg) end
 end
+local function nextFrame()
+    plates.updateQueue.driver:RunScript("OnUpdate", 0)
+end
+local profileCallbacks = {}
+function ns.db.RegisterCallback(owner, event, method)
+    method = method or event
+    if type(method) == "string" then
+        profileCallbacks[event] = function(...) owner[method](owner, ...) end
+    else
+        profileCallbacks[event] = method
+    end
+end
+local function profileEvent(event)
+    assert(profileCallbacks[event], "missing profile callback " .. event)(event, ns.db, "Test")
+end
 plates.SetPreset("enemyNpc", "custom")
+plates.TypeSet("enemyNpc", "barText", { health = { left = { firstname = 1 }, middle = {}, right = { value = 1, max = 2 } } })
 plates.TypeSet("enemyNpc", "threat", "always")
 plates.TypeSet("enemyNpc", "threatPercent", true)
 plates.TypeSet("enemyNpc", "colorElite", true)
@@ -237,57 +266,283 @@ assert(live.health:GetValue() == 100 and live.textHolder:GetAlpha() == 0 and liv
 assert(live.heal:GetValue() == 8 and live.absorb:GetValue() == 12)
 
 testMob.health, testMob.raid, testMob.threat, testMob.inRange = 10, 3, 2, true
-live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+reads = {}
+for _ = 1, 8 do live.events:RunScript("OnEvent", "UNIT_HEALTH", token) end
+assert(not reads.health and live.health:GetValue() == 100, "health events wait for the shared driver")
+nextFrame()
+assert(reads.health == 1 and not reads.max and not reads.incoming and not reads.absorb,
+    "one health sample feeds the bar and text without refreshing the range or predictions")
+assert(live.texts.right:GetText() == "10 / 100")
 assert(live.health:GetValue() == 10 and live.textHolder:GetAlpha() == 1 and live.execTint:GetAlpha() == 1)
 assert(live.trail:GetValue() == 100)
 ui.time = 1
 ns.UnitFrames.trailDriver:RunScript("OnUpdate", 0.7)
 assert(live.trail:GetValue() == 10)
 live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+send("GROUP_ROSTER_UPDATE")
+send("PLAYER_ROLES_ASSIGNED")
 assert(live.threatKey == "gaining", "threat changes are coalesced to the next frame")
-plates.colorQueue.driver:RunScript("OnUpdate", 0.1)
-assert(live.threatKey == "aggro" and live.flashAnim:IsPlaying())
+reads = {}
+nextFrame()
+assert(reads.color == 1 and live.threatKey == "aggro" and live.flashAnim:IsPlaying(),
+    "group-wide and per-unit colour requests paint the plate once")
+reads = {}
 send("RAID_TARGET_UPDATE")
+send("RAID_TARGET_UPDATE")
+assert(not reads.raid)
+nextFrame()
+assert(reads.raid == 1, "a raid-marker burst reads each plate once")
 assert(live.raid:IsShown() and live.raid.raid == 3)
 plates.RangeTick()
+nextFrame()
 assert(live.holder:GetAlpha() == 1)
+
+testMob.max = 200
+reads = {}
+live.events:RunScript("OnEvent", "UNIT_MAXHEALTH", token)
+nextFrame()
+assert(reads.max == 1, "all ranges and maximum-health text share one maximum")
+for _, bar in ipairs({ live.health, live.heal, live.absorb, live.trail }) do
+    local _, maximum = bar:GetMinMaxValues()
+    assert(maximum == 200, "a maximum-health change resizes each health overlay")
+end
+assert(live.texts.right:GetText() == "10 / 200")
+
+reads = {}
+testMob.absorb = 27
+live.events:RunScript("OnEvent", "UNIT_ABSORB_AMOUNT_CHANGED", token)
+live.events:RunScript("OnEvent", "UNIT_ABSORB_AMOUNT_CHANGED", token)
+nextFrame()
+assert(live.absorb:GetValue() == 27 and live.heal:GetValue() == 8)
+assert(reads.absorb == 1 and not reads.incoming and not reads.health and not reads.max)
+reads = {}
+testMob.incoming = 21
+live.events:RunScript("OnEvent", "UNIT_HEAL_PREDICTION", token)
+nextFrame()
+assert(live.heal:GetValue() == 21 and live.absorb:GetValue() == 27)
+assert(reads.incoming == 1 and not reads.absorb and not reads.health and not reads.max)
+reads = {}
+testMob.absorb, testMob.incoming = 31, 16
+local fallbackCalc = live.calc
+live.calc = {
+    GetIncomingHeals = counted("incoming", function() return testMob.incoming end),
+    GetDamageAbsorbs = counted("absorb", function() return testMob.absorb end),
+}
+env.UnitGetDetailedHealPrediction = counted("prediction", function(unit, source, calc)
+    assert(unit == token and source == "player" and calc == live.calc)
+end)
+live.events:RunScript("OnEvent", "UNIT_ABSORB_AMOUNT_CHANGED", token)
+live.events:RunScript("OnEvent", "UNIT_HEAL_ABSORB_AMOUNT_CHANGED", token)
+nextFrame()
+assert(live.heal:GetValue() == 16 and live.absorb:GetValue() == 31)
+assert(reads.prediction == 1 and reads.incoming == 1 and reads.absorb == 1 and not reads.health and not reads.max)
+live.calc, env.UnitGetDetailedHealPrediction = fallbackCalc, nil
+reads = {}
+live.events:RunScript("OnEvent", "UNIT_ABSORB_AMOUNT_CHANGED", token)
+nextFrame()
+assert(reads.incoming == 1 and reads.absorb == 1, "a change back to raw predictions refreshes both overlays")
+
+-- The client can clamp the two predictions against one another. Only an affected bar needs
+-- another read and write. Exercise the real construction and update paths with each public mode.
+do
+    local damageModes = { MissingHealth = 0, MissingHealthWithoutIncomingHeals = 1, MaximumHealth = 2 }
+    local maximumModes = { Default = 0, WithAbsorbs = 1 }
+    local oldFactory = env.CreateUnitHealPredictionCalculator
+    local oldDamageModes, oldMaximumModes = env.Enum.UnitDamageAbsorbClampMode, env.Enum.UnitMaximumHealthMode
+    local oldHeals, oldAbsorbs = env.UnitGetIncomingHeals, env.UnitGetTotalAbsorbs
+    local incoming, shield, calculated
+    env.UnitGetIncomingHeals = counted("rawHeal", function() return incoming end)
+    env.UnitGetTotalAbsorbs = counted("rawShield", function() return shield end)
+    env.UnitGetDetailedHealPrediction = counted("prediction", function() assert(calculated) end)
+
+    local function checkModes(damageMode, maximumMode, exposeModes, readShieldOnHeal, readHealOnShield)
+        incoming, shield, calculated = 0, 25, true
+        local function missing()
+            return 100 + (maximumMode == maximumModes.WithAbsorbs and shield or 0) - 70
+        end
+        local function predictedHeal() return math.min(incoming, missing()) end
+        local function predictedShield()
+            if damageMode == damageModes.MissingHealth then return math.min(shield, missing() - predictedHeal()) end
+            if damageMode == damageModes.MissingHealthWithoutIncomingHeals then return math.min(shield, missing()) end
+            return shield
+        end
+        env.Enum.UnitDamageAbsorbClampMode = exposeModes and damageModes or nil
+        env.Enum.UnitMaximumHealthMode = exposeModes and maximumModes or nil
+        env.CreateUnitHealPredictionCalculator = function()
+            return {
+                GetDamageAbsorbClampMode = counted("damageMode", function() return damageMode end),
+                GetMaximumHealthMode = counted("maximumMode", function() return maximumMode end),
+                GetIncomingHeals = counted("calcHeal", predictedHeal),
+                GetDamageAbsorbs = counted("calcShield", predictedShield),
+            }
+        end
+        reads = {}
+        local part = plates.Build(env.UIParent, false)
+        assert((reads.damageMode or 0) == (exposeModes and 1 or 0) and reads.damageMode == reads.maximumMode)
+        part.unit = token
+        part.events:SetScript("OnEvent", live.events:GetScript("OnEvent"))
+        part.health:SetMinMaxValues(0, 100)
+        part.heal.SetValue = counted("writeHeal", part.heal.SetValue)
+        part.absorb.SetValue = counted("writeShield", part.absorb.SetValue)
+        plates.UpdateHeals(part)
+
+        local function check(event, wantHeal, wantShield)
+            reads = {}
+            part.events:RunScript("OnEvent", event, token)
+            part.events:RunScript("OnEvent", event, token)
+            nextFrame()
+            assert(reads.prediction == 1 and not reads.damageMode and not reads.maximumMode)
+            assert(reads.calcHeal == (calculated and wantHeal or nil) and reads.calcShield == (calculated and wantShield or nil))
+            assert(reads.rawHeal == (not calculated and wantHeal or nil) and reads.rawShield == (not calculated and wantShield or nil))
+            assert(reads.writeHeal == wantHeal and reads.writeShield == wantShield)
+            assert(part.heal:GetValue() == (calculated and predictedHeal() or incoming))
+            assert(part.absorb:GetValue() == (calculated and predictedShield() or shield))
+        end
+        incoming = 20
+        check("UNIT_HEAL_PREDICTION", 1, readShieldOnHeal)    -- MissingHealth: the shield shrinks from 25 to 10.
+        incoming = 60
+        check("UNIT_HEAL_PREDICTION", 1, readShieldOnHeal)
+        shield = 0
+        check("UNIT_ABSORB_AMOUNT_CHANGED", readHealOnShield, 1)   -- WithAbsorbs: the heal falls from 55 to 30.
+        shield = 25
+        check("UNIT_HEAL_ABSORB_AMOUNT_CHANGED", 1, 1)
+        calculated = false
+        check("UNIT_ABSORB_AMOUNT_CHANGED", 1, 1)   -- Detailed API failed: both bars switch to raw figures.
+        check("UNIT_ABSORB_AMOUNT_CHANGED", nil, 1)
+        check("UNIT_HEAL_PREDICTION", 1, nil)
+        calculated = true
+        check("UNIT_HEAL_PREDICTION", 1, 1)         -- The calculator recovers; restore both calculated figures.
+    end
+    checkModes(damageModes.MissingHealth, maximumModes.Default, true, 1, nil)
+    checkModes(damageModes.MissingHealthWithoutIncomingHeals, maximumModes.Default, true, nil, nil)
+    checkModes(damageModes.MaximumHealth, maximumModes.Default, true, nil, nil)
+    checkModes(damageModes.MaximumHealth, maximumModes.WithAbsorbs, true, nil, 1)
+    checkModes(damageModes.MissingHealth, maximumModes.WithAbsorbs, false, 1, 1)
+    env.CreateUnitHealPredictionCalculator, env.UnitGetDetailedHealPrediction = oldFactory, nil
+    env.UnitGetIncomingHeals, env.UnitGetTotalAbsorbs = oldHeals, oldAbsorbs
+    env.Enum.UnitDamageAbsorbClampMode, env.Enum.UnitMaximumHealthMode = oldDamageModes, oldMaximumModes
+end
+
+-- Independent masks survive a global event in the same frame.
+local secondToken = "nameplate2"
+local secondPlate = env.CreateFrame("Frame", nil, env.UIParent)
+secondPlate.unitToken = secondToken
+secondPlate.UnitFrame = env.CreateFrame("Frame", nil, secondPlate)
+units[secondToken] = { attack = true, friend = false, health = 30, max = 80, incoming = 0, absorb = 2, threat = 0 }
+aliases[secondToken], native[2] = secondPlate, secondPlate
+send("NAME_PLATE_UNIT_ADDED", secondToken)
+local secondParts = assert(plates.PartsFor(secondPlate))
+units[secondToken].health, units[secondToken].raid = 25, 4
+testMob.absorb = 30
+reads = {}
+secondParts.events:RunScript("OnEvent", "UNIT_HEALTH", secondToken)
+live.events:RunScript("OnEvent", "UNIT_ABSORB_AMOUNT_CHANGED", token)
+send("RAID_TARGET_UPDATE")
+nextFrame()
+assert(reads.health == 1 and reads.absorb == 1 and reads.raid == 2 and not reads.incoming)
+assert(secondParts.health:GetValue() == 25 and secondParts.raid.raid == 4 and live.absorb:GetValue() == 30)
+assert(not plates.updateQueue.driver:IsShown(), "the shared driver sleeps after the last pending plate")
+reads = {}
+nextFrame()
+assert(not next(reads) and not plates.updateQueue.driver:IsShown(), "an idle frame does no plate work")
+send("NAME_PLATE_UNIT_REMOVED", secondToken)
+units[secondToken], aliases[secondToken], native[2] = nil, nil, nil
 
 aliases.target = gamePlate
 send("PLAYER_TARGET_CHANGED")
+nextFrame()
 assert(live.targetTint:IsShown() and live.root:GetScale() == 1.25)
 aliases.target = env.CreateFrame("Frame", nil, env.UIParent)
 send("PLAYER_TARGET_CHANGED")
+nextFrame()
 assert(not live.targetTint:IsShown() and live.root:GetAlpha() == 0.55)
 aliases.mouseover = gamePlate
 send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
 assert(live.highlight:IsShown() and live.root:GetAlpha() == 1)
 aliases.mouseover = nil
 send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
 assert(not live.highlight:IsShown() and live.root:GetAlpha() == 0.55)
+
+-- Saved settings stay on the cold path even while live unit, group and target state changes.
+do
+    local function guardReads(saved, keys)
+        local values = {}
+        for _, key in ipairs(keys) do
+            values[key] = assert(saved[key])
+            saved[key] = nil
+        end
+        setmetatable(saved, { __index = function(_, key)
+            assert(values[key] == nil, "live plate reread saved setting " .. key)
+        end })
+        return function()
+            setmetatable(saved, nil)
+            for key, value in pairs(values) do saved[key] = value end
+        end
+    end
+    local restorePlate = guardReads(db, { "targetScale", "notTargetScale", "rangeAlpha", "nonTargetAlpha", "role", "palette", "customColors" })
+    local restoreQuest = guardReads(ns.db.profile.tweaks, { "nameplateQuest" })
+    local presetOf, presetValue = plates.PresetOf, plates.PresetValue
+    local function resolveAgain() error("live plate resolved its preset again") end
+    plates.PresetOf, plates.PresetValue = resolveAgain, resolveAgain
+    local otherTarget = aliases.target
+    aliases.target, testMob.inRange = gamePlate, false
+    live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+    live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+    send("GROUP_ROSTER_UPDATE")
+    send("QUEST_LOG_UPDATE")
+    send("PLAYER_TARGET_CHANGED")
+    plates.RangeTick()
+    nextFrame()
+    assert(live.root:GetScale() == 1.25 and live.holder:GetAlpha() == 0.35)
+    aliases.target, testMob.inRange = otherTarget, true
+    send("PLAYER_TARGET_CHANGED")
+    plates.RangeTick()
+    nextFrame()
+    assert(live.root:GetScale() == 0.88 and live.root:GetAlpha() == 0.55 and live.holder:GetAlpha() == 1)
+    plates.PresetOf, plates.PresetValue = presetOf, presetValue
+    restoreQuest()
+    restorePlate()
+end
 
 -- Cast timing stays in the client-facing duration object, including when either
 -- the interruptibility or targeting flag cannot be read by addon Lua.
 local casting, channeling, blocked = true, false, false
+local castName, castBarID, castIcon, castSpell = "Shadow Bolt", 10, 161, 686
+local castGUID, channelBarID = "first", 11
 local duration = { GetTotalDuration = function() return 3 end, GetElapsedDuration = function() return 1 end }
 local remaining = { GetRemainingDuration = function() return 0.75 end }
-function env.UnitCastingInfo(unit)
+env.UnitCastingInfo = counted("castInfo", function(unit)
     if casting then
         assert(unit == token)
-        return "Shadow Bolt", "Shadow Bolt", 161, nil, nil, nil, nil, blocked, 686, 10
+        return castName, castName, castIcon, nil, nil, nil, castGUID, blocked, castSpell, castBarID
     end
-end
-function env.UnitChannelInfo(unit)
+end)
+env.UnitChannelInfo = counted("channelInfo", function(unit)
     if channeling then
         assert(unit == token)
-        return "Drain Soul", nil, 162, nil, nil, nil, blocked, 1120, nil, nil, 11
+        return "Drain Soul", nil, 162, nil, nil, nil, blocked, 1120, nil, nil, channelBarID
     end
-end
+end)
 env.UnitCastingDuration, env.UnitChannelDuration = function() return duration end, function() return duration end
 env.C_Spell.IsSpellImportant = function(spell) return spell == 686 end
 env.C_Spell.GetSpellCooldownDuration = function(spell) assert(spell == 2139); return remaining end
-env.PlayerIsSpellTarget = function() return secret end
-env.UnitSpellTargetName = function() return "Juniper" end
-env.UnitSpellTargetClass = function() return "MAGE" end
+local targetName, targetClass, aimedAtPlayer = "Juniper", "DRUID", secret
+env.PlayerIsSpellTarget = counted("aim", function() return (casting or channeling) and aimedAtPlayer end)
+env.UnitSpellTargetName = counted("targetName", function() if casting or channeling then return targetName end end)
+env.UnitSpellTargetClass = counted("targetClass", function() if casting or channeling then return targetClass end end)
+local classColor = env.C_ClassColor.GetClassColor
+env.C_ClassColor.GetClassColor = counted("classColor", function(class)
+    if class == "DRUID" then return env.CreateColor(1, 0.5, 0.1, 1) end
+    return classColor(class)
+end)
+local function checkCastTarget(name, red, green, blue, highlight)
+    local r, g, b = live.cast.target:GetTextColor()
+    assert(live.cast.target:IsShown() and live.cast.target:GetText() == name, "expected cast target " .. name)
+    assert(r == red and g == green and b == blue, "expected class colour for " .. name)
+    assert(live.cast.targeted:GetAlpha() == highlight, "expected targeting highlight for " .. name)
+end
 local makeColour = env.CreateColor
 function env.CreateColor(...)
     local c = makeColour(...)
@@ -296,40 +551,210 @@ function env.CreateColor(...)
 end
 local kick = ns.UnitFrames.KICK
 kick.known[2139] = false
-live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token)
+do
+    local logError, tapDenied = ns.LogError, env.UnitIsTapDenied
+    local errors = 0
+    env.UnitIsTapDenied = function() error("injected colour failure") end
+    ns.LogError = function(where, err)
+        assert(where and err:find("injected colour failure", 1, true), tostring(err))
+        errors = errors + 1
+    end
+    live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+    nextFrame()
+    assert(errors == 1 and not live.cast:IsShown(), "a colour error alone must not paint a cast")
+
+    live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+    reads = {}
+    live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token)
+    nextFrame()
+    assert(errors == 2 and live.cast:IsShown() and live.cast.Text:GetText() == "Shadow Bolt",
+        "the queued cast paints in the same frame as the colour error")
+    assert(reads.aim == 1 and reads.targetName == 1 and reads.targetClass == 1 and reads.classColor == 1,
+        "one target sample for a normal start")
+    assert(reads.castInfo == 2 and not reads.channelInfo, "one cast snapshot at START and one at paint")
+    assert(not plates.updateQueue.driver:IsShown())
+    ns.LogError, env.UnitIsTapDenied = logError, tapDenied
+end
 assert(live.cast:IsShown() and live.cast.Text:GetText() == "Shadow Bolt" and live.root:GetAlpha() == 1)
 assert(live.cast.timerDuration == duration and live.cast.timerDirection == env.Enum.StatusBarTimerDirection.ElapsedTime)
 assert(live.cast.kickClip:IsShown() and live.cast.kickWait:GetValue() == 0.75)
 assert(live.cast.targeted.secretBoolean == secret and live.cast.target:GetText() == "Juniper")
 blocked = secret
 live.events:RunScript("OnEvent", "UNIT_SPELLCAST_NOT_INTERRUPTIBLE", token)
+nextFrame()
 assert(live.cast.shield.secretBoolean == secret and live.cast:GetStatusBarTexture().secretColour == secret)
 assert(live.cast.kickClip:GetAlpha() == 0)
 casting, channeling, blocked = false, true, false
 live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_START", token)
+nextFrame()
 assert(live.cast.Text:GetText() == "Drain Soul" and live.cast.kickWait:GetReverseFill())
 assert(live.cast.timerDirection == env.Enum.StatusBarTimerDirection.RemainingTime)
 kick.known[2139] = true
 live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_UPDATE", token)
+nextFrame()
 assert(not live.cast.kickClip:IsShown())
 channeling = false
 env.C_Timer.NewTimer = env.C_Timer.NewTicker
 live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_STOP", token, "cast", 1120, "Player-1", 11)
+nextFrame()
 assert(live.cast.Text:GetText() == "Interrupted" and live.cast.flashing)
 live.cast.flashTimer.callback()
 assert(not live.cast:IsShown() and live.root:GetAlpha() == 0.55)
+
+casting = true
+targetName, targetClass, aimedAtPlayer = "Briar", "MAGE", false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, "first", 686, nil, 10)
+targetName, targetClass, aimedAtPlayer = "Linden", "DRUID", true
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_DELAYED", token, "first", 686, nil, 10)
+nextFrame()
+assert(live.cast.castBarID == 10)
+checkCastTarget("Linden", 1, 0.5, 0.1, 1)
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, "first", 686, "Player-1", 10)
+castName, castBarID, castIcon, castSpell, castGUID = "Frostbolt", 12, 164, 116, "second"
+targetName, targetClass, aimedAtPlayer = "Rowan", "MAGE", false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, "second", 116, nil, 12)
+nextFrame()
+assert(live.cast:IsShown() and not live.cast.flashing and live.cast.Text:GetText() == "Frostbolt")
+checkCastTarget("Rowan", 0.2, 0.4, 0.6, 0)
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, "first", 686, "Player-1", 10)
+nextFrame()
+assert(live.cast.castBarID == 12 and not live.cast.flashing, "a late interrupt belongs to the previous cast")
+casting = false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, "second", 116, "Player-1", 12)
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_STOP", token, "second", 116, nil, 12)
+nextFrame()
+assert(live.cast.flashing and live.cast.Text:GetText() == "Interrupted", "an ordinary stop preserves the interrupt")
+live.cast.flashTimer.callback()
+assert(not live.cast:IsShown())
+casting, castName, castBarID, castIcon, castSpell, castGUID = true, "Fireball", 13, 165, 133, "quick"
+targetName, targetClass, aimedAtPlayer = "Hazel", "DRUID", secret
+live.cast.targeted.secretBoolean = nil
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, "quick", 133, nil, 13)
+casting = false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, "quick", 133, "Player-1", 13)
+nextFrame()
+assert(live.cast.flashing and live.cast.Icon:GetTexture() == 165, "a cast kicked before its first paint keeps its icon")
+checkCastTarget("Hazel", 1, 0.5, 0.1, 1)
+assert(live.cast.targeted.secretBoolean == secret and live.cast.targetedPulse:IsPlaying(),
+    "the interrupted cast passes its secret targeting flag to the highlight")
+live.cast.flashTimer.callback()
+
+channeling, targetName, targetClass, aimedAtPlayer = true, "Aspen", "MAGE", true
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_START", token, "beam", 1120, nil, 11)
+channeling = false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_STOP", token, "beam", 1120, "Player-1", 11)
+nextFrame()
+assert(live.cast.flashing and live.cast.Text:GetText() == "Interrupted" and live.cast.Icon:GetTexture() == 162)
+checkCastTarget("Aspen", 0.2, 0.4, 0.6, 1)
+live.cast.flashTimer.callback()
+
+-- The START payload can identify a cast before its bar ID is returned by the live query.
+casting, castBarID, castGUID = true, nil, secret
+reads = {}
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, castGUID, castSpell, 27)
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_STOP", token, castGUID, castSpell, 27)
+castBarID = 27
+nextFrame()
+assert(live.cast:IsShown() and not live.cast.flashing and reads.targetName == 1,
+    "a matching event bar ID reuses the START target while that cast is still reported")
+
+-- A stopped cast and its successor can be the same spell and both lack a bar ID.
+-- For normal casts, UnitCastingInfo result seven identifies the cast when readable.
+casting, castBarID = true, nil
+for _, hidden in ipairs({ false, true }) do
+    local firstGUID = hidden and secret or "Fireball-A"
+    castGUID = firstGUID
+    targetName, targetClass, aimedAtPlayer = "Rowan", "MAGE", false
+    reads = {}
+    live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, firstGUID, castSpell)
+    castGUID = hidden and secret or "Fireball-B"
+    targetName, targetClass, aimedAtPlayer = "Hazel", "DRUID", true
+    live.events:RunScript("OnEvent", "UNIT_SPELLCAST_STOP", token, firstGUID, castSpell)
+    nextFrame()
+    checkCastTarget("Hazel", 1, 0.5, 0.1, 1)
+    assert(reads.castInfo == 2 and not reads.channelInfo)
+    assert(reads.aim == 2 and reads.targetName == 2 and reads.targetClass == 2 and reads.classColor == 2,
+        "one fresh target for the successor")
+    live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, firstGUID, castSpell, "Player-1")
+    nextFrame()
+    assert(live.cast:IsShown() and not live.cast.flashing and live.cast.Text:GetText() == castName,
+        "an old interrupt cannot replace a live successor")
+    if not hidden then
+        live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, castGUID, castSpell, "Player-1")
+        nextFrame()
+        assert(live.cast.flashing, "the successor's own interrupt matches its observed cast GUID")
+        live.cast.flashTimer.callback()
+    end
+end
+
+castGUID = "Fireball-C"
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, castGUID, castSpell)
+nextFrame()
+reads = {}
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, castGUID, castSpell, "Player-1")
+nextFrame()
+assert(live.cast.flashing and live.cast.Text:GetText() == "Interrupted", "the live cast GUID confirms its own interrupt")
+assert(reads.castInfo == 1 and not reads.channelInfo)
+live.cast.flashTimer.callback()
+
+-- UnitChannelInfo has no cast GUID. An unidentified live channel keeps its own target.
+casting, channeling, channelBarID = false, true, nil
+targetName, targetClass, aimedAtPlayer = "Hazel", "DRUID", true
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_START", token, "beam-A", 1120)
+targetName, targetClass, aimedAtPlayer = "Rowan", "MAGE", false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_STOP", token, "beam-A", 1120, "Player-1")
+nextFrame()
+assert(not live.cast.flashing and live.cast.Text:GetText() == "Drain Soul")
+checkCastTarget("Rowan", 0.2, 0.4, 0.6, 0)
+channeling, channelBarID = false, 11
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_CHANNEL_STOP", token, "beam-B", 1120)
+nextFrame()
+
+plates.TypeSet("enemyNpc", "castTarget", false)
+plates.TypeSet("enemyNpc", "castTargetedFlash", false)
+reads, casting, castGUID = {}, true, "off-A"
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, castGUID, castSpell)
+castGUID = "off-B"
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_STOP", token, "off-A", castSpell)
+nextFrame()
+assert(not reads.aim and not reads.targetName and not reads.targetClass and not reads.classColor,
+    "disabled target options do not query the client")
+assert(reads.castInfo == 2 and not reads.channelInfo)
+assert(not live.cast.target:IsShown() and live.cast.targeted:GetAlpha() == 0 and not live.cast.targetedPulse:IsPlaying())
+casting = false
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_STOP", token)
+nextFrame()
+plates.TypeSet("enemyNpc", "castTarget", true)
+plates.TypeSet("enemyNpc", "castTargetedFlash", true)
 
 env.GetCVar = function() return "0" end
 env.Enum.TooltipDataLineType = { QuestTitle = 1, QuestPlayer = 2, QuestObjective = 3 }
 local questRelated, tooltipLine = true, { type = 3, leftText = "Spider fangs: 3/8" }
 env.C_QuestLog.UnitIsRelatedToActiveQuest = function() return questRelated end
-env.C_TooltipInfo = { GetUnit = function()
+env.C_TooltipInfo = { GetUnit = counted("tooltip", function()
     return { lines = { { leftText = "Forest Spider" }, { type = 1, leftText = "Spider Slayer" }, tooltipLine } }
-end }
+end) }
 send("QUEST_LOG_UPDATE")
 send("UNIT_QUEST_LOG_CHANGED")
 ui:flushTimers()
-assert(live.quest:IsShown() and live.questText:GetText() == "3/8")
+nextFrame()
+assert(live.quest:IsShown() and live.questText:IsShown() and live.questText:GetText() == "3/8")
+do
+    local tweaks, questieIcons = ns.Tweaks, false
+    ns.Tweaks = { QuestieHasNameplateIcons = function() return questieIcons end }
+    reads = {}
+    send("QUEST_LOG_UPDATE")
+    send("UNIT_QUEST_LOG_CHANGED")
+    questieIcons = true
+    nextFrame()
+    assert(not live.quest:IsShown() and not live.questText:IsShown(), "Questie took over before the queued repaint")
+    assert(not reads.tooltip, "hiding FlareUI quest markers does not read the unit tooltip")
+    questieIcons = false
+    send("QUEST_LOG_UPDATE")
+    nextFrame()
+    assert(reads.tooltip == 1 and live.quest:IsShown() and live.questText:IsShown() and live.questText:GetText() == "3/8")
+    ns.Tweaks = tweaks
+end
 tooltipLine.leftText = secret
 plates.UpdateQuest(live)
 assert(live.questText:GetText() == "3/8", "a secret quest answer does not clear the current display")
@@ -360,6 +785,8 @@ testMob.threat = nil   -- (the pet pulled: you aren't on its threat list yet)
 plates.UpdateColor(live)
 assert(live.threatKey == "offtank", "not on the list yet -> " .. tostring(live.threatKey))
 db.role = "tank"
+plates:Refresh()
+live = assert(plates.PartsFor(gamePlate))
 plates.UpdateRole()
 testMob.threat = 0
 plates.UpdateColor(live)
@@ -370,6 +797,8 @@ plates.UpdateColor(live)
 assert(live.threatKey == "lost", "tank: nobody of ours holds it -> " .. tostring(live.threatKey))
 units.pet, petThreat = nil, nil
 db.role = "damage"
+plates:Refresh()
+live = assert(plates.PartsFor(gamePlate))
 plates.UpdateRole()
 
 -- the threat box moves to the left when the level sits on the right; with no level, it stays right
@@ -394,12 +823,197 @@ plates.DieProxy(gamePlate, nil)
 assert(not proxy:IsShown(), "hidden when we let the plate go")
 env.DoesItDie = nil
 
+-- Change a saved setting and switch profiles with a health event already pending.
+-- Refresh must lay out the new display, including numeric slots that were previously unused.
+local originalProfile = ns.db.profile
+db.notTargetScale, db.nonTargetAlpha, db.rangeAlpha = 0.82, 0.62, 0.45
+db.customColors.tapped = { 0.3, 0.2, 0.1 }
+testMob.tapped, testMob.inRange = true, false
+originalProfile.tweaks.nameplateQuest = false
+questRelated, tooltipLine.leftText = true, "Spider fangs: 3/8"
+do
+    ui:load("Settings/Copy.lua", ns)
+    ui:load("Settings/Registry.lua", ns)
+    ui:load("Settings/Fonts.lua", ns)
+    ui:load("Settings/Pages/Nameplates.lua", ns)
+    local width, text = ns.Settings.rows["np.width"], ns.Settings.rows["np.barText"]
+    local oldWidth, oldRootWidth = width:Get(), live.root:GetWidth()
+    assert(live.root:IsShown() and text:Get() == "left=firstname;middle=;right=value,max")
+
+    testMob.health = 32
+    live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+    nextFrame()
+    assert(live.texts.right:GetText() == "32 / 200", "the existing plate uses the previous health slots")
+    width:Set(170)
+    live = assert(plates.PartsFor(gamePlate))
+    assert(live.root:GetWidth() - oldRootWidth == 170 - oldWidth, "the settings row applies the width change to the existing nameplate")
+
+    local resolveSlots, resolutions = plates.TextSlots, 0
+    plates.TextSlots = function(...)
+        resolutions = resolutions + 1
+        return resolveSlots(...)
+    end
+    testMob.health = 44
+    live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+    text:Set("left=lost;middle=max;right=")
+    live = assert(plates.PartsFor(gamePlate))
+    nextFrame()
+    assert(resolutions > 0 and live.root:IsShown(), "the settings row rebuilds slots for the displayed plate")
+    assert(live.texts.left:GetText() == "-156" and live.texts.middle:GetText() == "200" and live.texts.right:GetText() == "",
+        "a pending health event cannot restore the old text layout after the setting changes")
+
+    resolutions, reads = 0, {}
+    testMob.health, testMob.max = 60, 240
+    live.events:RunScript("OnEvent", "UNIT_MAXHEALTH", token)
+    live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+    nextFrame()
+    assert(live.texts.left:GetText() == "-180" and live.texts.middle:GetText() == "240" and live.texts.right:GetText() == "")
+    assert(resolutions == 0 and reads.health == 1 and reads.max == 1,
+        "queued health and maximum changes use the newly cached slots and one sample per value")
+    plates.TextSlots = resolveSlots
+    testMob.health, testMob.max = 10, 200
+    width:Set(oldWidth)
+end
+live = assert(plates.PartsFor(gamePlate))
+nextFrame()
+assert(live.texts.left:GetText() == "-190" and live.texts.middle:GetText() == "200" and live.texts.right:GetText() == "")
+assert(live.root:GetScale() == 0.82 and live.root:GetAlpha() == 0.62 and live.holder:GetAlpha() == 0.45)
+local red, green, blue = live.health:GetStatusBarColor()
+assert(red == 0.3 and green == 0.2 and blue == 0.1)
+assert(not live.quest:IsShown() and live.questText:GetText() == "3/8")
+live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+ns.db.profile = setmetatable({ nameplates = { enabled = true, role = "damage",
+    notTargetScale = 1.18, nonTargetAlpha = 0.77, rangeAlpha = 0.7,
+    types = { enemy = { plate = "name", castbar = false } } } }, { __index = originalProfile })
+profileEvent("OnProfileChanged")
+live = assert(plates.PartsFor(gamePlate))
+nextFrame()
+assert(live.nameOnly and not live.health:IsShown() and not live.cast:IsShown())
+assert(live.root:GetScale() == 1.18 and live.root:GetAlpha() == 0.77 and live.holder:GetAlpha() == 0.7)
+reads = {}
+testMob.health = 13
+live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
+live.events:RunScript("OnEvent", "UNIT_HEAL_PREDICTION", token)
+nextFrame()
+assert(live.health:GetValue() == 13 and reads.health == 1, "the public bar stays current in Name Only")
+assert(not reads.missing and not reads.incoming and not reads.absorb, "hidden overlays and slots do no work in Name Only")
+
+-- AceDB copy/reset may rewrite the same table. Combat defers the protected layout until regen.
+ui.combat = true
+ns.db.profile.nameplates.nonTargetAlpha = 0.81
+profileEvent("OnProfileCopied")
+assert(live.root:GetAlpha() == 0.77)
+ui.combat = false
+send("PLAYER_REGEN_ENABLED")
+nextFrame()
+live = assert(plates.PartsFor(gamePlate))
+assert(live.root:GetAlpha() == 0.81)
+ns.db.profile.nameplates.nonTargetAlpha = nil
+profileEvent("OnProfileReset")
+live = assert(plates.PartsFor(gamePlate))
+assert(live.root:GetAlpha() == 1, "a reset forgets a removed shared option")
+ns.db.profile = originalProfile
+profileEvent("OnProfileChanged")
+live = assert(plates.PartsFor(gamePlate))
+nextFrame()
+assert(not live.nameOnly and live.health:IsShown() and live.texts.middle:GetText() == "200")
+assert(live.root:GetScale() == 0.82 and live.root:GetAlpha() == 0.62 and live.holder:GetAlpha() == 0.45)
+
+-- The settings panel can redraw its open preview while a profile switch waits for combat to end.
+do
+    local function checkRGB(bar, expected, why)
+        local r, g, b = bar:GetStatusBarColor()
+        assert(r == expected[1] and g == expected[2] and b == expected[3], why)
+    end
+    local newColor = { 0.12, 0.71, 0.86 }
+    local aggro, lost = { 0.98, 0.25, 0.12 }, { 0.75, 0.18, 0.85 }
+    local assigned, previousRoleAPI = "DAMAGER", env.UnitGroupRolesAssigned
+    env.UnitGroupRolesAssigned = function() return assigned end
+    f:Show()
+    plates.DrawSample(f, {})
+    local panel, pinned = ns.SettingsPanel, ns.NameplatesPinned
+    local previewState = {}
+    ns.SettingsPanel = { IsShown = function() return f:IsVisible() end }
+    ns.NameplatesPinned = { Draw = function() plates.DrawSample(f, previewState) end }
+    local oldWidth = live.root:GetWidth()
+    assert(p.root:IsVisible() and p.root:GetWidth() == oldWidth)
+    ui.combat = true
+    send("PLAYER_REGEN_DISABLED")
+    ns.db.profile = setmetatable({ nameplates = {
+        enabled = true, typesV3 = true, presetsV1 = true, role = "auto", types = { enemyNpc = { preset = "compact" } },
+        palette = "custom", customColors = { hostile = newColor, tapped = newColor, aggro = aggro, lost = lost },
+    } }, { __index = originalProfile })
+    profileEvent("OnProfileChanged")
+    local compactWidth = p.root:GetWidth()
+    assert(compactWidth < oldWidth, "open preview uses the newly selected Compact preset in combat")
+    checkRGB(p.health, newColor, "open preview uses the newly selected palette in combat")
+    live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+    nextFrame()
+    assert(plates.PartsFor(gamePlate) == live and live.root:GetWidth() == oldWidth)
+    checkRGB(live.health, db.customColors.tapped, "preview repaint leaves the combat plate on its applied palette")
+    previewState.threat = true
+    ns.NameplatesPinned.Draw()
+    checkRGB(p.health, aggro, "Auto previews the damage warning while the player is assigned damage")
+    local beforeThreat = testMob.threat
+    assigned, testMob.tapped, testMob.threat = "TANK", false, 3
+    send("PLAYER_ROLES_ASSIGNED")
+    nextFrame()
+    checkRGB(p.health, lost, "Auto previews the tank warning after the player's role changes in combat")
+    assert(live.threatKey == "aggro", "the live plate still uses its explicitly selected damage role")
+    testMob.tapped, testMob.threat = true, beforeThreat
+
+    -- AceDB can copy over the selected profile again while its first change is still deferred.
+    local selected = ns.db.profile.nameplates
+    local copiedColor = { 0.24, 0.84, 0.41 }
+    selected.types.enemyNpc = { preset = "custom", custom = { width = p.tdb.width + 90, height = p.tdb.height } }
+    selected.customColors = { hostile = copiedColor, tapped = copiedColor }
+    previewState.threat = false
+    profileEvent("OnProfileCopied")
+    local copiedWidth = compactWidth + 90
+    assert(p.root:GetWidth() == copiedWidth, "the open preview replaces the pending Compact layout with the copied width")
+    checkRGB(p.health, copiedColor, "the open preview uses the most recently copied palette")
+    live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+    nextFrame()
+    assert(plates.PartsFor(gamePlate) == live and live.root:GetWidth() == oldWidth)
+    checkRGB(live.health, db.customColors.tapped, "a second profile change keeps the original combat palette")
+    local selectedSettings = p.tdb
+    assert(selectedSettings ~= live.tdb, "the combat plate keeps its applied settings")
+    ui.combat = false
+    send("PLAYER_REGEN_ENABLED")
+    nextFrame()
+    live = assert(plates.PartsFor(gamePlate))
+    assert(live.root:GetWidth() == copiedWidth, "combat end applies the last copied width to the live plate")
+    assert(live.tdb == selectedSettings, "combat end reuses the settings already resolved for the selected profile")
+    checkRGB(live.health, copiedColor, "combat end applies the last copied palette to the live plate")
+    env.UnitGroupRolesAssigned = previousRoleAPI
+    ns.SettingsPanel, ns.NameplatesPinned = panel, pinned
+    ns.db.profile = originalProfile
+    profileEvent("OnProfileChanged")
+    live = assert(plates.PartsFor(gamePlate))
+end
+
+-- A nameplate token can refer to a new NPC on the same native frame before the next tick.
+casting, castName, castBarID, castIcon, castSpell, castGUID = true, "Shadow Bolt", 31, 161, 686, "old mob"
+targetName, targetClass, aimedAtPlayer = "Hazel", "DRUID", true
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token)
+nextFrame()
+assert(live.cast.castBarID == 31)
+live.events:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", token, "old mob", 686, "Player-1", 31)
+live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
 send("NAME_PLATE_UNIT_REMOVED", token)
 assert(not plates.PartsFor(gamePlate) and gamePlate.FlareUIHealthBar == nil and gamePlate.UnitFrame:GetAlpha() == 1)
 assert(gamePlate.UnitFrame.WidgetContainer:GetParent() == gamePlate.UnitFrame and simplified[token])
 assert(gamePlate.UnitFrame:IsEventRegistered("UNIT_HEALTH") and not live.events:IsEventRegistered("UNIT_HEALTH"))
+units[token] = { attack = true, friend = false, health = 47, max = 80, threat = 0, incoming = 0, absorb = 0 }
+castName, castIcon, castSpell, castGUID = "Fireball", 165, 133, "new mob"
+targetName, targetClass, aimedAtPlayer = "Willow", "MAGE", false
 send("NAME_PLATE_UNIT_ADDED", token)
 assert(plates.PartsFor(gamePlate) == live, "release returns the plate to the pool")
+reads = {}
+nextFrame()
+assert(not reads.health and live.health:GetValue() == 47, "an old queued event cannot update the new owner")
+assert(live.cast.Text:GetText() == "Fireball" and not live.cast.flashing, "interrupt metadata belongs to a single claim")
+checkCastTarget("Willow", 0.2, 0.4, 0.6, 0)
 plates.StandDown()
 assert(not plates.PartsFor(gamePlate) and not next(callbacks) and size[1] == 110 and size[2] == 17)
 assert(cvars.nameplateSelectedScale == "1.3" and cvars.nameplateTargetRadialPosition == "0")
