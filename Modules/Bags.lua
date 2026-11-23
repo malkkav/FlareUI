@@ -584,28 +584,32 @@ end
 -- list: { key, name } per set; where: bag -> slot -> its set's key (bags only, not the bank)
 Bags.SetCategories = {}
 
-function Bags.SetCategories.Read()
-    local list, where = {}, {}
+function Bags.SetCategories.ForEach(visit)
     local api = C_EquipmentSet
     if not (api and api.GetEquipmentSetIDs and api.GetEquipmentSetInfo and api.GetItemLocations
-        and EquipmentManager_GetLocationData) then return list, where end
+        and EquipmentManager_GetLocationData) then return end
     for _, setID in ipairs(api.GetEquipmentSetIDs() or {}) do
         local name = api.GetEquipmentSetInfo(setID)
         local locations = name and api.GetItemLocations(setID)
-        if locations then
-            local key = "set:" .. setID
-            list[#list + 1] = { key = key, name = name }
-            -- (empty, ignored and missing slots are small numbers without the bags bit)
-            for _, location in pairs(locations) do
-                local data = type(location) == "number" and EquipmentManager_GetLocationData(location)
-                if data and data.isBags and not data.isBank and data.bag and data.slot then
-                    local bag = where[data.bag] or {}
-                    where[data.bag] = bag
-                    bag[data.slot] = bag[data.slot] or key
-                end
+        if locations then visit(setID, name, locations) end
+    end
+end
+
+function Bags.SetCategories.Read()
+    local list, where = {}, {}
+    Bags.SetCategories.ForEach(function(setID, name, locations)
+        local key = "set:" .. setID
+        list[#list + 1] = { key = key, name = name }
+        -- (empty, ignored and missing slots are small numbers without the bags bit)
+        for _, location in pairs(locations) do
+            local data = type(location) == "number" and EquipmentManager_GetLocationData(location)
+            if data and data.isBags and not data.isBank and data.bag and data.slot then
+                local bag = where[data.bag] or {}
+                where[data.bag] = bag
+                bag[data.slot] = bag[data.slot] or key
             end
         end
-    end
+    end)
     return list, where
 end
 
@@ -1808,6 +1812,279 @@ local function BagFrames()
         if type(frame) == "table" and frame.EnumerateValidItems then list[#list + 1] = frame end
     end
     return list
+end
+
+--------------------------------------------------
+-- 4a. VENDOR: SALE WARNINGS FOR SET GEAR AND QUEST ITEMS
+-- Bag right-clicks and drops on the merchant use different Blizzard scripts. Wrap the sale
+-- entry points only at an open vendor, then let Blizzard handle the confirmed sale and any refund.
+--------------------------------------------------
+do
+    local Sale = {}
+    Bags.VendorSaleWarning = Sale
+    ns.modules["VendorSaleWarning"] = Sale
+
+    local dialog = "FLAREUI_CONFIRM_VENDOR_SALE"
+    local wrapped = {}
+    local events
+
+    local function Active()
+        local db = GetDb()
+        return db and (db.warnSellSetGear or db.warnSellQuestItems) and ns.BagModuleOn()
+            and MerchantFrame and MerchantFrame:IsShown()
+    end
+
+    local function SlotLocation(button)
+        return ItemLocation:CreateFromBagAndSlot(button:GetBagID(), button:GetID())
+    end
+
+    local function CursorLocation()
+        if GetCursorInfo() == "item" then return C_Cursor.GetCursorItem() end
+    end
+
+    local function ItemGUID(location)
+        if location and location:IsValid() then
+            return C_Item.GetItemGUID(location)
+        end
+    end
+
+    local function SetNames(location)
+        local bag, slot = location:GetBagAndSlot()
+        if not bag then slot = location:GetEquipmentSlot() end
+        local names = {}
+        -- Match the item's current location so two copies of the same item can be sold independently.
+        Bags.SetCategories.ForEach(function(_, name, locations)
+            for _, packed in pairs(locations) do
+                local item = type(packed) == "number" and EquipmentManager_GetLocationData(packed)
+                if item and not item.isBank and item.slot == slot then
+                    local sameBag = bag and item.isBags and item.bag == bag
+                    local equipped = not bag and item.isPlayer and not item.isBags
+                    if sameBag or equipped then
+                        names[#names + 1] = name
+                        return
+                    end
+                end
+            end
+        end)
+        if #names > 0 then return table.concat(names, ", ") end
+    end
+
+    local function QuestNeedsItem(questID, itemName)
+        if not (questID and itemName and C_QuestLog.GetQuestObjectives) then return false end
+        -- A crafted turn-in can lack a bag flag. Forever supplies localized objective text
+        -- without an item ID. Compare the entire localized line, including legacy count layouts.
+        -- Keep completed objectives protected until the quest leaves the log.
+        for _, objective in ipairs(C_QuestLog.GetQuestObjectives(questID) or {}) do
+            if objective.type == "item" then
+                local text, have, need = objective.text, objective.numFulfilled, objective.numRequired
+                if text == itemName then return true end
+                if have and need then
+                    local count = ("%d/%d"):format(have, need)
+                    if text == itemName .. ": " .. count or text == count .. " " .. itemName
+                        or (QUEST_ITEMS_NEEDED and text == QUEST_ITEMS_NEEDED:format(itemName, have, need)) then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    local function QuestLogMatchesItem(logIndex, questID, itemID, itemName)
+        local link = logIndex and GetQuestLogSpecialItemInfo and GetQuestLogSpecialItemInfo(logIndex)
+        return (type(link) == "string" and tonumber(link:match("item:(%d+)")) == itemID)
+            or QuestNeedsItem(questID, itemName)
+    end
+
+    local function FindQuestLogItem(location)
+        if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return end
+        local itemID = C_Item.GetItemID(location)
+        if not itemID then return end
+        local itemName = C_Item.GetItemName and C_Item.GetItemName(location)
+        local seen = {}
+        for logIndex = 1, C_QuestLog.GetNumQuestLogEntries() do
+            local quest = C_QuestLog.GetInfo(logIndex)
+            if quest and not quest.isHeader then
+                if quest.questID then seen[quest.questID] = true end
+                if QuestLogMatchesItem(logIndex, quest.questID, itemID, itemName) then
+                    return true, quest.title
+                end
+            end
+        end
+        -- Tracked quests also supply their IDs when a collapsed header hides their log entries.
+        if not (C_QuestLog.GetNumQuestWatches and C_QuestLog.GetQuestIDForQuestWatchIndex) then return end
+        for watchIndex = 1, C_QuestLog.GetNumQuestWatches() do
+            local questID = C_QuestLog.GetQuestIDForQuestWatchIndex(watchIndex)
+            if questID and not seen[questID] then
+                local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+                if QuestLogMatchesItem(logIndex, questID, itemID, itemName) then
+                    return true, C_QuestLog.GetTitleForQuestID(questID)
+                end
+            end
+        end
+    end
+
+    local function QuestReason(location)
+        local bag, slot = location:GetBagAndSlot()
+        local info = bag and C_Container and C_Container.GetContainerItemQuestInfo
+            and C_Container.GetContainerItemQuestInfo(bag, slot)
+        local questID = info and info.questID
+        local title = questID and C_QuestLog and C_QuestLog.GetTitleForQuestID(questID)
+        -- Blizzard shows its quest-starter icon when a slot has a quest ID and the quest isn't active.
+        if questID and not info.isActive then
+            return title and title ~= "" and L["This item starts %s."]:format(title) or L["This item starts a quest."]
+        end
+
+        local inQuestLog
+        if not title or title == "" then inQuestLog, title = FindQuestLogItem(location) end
+        if title and title ~= "" then return L["This item is used for %s."]:format(title) end
+        -- Some quest items have a bag marker without a matching quest ID or title.
+        if questID or inQuestLog or (info and info.isQuestItem) then return L["This is a quest item."] end
+    end
+
+    local function Confirm(frame, nativeClick, fromCursor, location, ...)
+        local guid = ItemGUID(location)
+        if not guid then return false end
+        local db = GetDb()
+        local sets = db.warnSellSetGear and SetNames(location)
+        local quest = db.warnSellQuestItems and QuestReason(location)
+        if not (sets or quest) then return false end
+
+        local item = C_Item.GetItemLink(location) or L["Item"]
+        local text = sets and L["Sell %s? This item is saved in %s."]:format(item, sets) or L["Sell %s?"]:format(item)
+        if quest then text = text .. " " .. quest end
+        local request = { guid = guid, fromCursor = fromCursor, tab = MerchantFrame.selectedTab, frame = frame,
+            click = nativeClick, args = { ... } }
+        ns.ShowDialog(dialog, text, request)
+        return true
+    end
+
+    local function BagRightClick(frame, button)
+        if MerchantFrame.selectedTab == 1 and button == "RightButton" and not IsModifiedClick() then
+            return SlotLocation(frame)
+        end
+    end
+
+    local function MerchantDrop()
+        if MerchantFrame.selectedTab == 1 then return CursorLocation() end
+    end
+
+    local function MerchantItemClick(_, button)
+        if button == "LeftButton" and not IsModifiedClick() then return MerchantDrop() end
+    end
+
+    local function Wrap(frame, script, getLocation, fromCursor)
+        if not frame or frame:IsForbidden() then return end
+        local scripts = wrapped[frame]
+        local original = frame:GetScript(script)
+        local existing = scripts and scripts[script]
+        if not original or (existing and original == existing.wrapper) then return end
+        local function Intercept(self, ...)
+            if Active() and not InCombatLockdown() then
+                local location = getLocation(self, ...)
+                if location and Confirm(self, original, fromCursor, location, ...) then return end
+            end
+            return original(self, ...)
+        end
+        if not scripts then
+            scripts = {}
+            wrapped[frame] = scripts
+        end
+        scripts[script] = { original = original, wrapper = Intercept }
+        frame:SetScript(script, Intercept)
+    end
+
+    local function WrapBagSlots(frame)
+        if not (Active() and not InCombatLockdown() and frame.EnumerateValidItems) then return end
+        for _, button in frame:EnumerateValidItems() do Wrap(button, "OnClick", BagRightClick, false) end
+    end
+
+    local function WrapFocusedBagSlot(button)
+        if button ~= "RightButton" or InCombatLockdown() or not Active() then return end
+        -- Baganator and other bags can pool Blizzard item buttons outside ContainerFrames.
+        -- The template sells on RightButtonUp, so wrap the focused slot on the preceding press.
+        for _, focus in ipairs(GetMouseFoci()) do
+            if not focus:IsForbidden() and focus.buttonContext == "ButtonContext_ContainerFrameItemButton"
+                and focus.GetBagID and focus.GetID then
+                Wrap(focus, "OnClick", BagRightClick, false)
+                return
+            end
+        end
+    end
+
+    function Sale.Refresh()
+        if not Sale.started then return end
+        local active = Active()
+        if active then
+            events:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        else
+            events:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+            ns.CancelDialog(dialog)
+        end
+        if InCombatLockdown() then return end
+        if not active then
+            for frame, scripts in pairs(wrapped) do
+                for script, entry in pairs(scripts) do
+                    if not frame:IsForbidden() and frame:GetScript(script) == entry.wrapper then
+                        frame:SetScript(script, entry.original)
+                    end
+                end
+                wrapped[frame] = nil
+            end
+            return
+        end
+
+        for _, frame in ipairs(BagFrames()) do WrapBagSlots(frame) end
+        -- The merchant background's mouse-up sells from the cursor even on the Buyback tab.
+        Wrap(MerchantFrame, "OnMouseUp", CursorLocation, true)
+        Wrap(MerchantFrame, "OnReceiveDrag", MerchantDrop, true)
+        for i = 1, MERCHANT_ITEMS_PER_PAGE or 10 do
+            local button = _G["MerchantItem" .. i .. "ItemButton"]
+            Wrap(button, "OnClick", MerchantItemClick, true)
+            Wrap(button, "OnDragStart", MerchantDrop, true)
+        end
+    end
+
+    function Sale.Init()
+        if Sale.started or not (MerchantFrame and ns.Dialogs) then return end
+        Sale.started = true
+        ns.Dialogs[dialog] = {
+            text = "%s", button1 = SELL, button2 = CANCEL, hideOnEscape = true, showAlert = true,
+            OnAccept = function(request)
+                if not Active() or InCombatLockdown() or MerchantFrame.selectedTab ~= request.tab then return end
+                local frame = request.frame
+                if frame:IsForbidden() or not frame:IsVisible() then return end
+                -- Bag buttons are pooled and a new item can occupy the slot while the dialog is up.
+                local location
+                if request.fromCursor then
+                    location = CursorLocation()
+                elseif not GetCursorInfo() and not IsModifiedClick() then
+                    location = SlotLocation(frame)
+                end
+                if ItemGUID(location) == request.guid then request.click(frame, unpack(request.args)) end
+            end,
+            OnCancel = function(request)
+                if request.fromCursor and ItemGUID(CursorLocation()) == request.guid then ClearCursor() end
+            end,
+        }
+        MerchantFrame:HookScript("OnShow", Sale.Refresh)
+        MerchantFrame:HookScript("OnHide", Sale.Refresh)
+        if ContainerFrame_GenerateFrame then hooksecurefunc("ContainerFrame_GenerateFrame", WrapBagSlots) end
+        if MerchantFrame_UpdateMerchantInfo then hooksecurefunc("MerchantFrame_UpdateMerchantInfo", Sale.Refresh) end
+        events = CreateFrame("Frame")
+        events:RegisterEvent("PLAYER_REGEN_DISABLED")
+        events:RegisterEvent("PLAYER_REGEN_ENABLED")
+        events:SetScript("OnEvent", function(_, event, button)
+            if event == "GLOBAL_MOUSE_DOWN" then
+                WrapFocusedBagSlot(button)
+            elseif event == "PLAYER_REGEN_DISABLED" then
+                ns.CancelDialog(dialog)
+            else
+                Sale.Refresh()
+            end
+        end)
+        Sale.Refresh()
+    end
 end
 
 --------------------------------------------------
