@@ -2763,6 +2763,12 @@ function NP.Claim(unit)
         p.scaleNow, p.threatKey = 1, nil
         p.root:SetShown(not (p.hiddenPlate or p.unitHidden))
         NP.UpdateAll(p)
+        -- Plus discovers health-named fields on the game plate and rechecks cached bar ancestry.
+        -- Original DoesItDie does not recheck ancestry: keep its existing behavior when also loaded.
+        if _G.UsefulPlatesAndTooltips_API and not _G.DoesItDie
+            and canaccessvalue(plate.FlareUIHealthBar) and plate.FlareUIHealthBar == nil then
+            plate.FlareUIHealthBar = p.health
+        end
     end)
     if ok then
         stats.claimed = stats.claimed + 1
@@ -2794,6 +2800,9 @@ function Release(p)
         pcall(C_NamePlateManager.SetNamePlateSimplified, unit, p.blizz.isSimplified == true)
     end
     pcall(ShowBlizzard, p, live)
+    if p.gamePlate and canaccessvalue(p.gamePlate.FlareUIHealthBar) and p.gamePlate.FlareUIHealthBar == p.health then
+        p.gamePlate.FlareUIHealthBar = nil
+    end
     if p.gamePlate and byPlate[p.gamePlate] == p then byPlate[p.gamePlate] = nil end
     p.gamePlate, p.unit, p.targetShown = nil, nil, nil
     p.root:Hide()
