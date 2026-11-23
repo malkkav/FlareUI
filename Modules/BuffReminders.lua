@@ -2306,6 +2306,9 @@ function BR.FadeSpeed(db, field)
     return (db and (db[field] or db.fadeSpeed)) or "instant"
 end
 local fadeTimer
+-- The Slower fade-out runs on its own frame: ns.StagedFall steps the alpha, as it does everywhere else
+local stageDriver = CreateFrame("Frame")
+stageDriver:Hide()
 function BR.ShowFaded(list, db)
     local had = BR.shownCount or 0
     -- a fade-out still running and nothing new to show: let it finish (its timers end it)
@@ -2319,6 +2322,8 @@ function BR.ShowFaded(list, db)
     local target = (db.alpha or 100) / 100
     BR.shownCount = #list
     if fadeTimer then fadeTimer:Cancel(); fadeTimer = nil end
+    stageDriver:Hide()
+    stageDriver.stageHold = nil
     BR.fadingOut = nil
     if t <= 0 or (ns.EditPreviewing and ns.EditPreviewing()) then
         BR.fading = nil
@@ -2343,13 +2348,16 @@ function BR.ShowFaded(list, db)
             Show(list)
         end
         if staged then
-            local from = holder:GetAlpha()
-            local rest = from * staged.alpha
-            UIFrameFadeOut(holder, staged.time, from, rest)
-            fadeTimer = C_Timer.NewTimer(staged.time + staged.hold, function()
-                UIFrameFadeOut(holder, staged.finish, rest, 0)
-                fadeTimer = C_Timer.NewTimer(staged.finish, Finish)
+            stageDriver:SetScript("OnUpdate", function(self, elapsed)
+                local alpha = ns.StagedFall(self, holder:GetAlpha(), 0, elapsed)
+                holder:SetAlpha(alpha)
+                if alpha <= 0 then
+                    self:Hide()
+                    self.stageHold = nil
+                    Finish()
+                end
             end)
+            stageDriver:Show()
         else
             UIFrameFadeOut(holder, t, holder:GetAlpha(), 0)
             fadeTimer = C_Timer.NewTimer(t, Finish)
