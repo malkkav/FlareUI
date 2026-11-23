@@ -742,6 +742,83 @@ send("UNIT_QUEST_LOG_CHANGED")
 ui:flushTimers()
 nextFrame()
 assert(live.quest:IsShown() and live.questText:IsShown() and live.questText:GetText() == "3/8")
+-- Deliver a whole frame's worth of work through the live event handlers. Count the
+-- queued reads separately from the spell snapshot taken when START is delivered.
+do
+    local previousTarget, previousMouseover = aliases.target, aliases.mouseover
+    for _, repetitions in ipairs({ 1, 4 }) do
+        casting = true
+        aliases.target, aliases.mouseover = gamePlate, gamePlate
+        reads = {}
+        for _ = 1, repetitions do
+            for _, event in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_HEAL_PREDICTION",
+                "UNIT_ABSORB_AMOUNT_CHANGED", "UNIT_THREAT_LIST_UPDATE", "UNIT_NAME_UPDATE", "UNIT_LEVEL" }) do
+                live.events:RunScript("OnEvent", event, token)
+            end
+            live.events:RunScript("OnEvent", "UNIT_SPELLCAST_START", token, castGUID, castSpell, castBarID)
+            for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "RAID_TARGET_UPDATE",
+                "QUEST_LOG_UPDATE", "GROUP_ROSTER_UPDATE", "UPDATE_SHAPESHIFT_FORM", "SPELLS_CHANGED" }) do
+                send(event)
+            end
+        end
+        assert(reads.castInfo == repetitions and not reads.health)
+        reads = {}
+        nextFrame()
+        for _, key in ipairs({ "health", "max", "absorb", "incoming", "color", "castInfo", "raid", "tooltip" }) do
+            assert(reads[key] == 1, "expected one queued " .. key .. " read, got " .. tostring(reads[key]))
+        end
+        assert(live.cast:IsShown() and live.targetTint:IsShown() and live.highlight:IsShown())
+        assert(live.texts.right:GetText() == testMob.health .. " / " .. testMob.max)
+        assert(live.questText:GetText() == "3/8" and not plates.updateQueue.driver:IsShown())
+
+        casting = false
+        aliases.target, aliases.mouseover = previousTarget, previousMouseover
+        live.events:RunScript("OnEvent", "UNIT_SPELLCAST_STOP", token, castGUID, castSpell)
+        send("PLAYER_TARGET_CHANGED")
+        send("UPDATE_MOUSEOVER_UNIT")
+        nextFrame()
+    end
+end
+-- Two producers change side anchors in the same frame. Position the widgets
+-- using the final threat box and quest visibility, including on the way back.
+do
+    local position, detail = plates.PlaceSides, env.UnitDetailedThreatSituation
+    local targetBefore = aliases.target
+    local layouts, repairing, percent = 0, false, 0
+    plates.PlaceSides = function(part, ...)
+        if repairing and part == live then layouts = layouts + 1 end
+        return position(part, ...)
+    end
+    env.UnitDetailedThreatSituation = function(_, unit) return false, units[unit].threat, percent end
+    local function change(visible)
+        percent, questRelated = visible and 80 or 0, visible
+        live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+        send("QUEST_LOG_UPDATE")
+        nextFrame()
+        assert(live.threatBox:IsShown() == visible and live.quest:IsShown() == visible)
+        assert(live.questText:IsShown() == visible)
+        local _, anchor = live.questText:GetPoint(1)
+        assert(anchor == (visible and live.quest or live.rightOf), "quest progress must use its final anchor")
+    end
+    change(false)
+    repairing = true
+    change(true)
+    assert(layouts == 1, "threat box and quest marker appeared together")
+    change(true)
+    aliases.target = gamePlate
+    send("PLAYER_TARGET_CHANGED")
+    nextFrame()
+    assert(layouts == 1, "unchanged quest and showing anchored target arrows preserve positions")
+    change(false)
+    assert(layouts == 2, "threat box and quest marker disappeared together")
+    repairing = false
+    plates.PlaceSides, env.UnitDetailedThreatSituation, aliases.target = position, detail, targetBefore
+    questRelated = true
+    live.events:RunScript("OnEvent", "UNIT_THREAT_LIST_UPDATE", token)
+    send("QUEST_LOG_UPDATE")
+    send("PLAYER_TARGET_CHANGED")
+    nextFrame()
+end
 do
     local profile = { nameplateEnabled = false }
     env.Questie = { db = { profile = profile } }
