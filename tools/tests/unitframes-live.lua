@@ -294,4 +294,22 @@ assert(targetDebuffs.groups[harm].maxFrameCount == 4 and target.Auras.TOPLEFT.la
 ui.editing = false
 callbacks.exit()
 assert(not cast:IsShown() and not targetDebuffs.editPreview and targetDebuffs.groups[harm].maxFrameCount == 9)
+-- (11-23, Kelvan) Values on Mouseover keeps each text on a layer of its own bar: a hidden druid mana bar
+-- (caster form) no longer hides the health numbers with it
+do
+    local frame = env.CreateFrame("Frame", nil, env.UIParent)
+    local healthBar = env.CreateFrame("Frame", nil, frame)
+    local manaBar = env.CreateFrame("Frame", nil, frame)
+    local manaText, healthText = manaBar:CreateFontString(), healthBar:CreateFontString()
+    UF.ValuesOnHover(frame, true, { manaText, healthText })
+    assert(manaText:GetParent() ~= healthText:GetParent(), "one layer per bar")
+    assert(healthText:GetParent():GetParent() == healthBar and manaText:GetParent():GetParent() == manaBar)
+    manaBar:Hide()
+    UF.SetValueLayersAlpha(frame, 1)
+    assert(healthText:IsVisible() and not manaText:IsVisible(), "the health numbers stay with the mana bar hidden")
+    UF.SetValueLayersAlpha(frame, 0)
+    assert(healthText:GetParent():GetAlpha() == 0 and manaText:GetParent():GetAlpha() == 0, "off the frame: all hidden")
+    UF.ValuesOnHover(frame, true, { manaText, healthText })
+    assert(manaText:GetParent():GetParent() == manaBar, "a second pass keeps each text on its own bar")
+end
 print("PASS: unit frame startup, resource events, combat deferral and cast changes")

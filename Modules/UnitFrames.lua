@@ -1056,27 +1056,43 @@ end
 -- VALUES ON MOUSEOVER (11-20, every frame's Text section, off; Blizzard's own status text option): the
 -- health and power numbers sit on a layer of their own that shows only while the pointer is on the
 -- frame. Names and the level stay. Edit Mode always shows them. texts: the font strings to move there.
+-- (11-23, Kelvan) one layer per bar the texts sat on: a single layer took the first text's bar, and
+-- when that was the druid's Mana on Shapeshift bar (hidden in caster form) every number hid with it.
+-- f.ValueLayer stays the first one made, f.ValueLayers holds them all (by the texts' own bar).
+function UF.SetValueLayersAlpha(f, a)
+    for _, layer in pairs(f.ValueLayers or {}) do
+        if layer:GetAlpha() ~= a then layer:SetAlpha(a) end
+    end
+end
 function UF.ValuesOnHover(f, on, texts)
     if not f then return end
     if not on and not f.ValueLayer then return end
-    local layer = f.ValueLayer
-    if not layer then
-        local parent = texts[1] and texts[1]:GetParent() or f
-        layer = CreateFrame("Frame", nil, parent)
-        layer:SetAllPoints(parent)
-        f.ValueLayer = layer
-        f:HookScript("OnEnter", function(self) if self.valuesOnHover then self.ValueLayer:SetAlpha(1) end end)
+    if not f.ValueLayers then
+        f.ValueLayers = {}
+        f:HookScript("OnEnter", function(self) if self.valuesOnHover then UF.SetValueLayersAlpha(self, 1) end end)
         f:HookScript("OnLeave", function(self)
-            if self.valuesOnHover and not ns.EditPreviewing() then self.ValueLayer:SetAlpha(0) end
+            if self.valuesOnHover and not ns.EditPreviewing() then UF.SetValueLayersAlpha(self, 0) end
         end)
     end
-    -- the layer above its parent's level, as the texts were
-    layer:SetFrameLevel(layer:GetParent():GetFrameLevel() + 1)
     for _, fs in ipairs(texts) do
-        if fs and fs:GetParent() ~= layer then fs:SetParent(layer) end
+        if fs then
+            -- the bar the text belongs to: where it sat before its first move onto a layer
+            local home = fs.FlareUI_ValueHome or fs:GetParent()
+            fs.FlareUI_ValueHome = home
+            local layer = f.ValueLayers[home]
+            if not layer then
+                layer = CreateFrame("Frame", nil, home)
+                layer:SetAllPoints(home)
+                f.ValueLayers[home] = layer
+                f.ValueLayer = f.ValueLayer or layer
+            end
+            -- the layer above its bar's level, as the texts were
+            layer:SetFrameLevel(home:GetFrameLevel() + 1)
+            if fs:GetParent() ~= layer then fs:SetParent(layer) end
+        end
     end
     f.valuesOnHover = on and true or nil
-    layer:SetAlpha((not on or ns.EditPreviewing() or f:IsMouseOver()) and 1 or 0)
+    UF.SetValueLayersAlpha(f, (not on or ns.EditPreviewing() or f:IsMouseOver()) and 1 or 0)
     UF.WatchValuesHover(f, on)
 end
 -- (11-22) the frame's own OnEnter/OnLeave miss the pointer when a part of the frame takes the mouse (the
@@ -1097,10 +1113,8 @@ function UF.WatchValuesHover(f, on)
             self.wait = 0
             local previewing = ns.EditPreviewing()
             for frame in pairs(UF.hoverValueFrames) do
-                local layer = frame.ValueLayer
-                if layer and frame.valuesOnHover then
-                    local a = (previewing or (frame:IsVisible() and frame:IsMouseOver())) and 1 or 0
-                    if layer:GetAlpha() ~= a then layer:SetAlpha(a) end
+                if frame.ValueLayers and frame.valuesOnHover then
+                    UF.SetValueLayersAlpha(frame, (previewing or (frame:IsVisible() and frame:IsMouseOver())) and 1 or 0)
                 end
             end
         end)

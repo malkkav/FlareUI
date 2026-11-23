@@ -147,9 +147,12 @@ widgetFor("threat"):RunScript("OnEnter")
 assert(side.sample.states.threat and side.sample.states.target == false, "the Threat row previews a non-target threat plate")
 ns.NameplatesPinned.Hover(nil)
 assert(not side.sample.states.threat and side.sample.states.target)
+-- (11-23, #164) Show Full Name only for player types
+assert(row("nameOnlyFull"):IsHidden(), "an NPC type has no full name")
 side.unitGroup.cells[1]:Click()
 assert(side.sample.kind == "enemyPlayer" and row("questMarks"):IsHidden()
     and NP.TypeDB("enemyPlayer").colorBoss ~= true)
+assert(not row("nameOnlyFull"):IsHidden(), "a player type shows Show Full Name")
 side.unitGroup.cells[2]:Click()
 
 P:Open("np", "targeting")

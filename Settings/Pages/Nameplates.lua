@@ -651,7 +651,9 @@ Row{ key = "np.nameOnlyMode", tab = "style", section = "np.nameOnlySection", lea
 Row{ key = "np.nameOnlySize", kind = "range", path = "nameOnlySize", choices = Steps(50, 200, 10, function(v) return v .. "%" end),
     tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
 -- Show Full Name (11-22, Malkkav; per type, on): off, a Name Only plate shows the first name only
-Row{ key = "np.nameOnlyFull", path = "nameOnlyFull", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
+-- (11-23, #164 Nico-Mayer) players only: NPCs have one name, so it would do nothing there
+Row{ key = "np.nameOnlyFull", path = "nameOnlyFull", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
+    hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
 Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
     choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
     toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },

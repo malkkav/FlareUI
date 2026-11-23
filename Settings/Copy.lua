@@ -424,7 +424,7 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for the round minimap.\n* |cffffd100Kabaday|r for the loot roll window and the Cooldown Manager.\n* |cffffd100Celbrund|r for the minimap Info Bar."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for too many things to list here.\n* |cffffd100Kabaday|r for the loot roll window and the Cooldown Manager.\n* |cffffd100Celbrund|r for the minimap Info Bar."],
         },
         ["about.layout"] = {
             kind = "text",
