@@ -44,8 +44,12 @@ local C = {
     SCROLLBAR_MIN = 16,     -- the shortest the thumb gets
     ITEM_SIZE = 22, ITEM_GAP = 3,
     TOOLTIP_GAP = 2,        -- a quest's tooltip from the frame's edge
-    BOX = 12,               -- the header's minimize / expand button
+    BOX = 14,               -- the header's minimize / expand button
     LONE = 18,              -- the lone expand button of Minimize Style "Button Only"
+    ICON_PATH = "Interface\\AddOns\\FlareUI\\Media\\Icons\\",
+    FOLD_SCALE = 16 / 15,
+    FOLD_EXPAND = "ui-questtrackerbutton-secondary-expand",
+    FOLD_COLLAPSE = "ui-questtrackerbutton-secondary-collapse",
     BOX_COLOR = { 0.50, 0.38, 0.21 },        -- a darker bronze than the frame border
     BOX_COLOR_LIT = { 0.65, 0.49, 0.27 },    -- the frame border's bronze while pointed at
     SCROLL_COLOR = { 0.32, 0.24, 0.13 },     -- the scroll bar: a dark bronze, as the frame's shadowed edges
@@ -1651,7 +1655,7 @@ function Build.FoldIcon(line, show, folded, cfg)
         line.foldIcon = icon
     end
     local h = FontHeight(cfg, 13) - 2
-    local atlas = folded and "ui-questtrackerbutton-secondary-expand" or "ui-questtrackerbutton-secondary-collapse"
+    local atlas = folded and C.FOLD_EXPAND or C.FOLD_COLLAPSE
     if icon.ftAtlas ~= atlas or icon.ftH ~= h then
         icon.ftAtlas, icon.ftH = atlas, h
         icon:SetAtlas(atlas, true)
@@ -3324,19 +3328,6 @@ local function CreateBoxButton(parent, name, size)
         Place(self.dash, (n - arm) / 2, (n - 2) / 2, arm, 2)
         Place(self.stem, (n - 2) / 2, (n - arm) / 2, 2, arm)
         self.stem:SetShown(self.plus or false)
-        -- a glyph of its own (Build.GLYPHS) in place of the minus / plus
-        if self.glyph then
-            self.dash:Hide()
-            self.stem:Hide()
-            self.marks = self.marks or {}
-            local rects = self.glyph(n)
-            for k, rect in ipairs(rects) do
-                local t = self.marks[k]
-                if not t then t = Tex("ARTWORK"); self.marks[k] = t end
-                Place(t, rect[1], rect[2], rect[3], rect[4])
-            end
-            for k = #rects + 1, #self.marks do self.marks[k]:Hide() end
-        end
         self:Paint(self.lit)
     end
     function b:Paint(lit)
@@ -3346,9 +3337,6 @@ local function CreateBoxButton(parent, name, size)
         for _, t in ipairs(self.steps) do t:SetColorTexture(c[1], c[2], c[3], 1) end
         self.dash:SetColorTexture(c[1], c[2], c[3], 1)
         self.stem:SetColorTexture(c[1], c[2], c[3], 1)
-        -- a switched-on glyph (Zone only) in the header gold
-        local g = self.active and C.HEADING or c
-        for _, t in ipairs(self.marks or {}) do t:SetColorTexture(g[1], g[2], g[3], 1) end
     end
     function b:SetPlus(plus)
         self.plus = plus
@@ -3361,32 +3349,52 @@ local function CreateBoxButton(parent, name, size)
     return b
 end
 
--- The header buttons' glyphs, as rectangles { x, y, w, h } in pixels of a box n pixels wide
-Build.GLYPHS = {
-    -- a funnel: rows narrowing to a stem
-    funnel = function(n)
-        local m = n >= 14 and 4 or 3
-        local w, out, y = n - 2 * m, {}, m
-        while w >= 2 do
-            out[#out + 1] = { (n - w) / 2, y, w, 1 }
-            w, y = w - 2, y + 1
+Build.GLYPHS = { funnel = "QTFilter", exclaim = "QTExclaim", question = "QTQuestion", sort = "QTSort" }
+
+function Build.IconButton(parent, size)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(size, size)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    C.ICON_COLOR = C.ICON_COLOR or { r = C.BOX_COLOR[1], g = C.BOX_COLOR[2], b = C.BOX_COLOR[3], a = 1 }
+
+    function b:Layout()
+        local file = self.glyph or (self.plus and C.FOLD_EXPAND or C.FOLD_COLLAPSE)
+        if file ~= self.file then
+            self.file = file
+            self.icon:ClearAllPoints()
+            if self.glyph then
+                self.icon:SetAllPoints()
+                ns.BronzeIcon.Apply(self.icon, C.ICON_PATH .. file .. ".tga", C.ICON_COLOR)
+            else
+                self.icon:SetPoint("CENTER")
+                self.icon:SetSize(size * C.FOLD_SCALE, size * C.FOLD_SCALE)
+                self.icon:SetAtlas(file)
+            end
         end
-        out[#out + 1] = { (n - 2) / 2, y, 2, n - m - y }
-        return out
-    end,
-    -- "!" and "?" in a 6 x 8 grid, centred (the Auto Quest Buttons)
-    exclaim = function(n) return Build.GridGlyph(n, { { 2, 0, 2, 6 }, { 2, 7, 2, 1 } }) end,
-    question = function(n)
-        return Build.GridGlyph(n, { { 1, 0, 4, 1 }, { 0, 1, 1, 1 }, { 5, 1, 1, 2 }, { 3, 3, 2, 1 }, { 2, 4, 2, 2 }, { 2, 7, 2, 1 } })
-    end,
-    -- three bars, longest on top
-    sort = function(n)
-        local m = n >= 14 and 4 or 3
-        local w = n - 2 * m
-        local gap = math_floor((n - 2 * m - 6) / 2) + 2
-        return { { m, m, w, 2 }, { m, m + gap, math_floor(w * 0.66 + 0.5), 2 }, { m, m + 2 * gap, math_floor(w * 0.33 + 0.5), 2 } }
-    end,
-}
+        self:Paint(self.lit)
+    end
+    function b:Paint(lit)
+        self.lit = lit
+        if not self.glyph then return end
+        self.icon.FlareUI_Light:SetShown(not self.active)
+        if self.active then
+            local gold = OT.blizzColors.HEADING
+            C.ICON_GOLD = C.ICON_GOLD or CreateColor(gold[1], gold[2], gold[3], 1)
+            self.icon:SetGradient("VERTICAL", C.ICON_GOLD, C.ICON_GOLD)
+            return
+        end
+        ns.BronzeIcon.Paint(self.icon, C.ICON_COLOR, lit)
+    end
+    function b:SetPlus(plus)
+        self.plus = plus
+        self:Layout()
+    end
+    b:HookScript("OnEnter", function(self) self:Paint(true) end)
+    b:HookScript("OnLeave", function(self) self:Paint(false) end)
+    b:Layout()
+    return b
+end
+
 -- Auto Quest Buttons: with the switch on and Quality of Life running; not in the Gamepad UI, where
 -- the auto quests stand aside. Left of the sort button, "!" then "?"
 function OT.TweaksDb() return ns.db and ns.db.profile and ns.db.profile.tweaks end
@@ -3423,15 +3431,6 @@ function Build.LayoutAutoButtons(head, db)
     end
 end
 
--- grid rectangles { col, row, w, h } in a 6 x 8 grid -> pixels, centred in the box
-function Build.GridGlyph(n, cells)
-    local u = math_max(1, math_floor((n - 6) / 8))
-    local x0, y0 = math_floor((n - 6 * u) / 2), math_floor((n - 8 * u) / 2)
-    local out = {}
-    for i, c in ipairs(cells) do out[i] = { x0 + c[1] * u, y0 + c[2] * u, c[3] * u, c[4] * u } end
-    return out
-end
-
 -- the sort in use, from the four settings (as Quest Tracker > Sort reads them)
 Build.SORTS = { "zone", "distance", "level", "progress" }
 function Build.SortMode(db)
@@ -3452,20 +3451,20 @@ function Build.Header(window)
     head:SetPoint("TOPRIGHT", -C.HEADER_INSET, -3)
     head:SetHeight(C.HEADER - 3)
     head.title = head:CreateFontString(nil, "OVERLAY")
-    head.minimize = CreateBoxButton(head, nil, C.BOX)
+    head.minimize = Build.IconButton(head, C.BOX)
     -- All / Zone (a funnel, gold while only this zone shows) and the sort (three bars), as Kaliel's
     -- Tracker has them (the idea only: its art is its own)
-    local zone = CreateBoxButton(head, nil, C.BOX)
+    local zone = Build.IconButton(head, C.BOX)
     zone.glyph = Build.GLYPHS.funnel
     zone:Layout()
     head.zone = zone
-    local sort = CreateBoxButton(head, nil, C.BOX)
+    local sort = Build.IconButton(head, C.BOX)
     sort.glyph = Build.GLYPHS.sort
     sort:Layout()
     head.sort = sort
     -- Auto Quest Buttons: "!" Auto Accept, "?" Auto Turn-In (Quality of Life's switches), gold while on
     for _, def in ipairs({ { "autoAccept", "exclaim", "autoAcceptQuests" }, { "autoTurnIn", "question", "autoTurnInQuests" } }) do
-        local b = CreateBoxButton(head, nil, C.BOX)
+        local b = Build.IconButton(head, C.BOX)
         b.glyph, b.key = Build.GLYPHS[def[2]], def[3]
         b:Layout()
         b:Hide()
