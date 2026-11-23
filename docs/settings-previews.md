@@ -29,7 +29,6 @@ ordinary hover updates help text without redrawing the specimen or restarting it
 | Resource Bars | Health/power/swing samples and production combo point widgets |
 | Quality of Life | Bag columns/gaps/borders/badges and nameplate name/level/quest/combo examples |
 | Radial Options | Client wheel art and separate round icons, relative scale and name visibility; behavioural settings keep the wheel unchanged |
-| Loot Window | Sample panel with money and item rows in the chosen border, opacity, sort order, colour mode, icon edge and marks (item level, junk, BoE, uncollected) |
 | Fonts | Selected face, size, outline and shadow on names, values and timer text |
 
 Rendered style specimens show representative layouts, not every per-character Edit Mode customization.

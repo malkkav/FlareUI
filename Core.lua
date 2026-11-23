@@ -1130,22 +1130,10 @@ local defaults = {
             merchantWide = false,       -- Wider Vendor Window: 20 items a page
             petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
-            lootRollsOpacity = 1,       -- its Frame Opacity: the background's (100% by default: 60% is hard to read)
             lootRolls = false,          -- Loot Roll Window: FlareUI's loot roll window in place of Blizzard's roll frames (LootRolls.lua); on and off need a reload
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
-            lootWindow = false,         -- Loot Window: FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
-            lootWindowBorder = "FlareUI Thick",
-            lootWindowOpacity = 1,
-            lootWindowSort = "loot",    -- "loot" | "quality" | "ilvl"
-            lootWindowColor = "icon",
-            lootWindowItemLevel = false,
-            lootWindowJunk = false,
-            lootWindowBoE = false,
-            lootWindowUncollected = false,
-            lootWindowOwned = false,
-            lootWindowThick = false,
-            lootWindowFreeSlots = false,
-            lootWindowFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
+            lootWindow = false,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
+            lootWindowFreeSlots = false, -- Show Free Bag Slots at the loot window's foot
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...

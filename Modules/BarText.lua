@@ -50,7 +50,14 @@ BT.DEFAULTS = {
         health = { middle = { value = true, max = true } },
         power = { middle = { value = true, max = true } },
     },
+    -- (11-23, Malkkav) raid tiles (the raid frames, the party's Raid Style): the Centre slot only, no
+    -- name (it sits on top of the tile); both start empty, as their old Health / Power Text did
+    tile = { health = {}, power = {} },
 }
+-- the slots each style offers in its Edit Mode dropdown
+BT.STYLE_SLOTS = { tile = { "middle" } }
+-- bumped on every pick or reset, so a tile's cached slot knows to read again (PartyFrames.lua PF.MidSet)
+BT.stamp = 0
 
 -- a frame's own starting slots over its style's, in every style: no power text on the
 -- pet and the target-of frames (mana as power). A frame's "plain" / "plate" table holds slots for
@@ -182,6 +189,7 @@ function BT.Picked(udb, bar, slot, style, firstOnly, oldKey, unit)
 end
 function BT.Toggle(udb, bar, slot, style, value, reset, firstOnly, oldKey, unit)
     if not udb then return end
+    BT.stamp = BT.stamp + 1
     local current = BT.Slots(udb, bar, style, firstOnly, oldKey, unit)
     udb.barText = udb.barText or {}
     local mine = udb.barText[bar]
@@ -309,13 +317,15 @@ end
 BT.MENU_SLOTS = { left = L["Left"], middle = L["Centre"], right = L["Right"] }
 BT.SHORT = { firstname = L["First Name"], fullname = L["Full Name"], percent = "%", value = L["Value"],
              max = L["Max"], lost = L["Lost"] }
-function BT.Summary(slots)
+function BT.Summary(slots, only)
     local parts = {}
-    for _, slot in ipairs(BT.SLOTS) do
+    for _, slot in ipairs(only or BT.SLOTS) do
         local items = {}
         for _, item in ipairs((BT.Ordered(slots[slot]))) do items[#items + 1] = BT.SHORT[item] end
         parts[#parts + 1] = #items > 0 and table.concat(items, " / ") or "\226\128\148"   -- an em dash
     end
+    -- one slot alone (raid tiles): its picks, or None
+    if only and #only == 1 and parts[1] == "\226\128\148" then return L["None"] end
     return table.concat(parts, "  " .. (ns.DOT or "\194\183") .. "  ")   -- a middle dot between the slots (Core.lua ns.DOT)
 end
 -- o: name, bar, db() (the stored table), style() ("plain", "plate", "bar"), firstOnly() (optional),
@@ -324,6 +334,9 @@ function BT.Setting(o)
     local LEM = LibStub("FlareEditMode")
     local function FirstOnly() return o.firstOnly and o.firstOnly() or nil end
     local function Slots() return BT.Slots(o.db(), o.bar, o.style(), FirstOnly(), o.oldKey, o.unit) end
+    -- the slots this style offers (raid tiles: Centre only, its ticks straight in the menu)
+    local function SlotList() return BT.STYLE_SLOTS[o.style()] end
+    local function Summary() return BT.Summary(Slots(), SlotList()) end
     local function Picked(slot, value)
         for _, v in ipairs(BT.Picked(o.db(), o.bar, slot, o.style(), FirstOnly(), o.oldKey, o.unit)) do
             if v == value then return true end
@@ -332,14 +345,15 @@ function BT.Setting(o)
     end
     local function Changed(owner)
         if o.changed then o.changed() end
-        if owner and owner.OverrideText then owner:OverrideText(BT.Summary(Slots())) end
+        if owner and owner.OverrideText then owner:OverrideText(Summary()) end
     end
     return {
         name = o.name, kind = LEM.SettingType.Dropdown,
-        desc = L["Left, Middle and Right: what each part of the bar shows. Several numbers show together, split by /. A name stands alone."],
+        desc = o.desc or L["Left, Middle and Right: what each part of the bar shows. Several numbers show together, split by /. A name stands alone."],
         generator = function(owner, rootDescription)
-            for _, slot in ipairs(BT.SLOTS) do
-                local sub = rootDescription:CreateButton(BT.MENU_SLOTS[slot])
+            local list = SlotList()
+            for _, slot in ipairs(list or BT.SLOTS) do
+                local sub = (list and #list == 1) and rootDescription or rootDescription:CreateButton(BT.MENU_SLOTS[slot])
                 for _, v in ipairs(BT.Values(o.bar, o.style())) do
                     local value, label = v.value, v.text
                     local box = sub:CreateCheckbox(label, function() return Picked(slot, value) end, function()
@@ -359,9 +373,9 @@ function BT.Setting(o)
                     end
                 end
             end
-            if owner.OverrideText then owner:OverrideText(BT.Summary(Slots())) end
+            if owner.OverrideText then owner:OverrideText(Summary()) end
         end,
-        get = function() return BT.Summary(Slots()) end,
+        get = function() return Summary() end,
         -- Edit Mode's Reset: every slot back to the style's default
         set = function(_, _, reset)
             if not reset then return end

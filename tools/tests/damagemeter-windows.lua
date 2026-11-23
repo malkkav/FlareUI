@@ -10,6 +10,7 @@ local saved, resetCount = {}, 0
 local visibility = { wanted = true }
 local function applyFont(frame, ...) frame:SetFont(...) end
 local ns = {
+    Dialogs = {}, ShowDialog = function() end,   -- (the Blizzard Visibility warning, 11-22)
     modules = {}, L = setmetatable({}, { __index = function(_, key) return key end }),
     db = { profile = { damagemeter = db } }, ShortNumber = tostring,
     BORDER_COLOR = { r = 0.6, g = 0.5, b = 0.4, a = 1 },

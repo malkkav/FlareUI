@@ -870,25 +870,34 @@ function NP.LayoutLevel(p, db, boxH)
     p.levelAnchor = holder
 end
 
--- THREAT PERCENTAGE'S PLACE (11-22, Malkkav): never over the name. With a level box (or disc), the
--- threat takes the level's place while you have some (NP.UpdateThreatText puts the level back
--- after); with none, a box in the level box's look on the plate's right, shown while there is threat;
--- the quest icon, marker and Crowd Control on that side move out while it shows. Not on Name Only plates.
-C.THREAT_BOX_WIDTH = 1.7   -- the box's width, in plate heights ("100%" fits)
+-- THREAT PERCENTAGE'S PLACE (11-22, Malkkav): never over the name. A box in the level box's look,
+-- shown while there is threat. (11-23, #145 Zackarias / Malkkav) its own box always, never in the
+-- level's place: on the side away from the level box or disc, or on the right with none. It fits
+-- "100%" in the level's font. The quest icon, marker and Crowd Control on that side move out while it
+-- shows. Not on Name Only plates.
+C.THREAT_BOX_PAD = 6   -- room round the text in the box
 function NP.LayoutThreat(p, db)
     local fs, box = p.threatText, p.threatBox
     fs:ClearAllPoints()
     box:ClearAllPoints()
     box:Hide()
-    p.threatInLevel = db.threatPercent and p.levelShown and p.levelAnchor and not p.nameOnly or false
-    p.threatBoxOn = db.threatPercent and not p.levelShown and not p.nameOnly and not p.hiddenPlate or false
-    if p.threatInLevel then
-        ApplyFontTo(fs, db.levelFont)
-        fs:SetPoint("CENTER", p.levelAnchor, "CENTER", 0, 0)
-    elseif p.threatBoxOn then
+    p.threatInLevel = false
+    p.threatBoxOn = db.threatPercent and not p.nameOnly and not p.hiddenPlate or false
+    p.threatSide = (p.levelAnchor and p.levelSide == "right") and "left" or "right"
+    if p.threatBoxOn then
         local boxH = p.boxH or db.height
-        box:SetSize(math_floor(boxH * C.THREAT_BOX_WIDTH + 0.5), boxH)
-        box:SetPoint("LEFT", p.box, "RIGHT", 1, 0)
+        ApplyFontTo(fs, db.levelFont)
+        -- as wide as "100%" in that font (never narrower than a square)
+        fs:SetText("100%")
+        local textW = fs:GetStringWidth()
+        if not (canaccessvalue(textW) and type(textW) == "number" and textW > 0) then textW = boxH * 1.7 end
+        box:SetSize(math_max(boxH, math_floor(textW + C.THREAT_BOX_PAD + 0.5)), boxH)
+        fs:SetText("")
+        if p.threatSide == "left" then
+            box:SetPoint("RIGHT", p.box, "LEFT", -1, 0)
+        else
+            box:SetPoint("LEFT", p.box, "RIGHT", 1, 0)
+        end
         local bgIn = p.bgInset or 0
         NP.Background(box, bgIn, p.bgCut or bgIn, (db.bgOpacity or 90) / 100)
         if p.edgeFile then
@@ -899,9 +908,10 @@ function NP.LayoutThreat(p, db)
         else
             p.threatBoxBorder:Hide()
         end
-        ApplyFontTo(fs, db.levelFont)
         fs:SetPoint("CENTER", box, "CENTER", 0, 0)
     end
+    -- (a plate laid out again while held: DoesItDie's bar follows, NP.DieProxy)
+    if p.gamePlate then pcall(NP.DieProxy, p.gamePlate, p) end
 end
 
 -- Debuffs and buffs share the row above the plate, half each; one alone takes the whole width
@@ -941,9 +951,12 @@ end
 --   out, past the quest mark on its side; the raid marker on the left, past the defensives.
 -- Target Highlight arrows sit right against the plate; everything here draws above them.
 function NP.PlaceSides(p)
-    local leftOf = (p.levelAnchor and p.levelSide ~= "right") and p.levelAnchor or p.box
+    -- (the threat box sits on the side away from the level: NP.LayoutThreat)
+    local threatShown = p.threatBoxOn and p.threatBox:IsShown()
+    local leftOf = (p.levelAnchor and p.levelSide ~= "right") and p.levelAnchor
+        or (threatShown and p.threatSide == "left" and p.threatBox) or p.box
     p.rightOf = (p.levelAnchor and p.levelSide == "right") and p.levelAnchor
-        or (p.threatBoxOn and p.threatBox:IsShown() and p.threatBox) or p.box
+        or (threatShown and p.threatSide == "right" and p.threatBox) or p.box
     local gap = C.SIDE_GAP
     p.quest:ClearAllPoints()
     p.questText:ClearAllPoints()
@@ -1623,6 +1636,14 @@ end
 
 local function Readable(v) if canaccessvalue(v) then return v end end
 
+-- PET THREAT (11-23, Rex / saamor): your own pet holding the mob counts as another tank having it
+-- (the Another Tank colour), for tanks and damage alike; the game hands pet threat over in a fight
+function NP.PetHolds(unit)
+    if not UnitExists("pet") then return false end
+    local pet = Readable(UnitThreatSituation("pet", unit))
+    return type(pet) == "number" and pet >= 2
+end
+
 -- the threat colour, or nil for the plate's own colour
 local function ThreatRGB(unit, db)
     local mode = db.threat
@@ -1632,6 +1653,8 @@ local function ThreatRGB(unit, db)
         if not ok or not canaccessvalue(secret) or secret then return nil end
     end
     local status = Readable(UnitThreatSituation("player", unit))
+    -- (not on its threat list yet, as when your pet pulls: only the pet's threat counts)
+    if status == nil and canaccessvalue(UnitThreatSituation("player", unit)) and NP.PetHolds(unit) then status = 0 end
     if type(status) ~= "number" then return nil end
     local fighting = Readable(UnitAffectingCombat(unit))
     if not fighting then return nil end
@@ -1641,13 +1664,16 @@ local function ThreatRGB(unit, db)
         elseif status == 2 then key = "losing"
         else
             key = "lost"
+            if NP.PetHolds(unit) then key = "offtank" end
             for _, tank in ipairs(state.tanks) do
+                if key == "offtank" then break end
                 local other = Readable(UnitThreatSituation(tank, unit))
-                if type(other) == "number" and other >= 2 then key = "offtank" break end
+                if type(other) == "number" and other >= 2 then key = "offtank" end
             end
         end
     else
-        if status == 1 then key = "gaining" elseif status >= 2 then key = "aggro" end
+        if status == 1 then key = "gaining" elseif status >= 2 then key = "aggro"
+        elseif NP.PetHolds(unit) then key = "offtank" end
     end
     if key then
         local c = NP.Color(key)
@@ -2687,6 +2713,40 @@ local function SetClickArea(plate, none)
     if none then pcall(plate.ClearAllHitTestPoints, plate) else pcall(plate.SetAllHitTestPoints, plate, plate) end
 end
 
+-- DOESITDIE (11-23, Malkkav): DoesItDie draws its marker and kill icon on nameplates itself, on the
+-- health bar it finds on the game's plate: Blizzard's (hidden under ours) or a field named like
+-- "health". Each game plate we hold gets an invisible bar under that name, laid over our health bar,
+-- so its marker lands on ours with all of its own settings. One per game plate (DoesItDie remembers
+-- the bar it found per plate), hidden when we let the plate go or show no bar on it.
+function NP.DieProxy(plate, p)
+    if not (plate and _G.DoesItDie) then return end
+    local proxy = plate.FlareUI_DieHealth
+    if not p then
+        if proxy then proxy:Hide() end
+        return
+    end
+    local health = p.health
+    local barShown = health and health:IsVisible() and not (p.hiddenPlate or p.unitHidden or p.nameOnly)
+    if not barShown then
+        if proxy then proxy:Hide() end
+        return
+    end
+    if not proxy then
+        proxy = CreateFrame("StatusBar", nil, plate)
+        proxy:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+        proxy:SetStatusBarColor(0, 0, 0, 0)
+        proxy:SetMinMaxValues(0, 1)
+        proxy:SetValue(1)
+        plate.FlareUI_DieHealth = proxy
+    end
+    proxy:ClearAllPoints()
+    proxy:SetAllPoints(health)
+    proxy:SetFrameStrata(health:GetFrameStrata())
+    proxy:SetFrameLevel(health:GetFrameLevel())
+    proxy:SetReverseFill(health:GetReverseFill() and true or false)
+    proxy:Show()
+end
+
 function NP.Claim(unit)
     if NP.standDown or not NP.ready then return end
     if not canaccessvalue(unit) or type(unit) ~= "string" then stats.secret = stats.secret + 1 return end
@@ -2769,6 +2829,7 @@ function NP.Claim(unit)
             and canaccessvalue(plate.FlareUIHealthBar) and plate.FlareUIHealthBar == nil then
             plate.FlareUIHealthBar = p.health
         end
+        pcall(NP.DieProxy, plate, p)
     end)
     if ok then
         stats.claimed = stats.claimed + 1
@@ -2803,6 +2864,7 @@ function Release(p)
     if p.gamePlate and canaccessvalue(p.gamePlate.FlareUIHealthBar) and p.gamePlate.FlareUIHealthBar == p.health then
         p.gamePlate.FlareUIHealthBar = nil
     end
+    pcall(NP.DieProxy, p.gamePlate, nil)
     if p.gamePlate and byPlate[p.gamePlate] == p then byPlate[p.gamePlate] = nil end
     p.gamePlate, p.unit, p.targetShown = nil, nil, nil
     p.root:Hide()

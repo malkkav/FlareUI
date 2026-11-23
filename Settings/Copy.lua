@@ -32,7 +32,7 @@ ns.Copy = {
         bl = {
             desc = L["Your bags and what you loot."],
             offCard = L["* FlareUI's bag and bank windows\n* Category filters and item levels\n* A loot roll window and a loot feed"],
-            tabs = { L["Bags"], L["Looting"], L["Loot Window"], L["Fonts"] },
+            tabs = { L["Bags"], L["Looting"], L["Fonts"] },
             title = L["Bags & Looting"],
         },
         br = {
@@ -783,11 +783,6 @@ ns.Copy = {
             label = L["Loot Rolls"],
             section = "bl.fontsLoot",
         },
-        ["bl.font.lootWindow"] = {
-            desc = L["The item names and the free bag slots in the loot window."],
-            label = L["Loot Window"],
-            section = "bl.fontsLoot",
-        },
         ["bl.font.money"] = {
             desc = L["The gold, silver and copper at the bottom of your bags. Default keeps Blizzard's font."],
             label = L["Gold"],
@@ -837,70 +832,17 @@ ns.Copy = {
             tags = { "loot roll", "need greed", "group loot", "roll frame" },
             tip = L["A roll you pass on leaves the window. The icon at the top opens Blizzard's loot history. Placed and scaled in Edit Mode as \"FlareUI Loot Rolls\"."],
         },
-        ["bl.lootRollsOpacity"] = {
-            desc = L["How dark the loot roll window's background is."],
-            label = L["Background Opacity"],
-            section = "bl.lootRollsSection",
-        },
         ["bl.lootWindow"] = {
-            desc = L["FlareUI's loot window in place of Blizzard's when you loot a corpse or a chest."],
+            desc = L["FlareUI's loot window replaces Blizzard's for corpses and chests:\n* How many of each item you already carry\n* The marks from your bags (item level, junk, BoE), as set on the Bags tab\n* A looted item leaves a gap, so nothing moves under your mouse"],
             label = L["Loot Window"],
             reload = true,
             section = "bl.lootWindowSection",
-            tags = { "loot window", "corpse", "chest" },
-            tip = L["Placed and scaled in Edit Mode as \"FlareUI Loot Window\"."],
-        },
-        ["bl.lootWindowBoE"] = {
-            label = L["BoE Text"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowBorder"] = {
-            desc = L["The border around the loot window. None hides it."],
-            label = L["Border"],
-            section = "bl.lootWindowSection",
-            tags = { "frame border" },
-        },
-        ["bl.lootWindowColor"] = {
-            choices = { L["Icon Only"], L["Whole Row"] },
-            desc = L["Colour only the icon's border, or the whole row, in the item's quality colour."],
-            label = L["Quality Colour"],
-            section = "bl.lootWindowSection",
+            tags = { "loot window", "loot frame", "corpse loot", "chest loot" },
+            tip = L["Placed and scaled in Edit Mode as \"FlareUI Loot Window\". With Blizzard's Loot Under Mouse on, it opens at your cursor."],
         },
         ["bl.lootWindowFreeSlots"] = {
-            desc = L["Your free bag space at the window's foot, in red when the bags are full."],
-            label = L["Free Bag Slots"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowItemLevel"] = {
-            label = L["Item Level"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowJunk"] = {
-            label = L["Junk Coin"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowOpacity"] = {
-            desc = L["How dark the loot window's background is."],
-            label = L["Background Opacity"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowOwned"] = {
-            desc = L["How many of the item you already carry, after its name."],
-            label = L["Owned Count"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowSort"] = {
-            choices = { L["As Dropped"], L["By Quality"], L["By Item Level"] },
-            desc = L["Money always stays on top."],
-            label = L["Sort Items"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowThick"] = {
-            label = L["Thick Icon Borders"],
-            section = "bl.lootWindowSection",
-        },
-        ["bl.lootWindowUncollected"] = {
-            label = L["Uncollected Appearances"],
+            desc = L["How many bag slots you have free, at the bottom of the loot window. It turns red when your bags are full."],
+            label = L["Show Free Bag Slots"],
             section = "bl.lootWindowSection",
         },
         ["bl.petFood"] = {
@@ -2196,8 +2138,8 @@ ns.Copy = {
             desc = L["Health bars change colour with threat:\n* In a Group: only in a party or raid. On your own, every mob attacks you anyway\n* Always: solo too"],
             label = L["Colour by Threat"],
             section = "np.threatSection",
-            tags = { "aggro", "threat", "tank colours" },
-            tip = L["Threat colours only show while the mob is fighting."],
+            tags = { "aggro", "threat", "tank colours", "pet threat" },
+            tip = L["Threat colours only show while the mob is fighting. A mob your pet holds gets the Another Tank Has It colour."],
         },
         ["np.threatGlow"] = {
             desc = L["The plate's border pulses in the threat colour, with a soft glow round it."],
@@ -2206,7 +2148,7 @@ ns.Copy = {
             tags = { "aggro glow", "threat border" },
         },
         ["np.threatPercent"] = {
-            desc = L["Your threat on the unit as a number, in the middle of the bar. Coloured as the unit frames' Threat Text. With something already in the middle, it sits to its right, in brackets."],
+            desc = L["Your threat on the unit as a number, in a small box beside the plate while you have threat. The box sits on the side away from the level, or on the right with no level. Coloured as the unit frames' Threat Text."],
             label = L["Threat Percentage"],
             section = "np.threatSection",
             tags = { "threat percent", "threat number", "aggro percent" },
@@ -2302,15 +2244,17 @@ ns.Copy = {
             section = "qol.other",
             tip = L["Your volumes return when you move, fight or stop fishing for a while."],
         },
+        ["qol.flightDestinations"] = {
+            desc = L["A list beside the flight map. Search for a stop by name or zone, see its fare, and star the ones you use most."],
+            label = L["Flight Destination List"],
+            section = "qol.mapMail",
+            tags = { "flight master", "taxi", "flight path", "destinations", "search flights" },
+            tip = L["Starred stops stay at the top of the list, for each character."],
+        },
         ["qol.font.zoneText"] = {
             desc = L["The zone name that appears as you enter a new area. Default keeps Blizzard's font. The size stays the same."],
             label = L["Zone Text"],
             section = "qol.fonts",
-        },
-        ["qol.flightDestinations"] = {
-            label = L["Flight Destination List"],
-            desc = L["Adds a list to the flight map. Search by destination or zone."],
-            section = "qol.mapMail",
         },
         ["qol.gamepadPrompt"] = {
             desc = L["Pressing a controller button asks whether to switch to Blizzard's Gamepad UI."],
@@ -2367,13 +2311,6 @@ ns.Copy = {
             label = L["Mail Address Book"],
             section = "qol.mapMail",
             tip = L["A character shows up once you've logged in on it."],
-        },
-        ["qol.mapCoords"] = {
-            desc = L["Your coordinates and the cursor's on the world map."],
-            label = L["Coordinates on the World Map"],
-            section = "qol.mapMail",
-            tags = { "map coordinates", "world map coords", "cursor coordinates" },
-            tip = L["The same as Blizzard's own two map options in its Interface settings: changing one changes the other."],
         },
         ["qol.mapFade"] = {
             desc = L["The world map turns see-through while you move."],

@@ -280,6 +280,23 @@ general.mouseOver = false
 chat.lineWatcher:RunScript("OnUpdate", 0.3)
 assert(general.fading and general.fadeResets == resets + 2)
 
+-- (11-23, BearAE) the tabs' secure click boxes follow the tab bar's layer: the Meter tab moves the
+-- bar up, and a box left under it sent clicks to the FlareUI tab, whose switch waits out a fight
+chat.SyncTabHits()
+ui:flushTimers()
+local hits = assert(bar.FlareUI_Hits and bar.FlareUI_Hits[1], "a click box over the first tab")
+assert(hits:GetFrameStrata() == bar:GetFrameStrata() and hits:GetFrameLevel() == bar:GetFrameLevel() + 10)
+env.DamageMeter = env.DamageMeter or {}
+local oldStrata = env.DamageMeter.FlareUI_ChatStrata
+env.DamageMeter.FlareUI_ChatStrata = "HIGH"
+chat.ApplyHeaderStrata()
+ui:flushTimers()
+assert(bar:GetFrameStrata() == "HIGH" and hits:GetFrameStrata() == "HIGH", "the box follows the bar up: " .. tostring(hits:GetFrameStrata()))
+assert(hits:GetFrameLevel() == bar:GetFrameLevel() + 10)
+env.DamageMeter.FlareUI_ChatStrata = oldStrata
+chat.ApplyHeaderStrata()
+ui:flushTimers()
+
 env.FCFDock_SelectWindow(dock, trade)
 assert(general.editBox.chatType == "CHANNEL" and general.editBox.channel == 2, "classic uses the shared edit box")
 trade.channelList = {}

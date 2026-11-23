@@ -116,7 +116,6 @@ fire('LOOT_CLOSED')
 win:Hide()
 
 -- Owned Count: two stacks of one item; looting the first raises the count the second shows
-tweaks.lootWindowOwned = true
 slots = { item(1, 'link:1'), item(2, 'link:x'), item(3, 'link:x') }
 counts['link:x'] = 4
 fire('LOOT_OPENED', false, false)
@@ -140,11 +139,5 @@ assert(row3.name.text == 'Item 3 |cff999999(5)|r', 'owned count follows the bags
 assert(rowOf(1) == row1 and select(2, rowOf(1)) == y1, 'row 1 keeps its place')
 assert(rowOf(3) == row3 and select(2, rowOf(3)) == y3, 'row 3 keeps its place')
 assert(row2.shown == false and row2.data == nil and rowOf(2) == nil, 'the gap stays')
-
--- Owned Count off: the names stay as they are
-tweaks.lootWindowOwned = false
-counts['link:x'] = 6
-fire('BAG_UPDATE_DELAYED')
-assert(row3.name.text == 'Item 3 |cff999999(5)|r', 'off: rows not repainted: ' .. tostring(row3.name.text))
 
 print('PASS: loot window events')

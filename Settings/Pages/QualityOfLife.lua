@@ -44,21 +44,11 @@ S:Row{ key = "qol.way", half = true, tab = "gameplay", section = "qol.mapMail", 
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mailBook", apply = Refresh }
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.taxiMap" }
+S:Row{ key = "qol.zoneLevels", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.zoneLevels" }
+-- (11-23, Malkkav) the flight list (PR #154, parchinskiy) took the place of Coordinates on the World
+-- Map, which only switched Blizzard's own two map options (still in its Interface settings)
 S:Row{ key = "qol.flightDestinations", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.flightDestinations",
     apply = function() if ns.FlightDestinations then ns.FlightDestinations:Refresh() end end }
-S:Row{ key = "qol.zoneLevels", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.zoneLevels" }
--- Coordinates on the World Map: Blizzard's own two options (your position and the
--- cursor's) behind one switch, nothing of FlareUI's drawn. Its Interface options show the same values.
-local MAP_COORDS = { "worldMapShowPlayerCoords", "worldMapShowCursorCoords" }
-S:Row{ key = "qol.mapCoords", half = true, tab = "gameplay", section = "qol.mapMail", ignoreModule = true,
-    get = function()
-        for _, cvar in ipairs(MAP_COORDS) do if C_CVar.GetCVarBool(cvar) then return true end end
-        return false
-    end,
-    set = function(on)
-        for _, cvar in ipairs(MAP_COORDS) do pcall(C_CVar.SetCVar, cvar, on and "1" or "0") end
-    end,
-    resetValue = function() return false end }
 -- Convenience, in pairs: accepting for you, casting, fishing, bags and sounds
 S:Row{ key = "qol.acceptRes", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptRes" }
 S:Row{ key = "qol.acceptSummon", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptSummon" }

@@ -7,6 +7,7 @@ local unreadable = {}
 local function noop() end
 local ns = {
     modules = {},
+    Dialogs = {}, ShowDialog = function() end,   -- (the Blizzard Visibility warning, 11-22)
     L = setmetatable({}, { __index = function(_, key) return key end }),
     db = { profile = { damagemeter = db } },
     ShortNumber = tostring,

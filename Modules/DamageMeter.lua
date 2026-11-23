@@ -3595,8 +3595,14 @@ local function TrimMeterDialog(dialog)
     local db = GetDb()
     if not (db and db.enabled) then return end
     local setting = Enum.EditModeDamageMeterSetting
+    -- (11-22) Blizzard's own Visibility stays in view while it is Hidden or In a Group: Blizzard
+    -- applies it again as a fight starts and the meter can't come back until the fight ends, so the
+    -- settings banner sends the player here to set it to Always (it was hidden, and they couldn't)
+    local kinds, meter = Enum.DamageMeterVisibility, _G.DamageMeter
+    local own = meter and meter.visibility
+    local blocking = kinds and (own == kinds.Hidden or own == kinds.InGroup)
     local hidden = {
-        [setting.Visibility] = true,
+        [setting.Visibility] = not blocking,
         [setting.Transparency] = true,
         [setting.BackgroundTransparency] = true,
     }
@@ -3625,8 +3631,38 @@ end
 --------------------------------------------------
 -- 24. INIT
 --------------------------------------------------
+-- BLIZZARD'S OWN VISIBILITY CHECK (11-22, Malkkav): Blizzard's meter Visibility on Hidden or In a
+-- Group hides the meter as a fight starts, and no addon may show it again until the fight ends (nor
+-- change Edit Mode's value: that taints Blizzard's meter). So once per session, out of a fight, a
+-- small window says so and opens Edit Mode, where the row shows while it's wrong (TrimMeterDialog).
+-- Don't Show Again: damagemeter.visibilityNoWarn.
+ns.Dialogs["FLAREUI_METER_VISIBILITY"] = {
+    text = L["Blizzard's own Visibility for the damage meter is set to In a Group or Hidden, so it will hide the meter when a fight starts.\n\nOpen Edit Mode, click the Damage Meter and set its Visibility to Always. FlareUI's own Visibility then decides when it shows."],
+    button1 = L["Open Edit Mode"],
+    button2 = L["Not Now"],
+    button3 = L["Don't Show Again"],
+    OnAccept = function() if ns.Settings and ns.Settings.OpenEditMode then ns.Settings:OpenEditMode("dm") end end,
+    OnAlt = function()
+        local db = GetDb()
+        if db then db.visibilityNoWarn = true end
+    end,
+    hideOnEscape = true,
+}
+function DamageMeter.CheckBlizzardVisibility()
+    local db = GetDb()
+    if DamageMeter.visibilityWarned or not (db and db.enabled) or db.visibilityNoWarn then return end
+    if InFight() or DamageMeter:ChatTabAvailable() or not MeterAllowed() then return end
+    local kinds, meter = Enum.DamageMeterVisibility, _G.DamageMeter
+    local own = meter and meter.visibility
+    if not (kinds and (own == kinds.Hidden or own == kinds.InGroup)) then return end
+    DamageMeter.visibilityWarned = true
+    ns.ShowDialog("FLAREUI_METER_VISIBILITY")
+end
+
 function DamageMeter:Init()
     HookMeterDialog()
+    -- (a moment after login, once Edit Mode has applied its layout)
+    C_Timer.After(8, DamageMeter.CheckBlizzardVisibility)
     -- leaving Edit Mode restyles the windows (ApplyToWindow skips them while Edit Mode is open)
     if _G.EditModeManagerFrame and not self._editModeHooked then
         self._editModeHooked = true

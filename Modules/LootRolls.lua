@@ -438,10 +438,7 @@ local function Panel(frame)
         shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
         frame.skin = { rock, wash, glow, shade }
     end
-    -- Background Opacity (Bags & Looting, tweaks.lootRollsOpacity), as on the chat and meter
-    local db = GetDb()
-    local opacity = (db and tonumber(db.lootRollsOpacity)) or 1
-    for _, texture in ipairs(frame.skin) do texture:SetAlpha(opacity) end
+    -- (11-23, Malkkav: always full strength; Background Opacity removed, see-through read badly)
 end
 
 local function Box(frame)
@@ -1362,11 +1359,6 @@ function LR.StyleTitle()
     if ns.ApplyShadow then ns.ApplyShadow(title, font) end
     local c = font.color or { r = 0.80, g = 0.60, b = 0.34 }
     title:SetTextColor(c.r, c.g, c.b, c.a or 1)
-end
-
--- Background Opacity, live
-function LR:ApplyOpacity()
-    if win then Panel(win) end
 end
 
 -- Bags & Looting > Fonts > Loot Rolls changed: every text in the window, live

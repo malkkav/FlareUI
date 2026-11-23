@@ -65,45 +65,6 @@ local function order(rows)
     return table.concat(out, ',')
 end
 
--- quality: money first, then quality descending, slot ascending on ties
-local rows = {
-    { slot = 1, type = LOOT_MONEY, quality = 0 },
-    { slot = 2, type = LOOT_ITEM, quality = 1 },
-    { slot = 3, type = LOOT_ITEM, quality = 0 },
-    { slot = 4, type = LOOT_ITEM, quality = 3 },
-    { slot = 5, type = LOOT_ITEM, quality = 2 },
-}
-LW.SortRows(rows, 'quality')
-assert(order(rows) == '1,4,5,2,3', 'quality order: ' .. order(rows))
-
--- no quality sorts as Common (as it is coloured): above Poor, level with Common
-rows = {
-    { slot = 1, type = LOOT_ITEM, quality = 0 },
-    { slot = 2, type = LOOT_ITEM },
-    { slot = 3, type = LOOT_ITEM, quality = 1 },
-}
-LW.SortRows(rows, 'quality')
-assert(order(rows) == '2,3,1', 'nil quality as Common: ' .. order(rows))
-
--- ilvl: higher first, equal ilvl keeps the lower slot first, no ilvl counts as 0
-rows = {
-    { slot = 1, type = LOOT_ITEM, ilvl = 100 },
-    { slot = 2, type = LOOT_ITEM, ilvl = 200 },
-    { slot = 3, type = LOOT_ITEM, ilvl = 200 },
-    { slot = 4, type = LOOT_ITEM },
-}
-LW.SortRows(rows, 'ilvl')
-assert(order(rows) == '2,3,1,4', 'ilvl order: ' .. order(rows))
-
--- loot: slot ascending, money first even from slot 3
-rows = {
-    { slot = 2, type = LOOT_ITEM },
-    { slot = 3, type = LOOT_MONEY },
-    { slot = 1, type = LOOT_ITEM },
-}
-LW.SortRows(rows, 'loot')
-assert(order(rows) == '3,1,2', 'loot order: ' .. order(rows))
-
 -- ReadSlots: None slots skipped, currency values from the container info
 slots = {
     { type = LOOT_ITEM, texture = 't1', name = 'Sword', quantity = 1, quality = 4, link = 'link:sword' },
@@ -126,10 +87,9 @@ assert(LW.IsJunk({ type = LOOT_ITEM, quality = 0, link = 'link:broken' }) == fal
 assert(LW.IsJunk({ type = LOOT_ITEM, quality = 1, link = 'link:grey' }) == false, 'not grey')
 assert(LW.IsJunk({ type = LOOT_MONEY, quality = 0 }) == false, 'money')
 
--- owned count: a grey suffix, only when on and above 0
-assert(LW.NameWithCount('Linen Cloth', 12, true) == 'Linen Cloth |cff999999(12)|r', 'suffix when on')
-assert(LW.NameWithCount('Linen Cloth', 12, false) == 'Linen Cloth', 'no suffix when off')
-assert(LW.NameWithCount('Linen Cloth', 0, true) == 'Linen Cloth', 'no suffix at 0')
+-- owned count: a grey suffix, always, only above 0
+assert(LW.NameWithCount('Linen Cloth', 12) == 'Linen Cloth |cff999999(12)|r', 'suffix')
+assert(LW.NameWithCount('Linen Cloth', 0) == 'Linen Cloth', 'no suffix at 0')
 assert(LW.OwnedCount({ type = LOOT_ITEM, link = 'link:owned' }) == 7, 'owned count')
 assert(LW.OwnedCount({ type = LOOT_ITEM, link = 'link:broken' }) == 0, 'GetItemCount error')
 assert(LW.OwnedCount({ type = LOOT_MONEY }) == 0, 'money has no count')
@@ -158,10 +118,6 @@ assert(math.abs(top + h - area) < 1e-9, 'thumb at the bottom')
 
 assert(LW.ShouldShowOnOpen(true) == false)
 assert(LW.ShouldShowOnOpen(false) == true)
-
-assert(LW.BorderFile('None') == nil)
-assert(LW.BorderFile('Gone Addon Border') == 'path:FlareUI Thick')
-assert(LW.BorderFile('FlareUI Frames') == 'path:FlareUI Frames')
 
 -- free bag slots: general bags only (0 + 3 + 2 + 0 + 1; the family-8 bag's 9 left out)
 assert(LW.FreeBagSlots() == 6, 'sums the family-0 bags only')

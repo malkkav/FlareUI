@@ -45,6 +45,8 @@ function Chat.ApplyHeaderStrata()
             frame:SetFrameLevel(level)
         end
     end
+    -- the tabs' secure click boxes follow (out of a fight; PLAYER_REGEN_ENABLED syncs them after one)
+    if Chat.SyncTabHits then Chat.SyncTabHits() end
 end
 
 --------------------------------------------------
@@ -2531,6 +2533,11 @@ function TabHit.Sync()
                         local bs = btn:GetEffectiveScale()
                         local left, right = math_max(bl * bs, sl * ss), math_min(br * bs, sr * ss)
                         if right - left >= 4 then
+                            -- (11-23, BearAE) over the tab bar's layer as it is now: the bar moves to
+                            -- the meter's layer with the Meter tab (Chat.ApplyHeaderStrata), and a box
+                            -- left under it sent clicks to the FlareUI tab, whose switch waits out a fight
+                            hit:SetFrameStrata(scrollFrame:GetFrameStrata())
+                            hit:SetFrameLevel(scrollFrame:GetFrameLevel() + 10)
                             hit.tab = btn
                             hit:SetAttribute("clickbutton", btn.realTab)
                             hit:SetAttribute("type1", "click")
@@ -2560,6 +2567,7 @@ function TabHit.SyncSoon()
         TabHit.Sync()
     end)
 end
+Chat.SyncTabHits = TabHit.SyncSoon   -- (for Chat.ApplyHeaderStrata, defined before TabHit)
 
 -- A bar joins the boxes' list on its first lay-out; the events and the slow check start with the first
 function TabHit.Watch(scrollFrame)

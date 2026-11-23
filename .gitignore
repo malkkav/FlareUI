@@ -1,3 +1,7 @@
 # Windows clutter
 Thumbs.db
 desktop.ini
+
+# LuaCov output (tools/.luacov)
+luacov.stats.out
+luacov.report.out

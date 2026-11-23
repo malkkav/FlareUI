@@ -230,6 +230,9 @@ assert(gamePlate.UnitFrame:GetAlpha() == 0 and not gamePlate.UnitFrame:IsEventRe
 assert(gamePlate.UnitFrame.WidgetContainer:GetParent() == gamePlate and gamePlate.clickEnabled)
 assert(simplified[token] == false and cvars.nameplateSelectedScale == "1" and cvars.nameplateTargetRadialPosition == "1")
 assert(live.threatKey == "gaining" and live.threatText:GetText() == "80%")
+-- (11-23, #145) Threat Percentage in its own box, on the side away from the level, never in its place
+assert(live.threatInLevel == false and live.threatBoxOn and live.threatBox:IsShown())
+assert(live.threatSide == (live.levelAnchor and live.levelSide == "right" and "left" or "right"))
 assert(live.health:GetValue() == 100 and live.textHolder:GetAlpha() == 0 and live.holder:GetAlpha() == 0.35)
 assert(live.heal:GetValue() == 8 and live.absorb:GetValue() == 12)
 
@@ -341,6 +344,55 @@ assert(live.cast:IsShown() and live.questText:GetText() == "3/8")
 ui.time = 22
 plates.TestTick()
 assert(not plates.testing and not live.cast:IsShown() and not live.questText:IsShown())
+
+-- (11-23, Rex / saamor) PET THREAT: your pet holding the mob reads as another tank having it
+local petThreat
+env.UnitThreatSituation = function(who, unit)
+    if who == "pet" then return petThreat end
+    return units[unit].threat
+end
+units.pet = {}
+testMob.threat, petThreat = 0, 3
+assert(plates.PetHolds(token))
+plates.UpdateColor(live)
+assert(live.threatKey == "offtank", "damage: the pet holds it -> " .. tostring(live.threatKey))
+testMob.threat = nil   -- (the pet pulled: you aren't on its threat list yet)
+plates.UpdateColor(live)
+assert(live.threatKey == "offtank", "not on the list yet -> " .. tostring(live.threatKey))
+db.role = "tank"
+plates.UpdateRole()
+testMob.threat = 0
+plates.UpdateColor(live)
+assert(live.threatKey == "offtank", "tank: the pet holds it -> " .. tostring(live.threatKey))
+petThreat = 1
+assert(not plates.PetHolds(token))
+plates.UpdateColor(live)
+assert(live.threatKey == "lost", "tank: nobody of ours holds it -> " .. tostring(live.threatKey))
+units.pet, petThreat = nil, nil
+db.role = "damage"
+plates.UpdateRole()
+
+-- the threat box moves to the left when the level sits on the right; with no level, it stays right
+plates.TypeSet("enemyNpc", "level", "box")
+plates.TypeSet("enemyNpc", "levelSide", "right")
+plates.Layout(live)
+assert(live.levelAnchor and live.threatSide == "left", "level right -> box left, got " .. tostring(live.threatSide))
+plates.TypeSet("enemyNpc", "level", "off")
+plates.Layout(live)
+assert(live.threatSide == "right", "no level -> box right, got " .. tostring(live.threatSide))
+plates.TypeSet("enemyNpc", "levelSide", "left")
+plates.TypeSet("enemyNpc", "level", "box")
+plates.Layout(live)
+
+-- (11-23) DOESITDIE: an invisible bar named like "health" over ours on the game plate, hidden on release
+env.DoesItDie = {}
+plates.DieProxy(gamePlate, live)
+local proxy = assert(gamePlate.FlareUI_DieHealth, "the proxy bar")
+assert(proxy:IsShown() and proxy:GetParent() == gamePlate)
+assert(proxy:GetReverseFill() == (live.health:GetReverseFill() and true or false))
+plates.DieProxy(gamePlate, nil)
+assert(not proxy:IsShown(), "hidden when we let the plate go")
+env.DoesItDie = nil
 
 send("NAME_PLATE_UNIT_REMOVED", token)
 assert(not plates.PartsFor(gamePlate) and gamePlate.FlareUIHealthBar == nil and gamePlate.UnitFrame:GetAlpha() == 1)

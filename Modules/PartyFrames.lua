@@ -489,6 +489,8 @@ local function UpdateHealth(f, glide)
         text:SetText(K.OFFLINE_TEXT)
     elseif K.IsDead(unit) then
         text:SetText(UnitIsGhost(unit) and K.GHOST_TEXT or K.DEAD_TEXT)
+    elseif PF.MidOn(f) then
+        PF.FillMid(f, "health", unit)
     elseif mode == "lost" then
         K.SetHealthLost(text, unit)
     elseif mode == "none" then
@@ -521,6 +523,8 @@ end
 
 -- Power Text: the raid's (and raid-style tiles') default is None, the party's Value
 local function TilePowerMode(f, st)
+    -- (11-23) raid tiles: their Centre slot ("mid", PF.FillMid), or none
+    if PF.MidOn(f) then return ns.BarText.HasNumbers(PF.MidSet(f, "power")) and "mid" or "none" end
     if RaidTile(f) then
         local v = st and st.powerText
         return K.IsPowerTextMode(v) and v or "none"
@@ -554,7 +558,8 @@ local function UpdatePower(f, glide)
     local ptMode = st and TilePowerMode(f, st) or "none"
     if ptMode ~= "none" and UnitIsConnected(unit) and not K.IsDead(unit) then
         f.powerTextMode = ptMode
-        K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode)
+        if ptMode == "mid" then PF.FillMid(f, "power", unit, powerType)
+        else K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode) end
     else
         f.PowerText:SetText("")
     end
@@ -569,6 +574,7 @@ local function UpdatePowerValue(f)
     local unit, st = f.fuiUnit, TS(f)
     ns.SetBarValue(f.Power, UnitPower(unit, powerType), st and st.smoothBars)
     if f.powerTextMode == "slots" then PF.FillPowerSlots(f, unit, powerType)
+    elseif f.powerTextMode == "mid" then PF.FillMid(f, "power", unit, powerType)
     elseif f.powerTextMode then K.SetPowerText(f.PowerText, unit, powerType, f.powerTextMode) end
 end
 
@@ -1943,6 +1949,40 @@ function PF.SlotOn(f)
     if f.ctx then return f.ctx.barText and true or false end
     return f.index ~= nil and not RaidTile(f) or false   -- (the party's own tiles: live and samples)
 end
+-- RAID TILES (11-23, Malkkav: the party's Raid Style and the raid frames): the same picker with the
+-- Centre slot only (BarText.lua style "tile"); the old Health / Power Text choice converts once. The
+-- tile's own HealthText / PowerText show it, where they always sat.
+PF.MID_DESC = L["What the middle of the bar shows. Several numbers show together, split by /."]
+function PF.MidOn(f)
+    return ns.BarText ~= nil and RaidTile(f) and not PF.SlotOn(f)
+end
+-- the table a tile's Bar Text is kept in: the raid frames' db (ctx.TextDb), else the party style's
+function PF.MidDb(f)
+    if f.ctx then return f.ctx.TextDb and f.ctx.TextDb() or nil end
+    return (S())
+end
+-- the Centre slot's picks, read again after any pick (BarText.lua BT.stamp)
+function PF.MidSet(f, bar)
+    local BT = ns.BarText
+    f.btMid = f.btMid or {}
+    local cached = f.btMid[bar]
+    if not cached or cached.stamp ~= BT.stamp or cached.db ~= PF.MidDb(f) then
+        local db = PF.MidDb(f)
+        cached = { stamp = BT.stamp, db = db,
+                   set = BT.Slots(db, bar, "tile", nil, nil, f.ctx and "raid" or "party").middle }
+        f.btMid[bar] = cached
+    end
+    return cached.set
+end
+PF.midSlots = { left = {}, right = {} }   -- (reused: { middle = set } for the source readers)
+function PF.FillMid(f, bar, unit, powerType)
+    local set = PF.MidSet(f, bar)
+    PF.midSlots.middle = set
+    local src = bar == "health" and ns.UnitFrames.HealthSource(unit, PF.midSlots)
+        or ns.UnitFrames.PowerSource(unit, powerType, PF.midSlots)
+    ns.BarText.Fill(bar == "health" and f.HealthText or f.PowerText, set, src)
+end
+
 function PF.TileSlots(f, bar)
     f.btSlots = f.btSlots or {}
     if not f.btSlots[bar] then
@@ -2851,6 +2891,8 @@ ApplyPreview = function(f)
             (not data.dead) and ns.UnitFrames.SampleSource(data.health or 1, 24000) or nil, data.dead and K.DEAD_TEXT or nil)
     elseif data.dead then
         f.HealthText:SetText(K.DEAD_TEXT)
+    elseif PF.MidOn(f) then
+        ns.BarText.Fill(f.HealthText, PF.MidSet(f, "health"), ns.UnitFrames.SampleSource(data.health or 1, 24000))
     elseif mode == "lost" then
         K.SetSampleHealthLost(f.HealthText, data.health or 1)
     else
@@ -2873,7 +2915,11 @@ ApplyPreview = function(f)
             (not data.dead) and ns.UnitFrames.SampleSource(data.power or 1, 9000) or nil)
     else
         local ptMode = TilePowerMode(f, st)
-        K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
+        if ptMode == "mid" then
+            ns.BarText.Fill(f.PowerText, PF.MidSet(f, "power"), ns.UnitFrames.SampleSource(data.power or 1, 9000))
+        else
+            K.FormatBarText(f.PowerText, ptMode, math_floor((data.power or 1) * 9000), math_floor((data.power or 1) * 100), 9000)
+        end
     end
     -- a sample incoming heal and shield past the health, as the unit frames' samples show (without
     -- them they read as missing); none on the dead
@@ -3473,19 +3519,20 @@ local function BuildSettings()
         -- Name Above Frames (BarText.lua): Classic tiles, not Raid Style nor Forever Style's plate
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
-        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText"),
-          hidden = function() return not IsRaidStyle() end },
-        -- (Raid Style's default is None, as on the raid frames: TilePowerMode)
-        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = builtKey == "raid" and "none" or "value", values = K.POWER_TEXT_MODES,
-          get = function()
-              local st = S()
-              if IsRaidStyle() then
-                  local v = st and st.powerText
-                  return K.IsPowerTextMode(v) and v or "none"
-              end
-              return K.PowerTextMode(st and st.powerText)
-          end,
-          set = setS("powerText"), hidden = function() return not IsRaidStyle() end },
+        -- Raid Style (11-23, Malkkav): the same picker with the Centre slot only (PF.MidOn); the old
+        -- Health / Power Text choice converts once (BarText.lua style "tile")
+        (function()
+            local item = ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "party", db = function() return (S()) end,
+                changed = function() Refresh() end, style = function() return "tile" end, desc = PF.MID_DESC })
+            item.hidden = function() return not IsRaidStyle() end
+            return item
+        end)(),
+        (function()
+            local item = ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "party", db = function() return (S()) end,
+                changed = function() Refresh() end, style = function() return "tile" end, desc = PF.MID_DESC })
+            item.hidden = function() return not IsRaidStyle() end
+            return item
+        end)(),
         -- (Classic off the plate: the name is a Health Text pick)
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return getS("showName")() ~= false end, set = setS("showName"),
           hidden = function() return not (IsRaidStyle() or onPlate()) end },

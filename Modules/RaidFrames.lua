@@ -208,12 +208,14 @@ local raidCtx = {
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return readyHold end,
     fontKey = "raid",   -- the raid frames' fonts (PartyFrames.lua PF.FontKey)
+    TextDb = GetDb,     -- where Health / Power Text are kept (PartyFrames.lua PF.MidDb)
 }
 local tankCtx = {
     Settings = function() return tankView end,
     PreviewData = function(f) return f.sample or SAMPLES[1] end,
     ReadyHold = function() return readyHold end,
     fontKey = "raid",
+    TextDb = GetDb,
 }
 -- for the settings previews' sample tiles
 RF.PreviewCtx, RF.PreviewSamples = raidCtx, SAMPLES
@@ -1002,10 +1004,12 @@ local function BuildSettings()
           get = get("height", DEFAULT_H), set = set("height") },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = d.healthText or "none", values = K.HEALTH_TEXT_MODES,
-          get = get("healthText", "none"), set = set("healthText") },
-        { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = "none", values = K.POWER_TEXT_MODES,
-          get = get("powerText", "none"), set = set("powerText") },
+        -- (11-23, Malkkav) the unit frames picker with the Centre slot only, as the party Raid Style
+        -- (PartyFrames.lua PF.MidOn); the old Health / Power Text choice converts once
+        ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "raid", db = GetDb, changed = function() Refresh() end,
+            style = function() return "tile" end, desc = ns.PartyFrames.MID_DESC }),
+        ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "raid", db = GetDb, changed = function() Refresh() end,
+            style = function() return "tile" end, desc = ns.PartyFrames.MID_DESC }),
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName", true)() ~= false end, set = set("showName") },
         ns.UnitFrames.Kit.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
         { name = L["Only Mana Power Bars"], kind = LEM.SettingType.Checkbox, default = false,

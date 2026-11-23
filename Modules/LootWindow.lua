@@ -2,17 +2,19 @@ local _, ns = ...
 local L = ns.L
 
 --------------------------------------------------
--- LOOT WINDOW (Bags & Looting > Loot Window, off)
--- FlareUI's loot window in place of Blizzard's corpse and chest loot window.
+-- LOOT WINDOW (Bags & Looting > Looting > Loot Window, off; PR #146 by Xentinus)
+-- FlareUI's loot window in place of Blizzard's corpse and chest loot window. (11-23, Malkkav) built
+-- like the loot roll window: its border and rock at full strength, its font; the item marks follow the
+-- Bags options (Item Level, Junk, BoE, Uncollected, Skin Item Slots), the owned count always shows, and
+-- the only option of its own is Show Free Bag Slots. Items stay in the order they dropped.
 --------------------------------------------------
 local LW = {}
 ns.LootWindow = LW
 ns.modules["LootWindow"] = LW
 
-local ipairs, pairs, table_sort = ipairs, pairs, table.sort
+local ipairs, pairs = ipairs, pairs
 local LSM = LibStub("LibSharedMedia-3.0")
 
-local DEFAULT_BORDER = "FlareUI Thick"
 -- after the loot roll window's (LootRolls.lua): side padding, the rows below its header separator
 local W, PAD, TOP = 260, 8, 30
 local ROW_H, ROW_GAP, ICON, BOX_PAD = 48, 4, 36, 6
@@ -56,68 +58,6 @@ function LW.ReadSlots()
     return rows
 end
 
--- the settings' Live Preview sample items for New Loot (classic ones; Settings/Pages/BagsLooting.lua):
--- icon by item ID, else the icon file (a question mark without one). Gear has an item level and a
--- quantity of 1; the marks come from the row, as a sample row has no link.
-local SAMPLES = {
-    { name = L["Barbaric Battle Axe of the Gorilla"], icon = "INV_Axe_09", quality = 2, ilvl = 18, boe = true, uncollected = true },
-    { name = L["Bear Meat"], id = 3173, quality = 1, stack = true, owned = 4 },
-    { name = L["Large Bear Tooth"], id = 3169, quality = 0, stack = true, junk = true, owned = 4 },
-    { name = L["Linen Cloth"], id = 2589, icon = "INV_Fabric_Linen_01", quality = 1, stack = true, owned = 12 },
-    { name = L["Copper Ore"], id = 2770, icon = "INV_Ore_Copper_01", quality = 1, stack = true },
-    { name = L["Minor Healing Potion"], id = 118, quality = 1, stack = true, owned = 2 },
-    { name = L["Malachite"], id = 774, quality = 2, stack = true },
-    { name = L["Sword"], icon = "INV_Sword_04", quality = 0, ilvl = 5, junk = true },
-    { name = L["Cruel Barb"], id = 5191, quality = 3, ilvl = 24, uncollected = true },
-    { name = L["Arcanite Reaper"], id = 12784, quality = 4, ilvl = 63, boe = true, uncollected = true },
-}
-
--- random sample loot in LW.ReadSlots' shape: money or not, then 2 to 6 different sample items.
--- rand works as math.random (the default).
-function LW.RandomLoot(rand)
-    rand = rand or math.random
-    local types = Enum.LootSlotType
-    local rows = {}
-    if rand(2) == 1 then
-        rows[1] = { slot = 1, type = types.Money, texture = "Interface\\Icons\\INV_Misc_Coin_01",
-            name = (SILVER_AMOUNT or "%d Silver"):format(rand(1, 99)) .. " " .. (COPPER_AMOUNT or "%d Copper"):format(rand(1, 99)) }
-    end
-    local order = {}
-    for i = 1, #SAMPLES do order[i] = i end
-    for i = 1, rand(2, 6) do
-        -- (a partial shuffle: each sample at most once)
-        local j = rand(i, #order)
-        order[i], order[j] = order[j], order[i]
-        local s = SAMPLES[order[i]]
-        local icon = s.id and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(s.id)
-        rows[#rows + 1] = {
-            slot = #rows + 1, type = types.Item, name = s.name, quality = s.quality, ilvl = s.ilvl,
-            texture = icon or "Interface\\Icons\\" .. (s.icon or "INV_Misc_QuestionMark"),
-            quantity = s.stack and rand(1, 20) or 1,
-            boe = s.boe, junk = s.junk, uncollected = s.uncollected, owned = s.owned,
-        }
-    end
-    return rows
-end
-
--- mode: "loot" (the game's order), "quality" or "ilvl", both highest first; money always leads
-function LW.SortRows(rows, mode)
-    local money = Enum.LootSlotType.Money
-    table_sort(rows, function(a, b)
-        local aMoney, bMoney = a.type == money, b.type == money
-        if aMoney ~= bMoney then return aMoney end
-        if mode == "quality" then
-            -- no quality counts as Common, as its colour (QualityColor)
-            local aq, bq = a.quality or 1, b.quality or 1
-            if aq ~= bq then return aq > bq end
-        elseif mode == "ilvl" then
-            local ai, bi = a.ilvl or 0, b.ilvl or 0
-            if ai ~= bi then return ai > bi end
-        end
-        return a.slot < b.slot
-    end)
-end
-
 -- the junk coin as on the bags (Bags.lua: grey with a sell value). GetItemInfo's 11th value, after
 -- pcall's status; nil while the item isn't cached.
 function LW.IsJunk(data)
@@ -133,9 +73,9 @@ function LW.OwnedCount(data)
     return ok and type(count) == "number" and count or 0
 end
 
--- the item name with its owned count as a grey suffix: only when on and the count is above 0
-function LW.NameWithCount(name, count, on)
-    if on and type(name) == "string" and type(count) == "number" and count > 0 then
+-- the item name with its owned count as a grey suffix: only when the count is above 0
+function LW.NameWithCount(name, count)
+    if type(name) == "string" and type(count) == "number" and count > 0 then
         return name .. " |cff999999(" .. count .. ")|r"
     end
     return name
@@ -143,12 +83,6 @@ end
 
 function LW.ShouldShowOnOpen(autoLoot)
     return not autoLoot
-end
-
-function LW.BorderFile(name)
-    if name == "None" then return nil end
-    if not (name and LSM:IsValid("border", name)) then name = DEFAULT_BORDER end
-    return LSM:Fetch("border", name)
 end
 
 function LW:ShouldLoad()
@@ -159,12 +93,12 @@ end
 --------------------------------------------------
 -- THE WINDOW AND ITS ROWS
 -- Built on first use. Rows are pooled by position; a looted row leaves and the ones below move up
--- without re-sorting. Names in tweaks.lootWindowFont (small lines two sizes smaller), the title in the
--- Damage Meter's header font, as on the loot roll window.
+-- without moving. Names in the loot roll window's font (tweaks.lootRollFont, small lines two sizes
+-- smaller), the title in the Damage Meter's header font, as on the loot roll window.
 --------------------------------------------------
 local function StyleText(fs, small)
     local db = GetDb()
-    local font = db and db.lootWindowFont or {}
+    local font = db and db.lootRollFont or {}
     local size = font.size or 12
     if small then size = math.max(6, size - 2) end
     local flags = font.flags or ""
@@ -340,7 +274,7 @@ local function PaintRow(row, data, db)
     local name = data.name
     -- the money text has a line per coin
     if isMoney and type(name) == "string" then name = name:gsub("\n", " ") end
-    if db.lootWindowOwned then name = LW.NameWithCount(name, LW.OwnedCount(data), true) end
+    name = LW.NameWithCount(name, LW.OwnedCount(data))
     row.name:SetText(name)
     local r, g, b = QualityColor(data.quality)
     row.name:SetTextColor(r, g, b)
@@ -348,19 +282,13 @@ local function PaintRow(row, data, db)
     row.count:SetText(quantity)
     row.count:SetShown(not isMoney and quantity and quantity > 1 or false)
 
-    -- money keeps FlareUI's bronze: it has no quality
+    -- the icon border as the bags' Skin Item Slots: thin or thick, coloured by rarity when that is on
+    -- (money keeps FlareUI's bronze: it has no quality)
     local c = ns.BORDER_COLOR
     local er, eg, eb = r, g, b
-    if isMoney then er, eg, eb = c.r, c.g, c.b end
-    IconEdge(icon, db.lootWindowThick and "thick" or "thin", er, eg, eb)
-    if db.lootWindowColor == "row" and not isMoney then
-        row:SetBackdropBorderColor(r, g, b, 1)
-        row.wash:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.35), CreateColor(r, g, b, 0))
-        row.wash:Show()
-    else
-        row:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
-        row.wash:Hide()
-    end
+    if isMoney or db.bagRarity == false then er, eg, eb = c.r, c.g, c.b end
+    IconEdge(icon, db.bagThickBorders and "thick" or "thin", er, eg, eb)
+    row:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
 
     -- Blizzard's quest marks (LootFrame.lua's element Init)
     if data.questID and not data.isActive then
@@ -375,10 +303,11 @@ local function PaintRow(row, data, db)
 
     local link = data.link
     local Bags = ns.Bags
-    row.junk:SetShown(db.lootWindowJunk and LW.IsJunk(data) or false)
-    row.boe:SetShown(db.lootWindowBoE and link and Bags and Bags.IsBoE(link) or false)
-    row.eye:SetShown(db.lootWindowUncollected and link and Bags and Bags.Uncollected(link) or false)
-    if db.lootWindowItemLevel and data.ilvl then
+    -- (the bags' own switches: Bags & Looting > Bags)
+    row.junk:SetShown(db.bagJunkIcon and LW.IsJunk(data) or false)
+    row.boe:SetShown(db.bagBoE and link and Bags and Bags.IsBoE(link) or false)
+    row.eye:SetShown(db.bagUncollected and link and Bags and Bags.Uncollected(link) or false)
+    if db.bagItemLevel and data.ilvl then
         StyleItemLevel(row.ilvl)
         row.ilvl:SetText(data.ilvl)
         row.ilvl:SetTextColor(r, g, b)
@@ -509,18 +438,13 @@ local function Render()
     win:SetHeight(TOP + area + (scrolls and MORE or 0) + FootH() + PAD)
 end
 
--- FlareUI's panel: the chosen border (none for "None") a little darker than its bronze, on the plain
--- rock with a shade toward the bottom, as the loot roll window
+-- FlareUI's panel, as the loot roll window's: the thick border a little darker than its bronze, on
+-- the plain rock with a shade toward the bottom, always at full strength
 local function Panel(frame)
-    local db = GetDb() or {}
-    local file = LW.BorderFile(db.lootWindowBorder)
-    if file then
-        frame:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16) })
-        local c, dim = ns.BORDER_COLOR, 0.75
-        frame:SetBackdropBorderColor(c.r * dim, c.g * dim, c.b * dim, c.a)
-    else
-        frame:SetBackdrop(nil)
-    end
+    local file = LSM:Fetch("border", "FlareUI Thick")
+    frame:SetBackdrop({ edgeFile = file, edgeSize = ns.BorderEdgeSize(file, 16) })
+    local c, dim = ns.BORDER_COLOR, 0.75
+    frame:SetBackdropBorderColor(c.r * dim, c.g * dim, c.b * dim, c.a)
     if not frame.skin then
         local rock = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
         rock:SetPoint("TOPLEFT", 3, -3)
@@ -534,8 +458,6 @@ local function Panel(frame)
         shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
         frame.skin = { rock, shade }
     end
-    local opacity = tonumber(db.lootWindowOpacity) or 1
-    for _, texture in ipairs(frame.skin) do texture:SetAlpha(opacity) end
 end
 
 function LW:Build()
@@ -595,13 +517,11 @@ function LW:Build()
     return win
 end
 
--- rows from LW.ReadSlots: sorted by Sort Items (tweaks.lootWindowSort) and shown
+-- rows from LW.ReadSlots, in the order they dropped
 function LW:Show(rows)
     LW:Build()
-    local db = GetDb() or {}
     current = rows or {}
     offset = 0
-    LW.SortRows(current, db.lootWindowSort or "loot")
     Render()
     win:Show()
 end
@@ -655,23 +575,14 @@ function LW:RefreshItemData()
     Render()
 end
 
--- the settings changed: the shown rows again, sorted as now set
+-- the settings changed (Show Free Bag Slots, the Bags marks): the shown rows again
 function LW:Refresh()
     if not win then return end
     StyleTitle()
-    if current then
-        local db = GetDb() or {}
-        LW.SortRows(current, db.lootWindowSort or "loot")
-        Render()
-    end
+    if current then Render() end
 end
 
--- Border and Background Opacity, live
-function LW:ApplyLook()
-    if win then Panel(win) end
-end
-
--- the window's font (tweaks.lootWindowFont) and the item levels' (tweaks.bagItemLevelFont), live
+-- the window's font (the loot roll window's) and the item levels' (tweaks.bagItemLevelFont), live
 function LW:ApplyFont()
     for fs, small in pairs(texts) do StyleText(fs, small) end
     StyleTitle()
@@ -874,9 +785,8 @@ local function OnEvent(_, event, a, b)
         if b == ERR_INV_FULL and LW.looting then ShowSlots() end
     elseif event == "BAG_UPDATE_DELAYED" then
         if win:IsShown() then
-            -- Owned Count follows the bags: the rows repainted in place (Render repaints the footer too)
-            local db = GetDb()
-            if db and db.lootWindowOwned then Render() else PaintFreeSlots() end
+            -- the owned counts follow the bags: the rows repainted in place (Render repaints the footer too)
+            Render()
         end
     elseif event == "LOOT_SLOT_CLEARED" then
         if win:IsShown() then LW:RemoveSlot(a) end
