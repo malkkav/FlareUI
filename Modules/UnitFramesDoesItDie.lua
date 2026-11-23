@@ -2,7 +2,7 @@ local _, ns = ...
 
 --------------------------------------------------
 -- DOESITDIE
--- With the DoesItDie addon, its estimate on FlareUI's target and focus frames, which replace the Blizzard
+-- With DoesItDie or DoesItDiePlus, its estimate on FlareUI's target and focus frames, which replace the Blizzard
 -- frames it draws on: a mark for the damage the player's DoTs still have to deal, and a skull when that is
 -- enough to kill. Numbers come from its public API; its marker and skull settings are followed, and a frame
 -- it was pointed at by hand under its Advanced options is left to it.
@@ -61,8 +61,9 @@ local function Build(f)
 end
 
 -- The mark fills from the side the health does (Mirror), its edge at the far end
-local function FollowFill(rec)
+local function FollowFill(rec, direction)
     local reverse = rec.frame.Health:GetReverseFill() and true or false
+    if direction == "rtl" then reverse = true elseif direction == "ltr" then reverse = false end
     if rec.reverse == reverse then return end
     rec.reverse = reverse
     rec.mark:SetReverseFill(reverse)
@@ -103,18 +104,58 @@ local function HideRecord(rec)
     rec.window:Hide()
 end
 
+-- Like DoesItDie's custom-frame resolver, accept a frame/region path, not merely nonblank text.
+-- A stale path falls back to our bars without rewriting the user's setting; a late-created frame
+-- takes over on the next refresh. Foreign frame fields can throw, so resolve under pcall.
+local function HasCustomBar(path)
+    if type(path) ~= "string" then return false end
+    local ok, bar = pcall(function()
+        local value = _G
+        for key in strtrim(path):gmatch("[^%.]+") do
+            if not canaccessvalue(value) or type(value) ~= "table" then return end
+            value = value[key]
+        end
+        if canaccessvalue(value) and type(value) == "table" and value ~= _G
+            and type(value.GetObjectType) == "function" and type(value.GetWidth) == "function" then
+            return value
+        end
+    end)
+    return ok and bar ~= nil
+end
+
+-- Keep the original integration first when both addons are loaded. Plus's root lookup omits
+-- disabled modules; its legacy DoT global remains present even when the module is off.
+local function Source()
+    local api = _G.DoesItDie
+    if api and type(api.GetRemainingDamage) == "function" and type(api.RegisterCallback) == "function" then
+        return api, _G.DoesItDieDB, false
+    end
+    local root = _G.UsefulPlatesAndTooltips_API
+    api = root and type(root.Get) == "function" and root.Get("DoT")
+    if api and type(api.GetRemainingDamage) == "function" and type(api.RegisterCallback) == "function" then
+        return api, _G.UsefulPlatesAndTooltips_DoTInfoDB, true
+    end
+end
+
 local function Update(unit)
     local info = UNITS[unit]
-    if not (info and _G.DoesItDie) then return end
+    if not info then return end
     local rec = records[unit]
-    local db = _G.DoesItDieDB
-    local handOver = type(db) == "table" and type(db[info.customBar]) == "string" and strtrim(db[info.customBar]) ~= ""
+    local api, db, plus = Source()
+    if not api then return HideRecord(rec) end
+    local custom = type(db) == "table" and db[info.customBar]
+    if plus then
+        local settings = _G.UsefulPlatesAndTooltipsDB
+        local paths = type(settings) == "table" and settings.frames
+        custom = type(paths) == "table" and paths[unit]
+    end
+    local handOver = HasCustomBar(custom)
     local off = handOver or (unit == "focus" and type(db) == "table" and db.focusMode == "off")
     if off or ns.EditPreviewing() then return HideRecord(rec) end
 
     local exists, dead = UnitExists(unit), UnitIsDead(unit)
     if not canaccessvalue(exists) or not exists or (canaccessvalue(dead) and dead) then return HideRecord(rec) end
-    local damage, count = _G.DoesItDie.GetRemainingDamage(unit)
+    local damage, count = api.GetRemainingDamage(unit)
     if not count or count == 0 then return HideRecord(rec) end
 
     if not rec then
@@ -123,10 +164,19 @@ local function Update(unit)
         rec = Build(f)
         records[unit] = rec
     end
-    FollowFill(rec)
+    local direction = plus and type(db) == "table" and db[unit == "target" and "fillDirection" or "plateFillDirection"]
+    FollowFill(rec, direction)
     PlaceSkull(rec)
     local showMark = not (type(db) == "table" and db.showMarkers == false)
     local showSkull = not (type(db) == "table" and db.showSkull == false)
+    if plus and type(db) == "table" then
+        if unit == "target" then
+            showMark = showMark and db.targetMarkers ~= false
+        else
+            -- In Plus, the focus icon belongs to its marker mode; showSkull is target-only.
+            showSkull = showMark and db.focusMode == "markerIcon"
+        end
+    end
     -- (secret numbers go into the bars unread)
     local ok = pcall(rec.mark.SetMinMaxValues, rec.mark, 0, UnitHealthMax(unit))
         and pcall(rec.mark.SetValue, rec.mark, damage)
@@ -148,8 +198,8 @@ loader:RegisterEvent("PLAYER_LOGIN")
 loader:SetScript("OnEvent", function(self, event, arg)
     if event == "PLAYER_LOGIN" then
         self:UnregisterEvent("PLAYER_LOGIN")
-        local api = _G.DoesItDie
-        if not (api and api.GetRemainingDamage and api.RegisterCallback) then return end
+        local api = Source()
+        if not api then return end
         api.RegisterCallback("FlareUI", function(_, unit) Update(unit) end)
         self:RegisterEvent("PLAYER_ENTERING_WORLD")
         self:RegisterEvent("PLAYER_TARGET_CHANGED")
