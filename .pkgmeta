@@ -7,6 +7,7 @@ manual-changelog:
 ignore:
   - README.md
   - AGENTS.md
+  - CONTRIBUTING.md
   - CHANGELOG.md
   - CHANGELOG-history.md
   - tools
