@@ -1869,17 +1869,56 @@ do
         if #names > 0 then return table.concat(names, ", ") end
     end
 
-    local function FindQuestUseItem(location)
-        if not (GetQuestLogSpecialItemInfo and C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return end
+    local function QuestNeedsItem(questID, itemName)
+        if not (questID and itemName and C_QuestLog.GetQuestObjectives) then return false end
+        -- A crafted turn-in can lack a bag flag. Forever supplies localized objective text
+        -- without an item ID. Compare the entire localized line, including legacy count layouts.
+        -- Keep completed objectives protected until the quest leaves the log.
+        for _, objective in ipairs(C_QuestLog.GetQuestObjectives(questID) or {}) do
+            if objective.type == "item" then
+                local text, have, need = objective.text, objective.numFulfilled, objective.numRequired
+                if text == itemName then return true end
+                if have and need then
+                    local count = ("%d/%d"):format(have, need)
+                    if text == itemName .. ": " .. count or text == count .. " " .. itemName
+                        or (QUEST_ITEMS_NEEDED and text == QUEST_ITEMS_NEEDED:format(itemName, have, need)) then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    local function QuestLogMatchesItem(logIndex, questID, itemID, itemName)
+        local link = logIndex and GetQuestLogSpecialItemInfo and GetQuestLogSpecialItemInfo(logIndex)
+        return (type(link) == "string" and tonumber(link:match("item:(%d+)")) == itemID)
+            or QuestNeedsItem(questID, itemName)
+    end
+
+    local function FindQuestLogItem(location)
+        if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return end
         local itemID = C_Item.GetItemID(location)
         if not itemID then return end
-        -- Match the usable item's link by ID. Quest objective text doesn't expose item IDs.
+        local itemName = C_Item.GetItemName and C_Item.GetItemName(location)
+        local seen = {}
         for logIndex = 1, C_QuestLog.GetNumQuestLogEntries() do
             local quest = C_QuestLog.GetInfo(logIndex)
             if quest and not quest.isHeader then
-                local link = GetQuestLogSpecialItemInfo(logIndex)
-                if type(link) == "string" and tonumber(link:match("item:(%d+)")) == itemID then
+                if quest.questID then seen[quest.questID] = true end
+                if QuestLogMatchesItem(logIndex, quest.questID, itemID, itemName) then
                     return true, quest.title
+                end
+            end
+        end
+        -- Tracked quests also supply their IDs when a collapsed header hides their log entries.
+        if not (C_QuestLog.GetNumQuestWatches and C_QuestLog.GetQuestIDForQuestWatchIndex) then return end
+        for watchIndex = 1, C_QuestLog.GetNumQuestWatches() do
+            local questID = C_QuestLog.GetQuestIDForQuestWatchIndex(watchIndex)
+            if questID and not seen[questID] then
+                local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+                if QuestLogMatchesItem(logIndex, questID, itemID, itemName) then
+                    return true, C_QuestLog.GetTitleForQuestID(questID)
                 end
             end
         end
@@ -1896,11 +1935,11 @@ do
             return title and title ~= "" and L["This item starts %s."]:format(title) or L["This item starts a quest."]
         end
 
-        local isUseItem
-        if not title or title == "" then isUseItem, title = FindQuestUseItem(location) end
+        local inQuestLog
+        if not title or title == "" then inQuestLog, title = FindQuestLogItem(location) end
         if title and title ~= "" then return L["This item is used for %s."]:format(title) end
         -- Some quest items have a bag marker without a matching quest ID or title.
-        if questID or isUseItem or (info and info.isQuestItem) then return L["This is a quest item."] end
+        if questID or inQuestLog or (info and info.isQuestItem) then return L["This is a quest item."] end
     end
 
     local function Confirm(frame, nativeClick, fromCursor, location, ...)

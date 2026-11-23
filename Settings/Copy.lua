@@ -2506,7 +2506,7 @@ ns.Copy = {
             section = "qol.scale",
         },
         ["qol.warnSellQuestItems"] = {
-            desc = L["Asks before selling quest items, quest starters, and usable items linked in your quest log when you right-click a bag slot or drag an item to a vendor."],
+            desc = L["Asks before selling quest items, quest starters, and items needed for quests in your log when you right-click a bag slot or drag an item to a vendor."],
             label = L["Warn Before Selling Quest Items"],
             section = "qol.vendor",
         },

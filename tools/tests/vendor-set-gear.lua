@@ -271,6 +271,63 @@ duplicate:RunScript("OnClick", "RightButton")
 assert(prompt and #sales == beforeQuestSales and prompt.text:find("used for A Signal for Help", 1, true),
     "an exact quest-log item link warns even when the bag slot has no quest flag")
 answer(false)
+
+-- A normally sellable weapon can be an active turn-in without either a bag flag or use-item link.
+local writTitle = "Craftsman's Writ: Heavy Bronze Mace"
+local maceName = "Heavy Bronze Mace"
+local maceSlot = slot(replacementBag, 1, 1)
+maceSlot.buttonContext = "ButtonContext_ContainerFrameItemButton"
+env.GetMouseFoci = function() return { maceSlot } end
+env.C_Item.GetItemID = function() return 3491 end
+env.C_Item.GetItemName = function() return maceName end
+env.C_Item.GetItemLink = function() return "[Heavy Bronze Mace]" end
+env.GetQuestLogSpecialItemInfo = function() end
+env.QUEST_ITEMS_NEEDED = "%s：%d/%d"
+local visibleQuest = true
+env.C_QuestLog.GetInfo = function(index)
+    if index == 1 then return { isHeader = true } end
+    if visibleQuest then return { title = writTitle, questID = 94224 } end
+end
+local objectives = {
+    { type = "item", text = writTitle .. "：1/1", numRequired = 1, numFulfilled = 1, finished = true },
+    { type = "item", text = maceName .. "：1/1", numRequired = 1, numFulfilled = 1, finished = true },
+}
+env.C_QuestLog.GetQuestObjectives = function(id)
+    if id == 94224 then return objectives end
+end
+beforeQuestSales = #sales
+ui:emit("GLOBAL_MOUSE_DOWN", "RightButton")
+maceSlot:RunScript("OnClick", "RightButton")
+assert(prompt and #sales == beforeQuestSales and prompt.text:find(writTitle, 1, true)
+    and prompt.text:find("[Heavy Bronze Mace]", 1, true), "a ready-to-turn-in mace pauses sale in a replacement bag")
+answer(false)
+
+objectives[2].text = maceName .. ": 1/1"
+maceSlot:RunScript("OnClick", "RightButton")
+assert(prompt and #sales == beforeQuestSales, "the older count-after-name layout still matches")
+answer(false)
+
+visibleQuest = false
+env.C_QuestLog.GetNumQuestLogEntries = function() return 1 end
+env.C_QuestLog.GetNumQuestWatches = function() return 1 end
+env.C_QuestLog.GetQuestIDForQuestWatchIndex = function() return 94224 end
+env.C_QuestLog.GetLogIndexForQuestID = function() end
+env.C_QuestLog.GetTitleForQuestID = function(id) if id == 94224 then return writTitle end end
+objectives[2].text = "1/1 " .. maceName
+ui.cursor = location(1, 1)
+merchant:RunScript("OnReceiveDrag")
+assert(prompt and #sales == beforeQuestSales and prompt.text:find(writTitle, 1, true),
+    "a tracked quest still protects an objective item when its log header is collapsed")
+answer(false)
+assert(not ui.cursor and #sales == beforeQuestSales, "cancel returns the turn-in item without selling")
+
+objectives[2].type = "object"
+maceSlot:RunScript("OnClick", "RightButton")
+assert(not prompt and #sales == beforeQuestSales + 1, "an object objective with the same text does not warn")
+objectives[2].type = "item"
+objectives[2].text = "Greater " .. maceName .. "：1/1"
+maceSlot:RunScript("OnClick", "RightButton")
+assert(not prompt and #sales == beforeQuestSales + 2, "a longer item name containing the selected item does not warn")
 merchant:Hide()
 
 print("PASS: opt-in confirmations for equipment set gear and quest items")
