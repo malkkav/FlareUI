@@ -49,7 +49,7 @@ local function Shows(state)
     if state == "threat" then return TV("threat") ~= "off" end
     if state == "focus" then return TV("colorFocus") and true or false end
     if state == "execute" then return TV("execute") ~= "off" end
-    if state == "quest" then local np = NP() return (np and np.QuestOn and np.QuestOn()) and true or false end
+    if state == "quest" then local np = NP() return (np and np.QuestOn and np.QuestOn(true)) and true or false end
     if state == "combo" then return tweaks.nameplateCombo and true or false end
     return true
 end
@@ -304,7 +304,7 @@ end
 DrawSide = function()
     local host = PIN.host
     local np = NP()
-    if not (host and host:IsShown() and np and np.CreateSample) then return end
+    if not (host and host:IsVisible() and np and np.CreateSample) then return end
     if not host.editBox then Build(host, np) end
     -- Plate Setup: the two lists, as tall as they need (the labels share one column)
     local labelW = math.max(host.unitGroup.label:GetStringWidth() or 30, host.presetLabel:GetStringWidth() or 40)

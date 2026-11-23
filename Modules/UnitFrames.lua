@@ -1168,13 +1168,21 @@ function UF.SlotsWant(slots, item)
 end
 -- what the slots read: the unit's numbers (secret ones as they are), or a sample's share of max.
 -- slots (optional): only what they show is read; the rest stays nil, which Fill skips
-function UF.HealthSource(unit, slots)
-    local src = UF.healthSrc or {}
-    UF.healthSrc = src
-    src.cur, src.max = UnitHealth(unit), UnitHealthMax(unit)
+-- A nameplate supplies the values already read for its bar and the fields selected at layout.
+function UF.HealthSource(unit, slots, src)
+    local showPercent, showLost
+    if src then
+        showPercent, showLost = src.showPercent, src.showLost
+    else
+        src = UF.healthSrc or {}
+        UF.healthSrc = src
+        src.cur, src.max = UnitHealth(unit), UnitHealthMax(unit)
+        showPercent = not slots or UF.SlotsWant(slots, "percent")
+        showLost = not slots or UF.SlotsWant(slots, "lost")
+    end
     src.percent, src.lost, src.lostAlpha = nil, nil, nil
-    if not slots or UF.SlotsWant(slots, "percent") then src.percent = UnitHealthPercent(unit, true, percentCurve) end
-    if not slots or UF.SlotsWant(slots, "lost") then
+    if showPercent then src.percent = UnitHealthPercent(unit, true, percentCurve) end
+    if showLost then
         src.lost = UnitHealthMissing(unit, true)
         src.lostAlpha = UnitHealthPercent(unit, true, UF.LostCurve())
     end
@@ -4077,7 +4085,8 @@ end
 
 -- After the health bar is set. glide: a change on the unit already shown (a new unit, or a frame
 -- just shown, lands at once); on: false hides it (the frame's Damage Trail switch).
-function UF.SetDamageTrail(trail, unit, glide, on)
+-- A nameplate maintains the trail's range on maximum-health changes and supplies the bar value.
+function UF.SetDamageTrail(trail, unit, glide, on, values)
     if not trail then return end
     -- (off while Smooth Animated Bars' liquid owns the bar: ns.SAB below)
     if not on or ns.SAB.owned[trail.health] then
@@ -4087,10 +4096,10 @@ function UF.SetDamageTrail(trail, unit, glide, on)
     end
     trail:Show()
     trail.unit = unit
-    trail:SetMinMaxValues(0, UnitHealthMax(unit))
+    if not values then trail:SetMinMaxValues(0, UnitHealthMax(unit)) end
     if not glide or not trail:IsVisible() then
         UF.trailPending[trail], trail.firstAt = nil, nil
-        trail:SetValue(UnitHealth(unit))
+        if values then trail:SetValue(values.cur) else trail:SetValue(UnitHealth(unit)) end
         return
     end
     local now = GetTime()

@@ -27,6 +27,16 @@ local L = ns.L
 
 ns.Nameplates = ns.Nameplates or {}
 local NP = ns.Nameplates
+local D = {
+    HEALTH = 1, MAXHEALTH = 2, HEALS = 4, ABSORB = 8, COLOR = 16, NAME = 32, LEVEL = 64,
+    CAST = 128, RAID = 256, QUEST = 512, TARGET = 1024, FADE = 2048,
+    MOUSEOVER = 4096, GROUP = 8192, ROLE = 16384, SPELLS = 32768,
+}
+local band, bor = bit.band, bit.bor
+local healthBits = bor(D.HEALTH, D.MAXHEALTH)
+local healBits = bor(D.MAXHEALTH, D.HEALS, D.ABSORB)
+local healthOrHealBits = bor(healthBits, healBits)
+local nameOrLevelBits = bor(D.NAME, D.LEVEL)
 ns.modules["Nameplates"] = NP
 LibStub("AceEvent-3.0"):Embed(NP)
 
@@ -155,6 +165,20 @@ NP.stats = stats
 local state = { role = "damage", tanks = {}, inGroup = false, mouseover = nil }
 
 local function DB() return ns.db and ns.db.profile and ns.db.profile.nameplates end
+local settings, pendingSettings   -- applied to live plates, and the selected profile waiting for combat to end
+-- During a profile switch in combat only the settings preview uses the new snapshot.
+local function SettingsFor(preview)
+    return preview and pendingSettings or settings
+end
+local function SharedSettings(preview)
+    local cache = SettingsFor(preview)
+    return cache and cache.shared or DB()
+end
+local function TweakSettings(preview)
+    local cache = SettingsFor(preview)
+    if cache then return cache.tweaks end
+    return ns.db and ns.db.profile and ns.db.profile.tweaks
+end
 
 -- PLATE TYPES: enemyPlayer, enemyNpc, friendlyPlayer, friendlyNpc and minor (pets, totems, guardians
 -- and minor mobs).
@@ -268,8 +292,10 @@ function NP.PresetOf(kind)
     return preset or C.DEFAULT_PRESET[kind] or "full"
 end
 local typeViews = {}
-function NP.TypeDB(kind)
+function NP.TypeDB(kind, forPlate, preview)
     kind = kind or "enemyNpc"
+    local cache = forPlate and SettingsFor(preview)
+    if cache and cache.types[kind] then return cache.types[kind] end
     local view = typeViews[kind]
     if not view then
         view = setmetatable({ kind = kind }, { __index = function(_, key)
@@ -290,6 +316,57 @@ function NP.TypeDB(kind)
     end
     return view
 end
+-- All plates with the same look share one resolved table. Keep its identity across refreshes:
+-- parked plates can still hold it, and a reset can remove previously saved options.
+local function CacheType(kind, cache)
+    if not cache then return end
+    local view = cache.types[kind] or {}
+    for key in pairs(view) do view[key] = nil end
+    for key, value in pairs(cache.shared) do view[key] = value end
+    local saved = NP.TypeDB(kind)
+    for key in pairs(C.TYPE_KEYS) do view[key] = Copy(saved[key]) end
+    view.kind = kind
+    cache.types[kind] = view
+end
+
+local function CombatTypes(value)
+    local set = {}
+    if type(value) == "string" then
+        for kind in value:gmatch("[^,]+") do
+            if kind ~= "none" then set[kind] = true end
+        end
+    end
+    return set
+end
+
+local function CacheSettings(cache)
+    local db = DB()
+    if not db then return end
+    local shared = {}
+    -- Include inherited defaults as well as optional keys such as obscuredAlpha and customColors.
+    for key in pairs(Defaults()) do
+        if key ~= "types" and rawget(db, key) == nil then shared[key] = Copy(db[key]) end
+    end
+    for key, value in pairs(db) do
+        if key ~= "types" then shared[key] = Copy(value) end
+    end
+    local tweaks = ns.db.profile.tweaks or {}
+    cache = cache or { types = {} }
+    cache.shared = shared
+    cache.tweaks = { nameplateQuest = tweaks.nameplateQuest, nameplateCombo = tweaks.nameplateCombo }
+    cache.combatTypes = CombatTypes(shared.combatPlates)
+    cache.colors = C.COLORS
+    if shared.palette == "custom" and type(shared.customColors) == "table" then
+        local colors = setmetatable({}, { __index = C.COLORS })
+        for key, rgb in pairs(shared.customColors) do
+            if type(rgb) == "table" and rgb[1] then colors[key] = rgb end
+        end
+        cache.colors = colors
+    end
+    for _, kind in ipairs(C.KINDS) do CacheType(kind, cache) end
+    CacheType("peaceful", cache)
+    return cache
+end
 -- a type's own table, made when first written
 function NP.TypeStore(kind)
     local db = DB()
@@ -308,6 +385,7 @@ function NP.SetPreset(kind, preset)
         for key in pairs(C.TYPE_KEYS) do own.custom[key] = Copy(NP.PresetValue(from, key, kind)) end
     end
     own.preset = preset
+    CacheType(kind, SettingsFor(true))
 end
 -- change one of a type's settings: a preset becomes a new Custom first
 function NP.TypeSet(kind, key, value)
@@ -322,6 +400,7 @@ function NP.TypeSet(kind, key, value)
         own.preset = "custom"
     end
     own.custom[key] = Copy(value)
+    CacheType(kind, SettingsFor(true))
 end
 -- 11-19: types saved before presets (their own values over the shared ones) become their preset when
 -- nothing differs, else Custom with what they showed
@@ -337,8 +416,10 @@ function NP.MigratePresets()
     if not db or db.presetsV1 then return end
     db.presetsV1 = true
     db.types = db.types or {}
-    for _, kind in ipairs(C.KINDS) do
+    local function MigrateType(kind)
         local own = db.types[kind] or {}
+        -- A partial import can already contain the new preset without the migration flag.
+        if C.PRESETS[own.preset] or (own.preset == "custom" and type(own.custom) == "table") then return end
         local base = C.DEFAULT_PRESET[kind]
         local custom, differs = {}, false
         for key in pairs(C.TYPE_KEYS) do
@@ -354,15 +435,18 @@ function NP.MigratePresets()
         if differs then fresh.preset, fresh.custom = "custom", custom end
         db.types[kind] = fresh
     end
+    for _, kind in ipairs(C.KINDS) do MigrateType(kind) end
 end
-local function PDB(p) return p.tdb or NP.TypeDB("enemyNpc") end
+local function PDB(p) return p.tdb or NP.TypeDB("enemyNpc", true) end
 
 function NP.Palette()
     local db = DB()
     return db and db.palette == "custom" and "custom" or "flareui"
 end
 -- a colour { r, g, b }: yours on the Custom palette, else FlareUI's
-function NP.Color(key)
+function NP.Color(key, preview)
+    local cache = SettingsFor(preview)
+    if cache then return cache.colors[key] or C.COLORS.hostile end
     local db = DB()
     local own = db and db.palette == "custom" and db.customColors and db.customColors[key]
     if type(own) == "table" and own[1] then return own end
@@ -550,7 +634,21 @@ function NP.Build(parent, sample)
     p.fill = fill
     if not sample and CreateUnitHealPredictionCalculator then
         local ok, calc = pcall(CreateUnitHealPredictionCalculator)
-        if ok and calc then p.calc = calc end
+        if ok and calc then
+            p.calc = calc
+            -- The client owns the defaults. Its mode getters are public even when the amounts are secret.
+            local damageModes = Enum and Enum.UnitDamageAbsorbClampMode
+            if damageModes and calc.GetDamageAbsorbClampMode then
+                local known, mode = pcall(calc.GetDamageAbsorbClampMode, calc)
+                p.shieldIgnoresHeals = known and mode ~= nil and (mode == damageModes.MissingHealthWithoutIncomingHeals
+                    or mode == damageModes.MaximumHealth)
+            end
+            local maximumModes = Enum and Enum.UnitMaximumHealthMode
+            if maximumModes and calc.GetMaximumHealthMode then
+                local known, mode = pcall(calc.GetMaximumHealthMode, calc)
+                p.healIgnoresShields = known and mode ~= nil and mode == maximumModes.Default
+            end
+        end
     end
 
     local overlay = CreateFrame("Frame", nil, box)
@@ -1089,7 +1187,7 @@ end
 
 -- the highlight parts' look, at layout (the arrows' art turned to point at the plate)
 function NP.LayoutTargetLook(p, db, boxH, aurasUp)
-    local c = NP.Color("target")
+    local c = NP.Color("target", p.sample)
     p.targetTint:ClearAllPoints()
     p.targetTint:SetAllPoints(p.fill)
     p.targetTint:SetColorTexture(c[1], c[2], c[3], 0.3)
@@ -1331,6 +1429,8 @@ function NP.Layout(p)
     local db = PDB(p)
     if not db then return end
     p.barDirty, p.borderDirty = true, true   -- (painted again after a layout: NP.BarColor, NP.PaintBorder)
+    p.smoothHealth, p.damageTrail, p.healthEdge = db.smoothBars, db.damageTrail, db.edgeGlow
+    p.healthTint, p.hideHealthTextAtFull = db.healthColor == "health", db.hideTextAtFull
     local _, textureName, borderName = Look(db)
     local w, h = db.width, db.height
     local edgeFile, edge, pad = NP.Edge(db)
@@ -1373,12 +1473,12 @@ function NP.Layout(p)
         bar:SetWidth(w)
     end
     -- the palette's colours (laid out again when a colour changes)
-    local heal, absorb, target = NP.Color("heal"), NP.Color("absorb"), NP.Color("target")
+    local heal, absorb, target = NP.Color("heal", p.sample), NP.Color("absorb", p.sample), NP.Color("target", p.sample)
     p.heal:SetStatusBarColor(heal[1], heal[2], heal[3], 0.5)
     p.absorb:SetStatusBarColor(absorb[1], absorb[2], absorb[3], 0.6)
     p.outline:SetBackdropBorderColor(target[1], target[2], target[3], 1)
     if p.cast then
-        local important = NP.Color("important")
+        local important = NP.Color("important", p.sample)
         NP.PaintImportantGlow(p.cast.important, important)
     end
 
@@ -1395,7 +1495,7 @@ function NP.Layout(p)
     NP.PlaceGlow(p.threatFx.soft, p.box, w + 2 * pad, h + 2 * pad)
 
     -- Execute Range: its colour and the mark where it starts
-    local exec = NP.Color("execute")
+    local exec = NP.Color("execute", p.sample)
     p.execTint:SetColorTexture(exec[1], exec[2], exec[3], 1)
     p.execAt = NP.ExecuteAt(db)
     p.execMark:ClearAllPoints()
@@ -1437,12 +1537,23 @@ function NP.Layout(p)
     end
     local POINT = { left = "LEFT", middle = "CENTER", right = "RIGHT" }
     local X = { left = 3, middle = 0, right = -3 }
+    p.healthTextSlots, p.healthValues = {}, {}
     for slot, fs in pairs(p.texts) do
         ApplyFontTo(fs, db.healthFont)
         fs:ClearAllPoints()
         fs:SetPoint(POINT[slot], p.health, POINT[slot], X[slot], 0)
         fs:SetJustifyH(POINT[slot])
         fs:SetShown(slot ~= p.nameSlot)
+        local fields = p.slots[slot]
+        if slot ~= p.nameSlot and BT.HasNumbers(fields) then
+            p.healthTextSlots[#p.healthTextSlots + 1] = slot
+            local values = p.healthValues
+            values.showMax = values.showMax or fields.max
+            values.showPercent = values.showPercent or fields.percent
+            values.showLost = values.showLost or fields.lost
+        else
+            fs:SetText("")
+        end
     end
     ApplyFontTo(p.name, db.nameFont)
     p.name:ClearAllPoints()
@@ -1463,8 +1574,9 @@ function NP.Layout(p)
     else
         p.name:Hide()
     end
-    p.textOn = BT.HasNumbers(p.slots.left) or BT.HasNumbers(p.slots.middle) or BT.HasNumbers(p.slots.right)
+    p.textOn = #p.healthTextSlots > 0
     p.textHolder:SetShown(p.textOn)
+    p.textHolder:SetAlpha(1)
     -- (Threat Percentage's place: NP.LayoutThreat, once the level box is laid out)
     p.boxH = h + 2 * pad
 
@@ -1506,7 +1618,7 @@ function NP.Layout(p)
         local glow = p.cast.important
         NP.LayoutPulseBorder(glow, p.cast.Border, p.cast.Backdrop, edgeFile)
         if edgeFile then glow:SetFrameLevel(p.cast.Border:GetFrameLevel() + 1) end
-        NP.PaintImportantGlow(glow, glow.color or NP.Color("important"))
+        NP.PaintImportantGlow(glow, glow.color or NP.Color("important", p.sample))
         if db.castImportant then glow.pulse:Play() else glow.pulse:Stop() end
         -- Flash When Targeted: the frame's whole inside, under its border, corners cut as the
         -- border's (as the plate's background, from the cast bar's own edge)
@@ -1522,7 +1634,7 @@ function NP.Layout(p)
         -- Kick Ready Mark: the waiting bar as wide as the cast bar (its icon aside: the kit sets no gap)
         p.cast.kickWait:SetSize(math_max(1, w - (db.castIcon and db.castHeight or 0)), db.castHeight)
         p.cast.kickSpark:SetSize(12, db.castHeight * 2.2)
-        local kick = NP.Color("kickReady")
+        local kick = NP.Color("kickReady", p.sample)
         p.cast.kickSpark:SetVertexColor(kick[1], kick[2], kick[3])
     end
 
@@ -1531,7 +1643,7 @@ function NP.Layout(p)
     NP.PlaceBelow(p)
     -- Plate: Bar (all of the above), Name Only (the name alone, centred, in its colour) or Hidden
     -- (Show Plates in Combat: a Name Only type picked there gets its bar in a fight, NP.CombatFull)
-    p.layFull = NP.CombatFull(db.kind)
+    p.layFull = NP.CombatFull(db.kind, p.sample)
     p.nameOnly = db.plate == "name" and not p.layFull
     p.hiddenPlate = db.plate == "hidden"
     p.health:SetShown(not p.nameOnly)
@@ -1584,9 +1696,8 @@ end
 --------------------------------------------------
 -- Am I a tank? The group role, a raid's main tank, Defensive Stance, Bear Form or Righteous Fury;
 -- or the role picked by hand. Read out of combat and on form changes; a hidden answer keeps the last.
-function NP.UpdateRole()
-    local db = DB()
-    if db and db.role and db.role ~= "auto" then state.role = db.role return end
+local function ResolveRole(db, previous)
+    if db and db.role and db.role ~= "auto" then return db.role end
     local tank = false
     local ok, role = pcall(UnitGroupRolesAssigned, "player")
     if ok and canaccessvalue(role) and role == "TANK" then tank = true end
@@ -1607,11 +1718,32 @@ function NP.UpdateRole()
             tank = id ~= nil and id == (_G.DRUID_BEAR_FORM or 8)
         elseif class == "PALADIN" and C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
             local okF, aura = pcall(C_UnitAuras.GetPlayerAuraBySpellID, C.RIGHTEOUS_FURY)
-            if not okF or not canaccessvalue(aura) then return end   -- hidden: keep the last answer
+            if not okF or not canaccessvalue(aura) then return previous end   -- hidden: keep the last answer
             tank = aura ~= nil
         end
     end
-    state.role = tank and "tank" or "damage"
+    return tank and "tank" or "damage"
+end
+local function PendingRole(applied)
+    local selected = pendingSettings.shared
+    if (selected.role or "auto") == (applied and applied.role or "auto") then return state.role end
+    return ResolveRole(selected, pendingSettings.role or state.role)
+end
+local function RedrawOpenPreview()
+    if ns.NameplatesPinned and ns.SettingsPanel and ns.SettingsPanel:IsShown() then
+        ns.SafeCall("Nameplates Preview", ns.NameplatesPinned.Draw)
+    end
+end
+function NP.UpdateRole()
+    local applied = SharedSettings()
+    state.role = ResolveRole(applied, state.role)
+    if pendingSettings then
+        local role = PendingRole(applied)
+        if role ~= pendingSettings.role then
+            pendingSettings.role = role
+            RedrawOpenPreview()
+        end
+    end
 end
 
 -- the other tanks in the group (role or main tank), for "Another Tank Has It"
@@ -1812,7 +1944,7 @@ function NP.UpdateColor(p)
     if r then NP.BarColor(p, r, g, b) return end
     local mode = db.healthColor
     if mode == "health" and UF and UF.HealthBarColor then
-        r, g, b = UF.HealthBarColor(unit, true, { healthColor = "health" })
+        r, g, b = UF.HealthBarColor(unit, true, db)
     elseif mode == "reaction" then
         r, g, b = ReactionRGB(unit)
     elseif mode == "off" then
@@ -1828,43 +1960,75 @@ function NP.UpdateColor(p)
     NP.BarColor(p, r, g, b)
 end
 
-function NP.UpdateHealth(p, glide)
-    local unit, db = p.unit, PDB(p)
-    local max = UnitHealthMax(unit)
-    p.health:SetMinMaxValues(0, max)
-    ns.SetBarValue(p.health, UnitHealth(unit), glide and db.smoothBars)
-    if UF and UF.SetDamageTrail then UF.SetDamageTrail(p.trail, unit, glide, db.damageTrail) end
-    if UF and UF.BarLookUpdate then UF.BarLookUpdate(p.health, unit, glide) end
-    if p.textOn then
-        BT.FillAll(p.texts, p.slots, K.HealthSource(unit, p.slots))
-        -- Hide at Full: the client turns the percent into the texts' alpha (0 at full health)
-        if db.hideTextAtFull and UF and UF.LostCurve then
-            p.textHolder:SetAlpha(UnitHealthPercent(unit, true, UF.LostCurve()))
-        else
-            p.textHolder:SetAlpha(1)
-        end
+function NP.UpdateHealth(p, glide, mask)
+    local unit, values = p.unit, p.healthValues
+    local shown = not (p.nameOnly or p.hiddenPlate or p.unitHidden)
+    if not mask or band(mask, D.MAXHEALTH) ~= 0 then
+        values.max = UnitHealthMax(unit)
+        p.health:SetMinMaxValues(0, values.max)
+        if p.trail and p.damageTrail then p.trail:SetMinMaxValues(0, values.max) end
+    elseif shown and values.showMax then
+        local _, max = p.health:GetMinMaxValues()
+        values.max = max
     end
-    if db.healthColor == "health" then NP.UpdateColor(p) end
-    NP.UpdateExecute(p)
+    -- Other addons can read this StatusBar even when the plate shows just the name.
+    values.cur = UnitHealth(unit)
+    ns.SetBarValue(p.health, values.cur, glide and p.smoothHealth)
+    if shown then
+        if UF and UF.SetDamageTrail and (p.damageTrail or not mask) then
+            UF.SetDamageTrail(p.trail, unit, glide, p.damageTrail, values)
+        end
+        if p.healthEdge and UF and UF.BarLookUpdate then UF.BarLookUpdate(p.health, unit, glide) end
+        if p.textOn then
+            K.HealthSource(unit, p.slots, values)
+            for _, slot in ipairs(p.healthTextSlots) do BT.Fill(p.texts[slot], p.slots[slot], values) end
+            if p.hideHealthTextAtFull then
+                if values.showLost then p.textHolder:SetAlpha(values.lostAlpha)
+                else p.textHolder:SetAlpha(UnitHealthPercent(unit, true, UF.LostCurve())) end
+            end
+        end
+        if p.execAt then NP.UpdateExecute(p) end
+    end
+    values.cur, values.max, values.percent, values.lost, values.lostAlpha = nil, nil, nil, nil, nil
+    -- A queued flush also handles threat/colour events and repaints the plate once.
+    if not mask and p.healthTint then NP.UpdateColor(p) end
 end
 
-function NP.UpdateHeals(p)
+function NP.UpdateHeals(p, mask)
+    if p.nameOnly or p.hiddenPlate or p.unitHidden then return end
     local unit = p.unit
-    local max = UnitHealthMax(unit)
-    p.heal:SetMinMaxValues(0, max)
-    p.absorb:SetMinMaxValues(0, max)
+    local resize = not mask or band(mask, D.MAXHEALTH) ~= 0
+    if resize then
+        -- The health bar receives the new range first, including when a plate changes units.
+        local _, max = p.health:GetMinMaxValues()
+        p.heal:SetMinMaxValues(0, max)
+        p.absorb:SetMinMaxValues(0, max)
+    end
+    local heals = resize or band(mask, D.HEALS) ~= 0
+    local absorbs = resize or band(mask, D.ABSORB) ~= 0
+    local getHeals, getAbsorbs, source = UnitGetIncomingHeals, UnitGetTotalAbsorbs, unit
     local calc = p.calc
     if calc and UnitGetDetailedHealPrediction and pcall(UnitGetDetailedHealPrediction, unit, "player", calc) then
-        local okH, incoming = pcall(calc.GetIncomingHeals, calc)
-        local okA, absorbs = pcall(calc.GetDamageAbsorbs, calc)
-        if okH then p.heal:SetValue(incoming) end
-        if okA then p.absorb:SetValue(absorbs) end
-        return
+        getHeals, getAbsorbs, source = calc.GetIncomingHeals, calc.GetDamageAbsorbs, calc
+        -- MissingHealth subtracts incoming heals from the room for a shield. WithAbsorbs
+        -- counts shields in the maximum used to clamp heals. Unknown modes refresh both.
+        if (heals and not p.shieldIgnoresHeals) or (absorbs and not p.healIgnoresShields) then
+            heals, absorbs = true, true
+        end
     end
-    local okH, incoming = pcall(UnitGetIncomingHeals, unit)
-    if okH then pcall(p.heal.SetValue, p.heal, incoming) end
-    local okA, absorbs = pcall(UnitGetTotalAbsorbs, unit)
-    if okA then pcall(p.absorb.SetValue, p.absorb, absorbs) end
+    if source ~= p.predictionSource then
+        -- Switching between calculated and raw amounts also changes the untouched overlay.
+        p.predictionSource = source
+        heals, absorbs = true, true
+    end
+    if heals then
+        local ok, incoming = pcall(getHeals, source)
+        if ok then pcall(p.heal.SetValue, p.heal, incoming) end
+    end
+    if absorbs then
+        local ok, absorbs = pcall(getAbsorbs, source)
+        if ok then pcall(p.absorb.SetValue, p.absorb, absorbs) end
+    end
 end
 
 -- NAMES ABOVE PLATE (11-22, Malkkav; per type): the name above the plate, as the unit frames' Name
@@ -1881,7 +2045,7 @@ function NP.NameAbovePick(db)
 end
 function NP.LayoutNameAbove(p, db)
     local slot, kind = NP.NameAbovePick(db)
-    local nameOnly = db.plate == "name" and not NP.CombatFull(db.kind)
+    local nameOnly = db.plate == "name" and not NP.CombatFull(db.kind, p.sample)
     if not slot or nameOnly or db.plate == "hidden" then
         if p.aboveName then p.aboveName:Hide() end
         p.nameAboveLift, p.aboveKind = 0, nil
@@ -2054,7 +2218,7 @@ end
 function NP.PaintBorder(p)
     local db = PDB(p)
     local c
-    if p.targetShown and db.targetBorder ~= false then c = NP.Color("target")
+    if p.targetShown and db.targetBorder ~= false then c = NP.Color("target", p.sample)
     elseif db.threatGlow and p.threatRGB then c = p.threatRGB end
     -- Threat Glow: the pulsing border and its glow too (not over your target's own border)
     local threat = c ~= nil and c == p.threatRGB and not p.nameOnly
@@ -2118,37 +2282,127 @@ end
 
 -- the cast bar: secret-safe as the unit frames' (the client times the bar; the uninterruptible grey
 -- and the shield come from the flag through "from boolean" calls)
-function NP.UpdateCast(p, event, by, barID)
+local function CastDetails(channel, ...)
+    if select("#", ...) == 0 then return end   -- only the result count is always readable
+    local name, text, texture = ...
+    local notInterruptible, spellID, barID, guid
+    if channel then
+        notInterruptible, spellID = select(7, ...)
+        barID = select(11, ...)
+    else
+        guid, notInterruptible, spellID, barID = select(7, ...)
+    end
+    return channel, name, text, texture, notInterruptible, spellID, barID, guid
+end
+
+-- Compare cast instances. Channels expose only the bar ID in the live query.
+local function SameCast(barID, guid, liveBarID, liveGUID)
+    if barID ~= nil then
+        local id = Readable(liveBarID)
+        if id ~= nil then return barID == id end
+    end
+    if guid then
+        local id = Readable(liveGUID)
+        if id then return guid == id end
+    end
+end
+
+local function ReadCastTarget(unit, db)
+    local name, color, readAim, aimedAtPlayer
+    if db.castTarget and UnitSpellTargetName then
+        local ok
+        ok, name = pcall(UnitSpellTargetName, unit)
+        if not ok then name = "" end
+        local okClass, class = pcall(UnitSpellTargetClass, unit)
+        if okClass then
+            ok, color = pcall(C_ClassColor.GetClassColor, class)
+            if not ok then color = nil end
+        end
+    end
+    if db.castTargetedFlash and PlayerIsSpellTarget then
+        readAim, aimedAtPlayer = pcall(PlayerIsSpellTarget, unit)
+    end
+    return name, color, readAim, aimedAtPlayer
+end
+
+local function PaintCastTarget(cast, unit, db, start)
+    local name, color, readAim, aimedAtPlayer
+    if start then
+        name, color, readAim, aimedAtPlayer = start.targetName, start.targetColor, start.readAim, start.aimedAtPlayer
+    else
+        name, color, readAim, aimedAtPlayer = ReadCastTarget(unit, db)
+    end
+    if db.castTarget and UnitSpellTargetName then
+        cast.target:SetText(name)
+        if color then cast.target:SetTextColor(color:GetRGB()) else cast.target:SetTextColor(1, 1, 1) end
+        cast.target:Show()
+    else
+        cast.target:Hide()
+    end
+    if db.castTargetedFlash and PlayerIsSpellTarget then
+        if not (readAim and pcall(cast.targeted.SetAlphaFromBoolean, cast.targeted, aimedAtPlayer, 1, 0)) then
+            cast.targeted:SetAlpha(0)
+        end
+        if not cast.targetedPulse:IsPlaying() then cast.targetedPulse:Play() end
+    else
+        cast.targeted:SetAlpha(0)
+        cast.targetedPulse:Stop()
+    end
+end
+
+function NP.UpdateCast(p, pending)
     local cast, unit, db = p.cast, p.unit, PDB(p)
     if not cast or NP.testing then return end   -- (Test on Plates draws its own casts)
     if not (unit and db.castbar) then cast:Hide() return end
-    local interrupted = event == "UNIT_SPELLCAST_INTERRUPTED"
-        or (event == "UNIT_SPELLCAST_CHANNEL_STOP" and cast.isChannel and not (canaccessvalue(by) and by == nil))
-    if interrupted and cast:IsShown() and not cast.flashing
-        and (barID == nil or cast.castBarID == nil or barID == cast.castBarID) then
-        UF.FlashInterrupted(cast, by)
-        cast.kickClip:Hide()
-        cast.shield:SetAlpha(0)
-        cast.important:SetAlpha(0)
-        return
+    local channeling, name, text, texture, notInterruptible, spellID, castBarID, liveGUID = CastDetails(false, UnitCastingInfo(unit))
+    if channeling == nil then
+        channeling, name, text, texture, notInterruptible, spellID, castBarID = CastDetails(true, UnitChannelInfo(unit))
     end
-    local channeling = false
-    local name, text, texture, notInterruptible, spellID, castBarID, _
-    local n = select("#", UnitCastingInfo(unit))
-    if n > 0 then
-        name, text, texture, _, _, _, _, notInterruptible, spellID, castBarID = UnitCastingInfo(unit)
-    else
-        n = select("#", UnitChannelInfo(unit))
-        if n > 0 then
-            name, text, texture, _, _, _, notInterruptible, spellID, _, _, castBarID = UnitChannelInfo(unit)
-            channeling = true
+    -- A follow-up STOP has no interrupter, and the client may already be casting
+    -- something else. A live cast wins unless we can identify it as the interrupted one.
+    if pending and pending.interrupt and (channeling == nil or
+        SameCast(pending.barID, pending.interruptGUID, castBarID, liveGUID)) then
+        if pending.start then
+            -- A cast can start and get kicked before this plate is next painted.
+            -- The client may already have cleared its icon and target.
+            UF.EndCastFlash(cast)
+            local icon = pending.texture
+            if UF.CastIcon then icon = UF.CastIcon(icon, pending.spellID, false) end
+            cast.Icon:SetTexture(icon)
+            cast.castBarID, cast.castGUID, cast.isChannel = pending.startBarID, pending.guid, pending.channel
+            PaintCastTarget(cast, unit, db, pending)
+            cast:Show()
         end
+        if cast:IsShown() and not cast.flashing then
+            UF.FlashInterrupted(cast, pending.by)
+            cast.kickClip:Hide()
+            cast.shield:SetAlpha(0)
+            cast.important:SetAlpha(0)
+            return
+        end
+        if cast.flashing then return end
     end
-    if n == 0 then
+    if channeling == nil then
+        if pending and pending.start then UF.EndCastFlash(cast) end
         if not cast.flashing then cast:Hide() end
         return
     end
     UF.EndCastFlash(cast)
+    local start = pending and pending.start and pending
+    if start then
+        local same = SameCast(start.startBarID, start.guid, castBarID, liveGUID)
+        if start.channel ~= channeling or same == false
+            or (same == nil and (start.ended or start.interrupt or start.startBarID ~= nil)) then
+            start = nil
+        end
+    end
+    if start then
+        cast.castGUID = start.guid or liveGUID
+    elseif not channeling then
+        cast.castGUID = liveGUID
+    elseif pending or not cast.isChannel then
+        cast.castGUID = nil
+    end
     cast.castBarID, cast.isChannel = castBarID, channeling
     local duration
     if channeling then duration = UnitChannelDuration(unit) else duration = UnitCastingDuration(unit) end
@@ -2157,9 +2411,13 @@ function NP.UpdateCast(p, event, by, barID)
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate, direction)
     if cast.TimerBinding then pcall(cast.TimerBinding.SetDuration, cast.TimerBinding, duration) end
     local label = text
-    if canaccessvalue(text) then label = text or name or "" end
+    if canaccessvalue(text) and not text then
+        label = name
+        if canaccessvalue(name) and not name then label = "" end
+    end
     cast.Text:SetText(label)
-    cast.Icon:SetTexture(UF.CastIcon and UF.CastIcon(texture, spellID, false) or texture)
+    if UF.CastIcon then texture = UF.CastIcon(texture, spellID, false) end
+    cast.Icon:SetTexture(texture)
     local base = NP.Color(channeling and "channel" or "cast")
     -- Kick Ready: an enemy cast you could interrupt, while your interrupt is ready
     if db.kickReady and UF.KICK and UF.KICK.IsReady() then base = NP.Color("kickReady") end
@@ -2184,26 +2442,7 @@ function NP.UpdateCast(p, event, by, barID)
         if ok then important = v end
     end
     if not pcall(cast.important.SetAlphaFromBoolean, cast.important, important, 1, 0) then cast.important:SetAlpha(0) end
-    if db.castTargetedFlash and PlayerIsSpellTarget then
-        local ok, mine = pcall(PlayerIsSpellTarget, unit)
-        if not (ok and pcall(cast.targeted.SetAlphaFromBoolean, cast.targeted, mine, 1, 0)) then cast.targeted:SetAlpha(0) end
-        if not cast.targetedPulse:IsPlaying() then cast.targetedPulse:Play() end
-    else
-        cast.targeted:SetAlpha(0)
-        cast.targetedPulse:Stop()
-    end
-    -- the cast's target, in its class colour
-    if db.castTarget and UnitSpellTargetName then
-        local okN, target = pcall(UnitSpellTargetName, unit)
-        cast.target:SetText(okN and target or "")
-        local okC, class = pcall(UnitSpellTargetClass, unit)
-        local okK, color = false, nil
-        if okC then okK, color = pcall(C_ClassColor.GetClassColor, class) end
-        if okK and color then cast.target:SetTextColor(color:GetRGB()) else cast.target:SetTextColor(1, 1, 1) end
-        cast.target:Show()
-    else
-        cast.target:Hide()
-    end
+    PaintCastTarget(cast, unit, db, start)
     cast:Show()
 end
 
@@ -2319,15 +2558,15 @@ local function TypeQuest(tdb, master)
     if progress == nil then progress = icon end
     return icon and true or false, progress and true or false
 end
-function NP.QuestParts(p)
-    local t = ns.db and ns.db.profile and ns.db.profile.tweaks
+function NP.QuestParts(p, preview)
+    local t = TweakSettings(preview or (p and p.sample))
     local master = (t and t.nameplateQuest) and true or false
     -- Questie draws its own quest icons on plates when its option is on
     if ns.Tweaks and ns.Tweaks.QuestieHasNameplateIcons and ns.Tweaks:QuestieHasNameplateIcons() then return false, false end
     if p then return TypeQuest(PDB(p), master) end
     local anyIcon, anyProgress = false, false
     for _, kind in ipairs(C.KINDS) do
-        local i, pr = TypeQuest(NP.TypeDB(kind), master)
+        local i, pr = TypeQuest(NP.TypeDB(kind, true, preview), master)
         anyIcon, anyProgress = anyIcon or i, anyProgress or pr
     end
     return anyIcon, anyProgress
@@ -2335,17 +2574,14 @@ end
 -- SHOW PLATES IN COMBAT (11-20, Malkkav; Plate > Name Only Mode): the unit types picked there leave
 -- Name Only Mode while you are in a fight and show their whole plate (nameplates.combatPlates, a list
 -- of types, "none" first). Entering and leaving combat lays the plates out again (NP.Relayout).
-function NP.CombatList()
+function NP.CombatList(preview)
+    local cache = SettingsFor(preview)
+    if cache then return cache.combatTypes end
     local db = DB()
-    local v = db and db.combatPlates
-    local set = {}
-    -- ("none", the default, is no type: before 11-21 it counted as one, and every fight's start and end
-    -- laid out all forty plates again, the 70 ms combat stutter)
-    if type(v) == "string" then for t in v:gmatch("[^,]+") do if t ~= "none" then set[t] = true end end end
-    return set
+    return CombatTypes(db and db.combatPlates)
 end
-function NP.CombatFull(kind)
-    return state.combat and kind ~= nil and NP.CombatList()[kind] or false
+function NP.CombatFull(kind, preview)
+    return state.combat and kind ~= nil and NP.CombatList(preview)[kind] or false
 end
 -- A fight began or ended: only the plates on screen whose look changes (a Name Only type picked in
 -- Show Plates in Combat) come off and are claimed again, which lays them out (no settings or game
@@ -2366,13 +2602,13 @@ function NP.ComboAllowed(unit)
     if not NP.ready or NP.standDown then return true end
     local want, kind = NP.WantsPlate(unit)
     if not want or not kind then return true end
-    local tdb = NP.TypeDB(kind)
+    local tdb = NP.TypeDB(kind, true)
     -- a Name Only plate has no bar to hang them from (unless Show Plates in Combat gives it one)
     if tdb.plate == "name" and not NP.CombatFull(kind) then return false end
     return tdb.combo ~= false
 end
-function NP.QuestOn()
-    local icon, progress = NP.QuestParts()
+function NP.QuestOn(preview)
+    local icon, progress = NP.QuestParts(nil, preview)
     return icon or progress
 end
 
@@ -2457,7 +2693,7 @@ function NP.UpdateAll(p)
     if not p.unit then return end
     NP.UpdateHealth(p, false)
     NP.UpdateHeals(p)
-    NP.UpdateColor(p)
+    if not p.healthTint then NP.UpdateColor(p) end
     NP.UpdateName(p)
     NP.UpdateTitle(p)
     NP.UpdateLevel(p)
@@ -2479,29 +2715,37 @@ local UNIT_EVENTS = {
 }
 local CAST_EVENTS = (K and K.CAST_EVENTS) or {}
 
--- threat and flag changes, repainted once per frame per plate (the plate still shows that unit)
-NP.colorQueue = { plates = {}, driver = CreateFrame("Frame") }
-NP.colorQueue.driver:Hide()
-NP.colorQueue.driver:SetScript("OnUpdate", function(self)
-    self:Hide()
-    local q = NP.colorQueue.plates
-    for p, unit in pairs(q) do
-        q[p] = nil
-        if p.unit == unit then NP.UpdateColor(p) end
-    end
-end)
-function NP.ColorSoon(p)
-    NP.colorQueue.plates[p] = p.unit
-    NP.colorQueue.driver:Show()
+-- Only public flags enter the mask. Health, absorbs and cast data stay in the client-facing helpers.
+local queue = { plates = {}, processing = {}, world = 0, driver = CreateFrame("Frame") }
+NP.updateQueue = queue
+queue.driver:Hide()
+local function WakeQueue()
+    if queue.scheduled then return end
+    queue.scheduled = true
+    queue.driver:Show()
+end
+function NP.QueuePlate(p, mask)
+    if not p.unit then return end
+    queue.plates[p] = bor(queue.plates[p] or 0, mask)
+    WakeQueue()
+end
+local function QueueWorld(mask)
+    queue.world = bor(queue.world, mask)
+    WakeQueue()
 end
 local function OnUnitEvent(self, event)
     local p = self.plate
     if not p.unit then return end
-    if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
-        NP.UpdateHealth(p, true)
-        if event == "UNIT_MAXHEALTH" then NP.UpdateHeals(p) end
-    elseif event == "UNIT_ABSORB_AMOUNT_CHANGED" or event == "UNIT_HEAL_ABSORB_AMOUNT_CHANGED" or event == "UNIT_HEAL_PREDICTION" then
-        NP.UpdateHeals(p)
+    if event == "UNIT_HEALTH" then
+        NP.QueuePlate(p, D.HEALTH)
+    elseif event == "UNIT_MAXHEALTH" then
+        NP.QueuePlate(p, D.MAXHEALTH)
+    elseif event == "UNIT_ABSORB_AMOUNT_CHANGED" then
+        NP.QueuePlate(p, D.ABSORB)
+    elseif event == "UNIT_HEAL_PREDICTION" then
+        NP.QueuePlate(p, D.HEALS)
+    elseif event == "UNIT_HEAL_ABSORB_AMOUNT_CHANGED" then
+        NP.QueuePlate(p, bor(D.HEALS, D.ABSORB))
     elseif event == "UNIT_FACTION" then
         -- its type changed (turned friendly or hostile): claimed again as the new type, or back to Blizzard
         local want, kind = NP.WantsPlate(p.unit)
@@ -2511,7 +2755,7 @@ local function OnUnitEvent(self, event)
             if want then NP.Claim(unit) end
             return
         end
-        NP.UpdateColor(p)
+        NP.QueuePlate(p, D.COLOR)
     elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_FLAGS" then
         -- Name Only While Unattackable: it became attackable (or stopped being): laid out again
         if event == "UNIT_FLAGS" and not NP.testKind and NP.Peaceful(p.unit, p.kind) ~= (p.layKind == "peaceful") then
@@ -2521,24 +2765,83 @@ local function OnUnitEvent(self, event)
             return
         end
         -- (11-22, perf pass) a pull sends many of these per mob in one frame: one repaint per frame
-        NP.ColorSoon(p)
+        NP.QueuePlate(p, D.COLOR)
     elseif event == "UNIT_NAME_UPDATE" then
-        NP.UpdateName(p)
-        NP.UpdateColor(p)
-        NP.UpdateTitle(p)
+        NP.QueuePlate(p, bor(D.NAME, D.COLOR))
     elseif event == "UNIT_LEVEL" or event == "UNIT_CLASSIFICATION_CHANGED" then
-        NP.UpdateLevel(p)
+        NP.QueuePlate(p, D.LEVEL)
     end
+end
+
+function NP.ResetPendingCast(p)
+    p.pendingCast = nil
+    if p.cast then p.cast.castBarID, p.cast.castGUID, p.cast.isChannel = nil, nil, nil end
+end
+
+function NP.FlushCast(p)
+    local pending = p.pendingCast
+    p.pendingCast = nil
+    NP.UpdateCast(p, pending)
 end
 
 local function OnCastEvent(self, event, unit, castGUID, spellID, by, barID)
     local p = self.plate
     if not p.unit then return end
-    if event:find("^UNIT_SPELLCAST") then
-        NP.UpdateCast(p, event, by, barID)
-    else
+    if not event:find("^UNIT_SPELLCAST") then
         OnUnitEvent(self, event, unit)
+        return
     end
+    local db = PDB(p)
+    if not p.cast or not db.castbar or NP.testing then return end
+    local pending = p.pendingCast
+    local captureTarget
+    if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
+        pending = { start = true, channel = event == "UNIT_SPELLCAST_CHANNEL_START", spellID = spellID, guid = Readable(castGUID) }
+        p.pendingCast = pending   -- a new cast replaces an older interrupt, even on the same unit
+        if pending.channel then
+            local _, _, icon, _, _, _, _, _, _, _, id = UnitChannelInfo(p.unit)
+            pending.texture, pending.startBarID = icon, Readable(id)
+        else
+            local _, _, icon, _, _, _, guid, _, _, id = UnitCastingInfo(p.unit)
+            pending.texture, pending.startBarID = icon, Readable(id)
+            if not pending.guid and not pending.startBarID then pending.guid = Readable(guid) end
+        end
+        -- START carries the bar ID in the fourth event argument.
+        if not pending.startBarID then pending.startBarID = Readable(by) end
+        captureTarget = true
+    elseif event == "UNIT_SPELLCAST_INTERRUPTED" or
+        (event == "UNIT_SPELLCAST_CHANNEL_STOP" and not (canaccessvalue(by) and by == nil)) then
+        local currentID, currentGUID, isChannel
+        if pending and pending.start then
+            currentID, currentGUID, isChannel = pending.startBarID, pending.guid, pending.channel
+        else
+            currentID, currentGUID, isChannel = Readable(p.cast.castBarID), Readable(p.cast.castGUID), p.cast.isChannel
+        end
+        local guid, id = Readable(castGUID), Readable(barID)
+        if (event == "UNIT_SPELLCAST_INTERRUPTED" or isChannel)
+            and (not guid or not currentGUID or guid == currentGUID)
+            and (not id or not currentID or id == currentID) then
+            pending = pending or {}
+            if not pending.interrupt or not (canaccessvalue(by) and by == nil) then pending.by = by end
+            -- An unreadable event ID cannot identify the live cast by itself.
+            -- Its START's bar ID is usable only when the event GUID matches that START.
+            pending.interrupt = true
+            pending.interruptGUID = guid or pending.interruptGUID
+            pending.barID = id or (guid and guid == currentGUID and currentID) or pending.barID
+            p.pendingCast = pending
+        end
+    elseif pending and pending.start and (event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_CHANNEL_STOP"
+            or event == "UNIT_SPELLCAST_FAILED") then
+        pending.ended = true
+    elseif pending and pending.start and not pending.interrupt then
+        captureTarget = event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE"
+                     or event == "UNIT_SPELLCAST_INTERRUPTIBLE" or event == "UNIT_SPELLCAST_NOT_INTERRUPTIBLE"
+    end
+    if captureTarget then
+        -- Once interrupted, a spell no longer exposes its target. Keep the latest one with its icon.
+        pending.targetName, pending.targetColor, pending.readAim, pending.aimedAtPlayer = ReadCastTarget(p.unit, db)
+    end
+    NP.QueuePlate(p, D.CAST)
 end
 
 --------------------------------------------------
@@ -2636,7 +2939,9 @@ local function RegisterUnit(p, unit)
     local ev = p.events
     ev:UnregisterAllEvents()
     for _, event in ipairs(UNIT_EVENTS) do ev:RegisterUnitEvent(event, unit) end
-    for _, event in ipairs(CAST_EVENTS) do ev:RegisterUnitEvent(event, unit) end
+    if PDB(p).castbar then
+        for _, event in ipairs(CAST_EVENTS) do ev:RegisterUnitEvent(event, unit) end
+    end
     ev:SetScript("OnEvent", OnCastEvent)
 end
 
@@ -2667,7 +2972,7 @@ end
 -- enemy NPC you can't attack (an event mob, a quest giver of the other side) shows only its name, as
 -- the Name Only preset, until you can attack it. Off by default (nameplates.peacefulNames).
 function NP.Peaceful(unit, kind)
-    local db = DB()
+    local db = SharedSettings()
     if not (db and db.peacefulNames) or kind ~= "enemyNpc" then return false end
     if Readable(UnitIsPlayer(unit)) then return false end
     return Readable(UnitCanAttack("player", unit)) == false
@@ -2676,7 +2981,7 @@ end
 -- FlareUI hides its own plate for them (as Plate: Hidden). Both on by default (nameplates.enemyPlayers,
 -- nameplates.enemyNpcs).
 function NP.UnitHidden(unit, kind)
-    local db = DB()
+    local db = SharedSettings()
     if not db then return false end
     if kind == "enemyPlayer" then return db.enemyPlayers == false end
     if kind == "enemyNpc" then return db.enemyNpcs == false end
@@ -2693,7 +2998,7 @@ function NP.WantsPlate(unit)
     local kind = NP.Kind(unit)
     if not kind then return false, nil, true end
     if kind == "friendlyPlayer" and Readable(UnitIsUnit(unit, "player")) then return false, kind end
-    return NP.TypeDB(kind).plate ~= "blizzard", kind
+    return NP.TypeDB(kind, true).plate ~= "blizzard", kind
 end
 
 -- A plate whose unit couldn't be read yet: asked again a few times, soon
@@ -2783,7 +3088,7 @@ function NP.Claim(unit)
     end
     p = p or table.remove(spare)
     if not p then stats.given = stats.given + 1 return end
-    p.kind, p.tdb = kind, NP.TypeDB(look)
+    p.kind, p.tdb = kind, NP.TypeDB(look, true)
     p.unitHidden = NP.UnitHidden(unit, kind)
     if p.layKind ~= look or p.layFull ~= full then
         local okL, errL = pcall(NP.Layout, p)
@@ -2846,6 +3151,9 @@ end
 
 function Release(p)
     if not p then return end
+    -- A recycled Blizzard token may have exactly the same string on the next claim.
+    queue.plates[p], queue.processing[p] = nil, nil
+    NP.ResetPendingCast(p)
     if p.events then p.events:UnregisterAllEvents() end
     if p.auras then
         for _, entry in pairs(p.auras) do pcall(entry.container.SetUnit, entry.container, "none") end
@@ -2897,7 +3205,7 @@ function NP.Sync()
     if not InCombatLockdown() then
         local before = state.role
         NP.UpdateRole()
-        if before ~= state.role then for _, p in pairs(byPlate) do NP.UpdateColor(p) end end
+        if before ~= state.role then QueueWorld(D.COLOR) end
     end
     -- (claimed after the loop: a new key while pairs() walks the table is not allowed)
     local reclaim = {}
@@ -2922,9 +3230,12 @@ end
 function NP.StandDown()
     if NP.standDown then return end
     NP.standDown = true
+    settings, pendingSettings = nil, nil
     local held = {}
     for _, p in pairs(byPlate) do held[#held + 1] = p end
     for _, p in ipairs(held) do Release(p) end
+    queue.scheduled, queue.world = false, 0
+    queue.driver:Hide()
     NP:UnregisterAllEvents()
     -- Blizzard's own plate size back (the other addon sets its own if it wants)
     if state.blizzW and not InCombatLockdown() then pcall(C_NamePlate.SetNamePlateSize, state.blizzW, state.blizzH) end
@@ -2953,15 +3264,6 @@ end
 --------------------------------------------------
 -- 8. TARGET, MOUSEOVER, GLOBAL EVENTS
 --------------------------------------------------
-local function UpdateTargets()
-    local targetPlate = C_NamePlate.GetNamePlateForUnit("target")
-    for _, p in pairs(byPlate) do
-        NP.UpdateTarget(p, targetPlate)
-        NP.ApplyScale(p)   -- (the others' size follows whether you have a target)
-        NP.UpdateFade(p)
-    end
-end
-
 -- Leaving a unit with the mouse fires no event: a small watcher runs only while a plate is lit
 local watcher = CreateFrame("Frame")
 watcher:Hide()
@@ -2970,17 +3272,97 @@ local function SetMouseover(p)
     if before and before ~= p then before.highlight:Hide() end
     state.mouseover = p
     if p then p.highlight:Show() watcher:Show() else watcher:Hide() end
-    if before and before ~= p then NP.UpdateFade(before) end
-    if p then NP.UpdateFade(p) end
+    if before and before ~= p then NP.QueuePlate(before, D.FADE) end
+    if p and before ~= p then NP.QueuePlate(p, D.FADE) end
 end
 watcher:SetScript("OnUpdate", function()
     local p = state.mouseover
     if not p or not p.gamePlate or C_NamePlate.GetNamePlateForUnit("mouseover") ~= p.gamePlate then SetMouseover(nil) end
 end)
 
-local function RepaintAll()
-    for _, p in pairs(byPlate) do NP.UpdateColor(p) end
+local function FlushHealth(p, mask)
+    -- Prediction bars use the range written by UpdateHealth on a maximum-health change.
+    if band(mask, healthBits) ~= 0 then NP.UpdateHealth(p, true, mask) end
+    if band(mask, healBits) ~= 0 then NP.UpdateHeals(p, mask) end
 end
+
+local function FlushNameAndLevel(p, mask)
+    local level = band(mask, D.LEVEL) ~= 0
+    if level then NP.UpdateLevel(p) end
+    if band(mask, D.NAME) ~= 0 then
+        if not (level and p.levelFollow) then NP.UpdateName(p) end
+        NP.UpdateTitle(p)
+    end
+end
+
+local function FlushTarget(p, targetPlate)
+    if p.targetShown ~= (p.gamePlate == targetPlate) then
+        NP.UpdateTarget(p, targetPlate)
+    else
+        -- Other plates' scale and opacity also depend on whether you have a target.
+        NP.ApplyScale(p)
+        NP.UpdateFade(p)
+    end
+end
+
+local function FlushPlate(p, mask, targetPlate)
+    -- An error in one widget must not discard other pending work for this plate.
+    if band(mask, healthOrHealBits) ~= 0 then ns.SafeCall("Nameplates Health", FlushHealth, p, mask) end
+    if band(mask, D.COLOR) ~= 0 or (p.healthTint and band(mask, healthBits) ~= 0) then
+        ns.SafeCall("Nameplates Color", NP.UpdateColor, p)
+    end
+    if band(mask, nameOrLevelBits) ~= 0 then ns.SafeCall("Nameplates Name and Level", FlushNameAndLevel, p, mask) end
+    if band(mask, D.CAST) ~= 0 then ns.SafeCall("Nameplates Cast", NP.FlushCast, p) end
+    if band(mask, D.RAID) ~= 0 then ns.SafeCall("Nameplates Raid Marker", NP.UpdateRaid, p) end
+    if band(mask, D.QUEST) ~= 0 then ns.SafeCall("Nameplates Quest", NP.UpdateQuest, p) end
+    if band(mask, D.TARGET) ~= 0 then
+        ns.SafeCall("Nameplates Target", FlushTarget, p, targetPlate)
+    elseif band(mask, D.FADE) ~= 0 then
+        ns.SafeCall("Nameplates Opacity", NP.UpdateFade, p)
+    end
+end
+
+queue.driver:SetScript("OnUpdate", function(self)
+    local world = queue.world
+    queue.world = 0
+    local all = band(world, bor(D.COLOR, D.TARGET, D.RAID, D.QUEST))
+    if band(world, D.GROUP) ~= 0 then
+        NP.UpdateGroup()
+        NP.UpdateRole()
+        all = bor(all, D.COLOR)
+    elseif band(world, D.ROLE) ~= 0 then
+        local before = state.role
+        NP.UpdateRole()
+        if before ~= state.role then all = bor(all, D.COLOR) end
+    end
+    if band(world, D.SPELLS) ~= 0 then
+        local at = NP.ExecuteAt({ execute = "auto" })
+        if at ~= state.execAt then
+            state.execAt = at
+            NP:Refresh()
+        end
+    end
+    if band(world, D.MOUSEOVER) ~= 0 then
+        local plate = C_NamePlate.GetNamePlateForUnit("mouseover")
+        SetMouseover(plate and byPlate[plate] or nil)
+    end
+    local pending = queue.plates
+    if all ~= 0 then
+        for _, p in pairs(byPlate) do pending[p] = bor(pending[p] or 0, all) end
+    end
+    local targetPlate
+    if band(all, D.TARGET) ~= 0 then targetPlate = C_NamePlate.GetNamePlateForUnit("target") end
+    -- Work requested by a widget callback during this pass belongs to the following frame.
+    queue.plates, queue.processing = queue.processing, pending
+    for p, mask in pairs(pending) do
+        pending[p] = nil
+        if p.unit then FlushPlate(p, mask, targetPlate) end
+    end
+    if queue.world == 0 and not next(queue.plates) then
+        queue.scheduled = false
+        self:Hide()
+    end
+end)
 
 function NP:OnEvent(event, unit)
     if event == "NAME_PLATE_UNIT_ADDED" then
@@ -2988,16 +3370,13 @@ function NP:OnEvent(event, unit)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         NP.ReleaseUnit(unit)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        UpdateTargets()
+        QueueWorld(D.TARGET)
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
-        local plate = C_NamePlate.GetNamePlateForUnit("mouseover")
-        SetMouseover(plate and byPlate[plate] or nil)
+        QueueWorld(D.MOUSEOVER)
     elseif event == "RAID_TARGET_UPDATE" then
-        for _, p in pairs(byPlate) do NP.UpdateRaid(p) end
+        QueueWorld(D.RAID)
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" then
-        NP.UpdateGroup()
-        NP.UpdateRole()
-        RepaintAll()
+        QueueWorld(D.GROUP)
     elseif event == "PLAYER_REGEN_DISABLED" then
         state.combat = true
         if next(NP.CombatList()) then NP.Relayout() end
@@ -3005,41 +3384,37 @@ function NP:OnEvent(event, unit)
         if event == "PLAYER_REGEN_ENABLED" then
             local was = state.combat
             state.combat = false
-            if was and next(NP.CombatList()) then NP.Relayout() end
+            if pendingSettings then
+                if not InCombatLockdown() then
+                    settings, pendingSettings = pendingSettings, nil
+                    state.role = settings.role
+                    NP.ApplyPlateSettings()
+                end
+            elseif was and next(NP.CombatList()) then
+                NP.Relayout()
+            end
         end
         if event == "PLAYER_REGEN_ENABLED" and state.sizePending then NP.ApplySize() end
-        local before = state.role
-        NP.UpdateRole()
-        if before ~= state.role or event == "PLAYER_REGEN_ENABLED" then RepaintAll() end
+        QueueWorld(event == "PLAYER_REGEN_ENABLED" and bor(D.ROLE, D.COLOR) or D.ROLE)
     elseif event == "PLAYER_ENTERING_WORLD" then
         NP.UpdateGroup()
         NP.UpdateRole()
         NP.Sync()
     elseif event == "QUEST_LOG_UPDATE" or event == "UNIT_QUEST_LOG_CHANGED" then
-        -- (they come in bursts: one pass on the next frame)
-        if state.questQueued or not NP.QuestOn() then return end
-        state.questQueued = true
-        C_Timer.After(0, function()
-            state.questQueued = nil
-            for _, p in pairs(byPlate) do NP.UpdateQuest(p) end
-        end)
+        -- Once scheduled, finish the pass even if quest marks were turned off:
+        -- UpdateQuest also removes marks that are already on screen.
+        if band(queue.world, D.QUEST) == 0 and NP.QuestOn() then QueueWorld(D.QUEST) end
     elseif event == "PLAYER_FOCUS_CHANGED" then
-        local db = DB()
-        if db and db.colorFocus then RepaintAll() end
+        local db = SharedSettings()
+        if db and db.colorFocus then QueueWorld(D.COLOR) end
     elseif event == "SPELLS_CHANGED" then
-        -- Execute Range on Auto follows the spells you know
-        -- (each type has its own Execute Range now: Auto's spot is the same for all)
-        local at = NP.ExecuteAt({ execute = "auto" })
-        if at ~= state.execAt then
-            state.execAt = at
-            NP:Refresh()
-        end
+        QueueWorld(D.SPELLS)
     end
 end
 
 -- Out of Range Opacity: a few plates per tick, in turn
 function NP.RangeTick()
-    local db = DB()
+    local db = SharedSettings()
     if not db or (db.rangeAlpha or 1) >= 1 then return end
     local checked, n = 0, #pool
     for _ = 1, n do
@@ -3153,8 +3528,8 @@ C.VIEWS = {
 -- (each in turn), or a table of states: target, cast, nokick, kick, important, threat, focus,
 -- execute, quest, combo. A state shows only what its setting draws (a quest mark needs Quest Marks).
 function NP.DrawSample(f, kind)
-    if not DB() then return end
-    local db = NP.TypeDB(f.kind)
+    if not SharedSettings(true) then return end
+    local db = NP.TypeDB(f.kind, true, true)
     if kind == "overview" then
         f.cycleAt = f.cycleAt or 1
         if not f.cycling then
@@ -3206,25 +3581,26 @@ function NP.DrawSample(f, kind)
     if UF and UF.BarLookUpdate then UF.BarLookUpdate(p.health, nil, false) end
     p.heal:SetMinMaxValues(0, 1); p.heal:SetValue(0.08)
     p.absorb:SetMinMaxValues(0, 1); p.absorb:SetValue(0)
-    local hostile = NP.Color("hostile")
+    local hostile = NP.Color("hostile", true)
     local r, g, b = hostile[1], hostile[2], hostile[3]
     -- threat: the warning state for your role (damage / healer: it's on you; tank: you lost it), so
     -- Threat Glow, Aggro Flash and Threat Scale show with it
     -- (shown whenever the preview asks for it: Colour by Threat may still be off while you look at its options)
-    local threatKey = st.threat and (state.role == "tank" and "lost" or "aggro") or nil
+    local role = pendingSettings and pendingSettings.role or state.role
+    local threatKey = st.threat and (role == "tank" and "lost" or "aggro") or nil
     if threatKey then
-        local c = NP.Color(threatKey)
+        local c = NP.Color(threatKey, true)
         r, g, b = c[1], c[2], c[3]
     elseif st.focus and db.colorFocus then
-        local c = NP.Color("focus")
+        local c = NP.Color("focus", true)
         r, g, b = c[1], c[2], c[3]
     elseif db.colorElite then
-        local c = NP.Color("elite")   -- (the sample is an elite)
+        local c = NP.Color("elite", true)   -- (the sample is an elite)
         r, g, b = c[1], c[2], c[3]
     elseif db.healthColor == "health" and UF and UF.SampleHealthColor then
         r, g, b = UF.SampleHealthColor({ healthColor = "health" }, share, r, g, b)
     end
-    if C.FRIENDLY[db.kind] then local c = NP.Color("friendly") r, g, b = c[1], c[2], c[3] end
+    if C.FRIENDLY[db.kind] then local c = NP.Color("friendly", true) r, g, b = c[1], c[2], c[3] end
     NP.BarColor(p, r, g, b)
     -- the execute tint below its threshold
     p.execTint:SetAlpha((p.execAt and share < p.execAt) and 1 or 0)
@@ -3247,7 +3623,7 @@ function NP.DrawSample(f, kind)
     end
     p.sampleName = (db.kind == "friendlyPlayer") and ns.UnitDisplayName("player", nil, p.aboveKind == "fullname") or L["Forest Spider"]
     NP.UpdateNameAbove(p)
-    local questOn = NP.QuestOn() and (st.quest or type(kind) ~= "table")
+    local questOn = NP.QuestOn(true) and (st.quest or type(kind) ~= "table")
     local questIcon, questProgress = NP.QuestParts(p)
     p.quest:SetShown(questOn and questIcon)
     p.questText:SetText("3/8")
@@ -3284,7 +3660,7 @@ function NP.DrawSample(f, kind)
             cast.Time:SetText("1.2")
             cast.Icon:SetTexture("Interface\\Icons\\Spell_Shadow_ShadowBolt")
             local nokick = st.nokick
-            local c = NP.Color(nokick and "castNoInterrupt" or (st.kick and db.kickReady and "kickReady") or "cast")
+            local c = NP.Color(nokick and "castNoInterrupt" or (st.kick and db.kickReady and "kickReady") or "cast", true)
             cast:GetStatusBarTexture():SetAlpha(1)
             cast:SetStatusBarColor(c[1], c[2], c[3])
             cast.shield:SetAlpha(nokick and 1 or 0)
@@ -3329,7 +3705,8 @@ function NP.DrawSample(f, kind)
     -- combo points under the plate (below the cast bar while it shows), 3 of 5, as the live ones
     NP.PlaceBelow(p)
     -- (the unit type's own Combo Points too, and never on a Name Only plate: NP.ComboAllowed)
-    local comboOn = ns.db and ns.db.profile and ns.db.profile.tweaks and ns.db.profile.tweaks.nameplateCombo
+    local tweaks = TweakSettings(true)
+    local comboOn = tweaks and tweaks.nameplateCombo
         and db.combo ~= false and not p.nameOnly
         and (st.combo or type(kind) ~= "table")
     p.sampleCombo = p.sampleCombo or {}
@@ -3454,7 +3831,7 @@ end
 -- Animations glides, the Damage Trail holds then shrinks, and the Edge Glow flashes
 function NP.SampleHit(f)
     local p = f.plates and f.plates[1]
-    local db = DB()
+    local db = SharedSettings(true)
     if not (p and db and p.health:IsVisible()) or (f.states and f.states.execute) then return end
     local before = f.demoShare or 0.72
     local after = before - 0.16
@@ -3524,7 +3901,7 @@ function NP.TestMode(on, kind, endless)
     if not NP.testTicker then NP.testTicker = C_Timer.NewTicker(0.05, NP.TestTick) end
 end
 function NP.TestTick()
-    local db = DB()
+    local db = SharedSettings()
     if not NP.testing or GetTime() > NP.testing or not db then
         NP.TestMode(false)
         if ns.NameplatesPinned then ns.NameplatesPinned.Draw() end
@@ -3574,7 +3951,7 @@ function NP.TestIcons(p, tdb)
         p.questText:SetShown(progress)
         if changed and p.testIcons then NP.PlaceSides(p) end
     end
-    local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks
+    local tweaks = TweakSettings()
     local comboOn = tweaks and tweaks.nameplateCombo and ns.CreateComboPoint and PDB(p).combo ~= false and not p.nameOnly
     -- (made out of combat only: frames made on a nameplate in a fight come out forbidden)
     if comboOn and not p.testCombo and not InCombatLockdown() then
@@ -3625,7 +4002,7 @@ function NP.ApplySize()
     if not NP.ready or NP.standDown then return end
     if InCombatLockdown() then state.sizePending = true return end
     state.sizePending = nil
-    local db = NP.TypeDB("enemyNpc")
+    local db = NP.TypeDB("enemyNpc", true)
     local _, _, pad = NP.Edge(db)
     local w = db.width + 2 * pad + 2 * C.CLICK_ROOM
     local h = db.height + 2 * pad + NP.NameRoom(db) + 2 * C.CLICK_ROOM
@@ -3651,18 +4028,34 @@ end
 
 -- A settings change: every plate comes off its nameplate, is laid out while parked (a plate on a
 -- nameplate can't be measured under addon restrictions), and the sync pass puts them back
-function NP:Refresh()
-    if not NP.ready then return end
+function NP.ApplyPlateSettings()
     local held = {}
     for _, p in pairs(byPlate) do held[#held + 1] = p end
     for _, p in ipairs(held) do Release(p) end
     for _, p in ipairs(pool) do
+        -- A parked plate may still point into the profile that was active in combat.
+        if p.tdb then p.tdb = NP.TypeDB(p.tdb.kind, true) end
         local ok, err = pcall(NP.Layout, p)
         if not ok then ns.LogError("Nameplates Layout", err) end
     end
     NP.ApplySize()
     NP.PinZoom()   -- (the game settings FlareUI sets: out of a fight only)
     NP.Sync()
+end
+
+local function CachePendingSettings()
+    pendingSettings = CacheSettings(pendingSettings)
+    if pendingSettings then pendingSettings.role = PendingRole(SharedSettings()) end
+end
+
+function NP:Refresh()
+    if not NP.ready then return end
+    if pendingSettings then
+        CachePendingSettings()
+        return
+    end
+    settings = CacheSettings(settings)
+    NP.ApplyPlateSettings()
 end
 
 -- The game's own plate zoom (distance, target, larger plates) is set to 1 while the module is on, so
@@ -3681,7 +4074,7 @@ end
 -- setting it (the setting turned off, the module off at the next login, or standing down).
 function NP.PinZoom()
     if InCombatLockdown() or not (ns.db and ns.db.global) then return end
-    local db = DB() or {}
+    local db = SharedSettings() or {}
     local want = {}
     for _, name in ipairs(C.ZOOM_CVARS) do want[name] = "1" end
     if db.obscuredAlpha then want.nameplateOccludedAlphaMult = string.format("%.2f", db.obscuredAlpha) end
@@ -3713,7 +4106,7 @@ function NP.RestoreZoom()
     ns.db.global.nameplateZoomBackup = nil
 end
 
-function NP:ShouldLoad()
+local function MigrateProfile()
     local db = DB()
     -- 11-19: text slots saved by the first version kept the Left slot empty; they start over once
     if db and db.barText and not db.textV2 then db.barText = nil end
@@ -3754,7 +4147,6 @@ function NP:ShouldLoad()
     -- (11-22) the plates read the unit frames' Aura Swipe, Aura Timer and Timer Colour before they had
     -- their own: those values are saved here once as the old shared ones (C.WAS_SHARED), so every
     -- type's preset keeps them and no plate changes
-    local db = DB()
     if db and not db.auraLookV1 then
         db.auraLookV1 = true
         local uf = ns.db.profile.unitframes or {}
@@ -3764,6 +4156,24 @@ function NP:ShouldLoad()
     end
     -- 11-19: the Chevron and Hook arrows went (Chevron was the Yellow one turned)
     if db and (db.targetArrows == "chevron" or db.targetArrows == "hook") then db.targetArrows = "npe" end
+    return db
+end
+
+function NP:ProfileChanged()
+    if not self.ready or self.standDown then return end
+    MigrateProfile()
+    if InCombatLockdown() then
+        CachePendingSettings()
+        -- The panel's AceDB callback can run before ours. Repaint an already open preview.
+        RedrawOpenPreview()
+    else
+        pendingSettings = nil
+        self:Refresh()
+    end
+end
+
+function NP:ShouldLoad()
+    local db = MigrateProfile()
     if not (db and db.enabled) then NP.RestoreZoom() return false end
     if not (K and BT and K.CreateCastBar) then return false end
     if NP.OtherAddon() then NP.standDown = true NP.RestoreZoom() return false end
@@ -3792,10 +4202,16 @@ function NP:Init()
         return
     end
     self.initialized = true
+    settings = CacheSettings(settings)
     -- the aura containers must be made now (later ones never show): all forty plates' at once
     if K.HasAuraSupport then K.HasAuraSupport() end
     BuildPool()
     NP.ready = true
+    if ns.db.RegisterCallback then
+        for _, event in ipairs({ "OnProfileChanged", "OnProfileCopied", "OnProfileReset" }) do
+            ns.db.RegisterCallback(self, event, "ProfileChanged")
+        end
+    end
     -- Musician: out of a fight it swaps a friendly player's plate for its own name frame, which
     -- showed next to ours (11-21, two names). Its API for nameplate addons turns that off, as its
     -- own Plater and ElvUI modules do (NP.Claim hides a frame it already made)
@@ -3816,7 +4232,7 @@ function NP:Init()
         -- (per type: each plate checks its own)
         for _, p in pairs(byPlate) do
             local tdb = PDB(p)
-            if (tdb.kickReady or tdb.castKickMark) and p.cast and p.cast:IsShown() and not p.cast.flashing then NP.UpdateCast(p) end
+            if (tdb.kickReady or tdb.castKickMark) and p.cast and p.cast:IsShown() and not p.cast.flashing then NP.QueuePlate(p, D.CAST) end
         end
     end
     NP.Sync()

@@ -6,6 +6,8 @@ function canaccessvalue() return true end
 local env = setmetatable({ F = F }, { __index = _G })
 local code = [[
 local NP = { ready = true }
+local queue = { plates = {}, processing = {} }
+function NP.ResetPendingCast(p) p.pendingCast, p.castEventGUID = nil, nil end
 local byPlate, spare, state, stats, retries = {}, {}, {}, { secret=0, forbidden=0, given=0, claimed=0, failed=0 }, {}
 local hidden = F.frame(); hidden:Hide()
 local ns = { LogError = function(_, err) NP.lastError = err end }

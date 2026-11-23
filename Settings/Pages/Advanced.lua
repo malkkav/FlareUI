@@ -468,7 +468,13 @@ function ns.ShowImportPicker(payload)
             local saved = ns.db.sv.profiles and ns.db.sv.profiles[current]
             if not saved then return end
             local defaults = ns.defaults and ns.defaults.profile or {}
-            for _, root in ipairs(roots) do saved[root] = WithDefaults(chosen[root], defaults[root]) end
+            local platesChanged = false
+            for _, root in ipairs(roots) do
+                saved[root] = WithDefaults(chosen[root], defaults[root])
+                if root == "nameplates" or root == "tweaks" then platesChanged = true end
+            end
+            -- Importing into the active profile bypasses AceDB's profile callbacks.
+            if platesChanged and ns.Nameplates then ns.Nameplates:ProfileChanged() end
             f:Hide()
             ns.ShowDialog("FLAREUI_RELOAD")
         else
