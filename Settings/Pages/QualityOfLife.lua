@@ -146,6 +146,7 @@ S:Row{ key = "qol.gryphons", kind = "choice", tab = "interface", section = "qol.
     set = function(value)
         S:SetPath("visibility.hideEndCaps", value == "hidden")
         S:SetPath("actionbars.gryphonsBehind", value == "behind")
-    end }
+    end,
+    resetValue = function() return "shown" end }
 S:Row{ key = "ab.hideRaidManager", module = "qol", tab = "interface", section = "qol.hideClutter", ignoreModule = true, half = true,
     path = "visibility.hideRaidManager", apply = BarsRefresh }

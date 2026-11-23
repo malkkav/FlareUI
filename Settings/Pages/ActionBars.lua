@@ -37,7 +37,8 @@ S:Row{ key = "ab.buttonScale", kind = "range", section = "ab.barAppearance", cho
         local v = tonumber(S:GetPath("actionbars.buttonScale")) or 1.11
         return math.floor(v * 200 + 0.5) * 5 / 1000
     end,
-    set = function(v) S:SetPath("actionbars.buttonScale", v) end }
+    set = function(v) S:SetPath("actionbars.buttonScale", v) end,
+    resetValue = function() return S:DefaultPath("actionbars.buttonScale") end }
 
 -- the micro menu and the bag bar
 S:Row{ key = "ab.borderlessMenu", section = "ab.barAppearance", path = "actionbars.borderlessMenu", apply = Refresh, half = true }
@@ -108,6 +109,7 @@ S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10
         return "off"
     end,
     set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
+    resetValue = function() return "off" end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- every colour the XP bar paints, in the colour window
 S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 1,   -- (11-20: after Separators, with the other look rows; a button would sink to the end)
