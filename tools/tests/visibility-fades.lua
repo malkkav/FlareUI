@@ -220,4 +220,29 @@ state.form = 3
 assert(not vis.ShowRule("unmounted"))
 state.form, state.map = nil, 1453
 assert(vis.ShowRule("unmounted") and vis.ShowRule("city") and not vis.ShowRule("notcity"))
+-- Slower Hide Speed through the shared fader: 55% after 2 s, a rest, then gone; showing again mid-fade
+-- cancels it, and the next fade starts its stages afresh
+vis:SetElementFade("bar2", "fadeIn", "instant")
+vis:SetElementFade("bar2", "fadeOut", "slower")
+assert(vis:GetFadeOut("bar2") == "slower" and vis:GetMinAlpha("bar2") == 20)
+local function run(seconds)
+    for _ = 1, math.floor(seconds / 0.05 + 0.5) do tick(0.05) end
+    return b:GetAlpha()
+end
+local function nearly(value, expected) return math.abs(value - expected) < 0.04 end
+b.mouseOver = true
+assert(run(0.3) == 1)
+b.mouseOver = false
+run(0.1)                                    -- past the short grace before a fade starts
+assert(nearly(run(2), 0.55), "first stage: 55% after 2 s")
+assert(nearly(run(1), 0.55), "rests at 55%")
+b.mouseOver = true
+assert(run(0.2) == 1, "showing again cancels the fade at once")
+b.mouseOver = false
+run(0.1)
+assert(nearly(run(2), 0.55), "restarted: the first stage again")
+assert(nearly(run(1.5), 0.55), "restarted: the rest runs its full 2 s (it was cut short before)")
+assert(run(1) < 0.55, "then it finishes")
+assert(nearly(run(0.5), 0.2), "down to Faded Opacity")
+
 print("PASS: visibility migrates fades, groups bars, handles mouse and combat, and restores native opacity")

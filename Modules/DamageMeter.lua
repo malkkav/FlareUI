@@ -2462,8 +2462,13 @@ local function FadeStep(self, meter, elapsed)
         return
     end
     -- Show Speed while coming back, Hide Speed while fading away (at rest there is nothing to time)
-    local time = alpha == target and 0 or ns.FadeTime(DamageMeter.FadeSpeed(GetDb(), alpha < target and "fadeIn" or "fadeOut"))
-    if time <= 0 then
+    local speed = alpha == target and "instant" or DamageMeter.FadeSpeed(GetDb(), alpha < target and "fadeIn" or "fadeOut")
+    local time = ns.FadeTime(speed)
+    if alpha ~= target and (alpha < target or speed ~= "slower") then self.stageHold = nil end
+    if speed == "slower" and alpha > target then
+        -- Slower: down to the resting opacity, rest, then finish (ns.StagedFall, Core.lua)
+        alpha = ns.StagedFall(self, alpha, target, elapsed)
+    elseif time <= 0 then
         alpha = target
     elseif alpha < target then
         alpha = math_min(target, alpha + elapsed / time)

@@ -2300,13 +2300,25 @@ function BR.FadeSpeed(db, field)
     return (db and (db[field] or db.fadeSpeed)) or "instant"
 end
 local fadeTimer
+-- The Slower fade-out runs on its own frame: ns.StagedFall steps the alpha, as it does everywhere else
+local stageDriver = CreateFrame("Frame")
+stageDriver:Hide()
 function BR.ShowFaded(list, db)
     local had = BR.shownCount or 0
+    -- a fade-out still running and nothing new to show: let it finish (its timers end it)
+    if #list == 0 and had == 0 and BR.fadingOut then return end
     local rising = #list > 0 and had == 0
-    local t = ns.FadeTime and ns.FadeTime(BR.FadeSpeed(db, rising and "fadeIn" or "fadeOut")) or 0
+    local speed = BR.FadeSpeed(db, rising and "fadeIn" or "fadeOut")
+    local t = ns.FadeTime and ns.FadeTime(speed) or 0
+    -- Slower going out: down to the resting opacity, rest, then finish (ns.FADE_STAGES)
+    local staged = speed == "slower" and not rising and ns.FADE_STAGES
+    if staged then t = staged.time end
     local target = (db.alpha or 100) / 100
     BR.shownCount = #list
     if fadeTimer then fadeTimer:Cancel(); fadeTimer = nil end
+    stageDriver:Hide()
+    stageDriver.stageHold = nil
+    BR.fadingOut = nil
     if t <= 0 or (ns.EditPreviewing and ns.EditPreviewing()) then
         BR.fading = nil
         Show(list)
@@ -2321,13 +2333,29 @@ function BR.ShowFaded(list, db)
         end
     elseif had > 0 then
         BR.fading = true
-        UIFrameFadeOut(holder, t, holder:GetAlpha(), 0)
-        fadeTimer = C_Timer.NewTimer(t, function()
+        BR.fadingOut = true
+        local function Finish()
             fadeTimer = nil
             BR.fading = nil
+            BR.fadingOut = nil
             if InCombatLockdown() then return end
             Show(list)
-        end)
+        end
+        if staged then
+            stageDriver:SetScript("OnUpdate", function(self, elapsed)
+                local alpha = ns.StagedFall(self, holder:GetAlpha(), 0, elapsed)
+                holder:SetAlpha(alpha)
+                if alpha <= 0 then
+                    self:Hide()
+                    self.stageHold = nil
+                    Finish()
+                end
+            end)
+            stageDriver:Show()
+        else
+            UIFrameFadeOut(holder, t, holder:GetAlpha(), 0)
+            fadeTimer = C_Timer.NewTimer(t, Finish)
+        end
     else
         Show(list)
     end
@@ -2642,8 +2670,8 @@ local function BuildSettings()
           get = function() return BR.FadeSpeed(GetDb(), "fadeIn") end, set = set("fadeIn") },
         { name = L["Hide Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
           values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },
-                     { text = L["Slow"], value = "slow", isRadio = true } },
-          desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+                     { text = L["Slow"], value = "slow", isRadio = true }, { text = L["Slower"], value = "slower", isRadio = true } },
+          desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds\n* Slower: fades to about half over 2 seconds, then 2 seconds later fades out"],
           get = function() return BR.FadeSpeed(GetDb(), "fadeOut") end, set = set("fadeOut") },
     })
     return settings

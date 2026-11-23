@@ -2260,8 +2260,24 @@ do
 end
 
 -- "Show Speed" / "Hide Speed" choices: seconds per fade
-local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4 }
+-- ("slower" is staged where Visibility fades it: see ns.FADE_STAGES; elsewhere it is one straight 4 s fade)
+local FADE_TIMES = { instant = 0, fast = 0.2, slow = 0.4, slower = 4 }
 function ns.FadeTime(speed) return FADE_TIMES[speed] or 0 end
+-- "Slower" Hide Speed: fades to `alpha` in `time` s, rests there `hold` s, then finishes in `finish` s
+ns.FADE_STAGES = { alpha = 0.55, time = 2, hold = 2, finish = 0.4 }
+-- One step of a "Slower" fade down from `current` towards `target` (`elapsed` s later). `state` keeps the
+-- rest's timer between steps: the caller clears state.stageHold when the alpha rises or settles.
+function ns.StagedFall(state, current, target, elapsed)
+    local stage = ns.FADE_STAGES
+    local first = elapsed * (1 - stage.alpha) / stage.time
+    if target >= stage.alpha then return math.max(target, current - first) end   -- one stage only
+    if current > stage.alpha then return math.max(stage.alpha, current - first) end
+    if state.stageHold ~= 0 and math.abs(current - stage.alpha) <= 0.005 then
+        state.stageHold = math.max(0, (state.stageHold or stage.hold) - elapsed)
+        return current
+    end
+    return math.max(target, current - elapsed / stage.finish)
+end
 
 -- Numbers on the bars (health, power, threat): in full up to 9999, then shortened as Blizzard does
 -- (12K, 1.2M, 12M, 1.2B). AbbreviateNumbers takes secret values and custom breakpoints; Blizzard's own

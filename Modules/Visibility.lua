@@ -977,12 +977,25 @@ Fader.UpdateScript = function(self, elapsed)
                     if math_abs(currentAlpha - targetAlpha) > 0.005 then
                         groupFading = true
                         -- coming back at Show Speed, fading away at Hide Speed
-                        local fadeTime = (currentAlpha < targetAlpha) and data.fadeIn or data.fadeOut
-                        local change = fadeTime > 0 and elapsed / fadeTime or 1
-                        local newAlpha = (currentAlpha < targetAlpha) and math_min(targetAlpha, currentAlpha + change) or math_max(targetAlpha, currentAlpha - change)
+                        local rising = currentAlpha < targetAlpha
+                        local fadeTime = rising and data.fadeIn or data.fadeOut
+                        local newAlpha
+                        if rising then
+                            data.stageHold = nil
+                            local change = fadeTime > 0 and elapsed / fadeTime or 1
+                            newAlpha = math_min(targetAlpha, currentAlpha + change)
+                        elseif data.fadeStaged then
+                            -- Slower: down to the resting opacity, rest, then finish (Core.lua)
+                            newAlpha = ns.StagedFall(data, currentAlpha, targetAlpha, elapsed)
+                        else
+                            local change = fadeTime > 0 and elapsed / fadeTime or 1
+                            newAlpha = math_max(targetAlpha, currentAlpha - change)
+                        end
                         if data.apply then data.apply(newAlpha) else ApplyElementAlpha(frame, data.key, newAlpha) end
-                    elseif data.apply and repair then
-                        data.apply(currentAlpha)
+                    else
+                        -- at its alpha: the next Slower fade starts its stages afresh
+                        data.stageHold = nil
+                        if data.apply and repair then data.apply(currentAlpha) end
                     end
                 end
             end
@@ -1041,6 +1054,9 @@ end
 local SPEED_VALUES = { { text = L["Instant"], value = "instant", isRadio = true },
                        { text = L["Fast"], value = "fast", isRadio = true },
                        { text = L["Slow"], value = "slow", isRadio = true } }
+-- Hide Speed also has Slower: fades to about half, rests, then finishes (ns.FADE_STAGES)
+local HIDE_SPEED_VALUES = { SPEED_VALUES[1], SPEED_VALUES[2], SPEED_VALUES[3],
+                            { text = L["Slower"], value = "slower", isRadio = true } }
 
 local function BuildElementSettings(key)
     -- nothing fades while it's always shown (or a swing bar shows and hides itself)
@@ -1111,11 +1127,11 @@ local function BuildElementSettings(key)
             desc = L["How fast it comes back.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
         },
         {
-            name = L["Hide Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = SPEED_VALUES,
+            name = L["Hide Speed"], kind = LEM.SettingType.Dropdown, default = "instant", values = HIDE_SPEED_VALUES,
             get = function() return Visibility:GetFadeOut(key) end,
             set = function(_, value) Visibility:SetElementFade(key, "fadeOut", value) end,
             hidden = AlwaysShown,
-            desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds"],
+            desc = L["How fast it fades away.\n* Fast: 0.2 seconds\n* Slow: 0.4 seconds\n* Slower: fades to about half over 2 seconds, then 2 seconds later fades out"],
         },
         {
             name = L["Faded Opacity"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 100, valueStep = 5,
@@ -1637,6 +1653,7 @@ function Visibility:Refresh()
                 local mouseOK = Conditions.Has(fcmShow, "mouseover", SHOW_SPEC)
                 AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcmShow, mouseOK = mouseOK,
                                    fadeIn = ns.FadeTime(self:GetFadeIn(key)), fadeOut = ns.FadeTime(self:GetFadeOut(key)),
+                                   fadeStaged = self:GetFadeOut(key) == "slower",
                                    minAlpha = 0 })
                 if mouseOK then Fader.watchesMouseover = true end
             else
@@ -1689,6 +1706,7 @@ function Visibility:Refresh()
                     local data = { key = key, frame = frame, isBar = isBar, show = show, owner = owner, mouse = mouse,
                                    fadeIn = ns.FadeTime(self:GetFadeIn(settingsKey)),
                                    fadeOut = ns.FadeTime(self:GetFadeOut(settingsKey)),
+                                   fadeStaged = self:GetFadeOut(settingsKey) == "slower",
                                    minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100 }
                     -- the pointer shows it only with Mouseover ticked
                     data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))
