@@ -98,12 +98,8 @@ end
 --------------------------------------------------
 -- 0. KEYRING AND CRAFTING BAG IN THE BACKPACK (Keyring in Backpack, Crafting Bag in Backpack; off)
 -- Blizzard's combined backpack holds bags 0-4 only; the keyring (-1) and the crafting bag (5) open
--- as their own windows. Each gets a section at the bottom of the combined backpack instead: FlareUI's
--- own item buttons from Blizzard's template, under a plain parent whose ID is the bag, and each
--- button's ID is its slot. Blizzard's GetBagID reads the parent's ID, so clicking, dragging, splitting
--- and using items run Blizzard's own code untainted (the bag list globals are never touched).
--- Blizzard still opens its crafting bag window with the others (the bag key counts it): it is kept
--- open but moved off the screen, so the key opens and closes everything as usual.
+-- as their own windows. The keyring uses Blizzard's item button template. The crafting bag borrows
+-- the buttons from its native window so spells can target the reagents in the backpack.
 --------------------------------------------------
 local extras = {}   -- bagID -> { holder = frame, buttons = { [slot] = button } }
 local highlightedExtraBag
@@ -160,30 +156,22 @@ end
 local function Extra(bagID, frame)
     local e = extras[bagID]
     if e then return e end
-    -- buttons: the ones shown (FlareUI's own, e.own, or Blizzard's while adopted)
-    e = { own = {} }
-    e.buttons = e.own
+    e = { buttons = {}, native = bagID == ReagentID() }
     e.holder = CreateFrame("Frame", nil, frame)
     e.holder:Hide()
     e.holder:SetAllPoints(frame)
     e.holder:SetID(bagID)
-    -- (11-21) the crafting bag holds reagents that spells target (filling a crate, milling,
-    -- prospecting): a button made by addon code runs that use tainted, and the game blocked it. While
-    -- Blizzard's crafting bag window is open (the bag key opens it with the others) its section shows
-    -- Blizzard's own buttons (Bags.AdoptReagentButtons); otherwise (the backpack alone opened, 11-22:
-    -- 7.0.1 then showed an empty section) FlareUI's own, as before. The keyring's are always ours.
     extras[bagID] = e
     return e
 end
 
 local function ExtraButton(e, slot)
     local b = e.buttons[slot]
-    -- (Blizzard's adopted buttons: the ones its window made, nothing to add)
-    if b or InCombatLockdown() or e.adopted then return b end
+    if b or e.native or InCombatLockdown() then return b end
     b = CreateFrame("ItemButton", nil, e.holder, "ContainerFrameItemButtonTemplate")
     b:SetID(slot)
     Bags.AddSlotArt(b)
-    e.own[slot] = b
+    e.buttons[slot] = b
     return b
 end
 
@@ -194,9 +182,10 @@ local function WarmExtraButtons()
     if not frame then return end
     for _, bagID in ipairs(ExtraBags()) do
         local section = Extra(bagID, frame)
-        -- (the crafting bag's too: they show while Blizzard's window isn't open)
-        for slot = 1, C_Container.GetContainerNumSlots(bagID) do
-            ExtraButton(section, slot)
+        if not section.native then
+            for slot = 1, C_Container.GetContainerNumSlots(bagID) do
+                ExtraButton(section, slot)
+            end
         end
     end
 end
@@ -295,12 +284,15 @@ end
 
 -- Blizzard's own crafting bag window, while its section is in the backpack: open but off the screen
 local parked = {}
+local reagentOpenedForBackpack
 
 function Bags:IsNativeBagWindowParked(frame)
     return parked[frame] ~= nil
 end
 
 local function ParkReagentWindow()
+    local owned = reagentOpenedForBackpack
+    if owned and (not owned:IsShown() or owned:GetID() ~= ReagentID()) then reagentOpenedForBackpack = nil end
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
         if type(frame) == "table" and frame.GetID then
@@ -318,10 +310,10 @@ local function ParkReagentWindow()
                 frame:SetAlpha(0)
             elseif parked[frame] ~= nil then
                 -- the frame holds another bag now (Blizzard places it again)
-                Bags.ReturnReagentButtons(frame)
                 frame:SetClampedToScreen(parked[frame])
                 parked[frame] = nil
                 frame:SetAlpha(1)
+                Bags.ReturnReagentButtons(frame)
             end
         end
     end
@@ -528,6 +520,36 @@ local function GetCollapsedSections()
     local char = ns.CharDB()
     char.collapsedBagSections = char.collapsedBagSections or {}
     return char.collapsedBagSections
+end
+
+-- Open All Bags supplies the reagent window itself. Wait until that operation finishes before
+-- opening a missing window or closing one that FlareUI opened for the backpack.
+local reagentSyncQueued = false
+local function SyncBackpackReagent()
+    reagentSyncQueued = false
+    local backpack = Combined()
+    if InCombatLockdown() or not backpack then return end
+    local id = ReagentID()
+    if not (backpack:IsShown() and ns.BagModuleOn() and Bags:IsCombined() and LayoutWanted() and ReagentWanted()) then
+        if reagentOpenedForBackpack and ContainerFrameUtil_GetShownFrameForID(id) == reagentOpenedForBackpack then
+            CloseBag(id)
+        end
+        return
+    end
+    local native = ContainerFrameUtil_GetShownFrameForID(id)
+    if native then
+        -- The window can still be visible if combat previously prevented moving its buttons.
+        if parked[native] == nil then ParkReagentWindow() end
+    elseif not (CategoryRows(GetDb()) and GetCollapsedSections()[id]) then
+        OpenBag(id)
+        reagentOpenedForBackpack = ContainerFrameUtil_GetShownFrameForID(id)
+    end
+end
+
+local function QueueBackpackReagentSync()
+    if reagentSyncQueued or InCombatLockdown() then return end
+    reagentSyncQueued = true
+    C_Timer.After(0, SyncBackpackReagent)
 end
 
 -- Equipment sets as categories of their own (the Equipment Manager's sets, in its order), each just
@@ -793,6 +815,7 @@ local function Relayout(frame)
         e.shownSlots = shown
         local folded = categorized and collapsedSections[bagID]
         if not folded then
+            if e.native and not next(parked) then QueueBackpackReagentSync() end
             -- The same order as Blizzard's bags: the last slot bottom right.
             for slot = shown, 1, -1 do
                 local b = ExtraButton(e, slot)
@@ -865,11 +888,10 @@ end
 --------------------------------------------------
 -- 3b. THE CRAFTING BAG ON BLIZZARD'S OWN BUTTONS (11-21)
 -- Blizzard's crafting bag window stays open off the screen (ParkReagentWindow); the item buttons it
--- takes from its pool are moved into the backpack's crafting bag section. They stay Blizzard's: its
--- window fills them, and a click (a spell aimed at a reagent too) runs its own code untainted. Their
--- bag is their own "bagid" attribute, so the new parent changes nothing. Each goes back to its window
--- before that window builds its slots again (the pool may hand it to another bag) or stops holding
--- the crafting bag. Never moved in a fight when protected: the window is then left where Blizzard puts it.
+-- takes from its pool are moved into the backpack's crafting bag section. The window updates them,
+-- and spells can target reagents through Blizzard's click handler. Each button keeps its "bagid" and
+-- returns to its original window when the slots are rebuilt or the bag closes. If protected buttons
+-- cannot move during combat, the game keeps its own window until they can move.
 --------------------------------------------------
 Bags.adopted = {}   -- Blizzard's button -> the bag window it belongs to
 
@@ -887,27 +909,28 @@ function Bags.AdoptReagentButtons(frame)
             button:SetParent(e.holder)
             Bags.adopted[button] = frame
             button.fuiAdopted = true
+        end
+        local slot = button:GetID()
+        if e.buttons[slot] ~= button then
+            e.buttons[slot] = button
             changed = true
         end
     end
-    -- FlareUI's own buttons step aside while Blizzard's are in
-    if not e.adopted then
-        for _, b in pairs(e.own) do
-            if not (InCombatLockdown() and b:IsProtected()) then b:Hide() end
-        end
-    end
-    local shown = {}
-    for _, button in ipairs(frame.Items) do shown[button:GetID()] = button end
-    e.buttons, e.adopted = shown, true
     if changed and not layingOut and combined:IsShown() then Relayout(combined) end
     return true
 end
 
 -- every button taken from this window (all of them: owner nil) back to it
 function Bags.ReturnReagentButtons(owner)
-    local done = true
+    local e = extras[ReagentID()]
+    local changed, done = false, true
     for button, from in pairs(Bags.adopted) do
         if not owner or from == owner then
+            local slot = button:GetID()
+            if e.buttons[slot] == button then
+                e.buttons[slot] = nil
+                changed = true
+            end
             if InCombatLockdown() and button:IsProtected() then
                 done = false
             else
@@ -917,13 +940,8 @@ function Bags.ReturnReagentButtons(owner)
             end
         end
     end
-    -- none left: FlareUI's own buttons again (the next layout shows them)
-    local e = extras[ReagentID()]
-    if e and e.adopted and not next(Bags.adopted) then
-        e.buttons, e.adopted = e.own, nil
-        local combined = Combined()
-        if combined and combined:IsShown() and not layingOut then Relayout(combined) end
-    end
+    local combined = Combined()
+    if changed and combined and combined:IsShown() and not layingOut then Relayout(combined) end
     return done
 end
 
@@ -2167,7 +2185,10 @@ function Bags:Init()
         end
         combined:HookScript("OnShow", function() Bags:PlaceBagButtons() end)
         combined:HookScript("OnHide", ClearExtraNewItems)
-        combined:HookScript("OnHide", function() SetExtraBagHighlight(nil) end)
+        combined:HookScript("OnHide", function()
+            SetExtraBagHighlight(nil)
+            if reagentOpenedForBackpack then QueueBackpackReagentSync() end
+        end)
     end
     -- the bags move when they open or the screen changes: the buttons pick their side again
     hooksecurefunc("UpdateContainerFrameAnchors", function()
@@ -2177,6 +2198,8 @@ function Bags:Init()
     if combined and ToggleBackpack_Combined then
         -- ToggleAllBags closes and counts the reagent bag itself.
         hooksecurefunc("ToggleBackpack_Combined", function()
+            -- Let the deferred sync close our window after combat.
+            if reagentOpenedForBackpack and InCombatLockdown() then return end
             if not combined:IsShown() and Bags:IsCombined() and LayoutWanted() then
                 CloseParkedReagentWindow()
             end
@@ -2227,6 +2250,13 @@ function Bags:Init()
             return
         end
         local contentsChanged = event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
+        if event == "PLAYER_REGEN_ENABLED" then
+            -- A hidden or reused window may still own buttons that could not be returned in combat.
+            for _, owner in pairs(Bags.adopted) do
+                if parked[owner] == nil then Bags.ReturnReagentButtons(owner) end
+            end
+            QueueBackpackReagentSync()
+        end
         if contentsChanged and db and db.bagAutoOpen then C_Timer.After(0.3, Bags.AutoOpen.Next) end
         -- Slot counts can arrive after login or grow when a bag is replaced.
         if event == "PLAYER_ENTERING_WORLD" then self:UnregisterEvent(event) end
@@ -2288,6 +2318,7 @@ function Bags:Refresh()
     end
     self:PlaceBagButtons()
     ParkReagentWindow()
+    if reagentOpenedForBackpack then QueueBackpackReagentSync() end
     Bags.Bank.Refresh()
 end
 

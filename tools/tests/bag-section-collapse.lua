@@ -7,12 +7,18 @@ local Widget = {}
 Widget.__index = Widget
 local function widget(kind, _, parent)
     local f = setmetatable({kind = kind, parent = parent, shown = true, scripts = {}, events = {}}, Widget)
+    if kind == 'ItemButton' then f.BagIndicator = {SetShown = noop} end
     frames[#frames + 1] = f
     return f
 end
 function Widget:IsShown() return self.shown end
 function Widget:IsVisible() return self.shown and (not self.parent or self.parent:IsVisible()) end
-function Widget:SetShown(shown) self.shown = shown end
+function Widget:SetShown(shown)
+    if self.shown == shown then return end
+    self.shown = shown
+    local handler = self.scripts[shown and 'OnShow' or 'OnHide']
+    if handler then handler(self) end
+end
 function Widget:Hide() self:SetShown(false) end
 function Widget:Show() self:SetShown(true) end
 function Widget:SetParent(parent) self.parent = parent end
@@ -47,7 +53,7 @@ function Widget:IsClampedToScreen() return true end
 function Widget:GetFrameLevel() return 1 end
 Widget.IsProtected = no
 
-local combined, items
+local combined, items, Bags
 local db = {bagView = 'rows', bagKeyring = true, bagReagent = true}
 local bagSizes = {[-1] = 2, [5] = 2}
 local contents = {[1] = {itemID = 101}, [2] = {itemID = 102}}
@@ -57,6 +63,7 @@ local env = setmetatable({
     wipe = function(t) for k in pairs(t) do t[k] = nil end return t end,
     C_AddOns = {IsAddOnLoaded = function(name) return name == 'Hide2FABagSlots' end},
     C_Timer = {After = function(_, callback) callback() end},
+    C_NewItems = {RemoveNewItem = noop},
     C_CVar = {GetCVarBool = yes}, C_ActionBar = {ShouldShowKeyring = function() return keyringAvailable end},
     IsAccountSecured = function() return secured end, EventRegistry = {RegisterCallback = noop},
     C_Container = {
@@ -68,6 +75,10 @@ local env = setmetatable({
     C_Item = {GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 101 and 0 or 7 end},
 }, {__index = _G})
 env._G = env
+function env.ContainerFrameUtil_GetShownFrameForID(id)
+    local window = env.ContainerFrame1
+    if window and window:GetID() == id and window:IsShown() then return window end
+end
 function env.hooksecurefunc(target, method, hook)
     if type(target) == 'string' then target, method, hook = env, target, method end
     local previous = assert(target[method], method)
@@ -96,7 +107,7 @@ local function startSession(char)
     local ns = {L = setmetatable({}, {__index = function(_, key) return key end}), modules = {},
         db = {profile = {tweaks = db}}, CharDB = function() return char end, BagModuleOn = yes, IsGamepadUI = no}
     setfenv(assert(loadstring(H.read('Modules/Bags.lua'), '@Modules/Bags.lua')), env)('FlareUI', ns)
-    local Bags = ns.Bags
+    Bags = ns.Bags
     Bags.DecorateButton, Bags.PlaceBagButtons, Bags.FollowWindows = noop, noop, noop
     Bags.StyleMoney, Bags.StyleFreeSlots, Bags.GoldList.Hook, Bags.Bank.Hook, Bags.Sort.Hook = noop, noop, noop, noop, noop
     Bags:Init()
@@ -116,9 +127,9 @@ end
 startSession({})
 
 local function layout() env.UpdateContainerFrameAnchors(); combined:UpdateItemLayout() end
-local function bagUpdate()
+local function fireBagEvent(event)
     for _, f in ipairs(frames) do
-        if f.events.BAG_UPDATE_DELAYED then f.scripts.OnEvent(f, 'BAG_UPDATE_DELAYED') end
+        if f.events[event] then f.scripts.OnEvent(f, event) end
     end
 end
 local function visibleHeader(text)
@@ -202,10 +213,10 @@ db.bagView, db.bagCombineEmpty, db.bagKeyring, db.bagReagent = 'rows', false, fa
 layout()
 if items[2]:IsShown() then click('Materials') end
 contents[2] = {itemID = 101}
-bagUpdate()
+fireBagEvent('BAG_UPDATE_DELAYED')
 assert(items[2]:IsShown() and not visibleHeader('Materials'), 'new contents moved into expanded Consumables')
 contents[2] = {itemID = 102}
-bagUpdate()
+fireBagEvent('BAG_UPDATE_DELAYED')
 assert(not items[2]:IsShown(), 'material folded before leaving the custom layout')
 db.bagView = 'all'
 layout()
@@ -243,47 +254,127 @@ login(secondCharacter)
 assert(items[1]:IsShown() and not items[3]:IsShown(), 'another character retains its own folds')
 print('PASS: backpack section folds survive reload and login per character')
 
--- 11-21: the crafting bag section shows Blizzard's own buttons (a spell aimed at a reagent in a
--- button made by FlareUI was blocked), and they go back to their window when it stops holding the bag
+-- Opening the backpack alone leaves the native crafting bag closed. Open All Bags supplies it
+-- later in the same call, before the next frame.
 do
     local window = env.ContainerFrame1
-    local own = {}
-    for _, b in ipairs(window.Items) do own[b] = true end
-    db.bagReagent = true
-    layout()
-    local visible = 0
-    for _, b in ipairs(frames) do
-        if b.kind == 'ItemButton' and b:GetBagID() == 5 and b:IsVisible() then
-            visible = visible + 1
-            assert(own[b], 'a crafting bag button FlareUI made shows while Blizzard\'s are in')
-            assert(b:GetParent() ~= window, 'Blizzard crafting bag button not in the backpack')
+    local native = {unpack(window.Items)}
+    local pending, opens = {}, 0
+    env.C_Timer.After = function(_, callback) pending[#pending + 1] = callback end
+    local function nextFrame()
+        local callbacks = pending
+        pending = {}
+        for _, callback in ipairs(callbacks) do callback() end
+    end
+    local function openNative()
+        window:Show()
+        env.UpdateContainerFrameAnchors()
+    end
+    function env.OpenBag(id)
+        assert(id == window:GetID() and not env.InCombatLockdown())
+        opens = opens + 1
+        openNative()
+    end
+    function env.CloseBag(id)
+        assert(id == window:GetID() and not env.InCombatLockdown())
+        window:Hide()
+        env.UpdateContainerFrameAnchors()
+    end
+    local function closeBags()
+        combined:Hide()
+        window:Hide()
+        env.UpdateContainerFrameAnchors()
+    end
+    local function openBackpack()
+        combined:Show()
+        layout()
+    end
+    local function checkSlots(inBackpack)
+        -- Include hidden buttons: even prewarming must not create substitutes for reagent slots.
+        for _, b in ipairs(frames) do
+            if b.kind == 'ItemButton' and b:GetBagID() == 5 then
+                assert(b == native[b:GetID()], 'FlareUI created a substitute crafting bag button')
+            end
+        end
+        for slot, b in ipairs(native) do
+            assert(window.Items[slot] == b and b:IsVisible() == inBackpack)
+            local parent = b:GetParent()
+            if inBackpack then
+                assert(parent:GetParent() == combined and parent:GetID() == 5, 'native slot outside the crafting section')
+            else
+                assert(parent == window, 'native slot not returned to its window')
+            end
         end
     end
-    assert(visible == 2, 'Blizzard\'s two crafting bag buttons show')
-    db.bagReagent = false
-    layout()
-    for _, b in ipairs(window.Items) do assert(b:GetParent() == window, 'button not given back to its window') end
-    print('PASS: the crafting bag section uses Blizzard\'s own buttons and gives them back')
-end
+    db.bagReagent = true
+    for i = 1, 2 do
+        closeBags()
+        openBackpack()
+        checkSlots(false)
+        nextFrame()
+        checkSlots(true)
+        assert(opens == i, 'ordinary backpack open must open the crafting bag once')
+    end
+    combined:Hide()
+    nextFrame()
+    assert(not window:IsShown(), 'the backpack left its own reagent window open')
+    openBackpack()
+    openNative()
+    nextFrame()
+    checkSlots(true)
+    assert(opens == 2, 'Open All Bags must not open the native window twice')
+    combined:Hide()
+    nextFrame()
+    assert(window:IsShown(), 'hiding the backpack closed a reagent window opened by the player')
+    openBackpack()
 
--- 11-22: with Blizzard's crafting bag window closed (the backpack opened alone), the section shows
--- FlareUI's own buttons instead of staying empty (7.0.1)
-do
-    local window = env.ContainerFrame1
-    local blizzard = {}
-    for _, b in ipairs(window.Items) do blizzard[b] = true end
+    db.bagReagent = false
+    Bags:Refresh()
+    nextFrame()
+    assert(window:IsShown(), 'disabling the section closed the native window opened by the player')
+    for _, b in ipairs(native) do assert(b:GetParent() == window, 'button not returned to its window') end
     db.bagReagent = true
-    window:Hide()
     layout()
-    local visible = 0
-    for _, b in ipairs(frames) do
-        if b.kind == 'ItemButton' and b:GetBagID() == 5 and b:IsVisible() then
-            visible = visible + 1
-            assert(not blizzard[b], 'a hidden Blizzard button counted')
-        end
-    end
-    assert(visible == 2, 'the crafting bag section is empty without Blizzard\'s window (' .. visible .. ' shown)')
-    window:Show()
-    layout()
-    print('PASS: without Blizzard\'s crafting bag window the section shows FlareUI\'s own buttons')
+    click(reagents)
+    closeBags()
+    openBackpack()
+    nextFrame()
+    checkSlots(false)
+    click(reagents)
+    nextFrame()
+    checkSlots(true)
+    closeBags()
+    openBackpack()
+    closeBags()
+    nextFrame()
+    checkSlots(false)
+    assert(opens == 3, 'a closed backpack or folded section must not open the native window')
+
+    env.InCombatLockdown = yes
+    openBackpack()
+    nextFrame()
+    checkSlots(false)
+    env.InCombatLockdown = no
+    fireBagEvent('PLAYER_REGEN_ENABLED')
+    nextFrame()
+    checkSlots(true)
+
+    native[1].IsProtected = yes
+    env.InCombatLockdown = yes
+    closeBags()
+    assert(native[1]:GetParent() ~= window, 'protected native button moved during combat')
+    env.InCombatLockdown = no
+    fireBagEvent('PLAYER_REGEN_ENABLED')
+    nextFrame()
+    checkSlots(false)
+
+    openBackpack()
+    nextFrame()
+    checkSlots(true)
+    db.bagReagent = false
+    Bags:Refresh()
+    nextFrame()
+    assert(not window:IsShown(), 'disabling the section left the automatically opened window visible')
+    checkSlots(false)
+    print('PASS: ordinary opens, reopening and Open All Bags use only native crafting bag buttons')
 end
