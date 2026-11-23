@@ -50,7 +50,8 @@ local C = {
     FOLD_SCALE = 16 / 15,
     FOLD_EXPAND = "ui-questtrackerbutton-secondary-expand",
     FOLD_COLLAPSE = "ui-questtrackerbutton-secondary-collapse",
-    ICON_COLOR = { r = 0.50, g = 0.38, b = 0.21, a = 1 },
+    BOX_COLOR = { 0.50, 0.38, 0.21 },        -- a darker bronze than the frame border
+    BOX_COLOR_LIT = { 0.65, 0.49, 0.27 },    -- the frame border's bronze while pointed at
     SCROLL_COLOR = { 0.32, 0.24, 0.13 },     -- the scroll bar: a dark bronze, as the frame's shadowed edges
     SORT_TICK = 2,          -- seconds between distance checks
     BUTTON_ROOM = 13,       -- beside a title, for each focus / play button
@@ -3265,11 +3266,96 @@ end
 --------------------------------------------------
 -- 13. SETUP
 --------------------------------------------------
+-- A small square button: a one-pixel bronze outline with chamfered corners (2 px, 3 on the big
+-- one), a dark fill and a two-pixel minus or plus, on whole screen pixels (re-laid on each show)
 local function CreateBoxButton(parent, name, size)
     local b = CreateFrame("Button", name, parent)
     b:SetSize(size, size)
+    local chamfer = size >= 16 and 3 or 2
+    local function Tex(layer)
+        local t = b:CreateTexture(nil, layer)
+        t:SetSnapToPixelGrid(false)
+        t:SetTexelSnappingBias(0)
+        return t
+    end
+    b.edges = { Tex("ARTWORK"), Tex("ARTWORK"), Tex("ARTWORK"), Tex("ARTWORK") }
+    b.steps, b.fill = {}, {}
+    b.dash, b.stem = Tex("ARTWORK"), Tex("ARTWORK")
+
+    function b:Layout()
+        local px = ns.PixelSize(self)
+        local n = math_max(chamfer * 2 + 4, math_floor(size / px + 0.5))   -- the side, in pixels
+        if n % 2 == 1 then n = n + 1 end                                    -- even, so the glyph centres
+        local c = chamfer
+        local function Place(t, x, y, w, h)
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", self, "TOPLEFT", x * px, -y * px)
+            t:SetSize(w * px, h * px)
+            t:Show()
+        end
+        self:SetSize(n * px, n * px)
+        -- outline: the four sides, stopping short of the corners ...
+        local e = self.edges
+        Place(e[1], c, 0, n - 2 * c, 1)
+        Place(e[2], c, n - 1, n - 2 * c, 1)
+        Place(e[3], 0, c, 1, n - 2 * c)
+        Place(e[4], n - 1, c, 1, n - 2 * c)
+        -- ... and the steps that join them across each corner
+        local i = 0
+        for k = 1, c - 1 do
+            for _, xy in ipairs({ { k, c - k }, { n - 1 - k, c - k }, { k, n - 1 - (c - k) }, { n - 1 - k, n - 1 - (c - k) } }) do
+                i = i + 1
+                local t = self.steps[i]
+                if not t then t = Tex("ARTWORK"); self.steps[i] = t end
+                Place(t, xy[1], xy[2], 1, 1)
+            end
+        end
+        for j = i + 1, #self.steps do self.steps[j]:Hide() end
+        -- fill: overlapping rectangles, each a pixel narrower and taller, so it stops at the steps
+        for k = 1, c do
+            local t = self.fill[k]
+            if not t then
+                t = Tex("BACKGROUND")
+                t:SetColorTexture(0, 0, 0, 0.85)
+                self.fill[k] = t
+            end
+            local inset = c - k + 1
+            Place(t, k, inset, n - 2 * k, n - 2 * inset)
+        end
+        -- the minus, and the stem that makes it a plus
+        local arm = math_floor(n * 0.5 + 0.5)
+        if (n - arm) % 2 == 1 then arm = arm + 1 end
+        Place(self.dash, (n - arm) / 2, (n - 2) / 2, arm, 2)
+        Place(self.stem, (n - 2) / 2, (n - arm) / 2, 2, arm)
+        self.stem:SetShown(self.plus or false)
+        self:Paint(self.lit)
+    end
+    function b:Paint(lit)
+        self.lit = lit
+        local c = lit and C.BOX_COLOR_LIT or C.BOX_COLOR
+        for _, t in ipairs(self.edges) do t:SetColorTexture(c[1], c[2], c[3], 1) end
+        for _, t in ipairs(self.steps) do t:SetColorTexture(c[1], c[2], c[3], 1) end
+        self.dash:SetColorTexture(c[1], c[2], c[3], 1)
+        self.stem:SetColorTexture(c[1], c[2], c[3], 1)
+    end
+    function b:SetPlus(plus)
+        self.plus = plus
+        self.stem:SetShown(plus)
+    end
+    b:HookScript("OnEnter", function(self) self:Paint(true) end)
+    b:HookScript("OnLeave", function(self) self:Paint(false) end)
+    b:HookScript("OnShow", function(self) self:Layout() end)
+    b:Layout()
+    return b
+end
+
+Build.GLYPHS = { funnel = "QTFilter", exclaim = "QTExclaim", question = "QTQuestion", sort = "QTSort" }
+
+function Build.IconButton(parent, size)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(size, size)
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints()
+    C.ICON_COLOR = C.ICON_COLOR or { r = C.BOX_COLOR[1], g = C.BOX_COLOR[2], b = C.BOX_COLOR[3], a = 1 }
 
     function b:Layout()
         local file = self.glyph or (self.plus and C.FOLD_EXPAND or C.FOLD_COLLAPSE)
@@ -3305,12 +3391,10 @@ local function CreateBoxButton(parent, name, size)
     end
     b:HookScript("OnEnter", function(self) self:Paint(true) end)
     b:HookScript("OnLeave", function(self) self:Paint(false) end)
-    b:HookScript("OnShow", function(self) self:Layout() end)
     b:Layout()
     return b
 end
 
-Build.GLYPHS = { funnel = "QTFilter", exclaim = "QTExclaim", question = "QTQuestion", sort = "QTSort" }
 -- Auto Quest Buttons: with the switch on and Quality of Life running; not in the Gamepad UI, where
 -- the auto quests stand aside. Left of the sort button, "!" then "?"
 function OT.TweaksDb() return ns.db and ns.db.profile and ns.db.profile.tweaks end
@@ -3367,20 +3451,20 @@ function Build.Header(window)
     head:SetPoint("TOPRIGHT", -C.HEADER_INSET, -3)
     head:SetHeight(C.HEADER - 3)
     head.title = head:CreateFontString(nil, "OVERLAY")
-    head.minimize = CreateBoxButton(head, nil, C.BOX)
+    head.minimize = Build.IconButton(head, C.BOX)
     -- All / Zone (a funnel, gold while only this zone shows) and the sort (three bars), as Kaliel's
     -- Tracker has them (the idea only: its art is its own)
-    local zone = CreateBoxButton(head, nil, C.BOX)
+    local zone = Build.IconButton(head, C.BOX)
     zone.glyph = Build.GLYPHS.funnel
     zone:Layout()
     head.zone = zone
-    local sort = CreateBoxButton(head, nil, C.BOX)
+    local sort = Build.IconButton(head, C.BOX)
     sort.glyph = Build.GLYPHS.sort
     sort:Layout()
     head.sort = sort
     -- Auto Quest Buttons: "!" Auto Accept, "?" Auto Turn-In (Quality of Life's switches), gold while on
     for _, def in ipairs({ { "autoAccept", "exclaim", "autoAcceptQuests" }, { "autoTurnIn", "question", "autoTurnInQuests" } }) do
-        local b = CreateBoxButton(head, nil, C.BOX)
+        local b = Build.IconButton(head, C.BOX)
         b.glyph, b.key = Build.GLYPHS[def[2]], def[3]
         b:Layout()
         b:Hide()
