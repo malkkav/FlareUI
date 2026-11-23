@@ -331,6 +331,20 @@ auras.player = {}
 bag[9206], db.elixirSource = 0, "bags"
 br.Update()
 assert(iconFor("elixirStock").tipText == "No elixir in your bags.")
+bag[3383] = 19
+br.Update()
+assert(iconFor("greaterIntellect"):GetAttribute("item") == "item:3383")
+for _, buff in ipairs({ 3223, 3222, 3219, 1250984, 3164, 2367, 11328, 3160, 2374, 11390, 1250971, 439959, 1245244,
+                        1250931, 1250928, 1250989, 1250988, 1250948, 1250944, 1250942 }) do
+    auras.player = { ["Spell " .. buff] = { expirationTime = 1000 } }
+    br.Update()
+    assert(not iconFor("greaterIntellect") and not iconFor("elixirStock"), "lower elixir rank " .. buff .. " counts")
+end
+auras.player, bag[3383], bag[2454] = {}, 0, 4
+br.Update()
+assert(iconFor("giants"):GetAttribute("item") == "item:2454")
+bag[2454] = 0
+auras.player, bag[3383] = {}, 0
 assert(br.ElixirChoices()[3][1] == br.ElixirKeys()[1] and br.ExtraChoices()[3][1] == br.ExtraKeys()[1])
 
 class, role = "SHAMAN", "HEALER"
