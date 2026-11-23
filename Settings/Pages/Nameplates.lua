@@ -814,9 +814,20 @@ Row{ key = "np.role", kind = "choice", path = "role", choices = { "auto", "tank"
     end }
 Row{ key = "np.threatGlow", path = "threatGlow", tab = "extras", section = "np.threatSection", half = true }
 Row{ key = "np.aggroFlash", path = "aggroFlash", tab = "extras", section = "np.threatSection", half = true }
--- (11-20: Threat Scale paired with Threat Percentage, two columns as the rows above)
 Row{ key = "np.threatScale", path = "threatScale", tab = "extras", section = "np.threatSection", half = true }
-Row{ key = "np.threatPercent", path = "threatPercent", tab = "extras", section = "np.threatSection", half = true }
+-- (11-23: a switch before; Always and Off keep its saved true and false)
+Row{ key = "np.threatPercent", kind = "choice", choices = { "off", "groups", "instances", "always" }, tab = "extras", section = "np.threatSection",
+    get = function()
+        local v = TV("threatPercent")
+        if v == true then return "always" end
+        return v or "off"
+    end,
+    set = function(v)
+        local np = NP()
+        if v == "always" then v = true elseif v == "off" then v = false end
+        if np then np.TypeSet(PIN.kind, "threatPercent", v) end
+    end,
+    resetValue = function() return "off" end }
 -- Special Colours: each a switch (its colour is picked in Pick Your Colours)
 local function NoMobTypes()
     return not (TV("colorBoss") or TV("colorElite") or TV("colorCaster") or TV("colorTrivial"))
@@ -1110,6 +1121,7 @@ SwitchesRow("np.minionNames", "np.worldNames", { { "friendly", "UnitNameFriendly
 -- FONTS
 S:FontRows{ module = "np", tab = "fonts", section = "np.fonts", apply = Refresh, fonts = {
     { key = "name", path = "nameplates.nameFont" },
+    { key = "nameOnly", path = "nameplates.nameOnlyFont" },
     { key = "health", path = "nameplates.healthFont" },
     { key = "level", path = "nameplates.levelFont" },
     { key = "cast", path = "nameplates.castFont" },

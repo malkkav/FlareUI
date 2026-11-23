@@ -271,4 +271,13 @@ assert(not hasDelayRow(vis:UnitFrameSettings("target")) and not hasDelayRow(vis:
 assert(hasDelayRow(vis:ResourceBarSettings("power")) and not hasDelayRow(vis:ResourceBarSettings("swingMain")))
 assert(not hasDelayRow(vis:PlayerCastSettings()))
 
+-- in a fade group, ticking a condition on one member keeps those only another member has
+vis:SetGroup("bar2", 2)
+vis:SetShow("bar2", "mouseover,messages")
+assert(vis.Toggled("bar2", "combat"):find("messages", 1, true), "the chat's New Messages stays in the group")
+assert(vis.Toggled("bar2", "always") == "always")
+vis:SetGroup("bar2", 0)
+vis:SetShow("bar2", "mouseover")
+assert(vis.Toggled("bar2", "combat") == "mouseover,combat")
+
 print("PASS: visibility migrates fades, groups bars, handles mouse and combat, and restores native opacity")

@@ -266,7 +266,7 @@ assert(square.dialogs[2][1] == "FLAREUI_MAP_HUD" and square.dialogs[2][2] == "Fa
 minimap.NoticeScanners()
 ui:flushTimers()
 assert(#square.dialogs == 2)
-assert(square:barText("1|T") and square:barText("20/22") and square:barText("|cffff993315%"))
+assert(square:barText("1|A:coin-gold:") and square:barText("20/22") and square:barText("|cffff993315%"))
 assert(bar:GetAlpha() == 0 and cluster.MinimapContainer.PlayerCoords:GetAlpha() == 0)
 cluster.mouseOver = true
 cluster:RunScript("OnEnter")
@@ -377,7 +377,7 @@ local round = setup("round", true)
 local roundMap, roundMinimap = round.map, round.minimap
 assert(not roundMinimap.IsSquare() and not roundMinimap.Frame and roundMap:GetWidth() == 200)
 assert(round.ui.env.GetCVarBool("rotateMinimap") and round.ui.env.GetMinimapShape() == "ROUND")
-assert(round:barText("20/22") and not round:barText("1|T") and not round:barText("15%"))
+assert(round:barText("20/22") and not round:barText("1|A:coin-gold:") and not round:barText("15%"))
 roundMap:SetMaskTexture("Player round mask")
 roundMinimap:SetMapFaded(true)
 roundMinimap:SetMapFaded(false)

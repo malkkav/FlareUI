@@ -25,10 +25,10 @@ assert(itemLevel.hidden() == false, 'shown with Item Level on')
 paths['tweaks.bagItemLevel'] = false
 assert(itemLevel.hidden() == true, 'hidden with Item Level off')
 
--- three tabs, no side panel
+-- four tabs, no side panel
 local tabKeys = {}
 for i, tab in ipairs(module.tabs) do tabKeys[i] = tab.key end
-assert(table.concat(tabKeys, ',') == 'bags,looting,fonts', 'tabs: ' .. table.concat(tabKeys, ','))
+assert(table.concat(tabKeys, ',') == 'bags,looting,bank,fonts', 'tabs: ' .. table.concat(tabKeys, ','))
 assert(module.sidePanel == nil, 'no side panel')
 
 -- the loot window's two rows, a half pair on Looting; Show Free Bag Slots greys with the window off

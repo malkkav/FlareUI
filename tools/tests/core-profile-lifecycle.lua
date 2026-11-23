@@ -133,6 +133,24 @@ assert(#blocked == 2 and blocked[2]:find("action blocked | Frame:Hide(), in a fi
 ui:emit("ADDON_ACTION_BLOCKED", "FlareUI", "hidden-guid")
 assert(#blocked == 3 and blocked[3]:find("action blocked | ?, no fight", 1, true), "a value it can't read")
 ns.ErrorsCommand("clear")
+-- and what in the bag and item-use code isn't Blizzard's own any more
+do
+    local button = { bagID = 0 }
+    local secure = env.issecurevariable
+    env.ContainerFrameSettingsManager = { bagSetupDirty = false }
+    env.C_Container = env.C_Container or { UseContainerItem = function() end }
+    env.ContainerFrameCombinedBags = { EnumerateValidItems = function() return ipairs({ button }) end }
+    env._G = env._G or env
+    env.issecurevariable = function(t, key)
+        if key == "bagSetupDirty" or t == button then return false, "FlareUI" end
+        return true
+    end
+    local text = ns.BlockedLog.Insecure()
+    assert(text:find("bagSetupDirty by FlareUI", 1, true), text)
+    env.issecurevariable = function() return true end
+    assert(ns.BlockedLog.Insecure() == "")
+    env.issecurevariable, env.ContainerFrameSettingsManager, env.ContainerFrameCombinedBags = secure, nil, nil
+end
 env.debugstack = nil
 ui:emit("ADDON_ACTION_FORBIDDEN", "FlareUI", "UseAction()")
 assert(#ns.db.global.errors == 1, "written again after a clear")

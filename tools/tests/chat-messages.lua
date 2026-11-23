@@ -218,9 +218,9 @@ local spell = "|Hspell:116|h[Frostbolt]|h"
 local existingItem = "|Hitem:2589|h|T888:8:8|t[Linen Cloth]|h"
 local decoratedLine = add(general, say .. " says: " .. item .. " " .. spell .. " " .. existingItem, "SAY", args)
 assert(decoratedLine:find("|cff00B2FF<" .. os.date("!%M:%S", now) .. ">|r ", 1, true) == 1)
-assert(decoratedLine:find("|A:human-female:13:13|a|A:mage:13:13|a " .. say, 1, true))
-assert(decoratedLine:find("|h|T100:13:13|t[Linen Cloth]|h", 1, true))
-assert(decoratedLine:find("|h|T200:13:13|t[Frostbolt]|h", 1, true))
+assert(decoratedLine:find("|A:human-female:14:14:0:-1|a|A:mage:14:14:0:-1|a " .. say, 1, true))
+assert(decoratedLine:find("|h|T100:14:14:0:-1|t[Linen Cloth]|h", 1, true))
+assert(decoratedLine:find("|h|T200:14:14:0:-1|t[Frostbolt]|h", 1, true))
 assert(decoratedLine:find(existingItem, 1, true), "retain an existing item icon")
 local previousReads = playerReads
 add(general, say .. " says: another line", "SAY", args)
@@ -229,7 +229,7 @@ timestamps = nil
 env.C_CVar.SetCVar("showTimestamps", "none")
 assert(add(general, "unknown icon", "SYSTEM"):find("<" .. os.date("!%H:%M", now) .. ">", 1, true))
 local sample = chat.SampleLine(profile, { "SAY", "Healbot", "50% ready", ago = 2 }, 12)
-assert(sample:find("|A:nightelf-female:12:12|a", 1, true) and sample:find("50% ready", 1, true))
+assert(sample:find("|A:nightelf-female:12:12:0:-1|a", 1, true) and sample:find("50% ready", 1, true))
 assert(not sample:find("unavailable", 1, true) and #chat.SampleLines(true) == 2 and #chat.SampleLines(false) == 7)
 
 local function filter(text)

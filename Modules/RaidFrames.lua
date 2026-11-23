@@ -298,6 +298,10 @@ function TT.Create(f)
     t.Name:SetJustifyH("LEFT")
     t.Name:SetWordWrap(false)
     t:SetScript("OnShow", TT.Update)
+    if type(t.SetRolesets) == "function" then pcall(t.SetRolesets, t, "unitFrames") end
+    -- (11-23) click-casting on a main tank's target too, as on every other tile
+    _G.ClickCastFrames = _G.ClickCastFrames or {}
+    _G.ClickCastFrames[t] = true
     t:Hide()
     SecureHandlerSetFrameRef(f, "fuiTankTarget", t)
     f:SetAttribute("refreshUnitChange", TT.SNIPPET)

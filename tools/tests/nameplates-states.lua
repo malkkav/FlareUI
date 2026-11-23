@@ -15,6 +15,7 @@ local db = {
     combatPlates = "friendly,enemy,enemyPlayer,minion",
     targetArrows = "chevron",
     targetGlow = true, targetBarColor = true,
+    nameFont = { face = "Expressway", size = 17, flags = "OUTLINE" },
 }
 ns.db.profile.nameplates = db
 -- (Quality of Life's old switches, moved once into the module's own: MigrateProfile)
@@ -59,6 +60,8 @@ local plates = ns.Nameplates
 assert(plates:ShouldLoad())
 assert(db.ownSwitches and db.questMarks and not db.comboPoints and not db.enemyInCombat and next(ns.db.profile.tweaks) == nil,
     "the quest switch moves; In Combat plates did nothing with Quality of Life off, so they don't start now")
+assert(db.nameOnlyFontV1 and db.nameOnlyFont ~= db.nameFont and db.nameOnlyFont.size == 17 and db.nameOnlyFont.face == "Expressway",
+    "Name Only starts with the Names font it used")
 assert(db.targetArrows == "npe" and db.types.enemy == nil and db.types.friendly == nil and db.types.minion == nil)
 assert(db.combatPlates == "friendlyPlayer,friendlyNpc,enemyPlayer,enemyNpc,minor")
 assert(db.auraSwipe == false and db.auraTimer == "none" and db.auraTimerColor)
@@ -126,6 +129,35 @@ assert(p.hits["np.castbar"]:IsShown() and p.hits["np.debuffs"]:IsShown())
 ui.time = 0.4
 plates.Pulse.driver:RunScript("OnUpdate", 0.1)
 assert(p.cast.important.edge:GetAlpha() < 0.3)
+
+-- the bar starts where the border's line ends: no gap, and no corner past the slanted border (johnivve 11-23)
+do
+    local DIR = "Borders/"
+    assert(plates.BorderFit(DIR .. "FlareUI-Frames.tga", 12) == 3 and plates.BorderFit(DIR .. "FlareUI-Thick.tga", 8) == 2)
+    assert(plates.BorderFit(DIR .. "FlareUI-Thin.tga", 6) == 3)
+    assert(plates.BorderFit("Other.tga", 12) == nil and plates.BorderFit(nil, 0) == nil)
+    local function Offset(frame)
+        local _, _, _, x, y = frame:GetPoint(1)
+        return x, y
+    end
+    for key, value in pairs({ border = "FlareUI-Thick", castBorder = "FlareUI-Frames", castHeight = 14, level = "box", height = 16 }) do
+        plates.TypeSet("enemyNpc", key, value)
+    end
+    plates.DrawSample(f, { cast = true })
+    local x, y = Offset(p.health)
+    assert(x == 3 and y == -3, "the bar right at the line")
+    assert(p.root:GetHeight() == 16 + 6 and Offset(p.levelInner) == 3, "the level box too")
+    -- (the kit's backdrop is 4 px round a 14 px cast bar)
+    assert(Offset(p.cast.Border) == 1, "the cast bar's border too")
+    -- a border with art we don't know: as far as its background always reached
+    plates.TypeSet("enemyNpc", "border", "Other")
+    plates.DrawSample(f, { cast = true })
+    assert(Offset(p.health) == 3 and Offset(p.levelInner) == 3)
+    plates.TypeSet("enemyNpc", "border", "None")
+    plates.DrawSample(f, { cast = true })
+    assert(Offset(p.health) == 1 and Offset(p.levelInner) == 1, "no border")
+    for key, value in pairs({ border = "", castBorder = "", level = "disc" }) do plates.TypeSet("enemyNpc", key, value) end
+end
 
 plates.DrawSample(f, { threat = true })
 assert(p.threatFx:IsShown() and p.threatFx.pulse:IsPlaying())
@@ -264,6 +296,25 @@ assert(simplified[token] == false and cvars.nameplateSelectedScale == "1" and cv
 assert(live.threatKey == "gaining" and live.threatText:GetText() == "80%")
 -- (11-23, #145) Threat Percentage in its own box, on the side away from the level, never in its place
 assert(live.threatInLevel == false and live.threatBoxOn and live.threatBox:IsShown())
+-- Threat Percentage: In a Group, In an Instance (the old switch's true is Always, its false Off)
+do
+    local tdb, group, instance = live.tdb, env.IsInGroup, env.IsInInstance
+    local function shown(mode, inGroup, inInstance)
+        env.IsInGroup = function() return inGroup end
+        env.IsInInstance = function() return inInstance, inInstance and "party" or "none" end
+        plates.UpdateGroup()
+        live.tdb = setmetatable({ threatPercent = mode }, { __index = tdb })
+        plates.UpdateThreatText(live, live.tdb)
+        return live.threatText:IsShown()
+    end
+    assert(shown(true, false, false) and not shown(false, true, true) and not shown("off", true, true))
+    assert(not shown("groups", false, true) and shown("groups", true, false))
+    assert(not shown("instances", true, false) and shown("instances", false, true))
+    env.IsInGroup, env.IsInInstance = group, instance
+    plates.UpdateGroup()
+    live.tdb = tdb
+    plates.UpdateThreatText(live, tdb)
+end
 assert(live.threatSide == (live.levelAnchor and live.levelSide == "right" and "left" or "right"))
 assert(live.health:GetValue() == 100 and live.textHolder:GetAlpha() == 0 and live.holder:GetAlpha() == 0.35)
 assert(live.heal:GetValue() == 8 and live.absorb:GetValue() == 12)
@@ -1027,6 +1078,22 @@ profileEvent("OnProfileChanged")
 live = assert(plates.PartsFor(gamePlate))
 nextFrame()
 assert(live.nameOnly and not live.health:IsShown() and not live.cast:IsShown())
+-- its own font, with the Names font left to the other plates
+do
+    local kit, seen = ns.UnitFrames.Kit, {}
+    local apply = kit.ApplyFont
+    kit.ApplyFont = function(fs, font, delta) seen[fs] = { font, delta } return apply(fs, font, delta) end
+    local tdb = live.tdb
+    local own, names = { face = "A", size = 10 }, { face = "B", size = 20 }
+    live.tdb = setmetatable({ nameOnlyFont = own, nameFont = names, nameOnlySize = 150 }, { __index = tdb })
+    plates.Layout(live)
+    assert(seen[live.name][1] == own and seen[live.name][2] == 5)
+    live.tdb = setmetatable({ nameOnlyFont = own, nameFont = names, nameOnlySize = 100 }, { __index = tdb })
+    plates.Layout(live)
+    assert(seen[live.name][1] == own and seen[live.name][2] == nil)
+    kit.ApplyFont, live.tdb = apply, tdb
+    plates.Layout(live)
+end
 assert(live.root:GetScale() == 1.18 and live.root:GetAlpha() == 0.77 and live.holder:GetAlpha() == 0.7)
 reads = {}
 testMob.health = 13
@@ -1177,6 +1244,61 @@ assert(above.text:find("44", 1, true), "the level comes with the name: " .. tost
 named.levelFollow = false
 plates.UpdateNameAbove(named)
 assert(not above.text:find("44", 1, true))
+-- Colour Names by Class: lighter on a bar of the same colour, the plain class colour above the plate
+do
+    local tdb, slot, kind, only, player = live.tdb, live.nameSlot, live.aboveKind, live.nameOnly, units[token].player
+    local set
+    local oldSet, oldClass = live.name.SetTextColor, env.C_ClassColor.GetClassColor
+    live.name.SetTextColor = function(_, ...) set = { ... } end
+    env.C_ClassColor.GetClassColor = function() return { GetRGB = function() return 0.5, 0, 1 end } end
+    units[token].player = true
+    live.nameSlot, live.aboveKind, live.nameOnly = "left", "fullname", false
+    live.tdb = setmetatable({ nameClassColor = true, healthColor = "class" }, { __index = tdb })
+    plates.UpdateBarName(live)
+    assert(set[1] > 0.5 and set[2] > 0.5 and set[2] < 1 and set[3] == 1 and live.aboveColor:GetRGB() == 0.5)
+    live.tdb.healthColor = "reaction"
+    plates.UpdateBarName(live)
+    assert(set[1] == 0.5 and set[2] == 0 and live.aboveColor == nil, "a bar of another colour: the class colour itself")
+    live.tdb.nameClassColor, live.tdb.healthColor = false, "class"
+    plates.UpdateBarName(live)
+    assert(set[1] == 1 and set[2] == 1)
+    live.name.SetTextColor, env.C_ClassColor.GetClassColor = oldSet, oldClass
+    units[token].player = player
+    live.tdb, live.nameSlot, live.aboveKind, live.nameOnly = tdb, slot, kind, only
+end
+-- Questie's icon follows our frame, and goes back on the game's plate with it
+do
+    local icon = env.CreateFrame("Frame", nil, gamePlate)
+    icon.Icon, icon.lastIcon = icon:CreateTexture(), "slay"
+    icon:SetPoint("LEFT", gamePlate, "LEFT", -17, -7)
+    local children = gamePlate.GetChildren
+    gamePlate.GetChildren = function() return icon end
+    plates.FixQuestie(live)
+    assert(select(2, icon:GetPoint(1)) == gamePlate, "without Questie nothing moves")
+    env.Questie = { db = { profile = { nameplateEnabled = true, nameplateX = -17, nameplateY = -7 } } }
+    env._G = env._G or env
+    env._G.Questie = env.Questie
+    plates.FixQuestie(live)
+    local _, relative, _, x = icon:GetPoint(icon:GetNumPoints())
+    assert(relative == (live.leftOf or live.root) and x == -17 and live.questie == icon)
+    -- past the level box, and past a raid marker on that side
+    local leftOf, questSide = live.leftOf, live.questSide
+    live.leftOf, live.questSide = live.box, "right"
+    plates.FixQuestie(live)
+    assert(select(2, icon:GetPoint(icon:GetNumPoints())) == live.box)
+    local raidShown, only = live.raid:IsShown(), live.nameOnly
+    live.raid:Show()
+    live.nameOnly = false
+    plates.FixQuestie(live)
+    assert(select(2, icon:GetPoint(icon:GetNumPoints())) == live.raid)
+    live.raid:SetShown(raidShown)
+    live.leftOf, live.questSide, live.nameOnly = leftOf, questSide, only
+    plates.ReturnQuestie(live)
+    _, relative, _, x = icon:GetPoint(icon:GetNumPoints())
+    assert(relative == gamePlate and x == -17 and live.questie == nil)
+    env.Questie, env._G.Questie = nil, nil
+    gamePlate.GetChildren = children
+end
 plates.StandDown()
 assert(not plates.PartsFor(gamePlate) and not next(callbacks) and size[1] == 110 and size[2] == 17)
 assert(cvars.nameplateSelectedScale == "1.3" and cvars.nameplateTargetRadialPosition == "0")

@@ -2751,8 +2751,8 @@ function BR:Init()
     pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterEvent("UNIT_AURA")
-    -- food eaten from the bags or an action button: held for 90 s; if the food buff comes in that
-    -- time, the food reminder's click eats it next time (Check). Post-hooks only: nothing is tainted
+    -- food eaten, however it was used: held for 90 s; if the food buff comes in that time, the food
+    -- reminder's click eats it next time (Check)
     local DRINK_SPELL = 432
     -- true a drink, false not one, nil not known yet
     function BR.IsDrink(itemID)
@@ -2760,13 +2760,13 @@ function BR:Init()
         if not spellName then return nil end
         return spellName == C_Spell.GetSpellName(DRINK_SPELL)
     end
-    local function NoteFood(itemID)
+    local function NoteFood(itemID, when)
         if type(itemID) ~= "number" then return end
         local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
         if classID ~= 0 or subclassID ~= 5 then return end
         local drink = BR.IsDrink(itemID)
         if drink then return end
-        local note = { item = itemID, at = GetTime() }
+        local note = { item = itemID, at = when }
         if drink == false then BR.pendingFood = note return end
         -- (11-23, Tride) what it does isn't loaded yet: a drink taken for food replaced the food eaten
         -- with it. Asked for, and looked at again
@@ -2778,24 +2778,61 @@ function BR:Init()
             if BR.ConfirmFood then BR.ConfirmFood() end
         end)
     end
-    if C_Container and C_Container.UseContainerItem then
-        hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
-            NoteFood(C_Container.GetContainerItemID(bag, slot))
-        end)
+    -- A food is noticed as one leaves the bags together with a spell of yours it casts: never by hooking the
+    -- game's own item use (11-23, zbee's blocked armor kit: the game's bag click ran through those hooks and
+    -- the block was put on FlareUI). Counted only as the bags change.
+    local eaten = { drops = {}, spells = {}, counts = nil }   -- drops: [item] = when; spells: [spell] = when
+    BR.eaten = eaten
+    local FOOD_WINDOW = 2
+    local function Recent(list, now)
+        for key, at in pairs(list) do
+            if now - at > FOOD_WINDOW then list[key] = nil end
+        end
+        return list
     end
-    if UseAction then
-        hooksecurefunc("UseAction", function(slot)
-            local kind, id = GetActionInfo(slot)
-            if kind == "item" then NoteFood(id) end
-        end)
+    local function MatchFood()
+        local now = GetTime()
+        local spells = Recent(eaten.spells, now)
+        for item, at in pairs(Recent(eaten.drops, now)) do
+            local _, itemSpell = C_Item.GetItemSpell(item)
+            -- (what the item casts may not be loaded yet: the buff coming in decides then, as before)
+            local spell = itemSpell or next(spells)
+            if spell and spells[spell] then
+                eaten.drops[item] = nil
+                NoteFood(item, math.min(at, spells[spell]))
+            end
+        end
     end
-    -- /use macros and the reminder's own click (11-20, Bill: food eaten that way was never remembered)
-    if C_Item and C_Item.UseItemByName then
-        hooksecurefunc(C_Item, "UseItemByName", function(name)
-            if name == nil then return end
-            NoteFood((C_Item.GetItemInfoInstant(name)))
-        end)
+    function BR.CountFood()
+        local counts = {}
+        for bag = 0, NUM_BAG_SLOTS or 4 do
+            for slot = 1, C_Container.GetContainerNumSlots(bag) do
+                local id = C_Container.GetContainerItemID(bag, slot)
+                if Readable(id) and id then
+                    local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(id)
+                    if classID == 0 and subclassID == 5 then
+                        local info = C_Container.GetContainerItemInfo(bag, slot)
+                        counts[id] = (counts[id] or 0) + (info and info.stackCount or 1)
+                    end
+                end
+            end
+        end
+        local before = eaten.counts
+        eaten.counts = counts
+        local dropped
+        for id, count in pairs(before or {}) do
+            if count - (counts[id] or 0) == 1 then
+                eaten.drops[id] = GetTime()
+                dropped = true
+            end
+        end
+        if dropped then MatchFood() end
     end
+    function BR.FoodSpell(spellID)
+        eaten.spells[spellID] = GetTime()
+        if next(eaten.drops) then MatchFood() end
+    end
+    BR.CountFood()
     -- the food buff coming in confirms the food, wherever you are (11-20: Check only runs where the
     -- Consumables choice shows the reminder, so eating in the open world was never remembered)
     function BR.ConfirmFood()
@@ -2837,6 +2874,7 @@ function BR:Init()
                 local me = ns.CharDB and ns.CharDB()
                 if me then me.lastSummon = spellID end
             end
+            if Readable(spellID) and spellID then BR.FoodSpell(spellID) end
             return
         end
         -- (party1..4 and raid1..40 only: their pets are never checked; each token's answer is kept,
@@ -2850,6 +2888,7 @@ function BR:Init()
             if not watched then return end
         end
         if event == "PLAYER_REGEN_ENABLED" then ApplyPosition() end
+        if event == "BAG_UPDATE_DELAYED" then BR.CountFood() end
         if event == "UNIT_AURA" and unit == "player" and BR.pendingFood then BR.ConfirmFood() end
         if event == "UNIT_AURA" then Soon(unit) else Soon() end
     end)

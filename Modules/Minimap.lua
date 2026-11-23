@@ -641,8 +641,10 @@ end
 local Bar = { cells = {}, lines = {}, picks = {}, at = {}, SUN_ROOM = 30, shown = false }
 Bar.SIDES = { "left", "center", "right" }
 Bar.ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
--- (11-21) Blizzard's coin icons after each number, as in the bags, not coloured "g s c" letters
-Bar.COINS = { "Interface\\MoneyFrame\\UI-GoldIcon", "Interface\\MoneyFrame\\UI-SilverIcon", "Interface\\MoneyFrame\\UI-CopperIcon" }
+-- (11-21) Blizzard's coin icons after each number, as in the bags, not coloured "g s c" letters; the bags'
+-- own art, size and gaps (11-23, BorlandC): 13 px coins and 4 px between two at its 14 px numbers
+Bar.COINS = { "coin-gold", "coin-silver", "coin-copper" }
+Bar.COIN_SIZE, Bar.COIN_GAP, Bar.COIN_UP = 13 / 14, 4 / 14, 1
 Bar.WARN, Bar.ALERT, Bar.BAGS_WARN = "|cffff9933", "|cffff4040", 0.85
 
 local function BarMoney()
@@ -651,13 +653,16 @@ local function BarMoney()
     -- copper only below 1 gold; silver dropped from 1000 gold
     local last = coins[1] >= 1000 and 1 or coins[1] >= 1 and 2 or 3
     local parts = {}
+    local font
+    if Bar.cells[1] then font = select(2, ns.GetWantedFont(Bar.cells[1])) end
+    font = tonumber(font) or 12
+    local size = math.floor(font * Bar.COIN_SIZE + 0.5)
     for i = 1, last do
         if coins[i] > 0 or #parts > 0 or i == last then
-            -- (the icon the text's height, 2 px after the number, as Blizzard's money strings)
-            parts[#parts + 1] = ("%d|T%s:0:0:2:0|t"):format(coins[i], Bar.COINS[i])
+            parts[#parts + 1] = ("%d|A:%s:%d:%d:0:%d|a"):format(coins[i], Bar.COINS[i], size, size, Bar.COIN_UP)
         end
     end
-    return table.concat(parts, " ")
+    return table.concat(parts, ("|TInterface\\Common\\Spacer:1:%d|t"):format(math.floor(font * Bar.COIN_GAP + 0.5)))
 end
 
 local function BarBags()
@@ -1539,6 +1544,13 @@ function MM:UpdateLayout()
     PlaceSun()
     Bar.Update()
     PlaceCoords()
+    -- Edit Mode's box and the screen clamp follow the size the map has now; the first layout also puts the
+    -- frame back where the layout has it, with that clamp (the fit before it knew the old size)
+    local refit = Cluster.FlareUI_FitBox
+    if refit then
+        if not self.placed then self.placed, Cluster.FlareUI_Replaced = true, nil end
+        refit(Cluster)
+    end
 end
 
 --------------------------------------------------

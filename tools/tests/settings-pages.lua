@@ -118,6 +118,8 @@ assert(row("bl.bagColumns"):IsDisabled() and not row("bl.bankColumns"):IsDisable
 assert(not row("bl.combinedNote"):IsHidden())
 ui.otherBag = "Bagnon"
 assert(row("bl.bankColumns"):IsDisabled() and row("bl.bagAddonNote").textFn():find("Bagnon", 1, true))
+assert(not row("bl.bankAddonNote"):IsHidden() and row("bl.bankAddonNote").textFn():find("Bagnon", 1, true))
+assert(row("bl.bankColumns").tab == "bank" and row("qol.repair").tab == "bank" and row("bl.delete").tab == "bags")
 ui.otherBag = nil
 set("bl.bagView", "rowsSets")
 assert(row("bl.bagView"):Get() == "rowsSets" and calls["bag filter"] == 1)

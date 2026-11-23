@@ -89,14 +89,26 @@ env.C_Item = {
     GetItemIconByID = function(id) return id + 2000000 end,
     GetItemNameByID = function(id) return "Item " .. id end,
     GetItemSpell = function(id)
-        return id == 123 and "Well Fed" or id == 124 and "Custom Buff" or id == 125 and "Drink" or nil
+        local name = id == 123 and "Well Fed" or id == 124 and "Custom Buff" or id == 125 and "Drink" or nil
+        return name, name and id + 1000
     end,
     GetItemInfoInstant = function(id)
         if id == 123 or id == 125 or id == 126 then return id, nil, nil, nil, nil, 0, 5 end
         return id, nil, nil, nil, nil, 2, 1
     end,
     GetWeaponEnchantInfo = function() return {} end,
-    UseItemByName = function() end,
+}
+-- one bag slot per item
+env.C_Container = {
+    GetContainerNumSlots = function(index) return index == 0 and 3 or 0 end,
+    GetContainerItemID = function(_, slot)
+        local id = slot == 1 and 123 or slot == 2 and 125 or 126
+        return (bag[id] or 0) > 0 and id or nil
+    end,
+    GetContainerItemInfo = function(_, slot)
+        local id = env.C_Container.GetContainerItemID(0, slot)
+        return id and { itemID = id, stackCount = bag[id] }
+    end,
 }
 env.MenuUtil = { CreateContextMenu = function(_, build)
     local menu = {
@@ -214,15 +226,33 @@ assert(br.CustomCount() == 0)
 
 bag[123], bag[125], bag[126] = 3, 5, 2
 names[432] = "Drink"
-env.C_Item.UseItemByName(125)
+-- eaten: one less in the bags, and the spell it casts (either may come first)
+local function use(id)
+    bag[id] = bag[id] - 1
+    ui:emit("BAG_UPDATE_DELAYED")
+    ui:emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", id + 1000)
+end
+ui:emit("BAG_UPDATE_DELAYED")
+bag[126] = 1
+ui:emit("BAG_UPDATE_DELAYED")
+assert(not br.pendingFood, "gone from the bags with nothing cast: not eaten")
+ui.time = ui.time + 5
+bag[123] = 1
+ui:emit("BAG_UPDATE_DELAYED")
+ui:emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 9999)
+assert(not br.pendingFood, "more than one gone: sold or mailed")
+bag[123], bag[126] = 9, 9
+ui:emit("BAG_UPDATE_DELAYED")
+ui.time = ui.time + 5
+use(125)
 assert(not br.pendingFood)
 auras.player["Well Fed"] = { expirationTime = env.GetTime() + 500, duration = 900 }
-env.C_Item.UseItemByName(126)
+use(126)
 ui:emit("UNIT_AURA", "player")
 ui:flushTimers()
 assert(ns.CharDB().buffFood == nil and br.pendingFood.item == 126)
-env.C_Item.UseItemByName(123)
-env.C_Item.UseItemByName(125)
+use(123)
+use(125)
 auras.player["Well Fed"] = { expirationTime = env.GetTime() + 900, duration = 900 }
 ui:emit("UNIT_AURA", "player")
 ui:flushTimers()
@@ -232,15 +262,15 @@ local loadedSpell = env.C_Item.GetItemSpell
 local requested
 auras.player["Well Fed"] = nil
 env.C_Item.RequestLoadItemDataByID = function(id) requested = id end
-env.C_Item.UseItemByName(123)
+use(123)
 env.C_Item.GetItemSpell = function(id) if id ~= 125 then return loadedSpell(id) end end
-env.C_Item.UseItemByName(125)
+use(125)
 assert(requested == 125 and br.pendingFood.item == 123)
 env.C_Item.GetItemSpell = loadedSpell
 ui:flushTimers()
 assert(br.pendingFood.item == 123, "the drink is known by then")
 env.C_Item.GetItemSpell = function(id) if id ~= 126 then return loadedSpell(id) end end
-env.C_Item.UseItemByName(126)
+use(126)
 ui:flushTimers()
 assert(br.pendingFood.item == 126, "a food that never says what it does still counts")
 br.pendingFood = nil

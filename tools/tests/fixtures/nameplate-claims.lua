@@ -23,6 +23,7 @@ function NP.Peaceful() return false end
 function NP.CombatFull() return true end
 function NP.TypeDB() return {} end
 function NP.UnitHidden() return false end
+function NP.QuestieHasIcons() return false end
 function NP.Layout(p) p.layKind, p.layFull = 'enemy', true end
 function NP.UpdateAll() if NP.fail then error('injected update failure') end end
 local Release

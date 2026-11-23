@@ -313,24 +313,29 @@ local function UnparkWindow(frame)
     if Bags.ReturnExtraButtons(frame) and frame:IsShown() and not InCombatLockdown() then frame:UpdateItemLayout() end
 end
 
+local function ParkOne(frame)
+    local combined = Combined()
+    Bags.HookBagWindow(frame)
+    local id = frame:GetID()
+    local park = frame:IsShown() and ExtraWanted(id) and Bags:IsCombined() and LayoutWanted()
+        and (id == ReagentID() or (combined and combined:IsShown()))
+    if park and not (CanMoveWindow(frame, frame) and Bags.AdoptExtraButtons(frame)) then park = false end
+    if park then
+        ParkWindow(frame)
+    elseif parked[frame] ~= nil and CanMoveWindow(frame, frame.fuiBagAnchor) then
+        UnparkWindow(frame)
+    end
+end
 local function ParkExtraWindows()
     for id, owned in pairs(openedForBackpack) do
         if not owned:IsShown() or owned:GetID() ~= id then openedForBackpack[id] = nil end
     end
-    local combined = Combined()
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
         if type(frame) == "table" and frame.GetID then
-            Bags.HookBagWindow(frame)
-            local id = frame:GetID()
-            local park = frame:IsShown() and ExtraWanted(id) and Bags:IsCombined() and LayoutWanted()
-                and (id == ReagentID() or (combined and combined:IsShown()))
-            if park and not (CanMoveWindow(frame, frame) and Bags.AdoptExtraButtons(frame)) then park = false end
-            if park then
-                ParkWindow(frame)
-            elseif parked[frame] ~= nil and CanMoveWindow(frame, frame.fuiBagAnchor) then
-                UnparkWindow(frame)
-            end
+            -- (one window that fails never keeps the next from its section: 11-23, suorat4an's crafting bag)
+            local ok, err = pcall(ParkOne, frame)
+            if not ok then ns.LogError("Bags extra window " .. i, err) end
         end
     end
 end
@@ -561,7 +566,8 @@ local function SyncBackpackExtras()
         if native then
             if id == KeyringID() and native:GetBagSize() ~= GetKeyRingSize() then
                 OpenBag(id, true)
-            elseif parked[native] == nil then
+            elseif parked[native] == nil or not (extras[id] and extras[id].window == native) then
+                -- (also one kept off screen whose buttons went back to it: its section stayed empty)
                 ParkExtraWindows()
             end
         elseif not (folded and folded[id]) then
@@ -955,8 +961,17 @@ function Bags.AdoptExtraButtons(frame)
             changed = true
         end
     end
-    if changed and not layingOut and combined:IsShown() then Relayout(combined) end
+    if changed and not layingOut and combined:IsShown() then Bags.SafeRelayout(combined) end
     return true
+end
+
+-- a layout that fails ends (it would block every later one) and never stops the caller
+function Bags.SafeRelayout(frame)
+    local ok, err = pcall(Relayout, frame)
+    if not ok then
+        layingOut = false
+        ns.LogError("Bags layout", err)
+    end
 end
 
 -- every button taken from this window (all of them: owner nil) back to it
@@ -1149,6 +1164,9 @@ Bags.AutoOpen = { skip = {} }
 
 function Bags.AutoOpen.Blocked()
     if InCombatLockdown() or UnitIsDeadOrGhost("player") or ns.IsGamepadUI() then return true end
+    -- a spell or kit waiting for its item, something on the cursor or a cast: the use would be taken for that
+    if (SpellIsTargeting and SpellIsTargeting()) or (SpellCanTargetItem and SpellCanTargetItem()) or GetCursorInfo()
+        or UnitCastingInfo("player") or UnitChannelInfo("player") then return true end
     -- a loot open in FlareUI's loot window, where Blizzard's LootFrame stays hidden
     if ns.LootWindow and ns.LootWindow.looting then return true end
     for _, name in ipairs({ "MerchantFrame", "BankFrame", "MailFrame", "TradeFrame", "AuctionHouseFrame",

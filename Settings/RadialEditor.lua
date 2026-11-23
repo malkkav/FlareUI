@@ -837,6 +837,7 @@ local BAR_ERRORS = {
 }
 
 local function PlaceOnBar(id, key, force)
+    RM().OnBarPlaced = function() Refresh() end   -- (a macro just made lands a moment later)
     local ok, why, occupant = RM():PlaceOnBar(id, key, force)
     if ok then return end
     if why == "occupied" then

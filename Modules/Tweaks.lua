@@ -549,7 +549,20 @@ Tweaks.SYNC_NO_RELOAD = {
     soulbindsLandingPageTutorial = true, soulbindsViewedTutorial = true, guildNewsFilter = true,
     guildRewardsCategory = true, guildRewardsUsable = true, auctionSortByBuyoutPrice = true,
     auctionSortByUnitPrice = true, raidOptionIsShown = true, showBattlefieldMinimap = true,
+    -- flipped with a key or a click while playing, and shown at once (11-23, Shweep)
+    nameplateShowAll = true, nameplateShowEnemies = true, nameplateShowFriendlyPlayers = true,
+    nameplateShowFriendlyNpcs = true, nameplateShowFriendlyPlayerMinions = true, nameplateShowEnemyMinions = true,
+    nameplateShowEnemyMinus = true, nameplateShowEnemyGuardians = true, nameplateShowEnemyPets = true,
+    nameplateShowEnemyTotems = true, collapseExpandBuffs = true, consolidateBuffs = true,
 }
+
+-- The Gamepad UI puts its own values in these while it is on (Blizzard_Gamepad/Core.lua), and takes them out
+-- after: they are neither the player's picks to copy nor to write over
+function Tweaks.GamepadOwns(name)
+    if not ns.IsGamepadUI() then return false end
+    name = name:lower()
+    return name:find("^softtarget") ~= nil or name:find("^targetauto") ~= nil or name == "targetenemyattacker"
+end
 
 -- AceEvent keeps one callback per object per event, so the sync has its own object
 local SyncEvents = {}
@@ -610,6 +623,7 @@ local function SaveSync(event)
     for _, name in ipairs(SYNC_CVARS) do
         if CVarKnown(name) then
             local ok, value = pcall(GetCVar, name)
+            if Tweaks.GamepadOwns(name) then ok, value = true, old.cvars and old.cvars[name] end
             if ok and value ~= nil then store.cvars[name] = value end
         end
     end
@@ -727,10 +741,12 @@ function Tweaks.StampSyncSnapshot(account, old, store)
     local legacyStamp = old.cvarStamps == nil and old.savedAt or nil
     store.cvarStamps = {}
     for name, value in pairs(store.cvars) do
-        if fresh or oldCVars[name] ~= value then
+        if fresh or (oldCVars[name] ~= nil and oldCVars[name] ~= value) then
             store.cvarStamps[name] = now
             changed = true
         else
+            -- (a setting new to the list isn't a change: it asked every other character to reload once)
+            if oldCVars[name] == nil then changed = true end
             store.cvarStamps[name] = oldStamps[name] or legacyStamp
         end
     end
@@ -739,15 +755,35 @@ function Tweaks.StampSyncSnapshot(account, old, store)
     end
     -- the parts other than CVars; chat filters (messages and channels) apart from the chat look,
     -- as only the filters need a reload
+    -- (names only, in no order: the channel lists carry zone IDs and come in the order they were joined)
+    local function Names(list)
+        local out = {}
+        for _, v in ipairs(list or {}) do
+            if type(v) == "string" then out[#out + 1] = v end
+        end
+        table.sort(out)
+        return out
+    end
     local function Filters(chat)
         local out = {}
-        for i, w in pairs(chat or {}) do out[i] = { messages = w.messages, channels = w.channels } end
+        for i, w in pairs(chat or {}) do out[i] = { messages = Names(w.messages), channels = Names(w.channels) } end
+        return out
+    end
+    -- what the windows look like, without their filters
+    local function Looks(chat)
+        local out = {}
+        for i, w in pairs(chat or {}) do
+            out[i] = {}
+            for k, v in pairs(w) do
+                if k ~= "messages" and k ~= "channels" then out[i][k] = v end
+            end
+        end
         return out
     end
     local parts = {
         layout = function(s) return { s.editModeLayout, s.editModeLayoutType } end,
         chatFilters = function(s) return Filters(s.chat) end,
-        chat = function(s) return s.chat end,
+        chat = function(s) return Looks(s.chat) end,
         bags = function(s) return s.bags end,
         bagFlags = function(s) return s.bagFlags end,
         guild = function(s) return s.declineGuildInvites end,
@@ -815,6 +851,8 @@ local function LoadSync()
     for name, value in pairs(store.cvars or {}) do
         if not IsNew(cvarStamps[name]) then
             -- unchanged at the source since the last copy
+        elseif Tweaks.GamepadOwns(name) then
+            -- the Gamepad UI's own value is in it now
         elseif name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
             -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
             forced.combatPlates = tostring(value)
@@ -845,7 +883,8 @@ local function LoadSync()
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
     local expected = ns.IsGamepadUI() and Enum.InputDeviceInterfaceType.Gamepad or Enum.InputDeviceInterfaceType.Mkb
-    if store.editModeLayout and layoutInfo and layoutInfo.layouts and not charDB.syncLayoutTaken then
+    -- (and only a layout the source picked since: one the player chose here stays)
+    if store.editModeLayout and layoutInfo and layoutInfo.layouts and not charDB.syncLayoutTaken and IsNew(stamps.layout) then
         for index, layout in ipairs(layoutInfo.layouts) do
             local sameKind = store.editModeLayoutType == nil
                 or layout.layoutType == store.editModeLayoutType
@@ -882,6 +921,12 @@ local function LoadSync()
         end
         return true
     end
+    -- a reload only for a window whose filters really differ now: a channel this character isn't in can't
+    -- be added, and asked again after every change on the source
+    local function Changed(before, read, i)
+        local ok, after = pcall(function() return { read(i) } end)
+        if not ok or not SameSet(before, after) then chatChanged = true end
+    end
     local chatLookNew, chatFiltersNew = IsNew(stamps.chat), IsNew(stamps.chatFilters)
     if store.chat and (chatLookNew or chatFiltersNew) then
         for i, w in pairs(store.chat) do
@@ -900,26 +945,31 @@ local function LoadSync()
             if w.messages and chatFiltersNew then
                 local ok, current = pcall(function() return { GetChatWindowMessages(i) } end)
                 current = ok and current or {}
-                if not SameSet(current, w.messages) then chatChanged = true end
-                for _, group in ipairs(current) do pcall(RemoveChatWindowMessages, i, group) end
-                for _, group in ipairs(w.messages) do pcall(AddChatWindowMessages, i, group) end
+                if not SameSet(current, w.messages) then
+                    for _, group in ipairs(current) do pcall(RemoveChatWindowMessages, i, group) end
+                    for _, group in ipairs(w.messages) do pcall(AddChatWindowMessages, i, group) end
+                    Changed(current, GetChatWindowMessages, i)
+                end
             end
             -- only the window assignment; channels are never joined
             if w.channels and chatFiltersNew then
                 local ok, current = pcall(function() return { GetChatWindowChannels(i) } end)
-                if not SameSet(ok and current or {}, w.channels) then chatChanged = true end
-                for _, name in ipairs(ok and current or {}) do
-                    if type(name) == "string" then pcall(RemoveChatWindowChannel, i, name) end
-                end
-                for _, name in ipairs(w.channels) do
-                    if type(name) == "string" then pcall(AddChatWindowChannel, i, name) end
+                current = ok and current or {}
+                if not SameSet(current, w.channels) then
+                    for _, name in ipairs(current) do
+                        if type(name) == "string" then pcall(RemoveChatWindowChannel, i, name) end
+                    end
+                    for _, name in ipairs(w.channels) do
+                        if type(name) == "string" then pcall(AddChatWindowChannel, i, name) end
+                    end
+                    Changed(current, GetChatWindowChannels, i)
                 end
             end
         end
         -- (the Gamepad UI's chat focus reads what these write, and breaks until a /reload: there the
         -- reload below shows the changes instead)
         if ns.IsGamepadUI() then
-            chatChanged = true
+            chatChanged = chatChanged or chatLookNew
         else
             C_Timer.After(1, function()
                 for i = 1, Constants.ChatFrameConstants.MaxChatWindows do pcall(FloatingChatFrame_Update, i, true) end

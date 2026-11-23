@@ -44,6 +44,7 @@ local tank = E.FlareUI_RaidTanksHeader[1]
 tank:SetAttribute("unit", "raid1")
 tank:Show()
 rf:Refresh()
+assert(E.ClickCastFrames[tank.TankTarget], "click-casting on a main tank's target")
 assert(tank.TankTarget.unitWatched and tank.TankTarget:GetAttribute("unit") == "raid1target")
 assert(tank.TankTarget.Name:GetText() == "Sentinel" and tank.TankTarget.Health:GetValue() == 44)
 assert(select(3, tank.TankTarget:GetPoint()) == "BOTTOMLEFT")

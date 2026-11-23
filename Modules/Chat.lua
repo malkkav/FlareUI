@@ -211,6 +211,7 @@ local function GetFontData(fontDB)
     local size  = fontDB and fontDB.size or 14
     local flags = fontDB and fontDB.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
+    if ns.OutlineFlags then flags = ns.OutlineFlags(flags) end   -- (the message windows take it straight)
     local path = ns.GetFontPath(face)
     return path, size, flags
 end
@@ -691,11 +692,11 @@ local function ColorCode(r, g, b)
     return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
--- the icons' size: a little under the window's font
+-- the icons' size: the window's font, drawn 1 px down to sit with the letters (11-23, gerudoku: too small)
 function Lines.IconSize(chatFrame)
     local ok, _, size = pcall(chatFrame.GetFont, chatFrame)
     size = ok and type(size) == "number" and size or 14
-    return math.floor(size * 0.9 + 0.5)
+    return math.floor(size + 0.5)
 end
 
 function Lines.HasAtlas(name)
@@ -711,7 +712,7 @@ end
 function Lines.IconMarkup(raceFile, sex, classFile, size, race, class)
     local out = ""
     local function Add(atlas)
-        if atlas and Lines.HasAtlas(atlas) then out = out .. "|A:" .. atlas .. ":" .. size .. ":" .. size .. "|a" end
+        if atlas and Lines.HasAtlas(atlas) then out = out .. "|A:" .. atlas .. ":" .. size .. ":" .. size .. ":0:-1|a" end
     end
     if race and type(raceFile) == "string" and GetRaceAtlas then
         Add(GetRaceAtlas(raceFile:lower(), sex == 3 and "female" or "male"))
@@ -752,7 +753,7 @@ function Lines.LinkIcons(body, size)
             texture = C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(tonumber(id))
         end
         if not texture then return nil end
-        return head .. "|T" .. texture .. ":" .. size .. ":" .. size .. "|t" .. nextChar
+        return head .. "|T" .. texture .. ":" .. size .. ":" .. size .. ":0:-1|t" .. nextChar
     end))
 end
 
@@ -2451,11 +2452,37 @@ end
 -- window is protected now
 function TabHit.Fallback(btn, button)
     if InCombatLockdown() and DockProtected() then
-        TabHit.pending = btn
+        -- the window already on screen (the Meter tab may be over it): nothing of Blizzard's to switch
+        if FCFDock_GetSelectedWindow(_G.GeneralDockManager) == btn.chatFrame then
+            AfterTabSwitch(btn)
+        else
+            TabHit.pending = btn
+        end
         return
     end
     _G.FCF_Tab_OnClick(btn.realTab, button)
     AfterTabSwitch(btn)
+end
+
+-- The tab on screen under a box: after a switch in a fight, the shown window's own bar has it
+function TabHit.Under(hit)
+    local btn = hit.tab
+    if not btn or btn:IsVisible() then return btn end
+    for bar in pairs(TabHit.bars) do
+        if bar.FlareUI_Docked and bar:IsVisible() then
+            for _, other in ipairs(bar.buttons) do
+                if other.realTab == btn.realTab and other:IsVisible() then return other end
+            end
+        end
+    end
+    return btn
+end
+
+-- (11-23, BearAE) A tab with a box lets the mouse through to it, so it doesn't matter which of the two is
+-- on top: the bar goes up a layer with the Meter tab as a fight starts, where the box can't follow
+TabHit.boxed = {}   -- [Blizzard's tab] = true while a box lies over it
+function TabHit.LetThrough(btn)
+    btn:EnableMouse(not (btn.scrollFrame.FlareUI_Docked and btn.realTab and TabHit.boxed[btn.realTab]))
 end
 
 local function HitPreClick(self)
@@ -2474,7 +2501,7 @@ function TabHit.CloseWhisper(btn)
 end
 
 local function HitPostClick(self, button)
-    local btn = self.tab
+    local btn = TabHit.Under(self)
     if not btn then return end
     if not btn:IsVisible() then
         -- in a fight, after a switch: the box is the window's before it (they share one place), and the
@@ -2507,12 +2534,12 @@ local function HitFor(scrollFrame, index)
     hit:SetScript("PreClick", HitPreClick)
     hit:SetScript("PostClick", HitPostClick)
     hit:SetScript("OnEnter", function(self)
-        local btn = self.tab
+        local btn = TabHit.Under(self)
         local f = btn and btn:IsVisible() and btn:GetScript("OnEnter")
         if f then f(btn) end
     end)
     hit:SetScript("OnLeave", function(self)
-        local btn = self.tab
+        local btn = TabHit.Under(self)
         local f = btn and btn:GetScript("OnLeave")
         if f then f(btn) end
     end)
@@ -2528,6 +2555,7 @@ function TabHit.Sync()
     -- (PLAYER_REGEN_ENABLED syncs again after the fight)
     if InCombatLockdown() then return end
     local uiScale = UIParent:GetEffectiveScale()
+    local boxed = wipe(TabHit.boxed)
     for scrollFrame in pairs(TabHit.bars) do
         local barShown = scrollFrame.FlareUI_Docked and scrollFrame:IsVisible() and not ns.IsGamepadUI()
         local sl, sr = scrollFrame:GetLeft(), scrollFrame:GetRight()
@@ -2560,6 +2588,7 @@ function TabHit.Sync()
                             hit:SetSize((right - left) / uiScale, (bt - bb) * bs / uiScale)
                             hit:Show()
                             placed = true
+                            boxed[btn.realTab] = true
                         end
                     end
                 end
@@ -2570,6 +2599,9 @@ function TabHit.Sync()
             end
         end
         scrollFrame.FlareUI_HitLeft, scrollFrame.FlareUI_HitBottom = sl, scrollFrame:GetBottom()
+    end
+    for scrollFrame in pairs(TabHit.bars) do
+        for _, btn in ipairs(scrollFrame.buttons) do TabHit.LetThrough(btn) end
     end
 end
 
@@ -2595,9 +2627,15 @@ function TabHit.Watch(scrollFrame)
     local driver = CreateFrame("Frame")
     TabHit.driver = driver
     driver:RegisterEvent("PLAYER_REGEN_ENABLED")
+    driver:RegisterEvent("PLAYER_REGEN_DISABLED")
     driver:RegisterEvent("UI_SCALE_CHANGED")
     driver:RegisterEvent("DISPLAY_SIZE_CHANGED")
     driver:SetScript("OnEvent", function(_, event)
+        -- a fight starts: the last moment the boxes can be put right (a frame later is too late)
+        if event == "PLAYER_REGEN_DISABLED" then
+            TabHit.Sync()
+            return
+        end
         if event == "PLAYER_REGEN_ENABLED" then
             local btn = TabHit.pending
             TabHit.pending = nil
@@ -2704,6 +2742,7 @@ function Chat:UpdateCustomTabs(chatFrame, db)
 
             btn.realTab = realTab
             btn.chatFrame = frame
+            TabHit.LetThrough(btn)
 
             -- the font only when the settings changed (a pass of Apply), the text and its width only
             -- when the name changed: the bars are redrawn on every dock change and whisper flash
@@ -3493,6 +3532,11 @@ end
 -- (ObjectiveTracker.lua Build.PlaceStrip), on two bands of the skin.
 -- TOP 3.75 and FOOT_Y 2.5: the knobs on the Thick border's curve (Malkkav 11-20, measured in game);
 -- the strips skip pixel snapping, though the game still draws whole pixels (steps under ~0.5 do not show)
+-- no frame left to see: no border and a Background Opacity of 0% (Modern; the chat's and the meters' own). The
+-- line under the header goes with it (11-23, BorlandC)
+function Chat.NoFrame(db)
+    return db ~= nil and db.frameStyle ~= "flareui" and db.borderTexture == "None" and (tonumber(db.opacity) or 1) <= 0
+end
 Chat.FRAME_ART = { INSET = 8, TOP = 3.75, FOOT_Y = 2.5 }   -- the bottom line at 2.5 from the frame's bottom edge, as approved 11-20 (its own number, not the tracker's)
 -- (also the meters' skins, DamageMeter.PaintSkin; off: none whatever the style, a meter inside the chat)
 function Chat.ApplyFrameStyleArt(skin, db, off)
@@ -3528,7 +3572,7 @@ function Chat.ApplyFrameStyleArt(skin, db, off)
         B.HideStrip(skin.FlareUI_Band)
         B.HideStrip(skin.FlareUI_Foot)
     end
-    if skin.Separator and not off then skin.Separator:SetShown(not flare) end
+    if skin.Separator and not off then skin.Separator:SetShown(not flare and not Chat.NoFrame(db)) end
 end
 
 -- Details! in a chat tab (its "Tab Embed"): it sizes its windows from the window's Background, which
@@ -3867,14 +3911,22 @@ function Chat.MouseOverChat()
     return false
 end
 
+-- whether this edit box is being typed in. A whisper window made while the game hides names can give a
+-- hidden answer: then Blizzard's own active box decides
+function Chat.BoxFocused(box)
+    if not box then return false end
+    local focused = box:HasFocus()
+    if canaccessvalue(focused) then return focused and true or false end
+    return ChatFrameUtil ~= nil and ChatFrameUtil.GetActiveWindow ~= nil and ChatFrameUtil.GetActiveWindow() == box
+end
+
 -- Reasons that show the chat whatever its Visibility: an open edit box (typing), a window with the
 -- gamepad (the Gamepad UI's chat), Ignore Chat Fade on the Meter tab, Settings > Chat open
 function Chat.ChatWanted()
     if Chat.settingsPreview then return true end
     for _, cf in Windows() do
         if cf and not cf:IsForbidden() then
-            local box = cf.editBox
-            if box and box:HasFocus() then return true end
+            if Chat.BoxFocused(cf.editBox) then return true end
             if cf.HasGamepadFocus and cf:IsVisible() and cf:HasGamepadFocus() then return true end
         end
     end
@@ -3910,7 +3962,7 @@ function Chat.LineFadeOn(chatFrame, db)
         Chat.WatchLines(true)
         chatFrame:SetTimeVisible(math_max(Chat.LINE_MIN_VISIBLE, Chat.FadeDelay()))
         chatFrame:SetFadeDuration(Chat.LINE_FADE_TIME)
-        chatFrame:SetFading(true)
+        chatFrame:SetFading(not chatFrame.FlareUI_LinesHeld)   -- (not under the pointer)
     else
         chatFrame:SetFading(false)
         chatFrame:SetTimeVisible(9999)
@@ -3930,9 +3982,9 @@ function Chat.ApplyLineFade()
 end
 
 -- The faded lines come back with the pointer on a window or its edit box in use. A light watcher,
--- five checks a second, only while Fade Old Lines is on. Only the change counts (11-22): on arrival the
+-- ten checks a second, only while Fade Old Lines is on. Only the change counts (11-22): on arrival the
 -- lines come back once and stop fading; on leaving they fade again from then. Resetting them on every
--- check redrew the lines five times a second, so a link's tooltip flickered and a click on a name
+-- check redrew the lines every time, so a link's tooltip flickered and a click on a name
 -- or a link was lost.
 function Chat.WatchLines(on)
     local watcher = Chat.lineWatcher
@@ -3946,12 +3998,13 @@ function Chat.WatchLines(on)
         Chat.lineWatcher = watcher
         watcher:SetScript("OnUpdate", function(self, elapsed)
             self.wait = (self.wait or 0) + elapsed
-            if self.wait < 0.2 then return end
+            if self.wait < 0.1 then return end
             self.wait = 0
             for _, cf in Windows() do
                 if cf and cf.FlareUI_Skin and not cf:IsForbidden() and cf.ResetAllFadeTimes then
-                    local held = cf:IsVisible() and (cf:IsMouseOver() or (cf.editBox and cf.editBox:HasFocus())) or false
-                    if held ~= (cf.FlareUI_LinesHeld or false) then
+                    local held = cf:IsVisible() and (cf:IsMouseOver() or Chat.BoxFocused(cf.editBox)) or false
+                    -- (the fading itself is checked too: Blizzard's gamepad focus turns it back on)
+                    if held ~= (cf.FlareUI_LinesHeld or false) or (held and cf:GetFading()) then
                         cf.FlareUI_LinesHeld = held or nil
                         cf:ResetAllFadeTimes()
                         cf:SetFading(not held)
@@ -3971,9 +4024,9 @@ Chat.windowHolds = {}   -- [window or "dock"] = GetTime() until which it stays u
 
 local function HoldKey(chatFrame) return IsPopped(chatFrame) and chatFrame or "dock" end
 
-local function HoldWindow(chatFrame, now)
+local function HoldWindow(chatFrame, now, least)
     local key = HoldKey(chatFrame)
-    Chat.windowHolds[key] = math_max(Chat.windowHolds[key] or 0, now + Chat.FadeDelay())
+    Chat.windowHolds[key] = math_max(Chat.windowHolds[key] or 0, now + math_max(Chat.FadeDelay(), least or 0))
 end
 
 -- The pointer on a shown chat window (its skin, its tab bar) holds that window; on a header button or
@@ -4111,7 +4164,8 @@ function Chat:ShowChatFrame(chatFrame, db)
     -- a window new to the chat (a whisper window) starts where the others are
     if chatFrame.FlareUI_TargetAlpha == nil then Chat:SetChatFrameAlpha(chatFrame, Chat.fadeAlpha) end
     -- this window's own timer (the dock's, for a docked one): a popped-out window lights up alone
-    HoldWindow(chatFrame, GetTime())
+    -- (with Fade Delay 0 a new line held it for no time at all: it never came back)
+    HoldWindow(chatFrame, GetTime(), Chat.LINE_MIN_VISIBLE)
     Chat.StartWindowTicker()
     if Chat.wakeHeld then
         Chat.wakeWanted = true
@@ -4317,12 +4371,21 @@ function Chat.OnPeopleLine(_, event, ...)
     -- a sender hidden in a cinematic's letterbox: Blizzard shows the line only there
     local letterbox = select(16, ...)
     if canaccessvalue(letterbox) and letterbox then return end
-    local channel = Chat.WAKE_CHANNEL[event]
+    Chat.WithOneWake(Chat.WakeForLine, db, event, select(7, ...), select(9, ...))
+end
+
+-- Every shown window that takes the line (the docked ones count once). A whisper comes back for its tab in
+-- the dock too, whichever tab is on screen: the chat stayed faded while its tab glowed (11-23, capo)
+Chat.WAKE_HIDDEN = { CHAT_MSG_WHISPER = true, CHAT_MSG_BN_WHISPER = true }
+function Chat.WakeForLine(db, event, zoneID, name)
+    local channel, whisper, dock = Chat.WAKE_CHANNEL[event], Chat.WAKE_HIDDEN[event], false
     for _, cf in Windows() do
-        if cf and cf.FlareUI_AutoHideHooked and not cf:IsForbidden() and cf:IsVisible() and cf:IsEventRegistered(event)
-                and (not channel or Chat.WindowHasChannel(cf, select(7, ...), select(9, ...))) then
-            Chat:ShowChatFrame(cf, db)
-            return
+        if cf and cf.FlareUI_AutoHideHooked and not cf:IsForbidden() and cf:IsEventRegistered(event)
+                and (cf:IsVisible() or (whisper and cf.isDocked and not Chat.TabMuted(cf, db)))
+                and (not channel or Chat.WindowHasChannel(cf, zoneID, name)) then
+            local popped = IsPopped(cf)
+            if popped or not dock then Chat:ShowChatFrame(cf, db) end
+            dock = dock or not popped
         end
     end
 end

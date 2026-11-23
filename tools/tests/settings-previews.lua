@@ -62,6 +62,9 @@ draw("tooltip", "tt.healthBar", "off")
 assert(not shown(tip.tooltipHealth) and profile.tooltips.hideHealthBar == nil)
 draw("tooltip", "tt.ids", true)
 assert(text(tip.tooltipText, "ID: 14152") and text(tip.tooltipTitle, "Robes of the Archmage"))
+profile.tooltips.itemLevel = true
+draw("tooltip", "tt.itemLevel")
+assert(text(tip.tooltipText, "Item Level 76") and text(tip.tooltipTitle, "Robes of the Archmage"), "an item, not a player")
 draw("tooltip", "tt.compareShift")
 assert(text(o.comparisonText, "Equipped") and c.tooltipCanvas.frame:GetScale() == 0.6)
 

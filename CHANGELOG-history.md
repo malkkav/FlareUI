@@ -2,6 +2,68 @@
 
 Versions 7.0.3 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
 
+# FlareUI 7.0.4
+
+A big batch from your ideas: names above the nameplates, Blizzard's cast bar glow, stacked buffs and debuffs, and item levels in the inspect window. It also brings smoother nameplates in big pulls and the normal game font back.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Fonts:** the game font is back to normal. 7.0.3 swapped it for Blizzard's Russian copy by accident, which looked sharper and drew some symbols as boxes. Liked the sharper look? Pick **Friz Quadrata TT (Crisp)** in any font list.
+- **Nameplates:** Name Only plates show players' full names. Switch **Show Full Name** off for first names only.
+- **Unit Frames:** **Name Above Plates** is now called **Name Above Frames**.
+
+## Highlights
+- **Nameplates:** names above the plate, and smoother plates in big pulls.
+- **Cast bars:** Blizzard's bright edge at the front of the cast.
+- **Buffs and Debuffs** can share a place on the unit, party and boss frames.
+
+## New
+
+### Nameplates
+- **Names Above Plate** (Off) on the Style tab: the name above the plate, left, centre or right, first or full name. Buffs and debuffs move up to make room.
+- **Show Full Name** (on) in the Name Only Mode section.
+- **Edge Glow** on the Cast Bar tab.
+
+### Cast Bars
+- **Edge Glow**: a bright edge at the front of the cast, as on Blizzard's cast bars.
+  - In each frame's Cast Bar section in Edit Mode, and under Look on the Player Cast Bar.
+  - On for new players. Already using FlareUI? Switch it on there.
+
+### Unit Frames
+- **Buffs** and **Debuffs** can pick the same place, or the same edge: they stack. The one placed first stays next to the frame, the other goes one row further out. Party and boss frames too.
+- **Range Check** (off) on Target of Target and Target of Focus.
+
+### Resource Bars
+- **Show in Caster Form** (off) on the Druid Mana bar: it stays up in caster form too.
+
+### Bags
+- **Reverse Bag Fill** (off): the backpack starts at the top left and fills left to right, downwards.
+- **Item Level** also shows on the inspect window's slots, with the player's average item level under their name.
+
+### Minimap
+- **Below the Map** (off) in the Info Bar section: the bar sits under the minimap, clear of the quest arrow.
+
+### Meters
+- **Hide Until Next Group** in the meter's gear menu: the meter goes away until you join another group, or reload.
+
+### Fonts
+- **Friz Quadrata TT (Crisp)**: Blizzard's sharper copy of the game font. It lacks a few symbols.
+
+## Changed
+- **Nameplates:** the Visibility tab works with the Nameplates module off. Those are Blizzard's own nameplate settings, so you can switch In Combat back off.
+- **Nameplates:** the settings preview shows aura timers and swipes.
+- **Action Bars:** **Update Spell Ranks** moves your pet's spells up too (a warlock's Torment after the grimoire).
+- **Buffs & Debuffs:** **Filtered Auras** marks debuffs the game won't let addons hide on you as **Not on You**.
+- **Radial Menu:** a `/click FUIRadial` macro opens the radial for the controller while the Gamepad UI is on.
+- **About:** Kabaday is credited for the loot roll window and the Cooldown Manager.
+- **French:** the 7.0.2 and 7.0.3 text is translated. By Brainc3ll.
+
+## Fixed
+- **Quest Tracker:** with Blizzard's Gamepad UI on, a mouse click on a quest showed "Open your quest log" instead of opening it.
+- **Quest Tracker:** quests that Blizzard's own tracker doesn't list open on a click too.
+- **Nameplates:** less stutter in big pulls. Out of Range Opacity, threat colours and glows do far less work per mob.
+- **Fonts:** tooltips showed boxes instead of the "·" dot.
+
 # FlareUI 7.0.3
 
 More nameplate polish, plus fixes for the bugs you sent in after 7.0.2. Nameplate auras get their own look options and can stack in two lines.

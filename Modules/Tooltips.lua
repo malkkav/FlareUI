@@ -1104,6 +1104,12 @@ do
         if db.showItemID then
             lines[#lines + 1] = { " ", right = L["Item ID"] .. " " .. id, rr = 0.5, rg = 0.5, rb = 0.5 }
         end
+        -- Show Item Level (AddItemLevelLine)
+        if db.itemLevel then
+            local c = NORMAL_FONT_COLOR
+            local level = equipped and 66 or 76
+            lines[#lines + 1] = { Format(_G.ITEM_LEVEL, "Item Level " .. level, level), c.r, c.g, c.b }
+        end
         local border
         if db.borderByQuality then border = { Mute(r, g, b) } end
         return lines, border

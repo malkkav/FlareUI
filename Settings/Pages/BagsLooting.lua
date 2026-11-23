@@ -4,9 +4,9 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- BAGS & LOOTING (out of Quality of Life)
--- Bags tab: the bag window (Modules/Bags.lua's layout), what is drawn on the item slots, and the
--- tools. Looting tab: Faster Auto Loot, Skip Loot Confirmations (Tweaks.lua), the Loot Roll Window
--- (LootRolls.lua), the Loot Window (LootWindow.lua) and the Loot Feed (LootFeed.lua). Fonts tab: the bags' texts, Loot Rolls and Loot Feed. The saved values stay in tweaks.*; the module's
+-- Bags tab: the bag window (Modules/Bags.lua's layout), what is drawn on the item slots, and
+-- tweaks. Looting tab: Faster Auto Loot, Skip Loot Confirmations (Tweaks.lua), the Loot Roll Window
+-- (LootRolls.lua), the Loot Window (LootWindow.lua) and the Loot Feed (LootFeed.lua). Bank & Vendor tab: the bank window and the vendor options. Fonts tab: the bags' texts, Loot Rolls and Loot Feed. The saved values stay in tweaks.*; the module's
 -- own switch is tweaks.bagModule (ns.BagModuleOn: on for anyone who had Quality of Life on).
 --------------------------------------------------
 local function Refresh() if ns.Tweaks then ns.Tweaks:Refresh() end end
@@ -17,18 +17,20 @@ local function NotCombined() return BagAddon() or not (ns.Bags and ns.Bags:IsCom
 
 S:Module{
     key = "bl", group = "interface", order = 35, enabled = "tweaks.bagModule",
-    tabs = { { key = "bags" }, { key = "looting" }, { key = "fonts" } },
+    tabs = { { key = "bags" }, { key = "looting" }, { key = "bank" }, { key = "fonts" } },
 }
+
+local function AddonNote()
+    local name = ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bags:GetOtherBagAddon() or "?"
+    return L["%s is handling your bags: turn it off to use these options."]:format(name)   -- (one line)
+end
 
 -- BAGS: the window ------------------------------
 -- a note says why the options are greyed, above them:
 -- another bag addon in charge (named), or Blizzard's combined bags off
 S:Row{ key = "bl.bagAddonNote", kind = "text", noTitle = true, tab = "bags", section = "bl.bagWindow",
     hidden = function() return not BagAddon() end,
-    textFn = function()
-        local name = ns.Bags and ns.Bags.GetOtherBagAddon and ns.Bags:GetOtherBagAddon() or "?"
-        return L["%s is handling your bags: turn it off to use these options."]:format(name)   -- (one line)
-    end }
+    textFn = AddonNote }
 S:Row{ key = "bl.combinedNote", kind = "text", noTitle = true, tab = "bags", section = "bl.bagWindow",
     hidden = function() return BagAddon() or (ns.Bags and ns.Bags.IsCombined and ns.Bags:IsCombined()) or false end }
 -- Combined Backpack (it explains why the rows below are greyed): Blizzard's own Use
@@ -71,15 +73,6 @@ S:Row{ key = "bl.bagView", kind = "choice", tab = "bags", path = "tweaks.bagView
         if ns.Bags and ns.Bags.Filter then ns.Bags.Filter.Refresh() end
     end }
 
--- BAGS: the bank window (Bags.lua 4e). Forever's bank is one window
--- whatever Combined Bags says, so only another bag addon greys these.
-local BANK_COLUMNS = { { 0, L["Default"] } }
-for n = 6, 20 do BANK_COLUMNS[#BANK_COLUMNS + 1] = { n, tostring(n) } end
-S:Row{ key = "bl.bankColumns", kind = "range", tab = "bags", path = "tweaks.bankColumns", choices = BANK_COLUMNS,
-    apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "bl.bankGaps", half = true, tab = "bags", path = "tweaks.bankGaps", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "bl.bankTight", half = true, tab = "bags", path = "tweaks.bankTight", apply = RefreshBags, disabled = BagAddon }
-
 -- BAGS: the item slots --------------------------
 -- Skin Item Slots (one choice): Off (Blizzard's slots), Thin Borders or Thick
 -- Borders. A skinned slot always takes its item's quality colour.
@@ -115,32 +108,15 @@ S:Row{ key = "bl.petFood", half = true, tab = "bags", path = "tweaks.petFood", a
 S:Row{ key = "bl.bagBoE", half = true, tab = "bags", path = "tweaks.bagBoE", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "bl.bagPlainEmpty", half = true, tab = "bags", path = "tweaks.bagPlainEmpty", apply = RefreshBags, disabled = BagAddon }
 
--- BAGS: tools ------------------------------------
+-- BAGS: tweaks -----------------------------------
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
 -- the bags open and close with the character window (Bags.lua 4c; the bank and guild bank always do)
 S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.bagWithCharacter" }
--- Blizzard's clean-up each time the bags open: a tool, so in Tools
+-- Blizzard's clean-up each time the bags open
 S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
 -- clams, loot bags and opened lockboxes open themselves (Bags.lua 1d; not beside another bag addon)
 S:Row{ key = "bl.bagAutoOpen", half = true, tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
     apply = function() if ns.Bags and ns.Bags.AutoOpen then ns.Bags.AutoOpen.Next() end end }
-
--- VENDOR (from Quality of Life, 11-20): selling, repairing and buying; the switches stay in tweaks.*
-S:Row{ key = "qol.repair", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.autoRepair", apply = Refresh }
--- the guild bank pays Auto Repair first; greyed with Auto Repair off
-S:Row{ key = "qol.repairGuild", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.repairGuild",
-    disabled = function() return not S:GetPath("tweaks.autoRepair") end }
-S:Row{ key = "qol.sellJunk", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.sellJunk", apply = Refresh }
-S:Row{ key = "qol.merchantKnown", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.merchantKnown", apply = Refresh }
-S:Row{ key = "qol.bulkBuy", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.bulkBuy", apply = Refresh }
-S:Row{ key = "qol.merchantWide", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.merchantWide", reload = true }
-local function RefreshVendorWarnings()
-    if ns.Bags and ns.Bags.VendorSaleWarning then ns.Bags.VendorSaleWarning.Refresh() end
-end
-S:Row{ key = "qol.warnSellSetGear", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellSetGear",
-    apply = RefreshVendorWarnings }
-S:Row{ key = "qol.warnSellQuestItems", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellQuestItems",
-    apply = RefreshVendorWarnings }
 
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }
@@ -188,6 +164,34 @@ S:Row{ key = "bl.lootFeedPosition", kind = "choice", tab = "looting", parent = "
     apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }
 S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedAlign",
     choices = { "left", "center", "right" }, disabled = NoFeed }
+
+-- BANK & VENDOR (11-23, Malkkav: the Bags tab had grown too long): the bank window (Bags.lua 4e). Forever's bank is one window
+-- whatever Combined Bags says, so only another bag addon greys these.
+local BANK_COLUMNS = { { 0, L["Default"] } }
+for n = 6, 20 do BANK_COLUMNS[#BANK_COLUMNS + 1] = { n, tostring(n) } end
+S:Row{ key = "bl.bankAddonNote", kind = "text", noTitle = true, tab = "bank", section = "bl.bankWindow",
+    hidden = function() return not BagAddon() end, textFn = AddonNote }
+S:Row{ key = "bl.bankColumns", kind = "range", tab = "bank", path = "tweaks.bankColumns", choices = BANK_COLUMNS,
+    apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "bl.bankGaps", half = true, tab = "bank", path = "tweaks.bankGaps", apply = RefreshBags, disabled = BagAddon }
+S:Row{ key = "bl.bankTight", half = true, tab = "bank", path = "tweaks.bankTight", apply = RefreshBags, disabled = BagAddon }
+
+-- VENDOR (from Quality of Life, 11-20): selling, repairing and buying; the switches stay in tweaks.*
+S:Row{ key = "qol.repair", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.autoRepair", apply = Refresh }
+-- the guild bank pays Auto Repair first; greyed with Auto Repair off
+S:Row{ key = "qol.repairGuild", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.repairGuild",
+    disabled = function() return not S:GetPath("tweaks.autoRepair") end }
+S:Row{ key = "qol.sellJunk", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.sellJunk", apply = Refresh }
+S:Row{ key = "qol.merchantKnown", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.merchantKnown", apply = Refresh }
+S:Row{ key = "qol.bulkBuy", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.bulkBuy", apply = Refresh }
+S:Row{ key = "qol.merchantWide", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.merchantWide", reload = true }
+local function RefreshVendorWarnings()
+    if ns.Bags and ns.Bags.VendorSaleWarning then ns.Bags.VendorSaleWarning.Refresh() end
+end
+S:Row{ key = "qol.warnSellSetGear", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.warnSellSetGear",
+    apply = RefreshVendorWarnings }
+S:Row{ key = "qol.warnSellQuestItems", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.warnSellQuestItems",
+    apply = RefreshVendorWarnings }
 
 -- FONTS: the bag icons' text and the loot feed's lines (live)
 S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {

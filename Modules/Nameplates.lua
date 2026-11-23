@@ -947,7 +947,7 @@ function NP.LayoutLevel(p, db, boxH)
             p.levelInner:SetTexture(info.file)
             p.levelInner:SetTexCoord(l + (r - l) * f, r - (r - l) * f, t + (b - t) * f, b - (b - t) * f)
             p.levelInner:ClearAllPoints()
-            local inIn = bgIn + 1
+            local inIn = p.edgeFile and bgIn or 1
             p.levelInner:SetPoint("TOPLEFT", holder, "TOPLEFT", inIn, -inIn)
             p.levelInner:SetPoint("BOTTOMRIGHT", holder, "BOTTOMRIGHT", -inIn, inIn)
             p.levelInner:Show()
@@ -989,7 +989,7 @@ function NP.LayoutThreat(p, db)
     box:Hide()
     p.threatBoxShown = false
     p.threatInLevel = false
-    p.threatBoxOn = db.threatPercent and not p.nameOnly and not p.hiddenPlate or false
+    p.threatBoxOn = db.threatPercent and db.threatPercent ~= "off" and not p.nameOnly and not p.hiddenPlate or false
     p.threatSide = (p.levelAnchor and p.levelSide == "right") and "left" or "right"
     if p.threatBoxOn then
         local boxH = p.boxH or db.height
@@ -1064,6 +1064,8 @@ function NP.PlaceSides(p, iconOn, textOn)
         or (threatShown and p.threatSide == "left" and p.threatBox) or p.box
     p.rightOf = (p.levelAnchor and p.levelSide == "right") and p.levelAnchor
         or (threatShown and p.threatSide == "right" and p.threatBox) or p.box
+    p.leftOf = leftOf
+    if p.questie then pcall(NP.FixQuestie, p) end
     local gap = C.SIDE_GAP
     p.quest:ClearAllPoints()
     p.questText:ClearAllPoints()
@@ -1441,14 +1443,23 @@ end
 
 -- The border's file, its edge size and the room it takes round the bar: a thin edge needs a
 -- little, the 16 px frames more (shrunk on a thin bar)
+-- how far in FlareUI's own borders' line ends (11-23, johnivve: a dark gap between the bar and the border):
+-- 8 of the art's 32 px, 8 of 16 for the thin cut. What's inside starts right there: no gap, and its square
+-- corners stay under the slanted ones (further out, they showed past them). nil for other borders.
+function NP.BorderFit(edgeFile, edge)
+    if type(edgeFile) ~= "string" then return nil end
+    if edgeFile:find("FlareUI%-Frames") or edgeFile:find("FlareUI%-Thick") then return edge / 4 end
+    if edgeFile:find("FlareUI%-Thin%.tga") then return edge / 2 end
+end
 function NP.Edge(db)
     local _, _, borderName = Look(db)
     local edgeFile = BorderFile(borderName)
     local edge = edgeFile and ns.BorderEdgeSize(edgeFile, C.PLATE_EDGE) or 0
     local pad = edgeFile and (edge >= C.PLATE_EDGE and 4 or 2) or 1
-    if edge >= C.PLATE_EDGE and db.height + 2 * pad < 22 then edge = math_max(8, math_floor((db.height + 2 * pad) * 2 / 3)) end
-    -- the bar and its background sit inside the border's rounded corners (no square corner poking out)
-    if edgeFile then pad = math_max(pad, math.ceil(edge * 0.3)) end
+    if edge >= C.PLATE_EDGE and db.height + 2 * pad < 22 then edge = math.min(edge, math_max(8, math_floor((db.height + 2 * pad) * 2 / 3))) end
+    -- the bar and its background sit inside the border's rounded corners (no square corner poking out).
+    -- Other addons' art can't be measured: the bar goes as far as the background always did there
+    if edgeFile then pad = NP.BorderFit(edgeFile, edge) or math_max(1, math_max(pad, math.ceil(edge * 0.3)) - 1) end
     return edgeFile, edge, pad
 end
 
@@ -1486,7 +1497,7 @@ function NP.Layout(p)
     p.box:ClearAllPoints()
     p.box:SetAllPoints(p.root)
     -- (the background inside the border, as the bar: its square corners never show past the round ones)
-    local bgIn = edgeFile and math_max(1, pad - 1) or 0
+    local bgIn = edgeFile and pad or 0
     p.bgInset = bgIn
     -- (FlareUI Thin and Thick have slanted corners: the background's corners are cut to match, so no dark
     -- square shows past them. Its slant ends 13 of the art's 32 px in)
@@ -1642,6 +1653,13 @@ function NP.Layout(p)
             texture = castTexture, border = false, borderTexture = borderName,
             bgOpacity = db.bgOpacity, glow = ns.CastGlowOn(db.castGlow),
         }, p.castAnchor, "BOTTOM")
+        -- (the border's line right on the bar, as the plate's: the kit's backdrop is wrap px round the bar)
+        local castFit = NP.BorderFit(castArt, castEdge)
+        local _, wrap = K.BorderFit(db.castHeight, false)
+        local castIn = castFit and wrap - castFit or 0
+        p.cast.Border:ClearAllPoints()
+        p.cast.Border:SetPoint("TOPLEFT", p.cast.Backdrop, "TOPLEFT", castIn, -castIn)
+        p.cast.Border:SetPoint("BOTTOMRIGHT", p.cast.Backdrop, "BOTTOMRIGHT", -castIn, castIn)
         if castArt then
             p.cast.Border:SetBackdrop({ edgeFile = castArt, edgeSize = castEdge })
             local c = ns.BORDER_COLOR
@@ -1671,13 +1689,14 @@ function NP.Layout(p)
         if db.castImportant then glow.pulse:Play() else glow.pulse:Stop() end
         -- Flash When Targeted: the frame's whole inside, under its border, corners cut as the
         -- border's (as the plate's background, from the cast bar's own edge)
-        local fin = castArt and math_max(1, math.ceil(castEdge * 0.3) - 1) or 0
+        local fin = castFit or (castArt and math_max(1, math.ceil(castEdge * 0.3) - 1)) or 0
         local slanted = castArt and (castArt:find("FlareUI%-Frames") or castArt:find("FlareUI%-Thick"))
         p.cast.targeted:ClearAllPoints()
-        p.cast.targeted:SetAllPoints(p.cast.Backdrop)
+        p.cast.targeted:SetAllPoints(p.cast.Border)
         NP.Background(p.cast.targeted.fill, fin, slanted and math_floor(castEdge * 13 / 32 + 0.5) or fin, 0.5, C.TARGETED_RGB, "ADD")
         -- Highlight Important Casts: its soft glow round the frame (the border copy sits on the border)
-        NP.PlaceGlow(glow.soft, p.cast.Backdrop, w + (db.castIcon and db.castHeight or 0) + 8, db.castHeight + 8, C.IMPORTANT_SIZE)
+        local room = 2 * (castFit or 4)
+        NP.PlaceGlow(glow.soft, p.cast.Border, w + (db.castIcon and db.castHeight or 0) + room, db.castHeight + room, C.IMPORTANT_SIZE)
         -- Kick Ready Mark: the waiting bar as wide as the cast bar (its icon aside: the kit sets no gap)
         p.cast.kickWait:SetSize(math_max(1, w - (db.castIcon and db.castHeight or 0)), db.castHeight)
         p.cast.kickSpark:SetSize(12, db.castHeight * 2.2)
@@ -1707,22 +1726,20 @@ function NP.Layout(p)
         p.nameFull = db.nameOnlyFull ~= false
         p.name:ClearAllPoints()
         p.name:SetPoint("CENTER", p.box, "CENTER", 0, 0)
-        -- Name Only Size (11-20): this type's name alone, scaled; the Names font itself stays as set
-        -- (through the font family with a size offset, from the Names font's own size: a SetFont on
-        -- the string would beat the family from then on, and each layout would scale it again)
+        -- its own font (11-23, Malkkav), and Name Only Size (11-20): this type's name alone, scaled
+        -- (through the font family with a size offset, from the font's own size: a SetFont on the
+        -- string would beat the family from then on, and each layout would scale it again)
         local scale = (tonumber(db.nameOnlySize) or 100) / 100
-        if scale ~= 1 and K and K.ApplyFont then
-            local base = (db.nameFont and db.nameFont.size) or 12
-            K.ApplyFont(p.name, db.nameFont, math_floor(base * (scale - 1) + 0.5))
-        end
+        local font = db.nameOnlyFont or db.nameFont
+        local base = (font and font.size) or 12
+        if K and K.ApplyFont then K.ApplyFont(p.name, font, scale ~= 1 and math_floor(base * (scale - 1) + 0.5) or nil) end
         p.name:SetWidth((w + 40) * math_max(1, scale))
         p.name:SetJustifyH("CENTER")
         p.name:Show()
         -- the NPC title under it, a little smaller (NP.UpdateTitle fills it)
         if p.npcTitle then
             if K and K.ApplyFont then
-                local base = (db.nameFont and db.nameFont.size) or 12
-                K.ApplyFont(p.npcTitle, db.nameFont, math_floor(base * (scale * C.TITLE_SIZE - 1) + 0.5))
+                K.ApplyFont(p.npcTitle, font, math_floor(base * (scale * C.TITLE_SIZE - 1) + 0.5))
             end
             p.npcTitle:ClearAllPoints()
             p.npcTitle:SetPoint("TOP", p.name, "BOTTOM", 0, -1)
@@ -1796,6 +1813,7 @@ end
 -- the other tanks in the group (role or main tank), for "Another Tank Has It"
 function NP.UpdateGroup()
     state.inGroup = IsInGroup()
+    state.inInstance = (IsInInstance()) and true or false
     wipe(state.tanks)
     local prefix, count = nil, 0
     if IsInRaid() then prefix, count = "raid", GetNumGroupMembers() elseif state.inGroup then prefix, count = "party", 4 end
@@ -1917,6 +1935,14 @@ end
 -- the colours of the unit frames' Threat Text (Blizzard's threat status colours). 100% is where you
 -- pull it; a tank holding it reads its lead over the next. Shown in a fight with threat on it, and on
 -- the Test plates; never on Name Only plates. A threat the game keeps hidden shows nothing.
+-- (11-23, ekci) Off, In a Group ("groups"), In an Instance ("instances") or Always (saved true / false while it
+-- was a switch, and still for Always and Off)
+function NP.ThreatPercentOn(db)
+    local mode = db.threatPercent
+    if mode == "groups" then return state.inGroup and true or false end
+    if mode == "instances" then return state.inInstance and true or false end
+    return mode and mode ~= "off" and true or false
+end
 function NP.UpdateThreatText(p, db)
     local fs = p.threatText
     if not fs then return end
@@ -1937,7 +1963,8 @@ function NP.UpdateThreatText(p, db)
         end
         fs:SetShown(shown and (p.threatInLevel or p.threatBoxOn) or false)
     end
-    if db.threatPercent and unit and not p.nameOnly then
+    local wanted = NP.ThreatPercentOn(db) or (NP.testKind and db.threatPercent and db.threatPercent ~= "off")
+    if wanted and unit and not p.nameOnly then
         if NP.testKind then
             display, status = 75, 1
         else
@@ -2142,7 +2169,8 @@ function NP.UpdateNameAbove(p)
     else
         fs:SetText(p.sampleName or "")
     end
-    fs:SetTextColor(p.name:GetTextColor())
+    local full = p.aboveColor
+    if full then fs:SetTextColor(full:GetRGB()) else fs:SetTextColor(p.name:GetTextColor()) end
 end
 
 function NP.UpdateName(p)
@@ -2154,6 +2182,7 @@ function NP.UpdateBarName(p)
     -- (11-23, exillix3) the colour even with no name in the bar: Names Above Plate takes it, and it kept
     -- the colour of whichever unit the plate had shown before
     if not (p.nameSlot or p.aboveKind) then return end
+    p.aboveColor = nil
     -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
     -- front, in its colour
     if p.nameSlot then
@@ -2194,7 +2223,22 @@ function NP.UpdateBarName(p)
     if player and (p.nameOnly or db.nameClassColor) then
         local _, class = UnitClass(unit)
         local ok, color = pcall(C_ClassColor.GetClassColor, class)
-        if ok and color then p.name:SetTextColor(color:GetRGB()) return end
+        if ok and color then
+            -- on a bar of the same colour: a lighter shade, or the name is lost in it (the name above keeps it)
+            local mode = db.healthColor
+            local r, g, b = color:GetRGB()
+            if not p.nameOnly and p.nameSlot and mode ~= "health" and mode ~= "reaction" and mode ~= "off" then
+                p.aboveColor = color
+                if canaccessvalue(r) and canaccessvalue(g) and canaccessvalue(b) then
+                    local k = C.NAME_LIFT
+                    r, g, b = r + (1 - r) * k, g + (1 - g) * k, b + (1 - b) * k
+                else
+                    r, g, b = 1, 1, 1
+                end
+            end
+            p.name:SetTextColor(r, g, b)
+            return
+        end
     end
     -- a name with no bar under it carries the reaction colour itself
     if p.nameOnly then
@@ -2203,6 +2247,8 @@ function NP.UpdateBarName(p)
     end
     p.name:SetTextColor(1, 1, 1)
 end
+
+C.NAME_LIFT = 0.6   -- Colour Names by Class: how far towards white on a class-coloured bar
 
 -- NPC TITLES (11-21, Malkkav: always on, no option): an NPC's title ("General Goods", "Blacksmithing
 -- Trainer") under its name on a Name Only plate, as players asked. The game has no call for it: it is
@@ -2671,6 +2717,33 @@ function NP.QuestieHasIcons()
     local db = type(questie) == "table" and questie.db
     local profile = type(db) == "table" and db.profile
     return type(profile) == "table" and profile.nameplateEnabled == true
+end
+-- Questie hangs its icon on the game's plate, which stays one size while ours grows and shrinks around
+-- your target, so the icon sat elsewhere on your target's plate, over the level box (11-23, Tride). Its left
+-- point goes on the leftmost of our parts instead (the bar, the level box, a marker beside them); its settings,
+-- size and parent stay Questie's. The same point goes back when the unit's plate does (Questie's own
+-- SetPoint replaces it on reuse anyway).
+function NP.FixQuestie(p)
+    local plate = p.gamePlate
+    if not (plate and NP.QuestieHasIcons()) then return end
+    local profile = _G.Questie.db.profile
+    local x, y = tonumber(profile.nameplateX), tonumber(profile.nameplateY)
+    if not (x and y) then return end
+    local outer = (not p.nameOnly and p.questSide == "right" and p.raid and p.raid:IsShown() and p.raid)
+        or p.leftOf or p.root
+    for _, child in ipairs({ plate:GetChildren() }) do
+        if not child:IsForbidden() and child.Icon and child.lastIcon then
+            p.questie = child
+            child:SetPoint("LEFT", outer, "LEFT", x, y)
+        end
+    end
+end
+function NP.ReturnQuestie(p)
+    local child, plate = p.questie, p.gamePlate
+    p.questie = nil
+    if not (child and plate and child:GetParent() == plate and NP.QuestieHasIcons()) then return end
+    local profile = _G.Questie.db.profile
+    child:SetPoint("LEFT", plate, "LEFT", tonumber(profile.nameplateX) or 0, tonumber(profile.nameplateY) or 0)
 end
 function NP.QuestParts(p, preview)
     local shared = SharedSettings(preview or (p and p.sample))
@@ -3260,6 +3333,10 @@ function NP.Claim(unit)
     end)
     if ok then
         stats.claimed = stats.claimed + 1
+        -- (Questie may make its icon after us)
+        if NP.QuestieHasIcons() then
+            C_Timer.After(0, function() if p.unit == unit and p.gamePlate == plate then pcall(NP.FixQuestie, p) end end)
+        end
         if NP.ComboPlateChanged then pcall(NP.ComboPlateChanged) end
     else
         stats.failed = stats.failed + 1
@@ -3295,6 +3372,7 @@ function Release(p)
         p.gamePlate.FlareUIHealthBar = nil
     end
     pcall(NP.DieProxy, p.gamePlate, nil)
+    pcall(NP.ReturnQuestie, p)
     if p.gamePlate and byPlate[p.gamePlate] == p then byPlate[p.gamePlate] = nil end
     p.gamePlate, p.unit, p.targetShown = nil, nil, nil
     p.root:Hide()
@@ -3338,6 +3416,7 @@ function NP.Sync()
             pcall(ShowBlizzard, p)
             if not plate.UnitFrame:IsForbidden() then HideBlizzard(p, plate.UnitFrame) end
         end
+        if p.unit then pcall(NP.FixQuestie, p) end
     end
     for _, unit in ipairs(reclaim) do NP.Claim(unit) end
     for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
@@ -4313,6 +4392,14 @@ local function MigrateProfile()
         local uf = ns.db.profile.unitframes or {}
         for _, key in ipairs({ "auraSwipe", "auraTimer", "auraTimerColor" }) do
             if uf[key] ~= nil and rawget(db, key) == nil then db[key] = uf[key] end
+        end
+    end
+    -- 11-23: Name Only plates have their own font: it starts as the Names font they used until now
+    if db and not db.nameOnlyFontV1 then
+        db.nameOnlyFontV1 = true
+        if type(db.nameFont) == "table" then
+            db.nameOnlyFont = type(db.nameOnlyFont) == "table" and db.nameOnlyFont or {}
+            for key, value in pairs(db.nameFont) do db.nameOnlyFont[key] = Copy(value) end
         end
     end
     -- 11-19: the Chevron and Hook arrows went (Chevron was the Yellow one turned)

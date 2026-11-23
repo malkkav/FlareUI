@@ -178,7 +178,8 @@ assert(system.Selection:GetNumPoints() == 0)
 ready = true
 ui:flushTimers()
 local pointName, relativeTo, _, left, top = system.Selection:GetPoint(1)
-assert(pointName == "TOPLEFT" and relativeTo == reference and left == 1.5 and top == 3)
+-- on the system itself: Edit Mode's Snap reads these offsets as the distance from the system's edges
+assert(pointName == "TOPLEFT" and relativeTo == system and left == system.insets[1] / 2 and top == system.insets[3] / 2)
 local anchor, _, _, offsetX, offsetY = system:GetPoint(1)
 assert(anchor == "TOP" and offsetX == 15 and offsetY == -30)
 assert(system.insets[1] == 3 and system.insets[3] == 256)

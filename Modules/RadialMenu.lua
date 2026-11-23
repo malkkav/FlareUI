@@ -117,6 +117,7 @@ local PING = {
     -- Blizzard_RadialWheel.lua's timings: fade in / out while the icons glide SLIDE px
     INTRO = 0.2, OUTRO = 0.13, SLIDE = 20,
     LABEL_GAP = 4,
+    LABEL_ROOM = 24,                    -- kept free past the buttons at a screen edge
     LABEL_WRAP = 16,                    -- a name of several words this long goes on two lines
     -- Button Names, Always: a name above or below its button takes this share of the gap to the
     -- next button; one to the side is at most SIDE_WIDTH wide
@@ -202,6 +203,24 @@ local function CursorPosition()
     local scale = UIParent:GetEffectiveScale()
     local x, y = GetCursorPosition()
     return x / scale, y / scale
+end
+
+-- How far a radial reaches from its middle, on the screen: its buttons with a name above or below, or
+-- those of a sub-radial opened in its place when they reach further
+function RM.Reach(list)
+    local most = #list
+    for _, info in ipairs(list) do
+        local sub = #(info.radialID and resolvedCache[info.radialID] or {})
+        if sub > most then most = sub end
+    end
+    return (RadialRadius(most) + ROUND_SIZE / 2 + PING.LABEL_ROOM) * (tonumber(Option("scale", 1)) or 1)
+end
+
+-- The middle of a radial opened at x, y, moved in from the screen's edges (OPEN_POINT_SNIPPET's twin)
+function RM.Inside(x, y, reach)
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    local rx, ry = math_min(reach, w / 2), math_min(reach, h / 2)
+    return math_min(math_max(x, rx), w - rx), math_min(math_max(y, ry), h - ry)
 end
 
 --------------------------------------------------
@@ -1489,10 +1508,11 @@ end
 -- stick keeps moving you. A frame that listens to the sticks takes BOTH from the game unless it passes
 -- its input on; a handler's "return true" only does that for Blizzard's own frames (11-23, ericusson:
 -- opening a radial stopped the character; likely the 11-09 dead sticks too). So two frames:
---   Sticks.guard passes everything on and only watches. It listens ONLY while a controller radial is
---     open. Turning stick input on is protected, so the secure open / close snippets do it (frame ref
---     "stickguard"), which works in a fight too. Made with the secure layer, out of combat.
---   Sticks.block takes what it gets. It is a plain frame, shown for the camera's event alone.
+--   Sticks.guard passes everything on and only watches. It is shown ONLY while a controller radial is
+--     open, and a hidden frame takes no input: showing a plain frame works in a fight too, where turning
+--     stick input on is refused. (7.0.7 had it on a protected frame that the secure snippets turned on;
+--     dutra_ still couldn't walk. ConsolePort and RL Radial Menu, where walking works, use plain frames.)
+--   Sticks.block takes what it gets. It is a plain frame too, shown for the camera's event alone.
 -- Each frame the game sends the raw sticks (Left, Right), then their twins in the same order (Movement,
 -- Camera), each twin only if its raw stick moved; the game acts on the twins (ConsolePort's finding). So
 -- the block goes up right before Camera: after Right, or after Movement when the left stick moved too.
@@ -1539,31 +1559,29 @@ local function GuardStick()
             if Sticks.endIn <= 0 or not stick or (stick.len or 0) < Sticks.HOLD_LEN then Sticks.End() end
         end
     end)
-    -- (a fight: the listener goes off while it still can)
-    Sticks.clock:RegisterEvent("PLAYER_REGEN_DISABLED")
-    Sticks.clock:SetScript("OnEvent", function() if Sticks.endIn then Sticks.End() end end)
-    Sticks.guard = CreateFrame("Frame", nil, UIParent, "SecureFrameTemplate")
+    Sticks.guard = CreateFrame("Frame", nil, UIParent)
+    Sticks.guard:Hide()
     Sticks.guard:SetFrameStrata("BACKGROUND")
     Sticks.guard:SetPropagateKeyboardInput(true)
     Sticks.guard:SetScript("OnGamepadStick", Sticks.Watch)
-    Sticks.guard:EnableGamePadStick(false)
+    Sticks.guard:EnableGamePadStick(true)
     return Sticks.guard
 end
 
--- Out of a fight, a radial closed with the right stick still out keeps the camera held until the stick
--- is back (or HOLD_AFTER seconds): the stick springing back swung the camera. In a fight the close
--- snippet turns the listener off at once, as it can't be turned off here.
+-- A radial closed with the right stick still out keeps the camera held until the stick is back (or
+-- HOLD_AFTER seconds): the stick springing back swung the camera.
 Sticks.HOLD_AFTER, Sticks.HOLD_LEN = 0.4, 0.2
 
--- out of a fight, the listener goes off with the radial whatever closed it
+-- the listener goes off with the radial, whatever closed it
 local function ReleaseStickGuard()
-    if Sticks.guard and not InCombatLockdown() then pcall(Sticks.guard.EnableGamePadStick, Sticks.guard, false) end
+    if Sticks.guard then Sticks.guard:Hide() end
 end
 
 local function HoldCamera(on)
     Sticks.endIn = nil
     Sticks.held = on and true or false
     if not Sticks.block then return end
+    Sticks.guard:SetShown(Sticks.held)
     Sticks.clock:SetShown(Sticks.held)
     if not Sticks.held then Sticks.FrameEnd() end
 end
@@ -1575,7 +1593,7 @@ function Sticks.End()
 end
 -- the radial closed: now, or once the stick is back
 function Sticks.Close()
-    local stick = Sticks.held and Sticks.block and not InCombatLockdown() and PadStick()
+    local stick = Sticks.held and Sticks.block and PadStick()
     if stick and (stick.len or 0) >= Sticks.HOLD_LEN then
         Sticks.endIn = Sticks.HOLD_AFTER
     else
@@ -1662,6 +1680,11 @@ local function UpdateSelection()
         centerX, centerY = centerX * s, centerY * s
         dx, dy = cx - centerX, cy - centerY
         aimed = (dx * dx + dy * dy) > DEAD_ZONE_SQ
+        -- moved in from a screen edge: the cursor has to move first (SELECT_SNIPPET)
+        if aimed and RM.fromX then
+            local mx, my = cx - RM.fromX, cy - RM.fromY
+            aimed = (mx * mx + my * my) > DEAD_ZONE_SQ
+        end
     end
     local index
     if aimed then
@@ -1799,7 +1822,7 @@ local function OpenRadial(radialID, mode)
     radial.CancelIcon:SetAtlas(padIcon and ATLAS_CANCEL_PAD or ATLAS_CANCEL_ICON)
 
     -- the secure layer measures from the same point
-    local x, y
+    local x, y, fromX, fromY
     padSticky = nil
     if openMode == "pad" then
         HoldCamera(true)
@@ -1812,8 +1835,10 @@ local function OpenRadial(radialID, mode)
     if openMode == "pad" or centered then
         x, y = UIParent:GetCenter()
     else
-        x, y = CursorPosition()
+        fromX, fromY = CursorPosition()
+        x, y = RM.Inside(fromX, fromY, header and header:GetAttribute((currentID or "") .. "-reach") or RM.Reach(resolved))
     end
+    RM.fromX, RM.fromY = fromX, fromY
     radial:ClearAllPoints()
     -- offsets are in the radial's own (scaled) units
     radial:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x / scale, y / scale)
@@ -1927,14 +1952,17 @@ local SELECT_SNIPPET = ([[
         local screen = self:GetFrameRef("wheel")
         local x, y = screen:GetMousePosition()
         if not x then return nil end
-        dx, dy = x * screen:GetWidth() - OPENX, y * screen:GetHeight() - OPENY
+        x, y = x * screen:GetWidth(), y * screen:GetHeight()
+        -- near a screen edge the wheel moved in and the cursor is off its middle: the cursor has to move first
+        if FROMX and (x - FROMX) * (x - FROMX) + (y - FROMY) * (y - FROMY) <= %d then return nil end
+        dx, dy = x - OPENX, y - OPENY
         if dx * dx + dy * dy <= %d then return nil end
     end
     local tau = 2 * math.pi
     local interval = tau / count
     local angle = math.atan2(dy, dx)
     return math.floor(((math.pi / 2 - angle) %% tau + interval / 2) / interval) %% count + 1
-]]):format(PAD_DEAD_LEN, DEAD_ZONE_SQ)
+]]):format(PAD_DEAD_LEN, DEAD_ZONE_SQ, DEAD_ZONE_SQ)
 
 -- self is the header. The attribute prefix of the aimed button.
 local AIMED_SNIPPET = [[
@@ -1944,16 +1972,23 @@ local AIMED_SNIPPET = [[
     return ACTIVE .. "-s" .. index .. "-" .. child .. "-"
 ]]
 
--- self is the header. Sets OPENX / OPENY in the wheel frame's units; the wheel frame must be shown.
+-- self is the header. Sets OPENX / OPENY in the wheel frame's units; the wheel frame must be shown, ACTIVE set.
+-- The wheel stays on screen (RM.Inside is the art's side of it); FROMX / FROMY is the cursor it opened at.
 local OPEN_POINT_SNIPPET = [[
     local screen = self:GetFrameRef("wheel")
+    FROMX, FROMY = nil, nil
     if self:GetAttribute("flare-center") then
         OPENX, OPENY = screen:GetWidth() / 2, screen:GetHeight() / 2
         return
     end
     local x, y = screen:GetMousePosition()
     if x then
-        OPENX, OPENY = x * screen:GetWidth(), y * screen:GetHeight()
+        local w, h = screen:GetWidth(), screen:GetHeight()
+        FROMX, FROMY = x * w, y * h
+        local reach = self:GetAttribute(ACTIVE .. "-reach") or 0
+        local rx, ry = math.min(reach, w / 2), math.min(reach, h / 2)
+        OPENX = math.min(math.max(FROMX, rx), w - rx)
+        OPENY = math.min(math.max(FROMY, ry), h - ry)
     else
         OPENX, OPENY = nil, nil
     end
@@ -1991,9 +2026,6 @@ local CLOSE_PAD_SNIPPET = [[
     if MODE ~= "pad" then return end
     MODE, STICKY = nil, nil
     self:ClearBindings()
-    -- (out of a fight the art turns it off, maybe a moment later: Sticks.Close)
-    local guard = self:GetFrameRef("stickguard")
-    if guard and PlayerInCombat() then guard:EnableGamePadStick(false) end
     if not ... then self:CallMethod("OnSecureClose") end
 ]]
 
@@ -2005,9 +2037,6 @@ local OPEN_PAD_SNIPPET = [[
     HELD = newtable()
     -- AIMED: a direction was pressed since it opened. CANCELDOWN: B or Escape was
     AIMED, CANCELDOWN = nil, nil
-    -- the camera stick is held only while open (see GuardStick)
-    local guard = self:GetFrameRef("stickguard")
-    if guard then guard:EnableGamePadStick(true) end
     -- the right stick's directions (keys while the CVar is on) keep the aim
     self:SetBindingClick(true, "PADRSTICKUP", "]] .. AIM_NAME .. [[Up", "AimUp")
     self:SetBindingClick(true, "PADRSTICKDOWN", "]] .. AIM_NAME .. [[Down", "AimDown")
@@ -2395,6 +2424,7 @@ function SyncSecure()
     end
     for id, list in pairs(resolvedCache) do
         Set(id .. "-count", #list)
+        Set(id .. "-reach", RM.Reach(list))
         for i, info in ipairs(list) do
             local children = info.children or { info }
             Set(id .. "-s" .. i .. "-n", #children)
@@ -2479,7 +2509,7 @@ local function CreateSecureLayer()
     end
     header:SetAttribute("flare-openpad", OPEN_PAD_SNIPPET)
     header:SetAttribute("flare-closepad", CLOSE_PAD_SNIPPET)
-    SecureHandlerSetFrameRef(header, "stickguard", GuardStick())
+    GuardStick()
 
     -- Full screen: it is SELECT_SNIPPET's coordinate frame (GetMousePosition is nil outside the
     -- frame asked). Takes the wheel only, never clicks.
@@ -2778,10 +2808,25 @@ function RM:PlaceOnBar(id, key, force)
         local otherKind, otherID = GetActionInfo(other)
         if other ~= slot and otherKind == "macro" and otherID == macro then util.ClearActionFromGamepadSlot(other) end
     end)
-    util.AssignActionToGamepadStandardSlot(slot, PickupMacro, macro)
-    ClearCursor()
-    PadBarStore()[id] = key
+    RM.PutMacroOnSlot(id, slot, key, 5)
     return true
+end
+
+-- A macro just made can't be picked up yet (dutra_ 11-23: the game's "Failed to pick up an action to bind"):
+-- tried again a moment later, and the game's own placing is called only with the macro on the cursor
+function RM.PutMacroOnSlot(id, slot, key, tries)
+    if InCombatLockdown() then return end
+    local macro = FindPadMacro(id)
+    ClearCursor()
+    if macro then PickupMacro(macro) end
+    if GetCursorInfo() then
+        _G.GamepadActionBarBindingUtil.AssignActionToGamepadStandardSlot(slot)
+        ClearCursor()
+        PadBarStore()[id] = key
+        if RM.OnBarPlaced then RM.OnBarPlaced(id) end
+    elseif tries > 1 then
+        C_Timer.After(0.2, function() RM.PutMacroOnSlot(id, slot, key, tries - 1) end)
+    end
 end
 
 -- off this character's controller bar (the macro stays for the other characters)

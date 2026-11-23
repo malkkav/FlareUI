@@ -389,6 +389,44 @@ assert(filters[1] == "SAY" and channels[1] == "General")
 ui:flushTimers()
 assert(actionBar and updated == 1 and opened[#opened][1] == "FLAREUI_SYNC_RELOAD")
 
+-- what doesn't ask the other characters to reload (11-23, Shweep): a setting new to the list, channels in
+-- another order, a channel this one can't join, a switch flipped while playing
+do
+    local same = { source = store.source }
+    local old = { savedAt = 5, sourceGuid = store.source.guid, cvars = { a = "1" }, cvarStamps = { a = 5 }, stamps = {},
+        chat = { { name = "Main", messages = { "SAY", "YELL" }, channels = { "General", 1, "Trade", 2 } } } }
+    for _, part in ipairs({ "layout", "chatFilters", "chat", "bags", "bagFlags", "guild", "actionBars", "chatColors" }) do old.stamps[part] = 5 end
+    local new = { cvars = { a = "1", b = "1" },
+        chat = { { name = "Main", messages = { "YELL", "SAY" }, channels = { "Trade", 7, "General", 1 } } } }
+    tweaks.StampSyncSnapshot(same, old, new)
+    assert(same.snapshot == new and new.cvarStamps.b == nil and new.cvarStamps.a == 5, "a new setting isn't a change")
+    assert(new.stamps.chatFilters == 5 and new.stamps.chat == 5, "the same channels in another order")
+    local third = { cvars = { a = "2", b = "1" }, chat = new.chat }
+    tweaks.StampSyncSnapshot(same, new, third)
+    assert(third.cvarStamps.a > 5 and third.cvarStamps.b == nil)
+    assert(tweaks.SYNC_NO_RELOAD.nameplateShowEnemies)
+    local isGamepad = ns.IsGamepadUI
+    ns.IsGamepadUI = function() return true end
+    assert(tweaks.GamepadOwns("SoftTargetEnemy") and tweaks.GamepadOwns("TargetAutoLock") and not tweaks.GamepadOwns("autoLootDefault"))
+    ns.IsGamepadUI = isGamepad
+    assert(not tweaks.GamepadOwns("SoftTargetEnemy"))
+    -- another character: the channel isn't one it can have
+    local add = env.AddChatWindowChannel
+    env.AddChatWindowChannel = function() end
+    env.RemoveChatWindowChannel = function() end
+    guid, filters, channels = "Player-Third", { "SAY" }, { "Trade" }
+    cv.autoLootDefault, env.EditModeManagerFrame.layoutInfo.activeLayout = "0", 1
+    local asked = #opened
+    tweaks.accountStarted = nil
+    tweaks:ShouldLoad()
+    ui:flushTimers()
+    ui:flushTimers()
+    assert(ns.CharDB().syncApplied == 1001 and #opened == asked, "no reload asked for what can't change")
+    env.AddChatWindowChannel = add
+    env.RemoveChatWindowChannel = function() channels = {} end
+    channels, filters = { "General" }, { "SAY" }
+end
+
 -- the Gamepad UI: synced settings and chat windows wait for the reload it asks for (11-23: applied live they
 -- run Blizzard's controller code in FlareUI's name)
 do

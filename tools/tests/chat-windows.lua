@@ -161,6 +161,7 @@ local function window(id, title)
     cf.SetTimeVisible = function(self, value) self.timeVisible = value end
     cf.SetFadeDuration = function(self, value) self.fadeDuration = value end
     cf.SetFading = function(self, value) self.fading = value end
+    cf.GetFading = function(self) return self.fading end
     cf.ResetAllFadeTimes = function(self) self.fadeResets = self.fadeResets + 1 end
     cf.AddMessage = function(self, msg, r, g, b, kind) self.messages[#self.messages + 1] = { msg, r, g, b, kind } end
     cf.GetNumMessages = function(self) return #self.messages end
@@ -288,6 +289,71 @@ local hits = assert(bar.FlareUI_Hits and bar.FlareUI_Hits[1], "a click box over 
 local over = { LOW = "MEDIUM", MEDIUM = "HIGH" }
 assert(hits:GetFrameStrata() == over[bar:GetFrameStrata()] and hits:GetFrameLevel() == 0,
     "one layer up: a click on the chat raises its window over boxes on its own")
+-- (11-23 again) a tab under its box lets the mouse through, so the box gets the click whichever is on top
+assert(bar.buttons[1]:IsMouseEnabled() == false)
+do
+    local secureHits = {}
+    for i, hit in ipairs(bar.FlareUI_Hits) do secureHits[i] = hit:GetAttribute("type1") end
+    hits:SetAttribute("type1", nil)
+    ui:emit("PLAYER_REGEN_DISABLED")
+    assert(hits:GetAttribute("type1") == "click", "put right as a fight starts (a drag had emptied it)")
+    for i, hit in ipairs(bar.FlareUI_Hits) do hit:SetAttribute("type1", secureHits[i]) end
+end
+-- a line under the pointer doesn't start fading again on a refresh
+general.FlareUI_LinesHeld = true
+chat.LineFadeOn(general, ns.db.profile.chat)
+assert(not general.fading)
+general.FlareUI_LinesHeld = nil
+chat.LineFadeOn(general, ns.db.profile.chat)
+assert(general.fading)
+-- the line under the tabs goes with the frame: Border None and Background Opacity 0%
+do
+    local db = ns.db.profile.chat
+    local style, border, opacity = db.frameStyle, db.borderTexture, db.opacity
+    db.frameStyle, db.borderTexture, db.opacity = "modern", "None", 0
+    assert(chat.NoFrame(db))
+    chat.ApplyFrameStyleArt(skin, db)
+    local line = skin.Separator
+    assert(not line or not line:IsShown() or not ns.ObjectiveTracker)
+    db.opacity = 0.5
+    assert(not chat.NoFrame(db), "a background left: the line stays")
+    db.borderTexture, db.opacity = "FlareUI Thin", 0
+    assert(not chat.NoFrame(db), "a border left: the line stays")
+    db.frameStyle, db.borderTexture = "flareui", "None"
+    assert(not chat.NoFrame(db) and not chat.NoFrame(nil))
+    db.frameStyle, db.borderTexture, db.opacity = style, border, opacity
+    chat.ApplyFrameStyleArt(skin, db)
+end
+-- typing: a hidden answer falls back on Blizzard's active box
+do
+    local access, util = env.canaccessvalue, env.ChatFrameUtil
+    local box = { HasFocus = function() return "secret" end }
+    env.canaccessvalue = function(value) return value ~= "secret" end
+    env.ChatFrameUtil = { GetActiveWindow = function() return box end }
+    assert(chat.BoxFocused(box) and not chat.BoxFocused(nil))
+    env.ChatFrameUtil = { GetActiveWindow = function() end }
+    assert(not chat.BoxFocused(box))
+    box.HasFocus = function() return true end
+    assert(chat.BoxFocused(box))
+    env.canaccessvalue, env.ChatFrameUtil = access, util
+end
+-- a whisper wakes the chat for a tab that isn't on screen too; other lines only for a shown window
+do
+    local woken = {}
+    local show = chat.ShowChatFrame
+    chat.ShowChatFrame = function(_, frame) woken[#woken + 1] = frame end
+    local registered, visible = general.IsEventRegistered, general.IsVisible
+    general.IsEventRegistered = function(_, event) return event:find("CHAT_MSG") ~= nil end
+    general.IsVisible = function() return false end
+    local docked = general.isDocked
+    general.isDocked = true
+    chat.WakeForLine(ns.db.profile.chat, "CHAT_MSG_BN_WHISPER")
+    assert(#woken == 1 and woken[1] == general)
+    chat.WakeForLine(ns.db.profile.chat, "CHAT_MSG_SAY")
+    assert(#woken == 1)
+    general.isDocked = docked
+    general.IsEventRegistered, general.IsVisible, chat.ShowChatFrame = registered, visible, show
+end
 env.DamageMeter = env.DamageMeter or {}
 local oldStrata = env.DamageMeter.FlareUI_ChatStrata
 env.DamageMeter.FlareUI_ChatStrata = "HIGH"

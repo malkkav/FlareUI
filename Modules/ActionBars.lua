@@ -1897,8 +1897,9 @@ local CLASS_PAGING = {
     -- Druids: Prowl keeps Cat Form's page (7, Blizzard's), Shadowmeld in caster form page 1.
     -- offDriver: Forever doesn't page Prowl (rogues' Stealth does), so with the toggle off FlareUI
     -- pages it itself: Prowl turns bar 1 to the prowl page (8, bonus bar 2), only from page 1 (page
-    -- keys still turn pages)
-    DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default",
+    -- keys still turn pages). bonusbar:2 held too, should the game's own prowl page come before or
+    -- outlast the stealth (11-23, Ciron)
+    DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,bonusbar:2] 7; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default",
               offDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 8; default" },
     WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
 }
@@ -1943,8 +1944,29 @@ local function ApplyClassPaging()
         for n, button in ipairs(GetButtonsForBarKey("bar1")) do classPager:SetFrameRef("b" .. n, button) end
         classPager:SetAttribute("_onstate-page", PAGE_SNIPPET)
     end
+    if not classPager then return end
+    -- emptied first, so the state is written to the buttons even when it didn't change: one that another
+    -- addon had written over never came back (11-23, Ciron)
+    classPager:SetAttribute("state-page", nil)
     -- off again: "default" hands the buttons back to their bar's own page
-    if classPager then RegisterStateDriver(classPager, "page", driver or "default") end
+    RegisterStateDriver(classPager, "page", driver or "default")
+    if driver and not ActionBars.pageCheck then
+        ActionBars.pageCheck = CreateFrame("Frame")
+        ActionBars.pageCheck:RegisterEvent("UPDATE_STEALTH")
+        ActionBars.pageCheck:SetScript("OnEvent", function() C_Timer.After(0.3, ActionBars.CheckClassPage) end)
+    end
+end
+
+-- a moment after entering or leaving Stealth: the buttons on the page FlareUI holds, if it holds one
+function ActionBars.CheckClassPage()
+    local page = classPager and tonumber(classPager:GetAttribute("state-page"))
+    if not page or InCombatLockdown() then return end
+    for _, button in ipairs(GetButtonsForBarKey("bar1")) do
+        if button:GetAttribute("actionpage") ~= page then
+            ApplyClassPaging()
+            return
+        end
+    end
 end
 
 -- The spellbook's "not on your bars" glow: in a stance Blizzard counts the stance's page as bar 1 and
@@ -2192,8 +2214,9 @@ function ActionBars.ApplyCapScales()
         local cap = caps[field]
         local scale = (sizes[key] or 100) / 100
         if cap and not cap:IsForbidden() and (scale ~= 1 or cap.FlareUI_Scaled) then
-            local setScale = cap.SetScaleBase or cap.SetScale
-            setScale(cap, scale)
+            -- (11-23, gerudoku) its place on screen kept: at login Edit Mode places it before this scale, which
+            -- then stretched its offsets too
+            ns.SetSystemScale(cap, scale)
             cap.FlareUI_Scaled = scale ~= 1 or nil
         end
     end

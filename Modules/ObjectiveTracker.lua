@@ -1220,8 +1220,21 @@ end
 -- map (untainted, as a click on it), then a secure button clicks that quest's title in the log, which
 -- Blizzard's code opens (QuestMapLogTitleButton_OnClick). The picker aims at its target in its
 -- PreClick, out of a fight: the details' Back button when another quest's details are open (the
--- macro clicks it twice: back, then the quest), else the quest's title. If the log hides the quest
--- (collapsed, filtered), the map and log still open. Idea from the tracker research (11-22).
+-- macro clicks it three times: back, the quest's folded heading, the quest), else the quest's title. With
+-- the map on a zone Blizzard folds every heading that isn't on it, often all of them, so the title isn't
+-- there until its heading is clicked (11-23, AstroFox: from a zone map only the log opened). If the log's
+-- search hides the quest, the map and log still open. Idea from the tracker research (11-22).
+-- the heading in Blizzard's log that hides this quest, if it is folded
+function OT.FoldedHeading(questID)
+    local index = C_QuestLog.GetHeaderIndexForQuest and C_QuestLog.GetHeaderIndexForQuest(questID)
+    local info = index and C_QuestLog.GetInfo(index)
+    local pool = QuestScrollFrame and QuestScrollFrame.headerFramePool
+    if not (info and info.isCollapsed and pool) then return nil end
+    for heading in pool:EnumerateActive() do
+        if heading.questLogIndex == index and heading:IsVisible() then return heading end
+    end
+end
+OT.PICK_CLICKS = "/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick"
 function OT.QuestPicker()
     local picker = OT.questPicker
     if picker then return picker end
@@ -1239,7 +1252,7 @@ function OT.QuestPicker()
             if details.questID ~= want then target = details.BackFrame and details.BackFrame.BackButton end
         elseif want and QuestLogQuests_GetQuestButton then
             local b = QuestLogQuests_GetQuestButton(want)
-            if b and b:IsVisible() then target = b end
+            if b and b:IsVisible() then target = b else target = OT.FoldedHeading(want) end
         end
         self:SetAttribute("clickbutton", target)
     end)
@@ -1273,7 +1286,7 @@ function OT.ShowSecureClick(line)
             if InCombatLockdown() or self:GetAttribute("type1") ~= "macro" or button ~= "LeftButton" then return end
             local open = WorldMapFrame and WorldMapFrame:IsShown()
             self:SetAttribute("macrotext1", (open and "" or "/click QuestLogMicroButton\n")
-                .. "/click FlareUIQuestPick\n/click FlareUIQuestPick")
+                .. OT.PICK_CLICKS)
         end)
         -- (only the plain left click: a modified one finds no "shift-type1" and takes the line's path)
         o:SetScript("PostClick", function(self, button)
@@ -3853,7 +3866,7 @@ function OT.Pad.AimDetails(button, questID)
     local open = WorldMapFrame and WorldMapFrame:IsShown()
     button:SetAttribute("type", "macro")
     button:SetAttribute("macrotext", (open and "" or "/click QuestLogMicroButton\n")
-        .. "/click FlareUIQuestPick\n/click FlareUIQuestPick")
+        .. OT.PICK_CLICKS)
     return true
 end
 

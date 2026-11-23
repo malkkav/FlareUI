@@ -32,7 +32,7 @@ ns.Copy = {
         bl = {
             desc = L["Your bags and what you loot."],
             offCard = L["* FlareUI's bag and bank windows\n* Category filters and item levels\n* A loot roll window and a loot feed"],
-            tabs = { L["Bags"], L["Looting"], L["Fonts"] },
+            tabs = { L["Bags"], L["Looting"], L["Bank & Vendor"], L["Fonts"] },
             title = L["Bags & Looting"],
         },
         br = {
@@ -720,6 +720,12 @@ ns.Copy = {
             section = "bl.tools",
             tags = { "open bags", "character pane", "character frame", "auto open" },
             tip = L["The bank and guild bank always open your bags."],
+        },
+        ["bl.bankAddonNote"] = {
+            kind = "text",
+            label = L["Another Bag Addon"],
+            section = "bl.bankWindow",
+            text = L["(Shown while another bag addon is loaded; the panel writes the addon's name into its own line.)"],
         },
         ["bl.bankColumns"] = {
             desc = L["Slots per row in the bank. Default keeps Blizzard's 8."],
@@ -1433,9 +1439,11 @@ ns.Copy = {
             label = L["Font"],
         },
         ["font.flags"] = {
-            choices = { L["None"], L["Outline"], L["Thick Outline"] },
-            desc = L["A dark outline around the letters."],
+            choices = { L["None"], L["Outline"], L["Thick Outline"], L["Sharp Outline"] },
+            desc = L["A dark outline around the letters. Sharp Outline draws cleaner edges at any size."],
             label = L["Outline"],
+            tags = { "outline", "slug", "crisp", "smooth edges" },
+            tip = L["Some fonts draw stray lines with Sharp Outline. Pick another font or outline if yours does."],
         },
         ["font.shadow"] = {
             choices = { L["None"], L["Soft"], L["Strong"] },
@@ -1485,6 +1493,14 @@ ns.Copy = {
             section = "language.fonts",
             tags = { "nameplate font", "plate names", "unit names", "names over heads" },
             tip = L["The names over characters change after a full restart of the game, not a /reload."],
+        },
+        ["fonts.outline"] = {
+            choices = { L["Each Font's Own"], L["None"], L["Outline"], L["Thick Outline"], L["Sharp Outline"] },
+            desc = L["One outline for every FlareUI font, over its own Outline choice. Each Font's Own leaves them as they are."],
+            label = L["Outline"],
+            section = "language.fonts",
+            tags = { "outline", "slug", "sharp outline", "all fonts", "every font", "crisp" },
+            tip = L["Sharp Outline draws cleaner edges at any size, but some fonts draw stray lines with it."],
         },
         ["language.escButton"] = {
             desc = L["A FlareUI button in the game menu (Esc), right under Shop. It opens FlareUI's settings."],
@@ -1890,9 +1906,16 @@ ns.Copy = {
             section = "np.fonts",
         },
         ["np.font.name"] = {
-            desc = L["The unit's name above the bar."],
+            desc = L["The unit's name on the bar and above the plate."],
             label = L["Names"],
             section = "np.fonts",
+        },
+        ["np.font.nameOnly"] = {
+            desc = L["The name on Name Only plates, and the title under it."],
+            label = L["Name Only"],
+            section = "np.fonts",
+            tags = { "name only font", "names only", "title font" },
+            tip = L["Name Only Size, on the Plate tab, makes it bigger or smaller for each unit type."],
         },
         ["np.friendlyShow"] = {
             choices = { L["Off"], L["Always"], L["In Combat"] },
@@ -2015,7 +2038,7 @@ ns.Copy = {
             tip = L["The Name Only preset turns this on."],
         },
         ["np.nameOnlySize"] = {
-            desc = L["How big the name is in Name Only Mode. The Names font stays as it is everywhere else."],
+            desc = L["How big this unit's name is in Name Only Mode, in % of the Name Only font's size (Fonts tab)."],
             label = L["Name Only Size"],
             section = "np.nameOnlySection",
             tags = { "name size", "name only", "name scale" },
@@ -2186,7 +2209,8 @@ ns.Copy = {
             tags = { "aggro glow", "threat border" },
         },
         ["np.threatPercent"] = {
-            desc = L["Your threat on the unit as a number, in a small box beside the plate while you have threat. The box sits on the side away from the level, or on the right with no level. Coloured as the unit frames' Threat Text."],
+            choices = { L["Off"], L["In a Group"], L["In an Instance"], L["Always"] },
+            desc = L["When your threat on the unit shows as a number, in a small box beside the plate:\n* In a Group: only in a party or raid\n* In an Instance: only in dungeons, raids, battlegrounds and arenas\n* Always: solo too\nIt shows only while you have threat. The box sits on the side away from the level, or on the right with no level. Coloured as the unit frames' Threat Text."],
             label = L["Threat Percentage"],
             section = "np.threatSection",
             tags = { "threat percent", "threat number", "aggro percent" },
@@ -3399,7 +3423,7 @@ ns.Copy = {
         ["bl.lootRollsSection"] = L["Loot Rolls"],
         ["bl.lootWindowSection"] = L["Loot Window"],
         ["bl.looting"] = L["Looting"],
-        ["bl.tools"] = L["Tools"],
+        ["bl.tools"] = L["Tweaks"],
         ["br.alertsSection"] = L["Alerts"],
         ["br.classBuffs"] = L["Class Buffs"],
         ["br.consumablesSection"] = L["Consumables"],

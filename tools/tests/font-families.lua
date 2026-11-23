@@ -122,6 +122,40 @@ for _, client in ipairs({ "enUS", "zhCN" }) do
     check(files.korean, "Fonts\\2002.TTF", client .. " Korean face")
 end
 
+-- Global Font > Outline: over every font's own, or left to each
+do
+    local host = { TEXT_SCALE = 1, db = { profile = { fonts = { outline = "" } } }, LoadedLocale = function() return "enUS" end }
+    host = rawFactory(host, function() return "enUS" end, nil, timer, function() return "base" end)
+    local flags
+    local string = { SetFont = function(_, _, _, f) flags = f return true end, SetFontObject = function() end }
+    host.SetFont(string, "chosen.ttf", 12, "THICKOUTLINE")
+    check(flags, "THICKOUTLINE", "each font's own")
+    host.db.profile.fonts.outline = "OUTLINE, SLUG"
+    host.SetFont(string, "chosen.ttf", 12, "")
+    check(flags, "OUTLINE, SLUG", "one outline over all")
+    host.db.profile.fonts.outline = "NONE"
+    host.SetFont(string, "chosen.ttf", 12, "OUTLINE")
+    check(flags, "", "None over all")
+end
+
+-- Sharp Outline: the game's Slug flag reaches every alphabet's member, and the string scales smoothly only with it
+do
+    local captured
+    local actual = membersFactory({ TEXT_SCALE = 1 }, function() return "enUS" end, function(_, members) captured = members return {} end)
+    local smooth, times
+    times = 0
+    local string = { SetFontObject = function() end, SetSmoothScaling = function(_, on) smooth, times = on, times + 1 end }
+    actual.SetFontFamily(string, "chosen.ttf", 12, "OUTLINE")
+    check(times, 0, "other outlines leave the scaling alone")
+    actual.SetFontFamily(string, "chosen.ttf", 12, "OUTLINE, SLUG")
+    check(smooth, true, "smooth with Sharp Outline")
+    for _, member in ipairs(captured) do check(member.flags, "OUTLINE, SLUG", member.alphabet .. " flag") end
+    actual.SetFontFamily(string, "chosen.ttf", 12, "OUTLINE")
+    check(smooth, false, "put back once it's off")
+    actual.SetFontFamily(string, "chosen.ttf", 12, "")
+    check(times, 2, "and left alone again")
+end
+
 -- A family's text draws with its members' shadow: each shadow is a family of its own (11-23)
 local made = {}
 local function newFont()

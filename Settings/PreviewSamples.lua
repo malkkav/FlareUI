@@ -486,7 +486,7 @@ function R.tooltip(c, spec)
     local scale = spec.key == 'tt.scale' and Get('tooltips.scale', 1) / 1.5 or 1
     c.frame:SetScale(scale)
     c.frame:ClearAllPoints(); c.frame:SetPoint('TOPLEFT', (outer.width - c.width * scale) / 2, 0); c.frame:Show()
-    local item = spec.key == 'tt.shortItemStats' or spec.key == 'tt.ids' or spec.key == 'tt.compareShift'
+    local item = spec.key == 'tt.shortItemStats' or spec.key == 'tt.ids' or spec.key == 'tt.itemLevel' or spec.key == 'tt.compareShift'
     local box = c:Object('tooltip', 'Frame', 'BackdropTemplate')
     box:SetPoint('TOPLEFT', 8, -8); box:SetSize(c.width - 16, 182)
     box:SetBackdrop({ bgFile = 'Interface\\Buttons\\WHITE8X8', edgeFile = 'Interface\\Tooltips\\UI-Tooltip-Border', edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
@@ -514,6 +514,7 @@ function R.tooltip(c, spec)
         lines = { L["Binds when picked up"], L["Chest"] .. ' ' .. ns.DOT .. ' ' .. L["Cloth"], '96 ' .. L["Armor"],
             Get('tooltips.shortItemStats') and '+12 ' .. L["Intellect"] or L["Increases Intellect by 12."],
             '+10 ' .. L["Stamina"], L["Requires Level 57"], '|cff1eff00' .. L["Increases spell damage by 40."] .. '|r' }
+        if Get('tooltips.itemLevel') then lines[#lines + 1] = '|cffffd100' .. (_G.ITEM_LEVEL or 'Item Level %d'):format(76) .. '|r' end
         if Get('tooltips.showItemID') then lines[#lines + 1] = 'ID: 14152' end
     else
         if Get('tooltips.showGuild') then
@@ -1425,7 +1426,7 @@ function R.minimapDrawer(c, spec)
     ModuleSample(c, 'Minimap', 'drawer', spec)
 end
 
-local ITEM_TOOLTIP = { ['tt.shortItemStats'] = true, ['tt.ids'] = true }
+local ITEM_TOOLTIP = { ['tt.shortItemStats'] = true, ['tt.ids'] = true, ['tt.itemLevel'] = true }
 local THREAT_KEYS = { ['dm.threatValue'] = true, ['dm.pullLine'] = true, ['dm.pullFlash'] = true, ['dm.tankLead'] = true, ['dm.threatOverview'] = true }
 local OWN = {
     tooltip = { 'Tooltips', function(spec) return spec.key == 'tt.compareShift' and 'compare' or spec.key == 'tt.healingDamage' and 'healing'

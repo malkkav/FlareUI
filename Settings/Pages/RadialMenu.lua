@@ -51,7 +51,7 @@ S:Row{ key = "rm.targetMouseover", kind = "choice", tab = "options", path = "rad
     end }
 local SCALES = {}
 for _, v in ipairs({ 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5 }) do SCALES[#SCALES + 1] = { v, (v * 100) .. "%" } end
-S:Row{ key = "rm.scale", kind = "range", tab = "options", path = "radialmenu.scale", choices = SCALES }
+S:Row{ key = "rm.scale", kind = "range", tab = "options", path = "radialmenu.scale", choices = SCALES, apply = ApplyOpening }
 -- Button Names: Off, On Hover (the button you point at) or Always (every button). Off is saved as
 -- showNames false, as the switch it replaced did; buttonNames holds the rest.
 S:Row{ key = "rm.names", kind = "choice", tab = "options", choices = { "off", "hover", "always" },

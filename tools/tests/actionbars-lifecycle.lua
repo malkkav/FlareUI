@@ -21,6 +21,7 @@ local ns = {
     FCMActive = function() return fcm.bars.bar1.enabled end,
     CharDB = function() return character end,
     IsGamepadUI = function() return false end,
+    SetSystemScale = function(frame, scale) frame:SetScale(scale) frame.keptPlace = true end,
 }
 function ns.db.RegisterCallback(_, event, callback) dbCallbacks[event] = callback end
 local refresh, wakes = 0, 0
@@ -225,10 +226,37 @@ assert(not bars:SetFCM_UnlockMode(true))
 ui.combat = false
 send("PLAYER_REGEN_ENABLED")
 assert(totem:GetScale() == 1.25 and caps.LeftEndCap:GetScale() == 1.5 and bag:GetScale() == 0.55)
+assert(caps.LeftEndCap.keptPlace, "the gryphon keeps its place on screen")
 bag:UpdateSystemSettingSize()
 assert(bag:GetScale() == 0.55, "the custom bag scale follows Blizzard's layout")
 bars.BagBarSizeSetting().set(nil, 45)
 assert(bag:GetScale() == 0.75)
+
+-- Keep Page 1 in Stealth (druids): the prowl bar is held too, and a button written over comes back
+do
+    local class, db, register = env.UnitClass, ns.db.profile.actionbars, env.RegisterStateDriver
+    env.UnitClass = function() return "Druid", "DRUID" end
+    local drivers = {}
+    env.RegisterStateDriver = function(frame, key, value)
+        if key ~= "page" then return register(frame, key, value) end
+        drivers[#drivers + 1] = value
+        frame:SetAttribute("state-page", value == "default" and "default" or 7)
+    end
+    db.keepStealthPage = true
+    bars:Refresh()
+    assert(drivers[1]:find("bonusbar:2] 7", 1, true), drivers[1])
+    assert(bars.pageCheck)
+    a:SetAttribute("actionpage", 8)
+    bars.CheckClassPage()
+    assert(#drivers == 2, "written again")
+    ui.combat = true
+    bars.CheckClassPage()
+    assert(#drivers == 2, "not in a fight")
+    ui.combat = false
+    env.UnitClass, env.RegisterStateDriver = class, register
+    db.keepStealthPage = false
+    bars:Refresh()
+end
 
 spellCount = 3
 cursor = "item"

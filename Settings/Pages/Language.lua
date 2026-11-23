@@ -139,6 +139,11 @@ S:Row{
     choices = function() return S.FontFaces() end,
     apply = function() S:ApplyAllFonts() end,
 }
+-- one outline over every FlareUI font's own (Core.lua ns.OutlineFlags)
+S:Row{
+    key = "fonts.outline", kind = "choice", module = "language", tab = "interface", path = "fonts.outline", reload = true,
+    choices = { "", "NONE", "OUTLINE", "THICKOUTLINE", "OUTLINE, SLUG" },
+}
 -- Blizzard's own text (Settings/Fonts.lua ns.GameFonts): off / Default leave it as it is
 local function BlizzardFaces()
     local list = S.FontFaces()

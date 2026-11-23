@@ -314,10 +314,11 @@ assert(not rm:IsPadOpen())
 -- the camera's event alone, holds the camera still, so the left stick keeps moving the character
 local guard, block = rm.Sticks.guard, rm.Sticks.block
 assert(guard.propagate and not block.propagate, "only the blocker takes input")
-assert(not guard.stickEnabled and block.stickEnabled and not block:IsShown(), "idle, neither takes a stick")
+assert(guard.template == nil and guard.stickEnabled and block.stickEnabled, "plain frames, so they can show in a fight")
+assert(not guard:IsShown() and not block:IsShown(), "idle, neither takes a stick")
 local function send(stick, x)   -- the game's dispatch: the blocker is above the guard; true: the game got it
     for _, w in ipairs({ block, guard }) do
-        if w == guard or w:IsShown() then
+        if w:IsShown() then
             w:RunScript("OnGamepadStick", stick, x or 1, 0, x or 1)
             if not w.propagate then return false end
         end
@@ -357,25 +358,20 @@ frameEnd:RunScript("OnUpdate", 0.1)
 assert(not block:IsShown() and send("Right") and not send("Camera"), "the spring-back doesn't turn the camera")
 stickLen = 0.1
 frameEnd:RunScript("OnUpdate", 0.1)
-assert(not block:IsShown() and not frameEnd:IsShown() and not guard.stickEnabled)
+assert(not block:IsShown() and not frameEnd:IsShown() and not guard:IsShown())
 assert(send("Right") and send("Camera"), "closed: the camera is the game's again")
 stickLen = 1
 header.OnSecurePadOpen(header, "r1")
 header.OnSecureClose(header)
 frameEnd:RunScript("OnUpdate", 0.5)
 assert(not frameEnd:IsShown(), "never held longer than that")
-header.OnSecurePadOpen(header, "r1")
-header.OnSecureClose(header)
-frameEnd:RunScript("OnEvent", "PLAYER_REGEN_DISABLED")
-assert(not frameEnd:IsShown(), "a fight ends the hold")
 -- from one controller radial to another the sticks stay ours, with no gap
 header.OnSecurePadOpen(header, "r1")
-guard.stickEnabled = true   -- (the secure snippet's)
 header.OnSecurePadOpen(header, "r1")
-assert(rm:IsPadOpen() and guard.stickEnabled and frameEnd:IsShown() and stickValue == "1")
+assert(rm:IsPadOpen() and guard:IsShown() and frameEnd:IsShown() and stickValue == "1")
 stickLen = 0
 header.OnSecureClose(header)
-assert(stickValue == "0" and global.padStickKeysRestore == nil and not guard.stickEnabled)
+assert(stickValue == "0" and global.padStickKeysRestore == nil and not guard:IsShown())
 -- the game refusing the setting in a fight: nothing is remembered that never took, and a refused
 -- restore is asked again after the fight
 do
@@ -470,6 +466,67 @@ do
     run("FlareUI_RadialPad", "RightButton", true)
     run("FlareUI_RadialPad", "RightButton", false)
     assert(closed == 1)
+end
+
+-- a macro just made isn't there to pick up yet: the slot is filled a moment later, and the game's own placing
+-- is never asked with nothing on the cursor (its red error line)
+do
+    local util, pickup, cursor = env.GamepadActionBarBindingUtil, env.PickupMacro, env.GetCursorInfo
+    local ready, held, placed, told = false, nil, nil, nil
+    env.GamepadActionBarBindingUtil = { AssignActionToGamepadStandardSlot = function(slot, pick)
+        assert(held and pick == nil, "only with the macro on the cursor")
+        placed = slot
+    end }
+    env.ClearCursor = function() held = nil end
+    env.PickupMacro = function(index) if ready then held = index end end
+    env.GetCursorInfo = function() return held end
+    local info = env.GetMacroInfo
+    env.GetMacroInfo = function() return "x", 1, "#flareui-radial\n/click FlareUI_RadialPad r1" end
+    rm.OnBarPlaced = function(id) told = id end
+    rm.PutMacroOnSlot("r1", 5, "PADDUP", 3)
+    assert(not placed, "not there yet")
+    ready = true
+    ui:flushTimers()
+    assert(placed == 5 and told == "r1", "a moment later")
+    rm.OnBarPlaced = nil
+    env.GamepadActionBarBindingUtil, env.PickupMacro, env.GetCursorInfo, env.GetMacroInfo = util, pickup, cursor, info
+end
+
+-- opened near a screen edge the wheel moves in, and nothing is aimed until the cursor moves
+do
+    local width, height = env.UIParent:GetWidth(), env.UIParent:GetHeight()
+    assert(header:GetAttribute("r1-reach") > 100, "the reach is sent to the secure side")
+    local x, y = rm.Inside(5, 5, 60)
+    assert(x == 60 and y == 60)
+    x, y = rm.Inside(width, height, 60)
+    assert(x == width - 60 and y == height - 60)
+    x = rm.Inside(5, 5, width)
+    assert(x == width / 2, "wider than the screen: in the middle")
+    local mouseX, mouseY = 0.98, 0.5
+    local screen = {
+        GetWidth = function() return 1000 end, GetHeight = function() return 800 end,
+        GetMousePosition = function() return mouseX, mouseY end,
+    }
+    local attributes = { ["r-reach"] = 160, ["r-count"] = 4 }
+    local host = { GetAttribute = function(_, key) return attributes[key] end, GetFrameRef = function() return screen end }
+    local globals = { math = math, MODE = "hold", ACTIVE = "r" }
+    local function run(attribute)
+        local chunk = assert(loadstring("local self = ... " .. header:GetAttribute(attribute)))
+        return setfenv(chunk, globals)(host)
+    end
+    run("flare-openpoint")
+    assert(globals.OPENX == 840 and globals.OPENY == 400 and globals.FROMX == 980)
+    assert(run("flare-select") == nil, "the cursor is off the middle, but hasn't moved")
+    mouseX = 0.94
+    assert(run("flare-select") == 2, "moved: the right one")
+    mouseX, mouseY = 0.84, 0.2
+    assert(run("flare-select") == 3)
+    mouseY = 0.5
+    assert(run("flare-select") == nil, "back in the middle")
+    attributes["flare-center"] = true
+    mouseX = 0.98
+    run("flare-openpoint")
+    assert(globals.OPENX == 500 and globals.FROMX == nil and run("flare-select") == 2)
 end
 
 local sample = rm.CreateSample(env.UIParent)

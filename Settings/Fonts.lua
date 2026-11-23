@@ -76,7 +76,7 @@ end
 
 -- whether any font (or the Global Font) differs from the profile's defaults
 -- (the Settings page's own: Global Font, Game Text, Nameplate Font, Combat Text Font)
-local OWN_PATHS = { "fonts.global.face", "fonts.gameText", "fonts.nameplate.face", "fonts.combat.face" }
+local OWN_PATHS = { "fonts.global.face", "fonts.outline", "fonts.gameText", "fonts.nameplate.face", "fonts.combat.face" }
 function S:AnyFontChanged()
     for _, path in ipairs(OWN_PATHS) do
         local default = self:DefaultPath(path)
@@ -196,7 +196,11 @@ function S:FontRows(def)
         else
         Control("face", { kind = "dropdown", dropdownWidth = 150, choices = font.optional and OptionalFaces or FontFaces })
         if not font.noSize then Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES }) end
-        Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE" } })
+        -- (11-23, thatfireboi / aphoex) Sharp Outline: the game's Slug text, drawn as shapes rather than pictures of
+        -- letters; Blizzard's own nameplate text is. No thick one: ElvUI found the game doesn't draw it
+        Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE", "OUTLINE, SLUG" },
+            -- (Global Font > Outline is over it)
+            disabled = function() local all = S:GetPath("fonts.outline"); return all ~= nil and all ~= "" end })
         -- one choice sets the shadow and its offset
         Control("shadow", { kind = "choice", choices = { "none", "soft", "strong" },
             get = function()

@@ -283,11 +283,16 @@ assert(select(4, bankItems[3]:GetPoint()) == select(4, bankItems[2]:GetPoint()) 
 assert(not bags.Bank.owned)
 bank:Hide()
 
+env.UnitCastingInfo, env.UnitChannelInfo = function() end, function() end
 contents[2].hasLoot, contents[3].hasLoot = true, true
 ui.combat = true
 bags.AutoOpen.Next()
 assert(#opens == 0)
 ui.combat = false
+env.SpellIsTargeting = function() return true end
+bags.AutoOpen.Next()
+assert(#opens == 0, "a kit waiting for its item")
+env.SpellIsTargeting = nil
 bags.AutoOpen.Next()
 bags.AutoOpen.Next()
 assert(#opens == 1 and opens[1] == 12)

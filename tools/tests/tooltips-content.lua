@@ -237,6 +237,21 @@ local sample = tooltips.CreateSample(env.UIParent, "healing")
 local w, h = tooltips.DrawSample(sample)
 assert(w > 0 and h > 0 and not sample.bar:IsShown())
 assert(sample.left[7]:GetText():find("Spell Healing", 1, true) and sample.left[8]:GetText():find("Spell Power", 1, true))
+do
+    local item = tooltips.CreateSample(env.UIParent, "item")
+    local function found()
+        tooltips.DrawSample(item)
+        for _, fs in ipairs(item.left) do
+            if fs:IsShown() and (fs:GetText() or ""):find("Item Level 76", 1, true) then return true end
+        end
+    end
+    local level = db.itemLevel
+    db.itemLevel = true
+    assert(found())
+    db.itemLevel = false
+    assert(not found())
+    db.itemLevel = level
+end
 local comparison = tooltips.CreateSample(env.UIParent, "compare")
 tooltips.DrawSample(comparison)
 assert(comparison.item:IsShown() and comparison.equipped.left[1]:GetText() == "Currently Equipped")

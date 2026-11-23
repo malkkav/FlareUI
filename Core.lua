@@ -454,7 +454,7 @@ local defaults = {
         -- Global Font (Settings page > Fonts): the face every font set to Global ("__global") uses
         -- Game Text, Nameplate Font and Combat Text Font (Settings/Fonts.lua ns.GameFonts): off and
         -- Default ("") leave Blizzard's fonts alone; combat.path: the chosen file, kept for the next login
-        fonts = { global = { face = "Friz Quadrata TT" }, gameText = false, nameplate = { face = "" }, combat = { face = "" } },
+        fonts = { global = { face = "Friz Quadrata TT" }, outline = "", gameText = false, nameplate = { face = "" }, combat = { face = "" } },
         editModeOverlaysHidden = false,   -- eye button on the HUD Edit Mode window (EditModeOverlays.lua)
 
         -- [[ CHAT MODULE ]]
@@ -1014,13 +1014,13 @@ local defaults = {
             colorFocus = false, groupColor = false,
             execute = "off",            -- Execute Range: off | auto | 20 | 25 | 30 | 35
             threatScale = false,        -- Threat Scale (tanks): lost mobs grow, held ones shrink a little
-            nameOnlySize = 100,         -- Name Only Size (per type): the name on a Name Only plate, in % of the Names font
+            nameOnlySize = 100,         -- Name Only Size (per type): the name on a Name Only plate, in % of the Name Only font
             comboPoints = false,        -- combo point gems under your target's plate (each type can switch it off)
             questMarks = false,         -- quest mark on enemies an active quest needs (each type can switch it off)
             enemyInCombat = false,      -- Show Enemy Plates > In Combat (NameplateExtras.lua)
             friendlyInCombat = false,   -- Show Friendly Plates > In Combat
             combatPlates = "none",      -- Show Plates in Combat (Name Only Mode): types that leave Name Only in a fight
-            threatPercent = false,      -- Threat Percentage: your threat % in the bar's middle, coloured as the unit frames' Threat Text
+            threatPercent = false,      -- Threat Percentage (false | "groups" | "instances" | true): your threat % in the bar's middle, coloured as the unit frames' Threat Text
             peacefulNames = false,      -- Name Only While Unattackable: enemy NPCs you can't attack show only their name
             enemyPlayers = true, enemyNpcs = true,   -- Enemy Types: FlareUI's plates for enemy players / NPCs
             kickReady = false,          -- Kick Ready: interruptible casts in their own colour while your interrupt is ready
@@ -1063,6 +1063,7 @@ local defaults = {
             -- nameAbove = "<left|middle|right>:<firstname|fullname>" once picked: Names Above Plate (per type)
             nameOnlyFull = true,        -- Show Full Name (per type): a Name Only plate's player surnames
             nameFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
+            nameOnlyFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },   -- Name Only plates
             healthFont = { face = "__global", size = 9, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             levelFont = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             castFont = { face = "__global", size = 9, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -1220,6 +1221,36 @@ end
 -- the calls that led there. The events come inside the refused call, so the stack is that call's. One
 -- entry per function, kind and fight in a session, with a count.
 ns.BlockedLog = { seen = {}, STACK = 900 }
+-- What Blizzard's bag and item-use code reads that isn't Blizzard's own any more: "name by addon, ..." or ""
+function ns.BlockedLog.Insecure()
+    local found = {}
+    local function Look(name, t, key)
+        local ok, secure, by
+        if key == nil then ok, secure, by = pcall(issecurevariable, t) else ok, secure, by = pcall(issecurevariable, t, key) end
+        if ok and not secure then found[#found + 1] = name .. " by " .. tostring(by or "?") end
+    end
+    if type(ContainerFrameSettingsManager) == "table" then
+        Look("bagSetupDirty", ContainerFrameSettingsManager, "bagSetupDirty")
+        Look("isUsingCombinedBags", ContainerFrameSettingsManager, "isUsingCombinedBags")
+    end
+    if C_Container then Look("UseContainerItem", C_Container, "UseContainerItem") end
+    Look("UseAction", "UseAction")
+    Look("bag click", "ContainerFrameItemButton_OnClick")
+    pcall(function()
+        for _, name in ipairs({ "ContainerFrameCombinedBags", "ContainerFrame1" }) do
+            local frame = _G[name]
+            if frame and frame.EnumerateValidItems then
+                for _, button in frame:EnumerateValidItems() do
+                    if not issecurevariable(button, "bagID") then
+                        Look(name .. " bagID", button, "bagID")
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    return table.concat(found, ", ")
+end
 function ns.BlockedLog.OnEvent(_, event, addon, func)
     if not canaccessvalue(addon) or addon ~= "FlareUI" then return end
     local log, list = ns.BlockedLog, nil
@@ -1243,8 +1274,10 @@ function ns.BlockedLog.OnEvent(_, event, addon, func)
     local stack = debugstack and debugstack(2, 10, 6) or ""
     stack = canaccessvalue(stack) and tostring(stack) or ""
     if #stack > log.STACK then stack = stack:sub(1, log.STACK) .. "..." end
-    ns.LogError("action " .. kind, ("%s, %s, %s | %s"):format(func, fight,
-        ns.IsGamepadUI and ns.IsGamepadUI() and "Gamepad mode" or "keyboard and mouse", stack))
+    local insecure = issecurevariable and ns.BlockedLog.Insecure() or ""
+    if insecure ~= "" then insecure = " | insecure: " .. insecure end
+    ns.LogError("action " .. kind, ("%s, %s, %s%s | %s"):format(func, fight,
+        ns.IsGamepadUI and ns.IsGamepadUI() and "Gamepad mode" or "keyboard and mouse", insecure, stack))
     list = ns.db and ns.db.global and ns.db.global.errors
     local line = list and list[#list]
     if line then log.seen[key] = { count = 1, base = line, line = line } end
@@ -1551,7 +1584,10 @@ ns.TEXT_SCALE = 1
 
 local function SetFontRaw(fontString, path, size, flags)
     pendingFonts[fontString] = nil
-    if ns.FontFamily then ns.FontFamily.styled[fontString] = nil end
+    if ns.FontFamily then
+        ns.FontFamily.styled[fontString] = nil
+        ns.FontFamily.Smooth(fontString, flags)
+    end
     -- remembered for the redraws (the base font is always in: nothing to redraw)
     local R = ns.FontRedraw
     if R and size and path ~= BaseFont() and R.Wanted(path) then
@@ -1580,7 +1616,17 @@ function ns.FontFamiliesAlways()
     return ns.fontFamiliesAlways
 end
 
+-- Global Font > Outline (11-23): one outline over every FlareUI font's own; "" keeps each font's. Read as a font
+-- is set (a change asks for a reload). The settings window's own text is left out (ns.SetFontUnscaled).
+function ns.OutlineFlags(flags)
+    local fonts = ns.db and ns.db.profile and ns.db.profile.fonts
+    local all = fonts and fonts.outline
+    if type(all) ~= "string" or all == "" then return flags end
+    return all == "NONE" and "" or all
+end
+
 function ns.SetFont(fontString, path, size, flags)
+    flags = ns.OutlineFlags(flags)
     if ns.FontFamiliesAlways() and CreateFontFamily and fontString.SetFontObject and path and size then
         return ns.SetFontFamily(fontString, path, size, flags)
     end
@@ -1610,6 +1656,17 @@ ns.FontFamily = {
     shadows = setmetatable({}, { __mode = "k" }),   -- font string -> "x,y", the shadow it was given
 }
 
+-- Sharp Outline (the SLUG flag): its letters keep their true height in a scaled frame (a nameplate) instead
+-- of snapping to whole pixels. Only strings that had it are touched again.
+ns.FontFamily.slugged = setmetatable({}, { __mode = "k" })
+function ns.FontFamily.Smooth(fontString, flags)
+    local slugged = ns.FontFamily.slugged
+    local on = type(flags) == "string" and flags:find("SLUG", 1, true) ~= nil
+    if not (on or slugged[fontString]) or not fontString.SetSmoothScaling then return end
+    slugged[fontString] = on or nil
+    pcall(fontString.SetSmoothScaling, fontString, on)
+end
+
 function ns.FontHasCyrillic(path)
     return type(path) == "string" and ns.FontFamily.cyrillic[path:lower():gsub("/", "\\")] == true
 end
@@ -1624,7 +1681,7 @@ end
 -- would fix its face for good. Falls back to ns.SetFont where families can't be made.
 function ns.SetFontFamily(fontString, path, size, flags)
     local F = ns.FontFamily
-    flags = flags or ""
+    flags = (ns.OutlineFlags and ns.OutlineFlags(flags)) or flags or ""
     if not (CreateFontFamily and fontString.SetFontObject and path and size) then
         return ns.SetFont(fontString, path, size, flags)
     end
@@ -1639,6 +1696,7 @@ end
 function ns.FontFamily.Apply(fontString, path, size, flags)
     local F = ns.FontFamily
     local shadow = F.shadows[fontString] or ""
+    F.Smooth(fontString, flags)
     F.styled[fontString] = { path, size, flags }
     local key = path .. "|" .. size .. "|" .. flags .. "|" .. shadow
     local family = F.built[key]
@@ -1707,7 +1765,7 @@ end
 
 function ns.SetFontObjectFace(fontObject, path, size, flags)
     if size and ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
-    return SetFontObjectFaceRaw(fontObject, path, size, flags)
+    return SetFontObjectFaceRaw(fontObject, path, size, ns.OutlineFlags(flags))
 end
 -- a size already scaled (Settings/Fonts.lua ns.GameFonts: Blizzard's own sizes, read back)
 ns.SetFontObjectFaceUnscaled = SetFontObjectFaceRaw
@@ -2890,12 +2948,15 @@ function ns.FitEditModeBox(system, bounds)
         local selection = self.Selection
         -- offsets are in the reference's units
         local scale = ref:GetEffectiveScale() / self:GetEffectiveScale()
-        local k = ref:GetEffectiveScale() / selection:GetEffectiveScale()
+        local k = self:GetEffectiveScale() / selection:GetEffectiveScale()
+        left, right = (ref:GetLeft() + left) * scale - self:GetLeft(), (ref:GetRight() + right) * scale - self:GetRight()
+        top, bottom = (ref:GetTop() + top) * scale - self:GetTop(), (ref:GetBottom() + bottom) * scale - self:GetBottom()
+        -- on the system itself: Edit Mode's Snap reads these two points' offsets as its distance from the
+        -- system's own edges (11-23, ravenesque: on the art, a snapped minimap stopped short of the screen edge)
         selection:ClearAllPoints()
-        selection:SetPoint("TOPLEFT", ref, "TOPLEFT", left * k, top * k)
-        selection:SetPoint("BOTTOMRIGHT", ref, "BOTTOMRIGHT", right * k, bottom * k)
-        self:SetClampRectInsets((ref:GetLeft() + left) * scale - self:GetLeft(), (ref:GetRight() + right) * scale - self:GetRight(),
-                                (ref:GetTop() + top) * scale - self:GetTop(), (ref:GetBottom() + bottom) * scale - self:GetBottom())
+        selection:SetPoint("TOPLEFT", self, "TOPLEFT", left * k, top * k)
+        selection:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", right * k, bottom * k)
+        self:SetClampRectInsets(left, right, top, bottom)
         -- Blizzard's login placement used the old clamp and pushed the frame in from the screen edge:
         -- re-anchor once with ApplySystemAnchor's arithmetic (calling it would taint)
         if not self.FlareUI_Replaced then

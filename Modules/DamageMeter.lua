@@ -317,7 +317,11 @@ local function UpdateSkinFrame(window, db)
         end)
     end
 
-    skin.Separator:SetShown(header ~= nil and not (db.frameStyle == "flareui" and not skin.FlareUI_InChat))
+    -- (in the chat the chat's frame is the meter's)
+    local frameDb = db
+    if skin.FlareUI_InChat then frameDb = ns.db and ns.db.profile and ns.db.profile.chat end
+    local noFrame = ns.Chat and ns.Chat.NoFrame and ns.Chat.NoFrame(frameDb) or false
+    skin.Separator:SetShown(header ~= nil and not noFrame and not (db.frameStyle == "flareui" and not skin.FlareUI_InChat))
 end
 
 --------------------------------------------------
@@ -2276,6 +2280,7 @@ end
 --------------------------------------------------
 function DamageMeter:PLAYER_REGEN_ENABLED()
     if self.chatTabLeavePending then self:LeaveChatTab() end
+    if self.visibilityReady then DamageMeter.CheckBlizzardVisibility() end   -- (once a session; the login check may have fallen in a fight)
     if self._pendingRefresh then
         C_Timer.After(0, function() self:Refresh() end)
     end
@@ -2296,6 +2301,8 @@ function DamageMeter:EDIT_MODE_LAYOUTS_UPDATED()
         if self._refreshes ~= seen then return end
         self:Refresh()
     end)
+    -- (a layout switch can bring another Visibility for Blizzard's meter)
+    if self.visibilityReady then C_Timer.After(1, DamageMeter.CheckBlizzardVisibility) end
 end
 
 function DamageMeter:ADDON_LOADED(event, addonName)
@@ -3683,7 +3690,8 @@ ns.Dialogs["FLAREUI_METER_VISIBILITY"] = {
 function DamageMeter.CheckBlizzardVisibility()
     local db = GetDb()
     if DamageMeter.visibilityWarned or not (db and db.enabled) or db.visibilityNoWarn then return end
-    if InFight() or DamageMeter:ChatTabAvailable() or not MeterAllowed() then return end
+    -- (with the Meter tab too: Blizzard hides the meter there as a fight starts just the same)
+    if InFight() or not MeterAllowed() then return end
     local kinds, meter = Enum.DamageMeterVisibility, _G.DamageMeter
     local own = meter and meter.visibility
     if not (kinds and (own == kinds.Hidden or own == kinds.InGroup)) then return end
@@ -3694,7 +3702,10 @@ end
 function DamageMeter:Init()
     HookMeterDialog()
     -- (a moment after login, once Edit Mode has applied its layout)
-    C_Timer.After(8, DamageMeter.CheckBlizzardVisibility)
+    C_Timer.After(8, function()
+        DamageMeter.visibilityReady = true
+        DamageMeter.CheckBlizzardVisibility()
+    end)
     -- leaving Edit Mode restyles the windows (ApplyToWindow skips them while Edit Mode is open)
     if _G.EditModeManagerFrame and not self._editModeHooked then
         self._editModeHooked = true

@@ -133,9 +133,13 @@ local function PlaceLoot()
     local container, holder = _G.GroupLootContainer, holders.loot
     if placingLoot or not (container and holder) then return end
     placingLoot = true
-    container:ClearAllPoints()
-    container:SetPoint("BOTTOM", holder, "BOTTOM", 0, -ROLL_BOTTOM)
+    -- (an error here left the rolls at Blizzard's spot for the session)
+    local ok, err = pcall(function()
+        container:ClearAllPoints()
+        container:SetPoint("BOTTOM", holder, "BOTTOM", 0, -ROLL_BOTTOM)
+    end)
     placingLoot = false
+    if not ok then ns.LogError("Movers PlaceLoot", err) end
 end
 
 local sizingLoot = false

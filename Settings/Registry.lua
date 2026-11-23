@@ -51,6 +51,7 @@ Settings.NEW = {
     ["bl.lootWindowFreeSlots"] = "7.0",
     ["ch.editBoxBorder"] = "7.0",
     ["ch.editBoxStyle"] = "7.0",
+    ["fonts.outline"] = "7.0",
     ["mm.barBelow"] = "7.0",
     ["np.auraRows"] = "7.0",
     ["np.auraStyle"] = "7.0",
@@ -61,6 +62,7 @@ Settings.NEW = {
     ["np.castGlow"] = "7.0",
     ["np.castTexture"] = "7.0",
     ["np.combatPlates"] = "7.0",
+    ["np.font.nameOnly"] = "7.0",
     ["np.guildColor"] = "7.0",
     ["np.mouseoverHighlight"] = "7.0",
     ["np.nameAbove"] = "7.0",
@@ -72,6 +74,8 @@ Settings.NEW = {
     ["np.showTitles"] = "7.0",
     ["np.threatPercent"] = "7.0",
     ["qol.flightDestinations"] = "7.0",
+    ["qol.warnSellQuestItems"] = "7.0",
+    ["qol.warnSellSetGear"] = "7.0",
     ["tt.healingDamage"] = "7.0",
 }
 

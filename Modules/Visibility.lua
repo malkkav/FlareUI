@@ -1062,7 +1062,20 @@ local function ShowSelection(key) return Conditions.Selection(Visibility:GetShow
 local function ToggleShow(key, value)
     -- Never can't lead a fade group: the other members would be out for good too
     if value == "never" and Visibility:GetGroup(key) > 0 then return end
-    Visibility:SetShow(key, Conditions.Toggle(Visibility:GetShow(key), value, SpecOf(key)))
+    Visibility:SetShow(key, Visibility.Toggled(key, value))
+end
+
+-- What a click leaves ticked. In a fade group the list is the group's: a condition only another member has
+-- (the chat's New Messages) isn't in this one's menu and stays ticked
+function Visibility.Toggled(key, value)
+    local spec, old = SpecOf(key), Visibility:GetShow(key)
+    local new = Conditions.Toggle(old, value, spec)
+    if Visibility:GetGroup(key) > 0 and not tContains(spec.exclusive, new) and not tContains(spec.exclusive, old) then
+        for token in tostring(old):gmatch("[^,]+") do
+            if tContains(Visibility.CHAT_SPEC.tokens, token) and not tContains(spec.tokens, token) then new = new .. "," .. token end
+        end
+    end
+    return new
 end
 
 local function Label(copyKey, fallback)

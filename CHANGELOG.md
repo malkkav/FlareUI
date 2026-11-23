@@ -1,3 +1,79 @@
+# FlareUI 7.0.9
+
+A bug-fixing update: we went through the open reports and fixed as many as we could. It also adds sharper outlines for every font.
+
+**We need your help testing.** These were hard to reproduce, so please tell us if they're fixed for you:
+- **Controller:** walking while a radial is open, and placing a radial on a controller button.
+- **Blocked items:** potions, armor kits and quest items that the game blocked. If it happens again, send us what `/fui errors` shows.
+- **Chat:** switching tabs during a fight.
+- **Quest Tracker:** clicking a quest while the map is open on a zone.
+- **Druids:** **Keep Page 1 in Stealth**.
+- **Crafting Bag in Backpack:** if its section stays empty, send us what `/fui errors` shows.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Action Bars:** gryphons with a changed **Scale** may move once, to where Edit Mode has them saved.
+- **Nameplates:** Questie's quest icon sits beside the plate, left of the level box. If you moved it in Questie to make up for our plates, set it again there.
+- **Nameplates:** with **Colour Names by Class**, names on class-coloured bars are a lighter shade.
+- **Nameplates:** bars fill their border, so the whole plate is about 2 pixels smaller. The bar keeps its size.
+- **Chat:** player and link icons are as big as the text.
+- **Chat and Meters:** with **Border** on None and **Background Opacity** at 0%, the line under the header hides too.
+- **Bags & Looting:** Bank Window and Vendor have their own **Bank & Vendor** tab.
+
+## Highlights
+- **Sharp Outline** for every font.
+- **Nameplates:** Name Only has its own font.
+- **Chat:** whispers bring a faded chat back.
+
+## New
+
+### Fonts
+- **Sharp Outline** in every **Outline** list: cleaner edges at any size. Some fonts draw stray lines with it.
+- **Outline** (Each Font's Own) on the General page, under Global Font: one outline for every FlareUI font. Needs a reload.
+
+### Nameplates
+- **Name Only** on the Fonts tab: its own font, size, outline and shadow. It starts as your Names font.
+  - **Name Only Size** is now a % of that font.
+- **Threat Percentage** is a list: Off, In a Group, In an Instance or Always. If you had it on, it's on Always.
+
+### Bags & Looting
+- **Warn Before Selling Set Gear** (off): asks before you sell gear from a saved equipment set. By BillChirico.
+- **Warn Before Selling Quest Items** (off): asks before you sell quest items. By BillChirico.
+
+### Bug reports
+- `/fui errors` says more about blocked items.
+
+## Changed
+- **Radial Menu:** near a screen edge, it moves in so every button fits. Nothing is picked until you move the mouse.
+- **Bags & Looting:** the Tools section is called **Tweaks**.
+- **Chat:** whispers, Battle.net ones too, bring a faded chat back even when another tab is shown.
+- **Chat:** every popped-out window that takes a message comes back, not only the first.
+- **Minimap:** the Info Bar's gold uses the bags' coins, size and gaps.
+- **Bags:** **Auto Open Containers** waits while an armor kit or a spell is waiting for its item.
+- **Nameplates:** fewer updates for the same result. By parchinskiy.
+
+## Fixed
+- **Gamepad UI:**
+  - Another try at walking while a radial is open.
+  - Placing a radial on a controller button could fail with "Failed to pick up an action".
+- **Quest Tracker:** clicking a quest with the map open on a zone didn't open the quest.
+- **Action Bars:** gryphons with a changed **Scale** moved at every login.
+- **Action Bars:** another try at **Keep Page 1 in Stealth** showing the Prowl page (druids).
+- **Nameplates:** there was a dark gap between the bars and their border.
+- **Nameplates:** Questie's quest icon sat over the level box on your target.
+- **Edit Mode:** with Snap on, the minimap and the chat stopped short of the screen edge.
+- **Chat:**
+  - Another try at tabs that don't switch during a fight: they could stay stuck with the **Meter Tab** on.
+  - With **Fade Delay** at 0, new messages never brought the chat back.
+  - In a fade group, changing **Visibility** on another frame could turn off New Messages.
+  - With **Fade Old Lines**, lines could start fading under the mouse.
+- **Bags:** another try at the crafting bag missing from the combined backpack with **Crafting Bag in Backpack** on.
+- **Sync Blizz UI:** other characters were asked to reload when nothing had really changed.
+- **Buff Reminders:** another try at potions and kits blocked by the game.
+- **Raid Frames:** click-casting didn't work on the main tanks' targets.
+- **Meters:** the warning about Blizzard's own Visibility setting could be missed.
+- **Settings:** **Show Item Level** showed a player in its preview.
+
 # FlareUI 7.0.8
 
 A small fix for errors in group content, with two more fixes from your reports.
@@ -204,65 +280,3 @@ Some things look or work differently even if you change nothing:
 - **Settings:** a section's Reset skipped six options: Button Scale, XP Bubbles, Gryphons, Food and Flask, Hide for My Role and Auto Minimize. By GregDuhamel.
 - **Settings:** Buff Reminders showed no previews.
 - **Profiles:** importing a profile now checks every option's value type. By GregDuhamel.
-
-# FlareUI 7.0.4
-
-A big batch from your ideas: names above the nameplates, Blizzard's cast bar glow, stacked buffs and debuffs, and item levels in the inspect window. It also brings smoother nameplates in big pulls and the normal game font back.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Fonts:** the game font is back to normal. 7.0.3 swapped it for Blizzard's Russian copy by accident, which looked sharper and drew some symbols as boxes. Liked the sharper look? Pick **Friz Quadrata TT (Crisp)** in any font list.
-- **Nameplates:** Name Only plates show players' full names. Switch **Show Full Name** off for first names only.
-- **Unit Frames:** **Name Above Plates** is now called **Name Above Frames**.
-
-## Highlights
-- **Nameplates:** names above the plate, and smoother plates in big pulls.
-- **Cast bars:** Blizzard's bright edge at the front of the cast.
-- **Buffs and Debuffs** can share a place on the unit, party and boss frames.
-
-## New
-
-### Nameplates
-- **Names Above Plate** (Off) on the Style tab: the name above the plate, left, centre or right, first or full name. Buffs and debuffs move up to make room.
-- **Show Full Name** (on) in the Name Only Mode section.
-- **Edge Glow** on the Cast Bar tab.
-
-### Cast Bars
-- **Edge Glow**: a bright edge at the front of the cast, as on Blizzard's cast bars.
-  - In each frame's Cast Bar section in Edit Mode, and under Look on the Player Cast Bar.
-  - On for new players. Already using FlareUI? Switch it on there.
-
-### Unit Frames
-- **Buffs** and **Debuffs** can pick the same place, or the same edge: they stack. The one placed first stays next to the frame, the other goes one row further out. Party and boss frames too.
-- **Range Check** (off) on Target of Target and Target of Focus.
-
-### Resource Bars
-- **Show in Caster Form** (off) on the Druid Mana bar: it stays up in caster form too.
-
-### Bags
-- **Reverse Bag Fill** (off): the backpack starts at the top left and fills left to right, downwards.
-- **Item Level** also shows on the inspect window's slots, with the player's average item level under their name.
-
-### Minimap
-- **Below the Map** (off) in the Info Bar section: the bar sits under the minimap, clear of the quest arrow.
-
-### Meters
-- **Hide Until Next Group** in the meter's gear menu: the meter goes away until you join another group, or reload.
-
-### Fonts
-- **Friz Quadrata TT (Crisp)**: Blizzard's sharper copy of the game font. It lacks a few symbols.
-
-## Changed
-- **Nameplates:** the Visibility tab works with the Nameplates module off. Those are Blizzard's own nameplate settings, so you can switch In Combat back off.
-- **Nameplates:** the settings preview shows aura timers and swipes.
-- **Action Bars:** **Update Spell Ranks** moves your pet's spells up too (a warlock's Torment after the grimoire).
-- **Buffs & Debuffs:** **Filtered Auras** marks debuffs the game won't let addons hide on you as **Not on You**.
-- **Radial Menu:** a `/click FUIRadial` macro opens the radial for the controller while the Gamepad UI is on.
-- **About:** Kabaday is credited for the loot roll window and the Cooldown Manager.
-- **French:** the 7.0.2 and 7.0.3 text is translated. By Brainc3ll.
-
-## Fixed
-- **Quest Tracker:** with Blizzard's Gamepad UI on, a mouse click on a quest showed "Open your quest log" instead of opening it.
-- **Quest Tracker:** quests that Blizzard's own tracker doesn't list open on a click too.
-- **Nameplates:** less stutter in big pulls. Out of Range Opacity, threat colours and glows do far less work per mob.
-- **Fonts:** tooltips showed boxes instead of the "·" dot.

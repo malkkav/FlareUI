@@ -138,6 +138,7 @@ local function startSession(char, bagsClosed)
 
     local ns = {L = setmetatable({}, {__index = function(_, key) return key end}), modules = {},
         db = {profile = {tweaks = db}}, CharDB = function() return char end, BagModuleOn = yes, IsGamepadUI = no}
+    env.FlareTestNS = ns
     setfenv(assert(loadstring(H.read('Modules/Bags.lua'), '@Modules/Bags.lua')), env)('FlareUI', ns)
     Bags = ns.Bags
     Bags.DecorateButton, Bags.PlaceBagButtons, Bags.FollowWindows = noop, noop, noop
@@ -479,6 +480,23 @@ do
     openBackpack()
     nextFrame()
     checkSlots(true, true)
+    -- (11-23, suorat4an) its buttons went back to a window still kept off screen: taken again
+    Bags.ReturnExtraButtons(windows[5])
+    Bags:Refresh()
+    nextFrame()
+    checkSlots(true, true)
+    -- one window that fails never keeps the other from its section
+    do
+        local logged, hook = 0, Bags.HookBagWindow
+        env.FlareTestNS.LogError = function() logged = logged + 1 end
+        Bags.HookBagWindow = function(frame) if frame == keyring then error('broken window') end return hook(frame) end
+        Bags.ReturnExtraButtons(windows[5])
+        env.UpdateContainerFrameAnchors()
+        nextFrame()
+        assert(logged > 0)
+        checkSlots(true, true)
+        Bags.HookBagWindow = hook
+    end
     db.bagReagent = false
     Bags:Refresh()
     nextFrame()
