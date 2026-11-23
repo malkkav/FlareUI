@@ -1652,9 +1652,11 @@ local function ThreatRGB(unit, db)
         local ok, secret = pcall(C_Secrets.ShouldUnitThreatStateBeSecret, "player", unit)
         if not ok or not canaccessvalue(secret) or secret then return nil end
     end
-    local status = Readable(UnitThreatSituation("player", unit))
-    -- (not on its threat list yet, as when your pet pulls: only the pet's threat counts)
-    if status == nil and canaccessvalue(UnitThreatSituation("player", unit)) and NP.PetHolds(unit) then status = 0 end
+    local raw = UnitThreatSituation("player", unit)
+    local status = Readable(raw)
+    -- (not on its threat list yet, as when your pet pulls: only the pet's threat counts; a secret
+    -- answer isn't "not on the list")
+    if raw == nil and NP.PetHolds(unit) then status = 0 end
     if type(status) ~= "number" then return nil end
     local fighting = Readable(UnitAffectingCombat(unit))
     if not fighting then return nil end

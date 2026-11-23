@@ -636,7 +636,7 @@ local function ItemCategory(button, setOf)
         if (sellPrice or 0) > 0 then return "junk" end
     end
     if info.itemID then
-        local classID, subclassID = select(6, C_Item.GetItemInfoInstant(info.itemID))
+        local classID = select(6, C_Item.GetItemInfoInstant(info.itemID))
         local classes = Enum.ItemClass
         if classID == classes.Weapon or classID == classes.Armor then
             local slotType = C_Item.GetItemInventoryTypeByID(info.itemID)

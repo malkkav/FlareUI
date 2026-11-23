@@ -18,8 +18,6 @@ local function Get(path, default)
             if path == 'actionbars.xpbar.questXP' then return spec.value ~= 'off' end
             if path == 'actionbars.xpbar.questXPMode' then return spec.value end
         end
-        local hide = ({ ['ch.social'] = 'chat.socialHide', ['ch.channels'] = 'chat.channelHide', ['ch.menu'] = 'chat.menuHide' })[spec.key]
-        if hide == path then return not spec.value end
     end
     if spec and spec.value ~= nil and (spec.path or aliases[spec.key]) == path then return spec.value end
     local v = S:GetPath(path)
@@ -1368,7 +1366,7 @@ function R.lootWindow(c, spec)
     local rarity = Get('tweaks.bagRarity') ~= false
     local showIlvl, showJunk = Get('tweaks.bagItemLevel'), Get('tweaks.bagJunkIcon')
     local showBoE, showEye = Get('tweaks.bagBoE'), Get('tweaks.bagUncollected')
-    local function Atlas(t, name, size)
+    local function MarkAtlas(t, name, size)
         if C_Texture.GetAtlasInfo(name) then t:SetAtlas(name, not size); if size then t:SetSize(size, size) end end
     end
 
@@ -1403,7 +1401,7 @@ function R.lootWindow(c, spec)
         if not marks.junk then
             marks.junk = marks:CreateTexture(nil, 'OVERLAY', nil, 7)
             marks.junk:SetPoint('TOPLEFT', 1, 0)
-            Atlas(marks.junk, 'bags-junkcoin')
+            MarkAtlas(marks.junk, 'bags-junkcoin')
             marks.boe = marks:CreateFontString(nil, 'OVERLAY', 'NumberFontNormalSmall')
             marks.boe:SetPoint('TOPLEFT', 2, -2)
             marks.boe:SetText(L["BoE"])
@@ -1412,7 +1410,7 @@ function R.lootWindow(c, spec)
             marks.ilvl:SetPoint('BOTTOMLEFT', 2, 2)
             marks.eye = marks:CreateTexture(nil, 'OVERLAY', nil, 7)
             marks.eye:SetPoint('TOPRIGHT', -1, -1)
-            Atlas(marks.eye, 'transmog-icon-hidden', 12)
+            MarkAtlas(marks.eye, 'transmog-icon-hidden', 12)
             marks.count = marks:CreateFontString(nil, 'OVERLAY', 'NumberFontNormal')
             marks.count:SetPoint('BOTTOMRIGHT', -2, 2)
         end

@@ -47,6 +47,8 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 Settings.NEW = {
     ["ab.xpTooltip"] = "7.0",
     ["bl.bagReverse"] = "7.0",
+    ["bl.lootWindow"] = "7.0",
+    ["bl.lootWindowFreeSlots"] = "7.0",
     ["ch.editBoxBorder"] = "7.0",
     ["ch.editBoxStyle"] = "7.0",
     ["mm.barBelow"] = "7.0",
@@ -63,6 +65,7 @@ Settings.NEW = {
     ["np.nameOnlySize"] = "7.0",
     ["np.peacefulNames"] = "7.0",
     ["np.threatPercent"] = "7.0",
+    ["qol.flightDestinations"] = "7.0",
     ["tt.healingDamage"] = "7.0",
 }
 

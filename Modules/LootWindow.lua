@@ -374,8 +374,8 @@ end
 
 -- the scroll thumb beside shown rows of total, offset rows down, over area px: its top and height
 -- (as LootRolls.lua's)
-function LW.ScrollThumb(total, shown, offset, area)
-    return area * offset / total, area * shown / total
+function LW.ScrollThumb(total, shown, scrolled, area)
+    return area * scrolled / total, area * shown / total
 end
 
 -- as many rows as fit the screen at the window's scale; the rest are reached with the mouse wheel
