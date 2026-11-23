@@ -3370,10 +3370,15 @@ f:SetScript("OnEvent", function(self, event, ...)
             if moduleDB and moduleDB.enabled == false then shouldLoad = false end
 
             if shouldLoad and module.Init then
-                local initSuccess, initErr = pcall(module.Init, module)
+                local trace
+                local initSuccess, initErr = xpcall(function() return module:Init() end, function(err)
+                    trace = debugstack and debugstack(2, 6, 0)
+                    if trace and canaccessvalue and not canaccessvalue(trace) then trace = nil end
+                    return err
+                end)
                 if not initSuccess then
                     print(string.format("|cffff0000FlareUI Error:|r %s failed to load: %s", name, tostring(initErr)))
-                    ns.LogError(name .. " Init", initErr)
+                    ns.LogError(name .. " Init", trace and (tostring(initErr) .. " | " .. trace) or initErr)
                 end
             end
         end
