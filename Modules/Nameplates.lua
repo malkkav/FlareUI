@@ -2116,12 +2116,16 @@ function NP.UpdateName(p)
 end
 function NP.UpdateBarName(p)
     local db, unit = PDB(p), p.unit
-    if not p.nameSlot then return end
+    -- (11-23, exillix3) the colour even with no name in the bar: Names Above Plate takes it, and it kept
+    -- the colour of whichever unit the plate had shown before
+    if not (p.nameSlot or p.aboveKind) then return end
     -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
     -- front, in its colour
-    local name = ns.UnitDisplayName(unit, nil, p.nameFull and true or false)
-    local prefix = p.levelFollow and NP.LevelPrefix(unit)
-    if prefix then p.name:SetFormattedText("%s%s", prefix, name) else p.name:SetText(name) end
+    if p.nameSlot then
+        local name = ns.UnitDisplayName(unit, nil, p.nameFull and true or false)
+        local prefix = p.levelFollow and NP.LevelPrefix(unit)
+        if prefix then p.name:SetFormattedText("%s%s", prefix, name) else p.name:SetText(name) end
+    end
     -- Party Colour (groupColor) and Raid Colour: your party or raid members' names in their own
     -- colour; other players by class, everyone else white. (Raid Colour never set follows the old
     -- Group Colour switch, which covered both.)

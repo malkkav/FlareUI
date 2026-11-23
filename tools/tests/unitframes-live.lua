@@ -311,5 +311,15 @@ do
     assert(healthText:GetParent():GetAlpha() == 0 and manaText:GetParent():GetAlpha() == 0, "off the frame: all hidden")
     UF.ValuesOnHover(frame, true, { manaText, healthText })
     assert(manaText:GetParent():GetParent() == manaBar, "a second pass keeps each text on its own bar")
+    -- (11-23, betonlol) in group content a layer's alpha can't be read: it never is
+    local sets = 0
+    local layer = healthText:GetParent()
+    function layer:GetAlpha() error("secret number value") end
+    function layer:SetAlpha(a) sets = sets + 1 self.alpha = a end
+    UF.SetValueLayersAlpha(frame, 1)
+    UF.SetValueLayersAlpha(frame, 1)
+    assert(sets == 1 and layer.alpha == 1, "set once, not read back")
+    UF.SetValueLayersAlpha(frame, 0)
+    assert(sets == 2 and layer.alpha == 0)
 end
 print("PASS: unit frame startup, resource events, combat deferral and cast changes")

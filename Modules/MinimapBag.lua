@@ -273,11 +273,17 @@ local function IsForeignButton(frame, sets)
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
 end
 
+-- A frame's children as a list. (11-23, storm0542) None of a frame with thousands (a gathering addon's
+-- pins on the map): listing them overflows Lua's stack, and no button is worth finding among them.
+function Bag.Children(parent)
+    if not parent or (parent.GetNumChildren and parent:GetNumChildren() > 4000) then return {} end
+    return { parent:GetChildren() }
+end
 -- Other addons' buttons on one of the map's frames (not LibDBIcon's): for Minimap.lua, which lifts the
 -- ones left out of the drawer above the border. None when there are too many (some addon's pins).
 function Bag.ForeignButtons(parent, sets)
     local found = {}
-    for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
+    for _, child in ipairs(Bag.Children(parent)) do
         if IsForeignButton(child, sets) then found[#found + 1] = child end
     end
     if #found > C.MAX_FOREIGN then wipe(found) end
@@ -432,7 +438,7 @@ local function CollectEntries()
     -- The button holder has left-out buttons Minimap.lua lifted above the border.
     for _, parent in ipairs({ Minimap or false, MinimapBackdrop or false, MinimapCluster or false,
         (ns.Minimap and ns.Minimap.ButtonHolder) or false, sink or false }) do
-        for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
+        for _, child in ipairs(Bag.Children(parent)) do
             Consider(child)
         end
     end

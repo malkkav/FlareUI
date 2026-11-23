@@ -1062,7 +1062,11 @@ end
 -- f.ValueLayer stays the first one made, f.ValueLayers holds them all (by the texts' own bar).
 function UF.SetValueLayersAlpha(f, a)
     for _, layer in pairs(f.ValueLayers or {}) do
-        if layer:GetAlpha() ~= a then layer:SetAlpha(a) end
+        -- (what was set last, kept here: in group content the layer's own alpha can't be read; 11-23, betonlol)
+        if layer.FlareUI_Alpha ~= a then
+            layer.FlareUI_Alpha = a
+            layer:SetAlpha(a)
+        end
     end
 end
 function UF.ValuesOnHover(f, on, texts)

@@ -171,4 +171,11 @@ assert(button("Later") and badge.Text:GetText() == "5")
 db.flareButton = false
 bag.FlareChanged()
 assert(not bag.FlareOn() and not bag.FlareIn())
+-- (11-23, storm0542) a frame with thousands of children (a gathering addon's pins) is not listed
+local crowded = env.CreateFrame("Frame", nil, env.UIParent)
+env.CreateFrame("Button", nil, crowded)
+assert(#bag.Children(crowded) == 1 and #bag.Children(nil) == 0)
+function crowded:GetNumChildren() return 9000 end
+function crowded:GetChildren() error("stack overflow") end
+assert(#bag.Children(crowded) == 0 and #bag.ForeignButtons(crowded) == 0)
 print("PASS: minimap drawer deduplication, click routing, hover, ordering, sizing and late registrations")

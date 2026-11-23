@@ -1,6 +1,37 @@
 # FlareUI changelog history
 
-Versions 7.0.2 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.3 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.3
+
+More nameplate polish, plus fixes for the bugs you sent in after 7.0.2. Nameplate auras get their own look options and can stack in two lines.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Nameplates:** player names on full plates are white. Class colour stays on Name Only plates, where it is easy to read.
+- **Nameplates:** **Threat Percentage** no longer sits over the name. It shows in the level box instead of the level while you have threat. With **Level** off, it gets its own small box right of the plate, shown only in a fight.
+- **Nameplates:** the raid marker sits on the side opposite the quest icon. **Defensives** and **Crowd Control** go past it on its side.
+
+## New
+
+### Nameplates
+- **Auras** section at the top of the Auras tab, for each plate type:
+  - **Aura Icon Shape** (Square)
+  - **Aura Swipe**, **Aura Timer** and **Timer Colour**: start with your Unit Frames values, so nothing changes.
+- **Aura Positions** section below Debuffs, shown when both Buffs and Debuffs are on:
+  - **Position** (One Line): **One Line** keeps them side by side, as before.
+  - **Buffs on Top** or **Debuffs on Top**: each gets its own line across the whole plate, one line at most.
+
+## Changed
+- **Nameplates:** **Quest Objective** and **Quest Progress** no longer show for the two player plate types.
+- **French:** the 7.0.1 text is translated. By Brainc3ll.
+
+## Fixed
+- **Chat:** with **Fade Old Lines** on, names are clickable again and link tooltips no longer flicker.
+- **Unit Frames:** **Values on Mouseover** works on the player frame again. Other frames no longer need one hover after Edit Mode.
+- **Bags & Looting:** a switched-off module stays off after a reload.
+- **Fonts:** Russian names show in the meter on English clients. FlareUI uses Blizzard's Cyrillic fonts where the game has them. Fix from Aleksandr Vasinskyi.
+- **Buffs & Debuffs:** the **Pick One of Yours** list no longer errors in a fight.
 
 # FlareUI 7.0.2
 

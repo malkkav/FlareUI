@@ -14,6 +14,12 @@ local L = ns.L
 --------------------------------------------------
 ns.Minimap = ns.Minimap or {}
 local MM = ns.Minimap
+
+-- a frame's children as a list, none of a frame with thousands (as MinimapBag.lua Bag.Children)
+function MM.Children(parent)
+    if not parent or (parent.GetNumChildren and parent:GetNumChildren() > 4000) then return {} end
+    return { parent:GetChildren() }
+end
 ns.modules["Minimap"] = MM
 
 LibStub("AceEvent-3.0"):Embed(MM)
@@ -2051,7 +2057,7 @@ function MM.LiftMapButtons()
     end
     local sets = MM.PinSets()
     for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop }) do
-        for _, child in ipairs(parent and { parent:GetChildren() } or {}) do LiftButton(child, strata, want, sets) end
+        for _, child in ipairs(MM.Children(parent)) do LiftButton(child, strata, want, sets) end
     end
     -- LibDBIcon's buttons, and other addons' map buttons, left out of the drawer go a whole strata above the border: one
     -- level above it still leaves them under its edge. Other map buttons (gathering pins) stay in the
@@ -2104,7 +2110,7 @@ function MM.DebugLayers()
     Line("border", MM.Frame)
     Line("edges (sides, bottom, bronze)", MM.BorderAbove)
     for _, parent in ipairs({ MinimapFrame, _G.MinimapBackdrop, Cluster }) do
-        for _, child in ipairs(parent and { parent:GetChildren() } or {}) do
+        for _, child in ipairs(MM.Children(parent)) do
             -- frames too: some addons make their map button a plain Frame
             if child.IsObjectType and child:IsObjectType("Frame") and child ~= MM.Frame then
                 Line(child:IsObjectType("Button") and "  btn" or "  frame", child)

@@ -1075,6 +1075,22 @@ nextFrame()
 assert(not reads.health and live.health:GetValue() == 47, "an old queued event cannot update the new owner")
 assert(live.cast.Text:GetText() == "Fireball" and not live.cast.flashing, "interrupt metadata belongs to a single claim")
 checkCastTarget("Willow", 0.2, 0.4, 0.6, 0)
+-- (11-23, exillix3) Names Above Plate: its colour is this unit's, also with no name in the bar
+do
+    local slot, kind, only = live.nameSlot, live.aboveKind, live.nameOnly
+    local set
+    local oldSet = live.name.SetTextColor
+    live.name.SetTextColor = function(self, ...) set = { ... } return oldSet(self, ...) end
+    live.nameSlot, live.aboveKind, live.nameOnly = nil, "fullname", false
+    plates.UpdateBarName(live)
+    assert(set, "coloured")
+    set = nil
+    live.aboveKind = nil
+    plates.UpdateBarName(live)
+    assert(not set, "no name shown, nothing to do")
+    live.name.SetTextColor = oldSet
+    live.nameSlot, live.aboveKind, live.nameOnly = slot, kind, only
+end
 -- (11-23, Tride) Level: Follow Name goes in front of the name above the plate too
 local above = { SetFormattedText = function(self, format, ...) self.text = format:format(...) end,
     SetText = function(self, text) self.text = text end, IsShown = function() return true end, SetTextColor = function() end }
