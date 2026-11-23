@@ -665,33 +665,16 @@ local function CanOpenPanels()
     return not refusal
 end
 
--- The Gamepad UI: FlareUI must not open the quest log itself (a panel opened from addon code
--- taints the pad's binding stack), so a click picks the quest and the details show when the
--- player opens the quest log the pad's own way (the radial's Quests & Maps, or its key). Only
--- the details page changes then, a moment after Blizzard opened the map: nothing is shown or
--- registered from FlareUI's call. Out of fights only; a pick older than a minute is dropped.
-local PAD_PICK_SECONDS = 60
-
-function OT.PickForQuestLog(questID)
+-- The Gamepad UI: FlareUI must not open the quest log, nor turn its page once it is open: both run
+-- Blizzard's controller focus in FlareUI's name, and the pad is dead until a /reload. A mouse click on a
+-- line opens the quest through the game's own buttons (OT.ShowSecureClick); this is every other press.
+function OT.PickForQuestLog()
+    if not UIErrorsFrame then return end
     if InCombatLockdown() then
-        if UIErrorsFrame then UIErrorsFrame:AddMessage(L["The quest log can't be opened from the tracker in combat."], 1, 0.25, 0.25) end
-        return
+        UIErrorsFrame:AddMessage(L["The quest log can't be opened from the tracker in combat."], 1, 0.25, 0.25)
+    else
+        UIErrorsFrame:AddMessage(L["Open your quest log to read this quest."], 1, 0.82, 0)
     end
-    state.padPick, state.padPickAt = questID, GetTime()
-    if UIErrorsFrame then UIErrorsFrame:AddMessage(L["Open your quest log to read this quest."], 1, 0.82, 0) end
-    if OT.padPickHooked or not WorldMapFrame then return end
-    OT.padPickHooked = true
-    WorldMapFrame:HookScript("OnShow", function()
-        C_Timer.After(0, function()
-            local id, at = state.padPick, state.padPickAt
-            state.padPick, state.padPickAt = nil, nil
-            if not id or GetTime() - (at or 0) > PAD_PICK_SECONDS or InCombatLockdown() then return end
-            if not (WorldMapFrame:IsShown() and QuestMapFrame and QuestMapFrame_ShowQuestDetails) then return end
-            if not C_QuestLog.GetLogIndexForQuestID(id) then return end
-            if QuestMapFrame.SetDisplayMode and QuestLogDisplayMode then QuestMapFrame:SetDisplayMode(QuestLogDisplayMode.Quests) end
-            QuestMapFrame_ShowQuestDetails(id)
-        end)
-    end)
 end
 
 -- A finished auto-complete quest completes on the click, as on Blizzard's tracker
@@ -701,7 +684,7 @@ local function OpenQuest(questID)
         local info = logIndex and C_QuestLog.GetInfo(logIndex)
         -- completing one opens a quest window: refused here
         if info and info.isAutoComplete and C_QuestLog.IsComplete(questID) then CanOpenPanels() return end
-        OT.PickForQuestLog(questID)
+        OT.PickForQuestLog()
         return
     end
     if not CanOpenPanels() then return end
@@ -1040,7 +1023,8 @@ local function QuestTooltip(line, retry)
     -- an item the client hasn't loaded yet: drawn once more a moment later
     if AddRewards(questID) and not retry then
         C_Timer.After(0.3, function()
-            if GameTooltip:IsOwned(line) and line.questID == questID and line:IsMouseOver() then QuestTooltip(line, true) end
+            if GameTooltip:IsOwned(line) and line.questID == questID
+                and (line:IsMouseOver() or (ns.PadTracker and ns.PadTracker.open)) then QuestTooltip(line, true) end
         end)
     end
     AddPartyProgress(questID)
@@ -1068,6 +1052,8 @@ local function ToggleZoneQuests(zone)
 end
 
 local function TryInsertQuestLink(link)
+    -- (the Gamepad UI: opening or filling the chat from here breaks its controller focus)
+    if ns.IsGamepadUI() then return false end
     if ChatFrameUtil.GetActiveWindow() then
         ChatFrameUtil.InsertLink(link)
         return true
@@ -1241,6 +1227,10 @@ function OT.QuestPicker()
     if picker then return picker end
     picker = CreateFrame("Button", "FlareUIQuestPick", UIParent, "SecureActionButtonTemplate")
     picker:SetAttribute("type", "click")
+    -- (11-23, Erik) the macro's /click is a release: with the game's Cast on Key Down (on by default) the
+    -- template waited for a press, so the log opened and the quest didn't
+    picker:SetAttribute("useOnKeyDown", false)
+    picker:SetAttribute("pressAndHoldAction", false)
     picker:SetScript("PreClick", function(self)
         if InCombatLockdown() then return end
         local want, target = self.questID, nil
@@ -2017,6 +2007,8 @@ function OT:UpdateItemButtons()
     state.itemsShown = used
     self:UpdateItemCooldowns()
     UpdateRangeTicker()
+    -- the controller's place in the list follows (PadTracker.lua)
+    if ns.PadTracker then ns.PadTracker.OnTrackerDrawn() end
 end
 
 --------------------------------------------------
@@ -3029,7 +3021,8 @@ function OT:SetSettingsPreview(on)
     if ns.Visibility and ns.Visibility.Wake then ns.Visibility:Wake() end
 end
 
-function OT:IsSettingsPreview() return state.preview or false end
+-- (and while the controller is in it)
+function OT:IsSettingsPreview() return state.preview or (ns.PadTracker and ns.PadTracker.open and true) or false end
 
 -- for Visibility: the window, and the pieces it fades with it that sit outside it
 function OT:GetFrame() return holder end
@@ -3543,63 +3536,6 @@ function OT.ScrollBy(delta)
     scroll:SetVerticalScroll(math_min(max, math_max(0, scroll:GetVerticalScroll() - delta * C.SCROLL_STEP)))
 end
 
--- Gamepad scroll: in the Gamepad UI, while the cursor (a Steam Deck trackpad, or the pad's
--- cursor) rests on the list, the right stick's up / down scroll it (when the game sends them as
--- buttons), and held they keep going. The D-pad stays the gamepad action bar's. A listener of
--- FlareUI's own takes those buttons only then, passes every other button on, and goes off when the
--- cursor leaves or hides, the list fits, Edit Mode opens or a fight starts (never on in a fight).
--- Only once you click the tracker (the pad's cursor click too): a cursor that just rests on the list
--- while the right stick turns the camera doesn't scroll it. Moving the cursor off the list ends it.
-local PAD_SCROLL = { PADRSTICKUP = 1, PADRSTICKDOWN = -1 }
-local PAD_REPEAT_DELAY, PAD_REPEAT_RATE = 0.35, 0.08
-
-function OT.SetPadScroll(on)
-    local f = OT.padScroll
-    if not f or (f.listening or false) == on then return end
-    if on and InCombatLockdown() then return end
-    f.listening, f.held = on, nil
-    pcall(f.EnableGamePadButton, f, on)
-    if not InCombatLockdown() then f:SetPropagateKeyboardInput(true) end
-end
-
-function OT.BuildPadScroll()
-    if OT.padScroll or not ns.IsGamepadUI() then return end
-    local f = CreateFrame("Frame", nil, holder)
-    f.smartNavigationIgnored = true
-    OT.padScroll = f
-    -- a click on the list engages it (GLOBAL_MOUSE_DOWN: any click, the list's own buttons too)
-    f:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    f:SetScript("OnEvent", function(self)
-        if scroll:IsVisible() and scroll:IsMouseOver() then self.engaged = true end
-    end)
-    f:SetScript("OnGamePadButtonDown", function(self, key)
-        local dir = PAD_SCROLL[key]
-        if not InCombatLockdown() then self:SetPropagateKeyboardInput(not dir) end
-        if not dir then return end
-        OT.ScrollBy(dir)
-        self.held, self.nextAt = dir, GetTime() + PAD_REPEAT_DELAY
-    end)
-    f:SetScript("OnGamePadButtonUp", function(self, key)
-        if PAD_SCROLL[key] then self.held = nil end
-        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
-    end)
-    local elapsed = 0
-    f:SetScript("OnUpdate", function(self, dt)
-        if self.held and GetTime() >= self.nextAt then
-            self.nextAt = GetTime() + PAD_REPEAT_RATE
-            OT.ScrollBy(self.held)
-        end
-        elapsed = elapsed + dt
-        if elapsed < 0.1 then return end
-        elapsed = 0
-        local over = IsCursorVisible() and scroll:IsVisible() and scroll:IsMouseOver()
-        if not over or InCombatLockdown() then self.engaged = nil end
-        OT.SetPadScroll(self.engaged and over and not InCombatLockdown() and not state.editMode and not Char().minimized
-            and content:GetHeight() > scroll:GetHeight() + 1 or false)
-    end)
-    f:SetScript("OnHide", function() OT.SetPadScroll(false) end)
-end
-
 local function CreateFrames()
     holder = CreateFrame("Frame", "FlareUI_ObjectiveTracker", UIParent, "BackdropTemplate")
     holder:SetFrameStrata("LOW")
@@ -3713,7 +3649,6 @@ local function CreateFrames()
     end)
 
     Build.ScrollBar(holder)
-    OT.BuildPadScroll()
 
     -- the lone "+" of Minimize Style "button"
     miniButton = CreateBoxButton(UIParent, "FlareUI_ObjectiveTrackerButton", C.LONE)
@@ -3798,7 +3733,6 @@ function OT:Init()
         elseif event == "PLAYER_REGEN_DISABLED" then
             -- (the secure click over a quest line: hidden while it still can be)
             OT.HideSecureClick()
-            OT.SetPadScroll(false)
             OT:CheckContext()
             OT:FreezeForCombat()
             return
@@ -3873,6 +3807,54 @@ function OT:Init()
 
     self:ApplyLook()
     self:Render()
+end
+
+--------------------------------------------------
+-- 13b. FOR THE CONTROLLER (PadTracker.lua): the tracker's pieces and what its clicks do
+--------------------------------------------------
+OT.Pad = {
+    TEXT = TEXT,
+    LineClick = OnLineClick,
+    Tooltip = QuestTooltip,
+    ToggleFocus = ToggleFocus,
+    IsCollapsed = IsCollapsed,
+    ToggleCollapsed = ToggleCollapsed,
+    IsPinned = function(questID) return Char().pinned[questID] end,
+    TogglePinned = function(questID)
+        local pins = Char().pinned
+        pins[questID] = (not pins[questID]) or nil
+        OT:RequestRender()
+    end,
+}
+function OT.Pad.Parts()
+    return { holder = holder, header = header, scroll = scroll, content = content, lines = lines,
+        itemButtons = itemButtons, miniButton = miniButton, state = state }
+end
+-- The quest's round button in Blizzard's parked tracker: its click focuses the quest untainted
+function OT.Pad.QuestIcon(questID)
+    local headerButton = OT.BlizzardQuestHeader(questID)
+    local block = headerButton and headerButton:GetParent()
+    local icon = block and block.poiButton
+    if icon and not icon:IsForbidden() then return icon end
+end
+-- Aims a secure button at the quest's details, as OT.ShowSecureClick does; answers whether it could
+function OT.Pad.AimDetails(button, questID)
+    local headerButton = OT.BlizzardQuestHeader(questID)
+    if headerButton then
+        button:SetAttribute("type", "click")
+        button:SetAttribute("clickbutton", headerButton)
+        return true
+    end
+    local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+    local info = logIndex and C_QuestLog.GetInfo(logIndex)
+    if not (QuestLogQuests_GetQuestButton and _G.QuestLogMicroButton) or not logIndex
+        or (info and info.isAutoComplete and C_QuestLog.IsComplete(questID)) then return false end
+    OT.QuestPicker().questID = questID
+    local open = WorldMapFrame and WorldMapFrame:IsShown()
+    button:SetAttribute("type", "macro")
+    button:SetAttribute("macrotext", (open and "" or "/click QuestLogMicroButton\n")
+        .. "/click FlareUIQuestPick\n/click FlareUIQuestPick")
+    return true
 end
 
 -- Key Bindings > AddOns > FlareUI > Minimize / Expand Quest Tracker

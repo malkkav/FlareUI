@@ -1640,8 +1640,10 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
         cast:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -PADDING - rightExtra, lift)
         cast:SetHeight(height)
     elseif mode == "BOTTOM" then
-        cast:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", PADDING + iconOffset + leftExtra, -CAST_GAP)
-        cast:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", -PADDING - rightExtra, -CAST_GAP)
+        -- (under the plate's second power slot while it shows)
+        local drop = CAST_GAP + (ns.UFRing and ns.UFRing.PlateDrop(anchor) or 0)
+        cast:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", PADDING + iconOffset + leftExtra, -drop)
+        cast:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", -PADDING - rightExtra, -drop)
         cast:SetHeight(height)
     else
         local _, pad = BorderFit(height, edgeFile)
@@ -3007,8 +3009,13 @@ function AURA.Placement(f, corner)
         local reach = (udb.castHeight or CAST_HEIGHT) + 2 * CAST_GAP
         y = isTop and reach or -reach
     end
-    -- Name Above Frames: auras above the frame go over the name (BarText.lua)
-    if isTop then y = y + (f.nameAboveLift or 0) end
+    -- Name Above Frames: auras above the frame go over the name (BarText.lua); below it, under the
+    -- plate's second power slot
+    if isTop then
+        y = y + (f.nameAboveLift or 0)
+    elseif ns.UFRing then
+        y = y - ns.UFRing.PlateDrop(f)
+    end
     if ns.UFRing and ns.UFRing.Applies(f) and (ns.UFRing.Side(f) == "LEFT") == isLeft then
         local clear = ns.UFRing.Clearance(f, math.abs(y))
         x = x + (isLeft and clear or -clear)
@@ -4890,8 +4897,8 @@ end
 --------------------------------------------------
 -- "Mana on Shapeshift": a druid in a form without mana gets a mana bar at the frame's bottom, as tall
 -- as the power bar (its Power Bar Height), with the power text's font; only with the power bar off
--- is it a thin strip with small text. Not in Forever Style, whose plate has no slot for it. Edit Mode
--- previews it.
+-- is it a thin strip with small text. In Forever Style it has the plate's second power slot, below the
+-- frame (UnitFramesRing.lua PLATE.two). Edit Mode previews it.
 UF.SHIFT_MANA_HEIGHT = 5
 UF.SHIFT_MANA_TEXT_SIZE = 8
 function UF.ShiftManaHeight(f)
@@ -4903,31 +4910,43 @@ function UF.ShiftManaShown(f)
     if not f.ShiftMana then return false end
     local udb = GetUnitDb(f.fuiUnit)
     if not (udb and udb.shiftMana) then return false end
-    -- Forever Style: the power slot splits in two, so it needs a power slot
-    if ns.UFRing and ns.UFRing.Plate(f) and ns.UFRing.PlatePower(f) == 0 then return false end
+    -- Forever Style: in the plate's second slot, if the client has its art
+    if ns.UFRing and ns.UFRing.Plate(f) and not ns.UFRing.TwoSlots() then return false end
     if ns.EditPreviewing() then return true end
     local powerType = UnitPowerType("player")
     if not canaccessvalue(powerType) then return f.ShiftMana:IsShown() end
     return powerType ~= Enum.PowerType.Mana
 end
 
--- Forever Style with Mana on Shapeshift: while the power slot is split, its power and
--- mana numbers use the strip's small size, and show only on a power slot of 10 or more; whole again,
--- the power numbers get their size back. In combat too (shifting re-lays the bars).
-function UF.PlateSplitText(f)
-    local split = UF.ShiftManaShown(f)
-    local room = ns.UFRing.PlatePowerText(f)
-    if split then room = ns.UFRing.PlatePower(f) >= 10 end
+-- Forever Style with Mana on Shapeshift: the second slot's numbers, in the power text's font, at most
+-- as large as fits the slot. In combat too (shifting re-lays the bars).
+UF.SHIFT_SLOT_TEXT = 12
+function UF.PlateSlotText(f)
+    local shown = UF.ShiftManaShown(f)
     local font = UF.Font(f.fuiUnit, "power")
-    local small = UF.SHIFT_MANA_TEXT_SIZE - (font and font.size or 12)
-    for _, fs in pairs(UF.SlotTexts(f, "power")) do
-        ApplyFont(fs, font, split and small or 0)
-        fs:SetShown(room and true or false)
-    end
+    local size = font and font.size or 12
     for _, fs in pairs(UF.SlotTexts(f, "mana")) do
-        ApplyFont(fs, font, small)
-        fs:SetShown((split and room) and true or false)
+        ApplyFont(fs, font, math.min(0, UF.SHIFT_SLOT_TEXT - size))
+        fs:SetShown(shown and true or false)
     end
+end
+
+-- The plate's second slot came or went: the cast bar and the auras under the frame make room (in a fight
+-- too: none of them is protected)
+function UF.PlateDropChanged(f)
+    local drop = ns.UFRing and ns.UFRing.PlateDrop(f) or 0
+    if f.plateDropUsed == drop then return end
+    f.plateDropUsed = drop
+    local cast, udb = f.Cast, GetUnitDb(f.fuiUnit)
+    if cast and udb and udb.castbarPosition ~= "TOP" then
+        for i = 1, cast:GetNumPoints() do
+            local point, anchor, relative, x = cast:GetPoint(i)
+            if anchor == f and relative and relative:find("^BOTTOM") then
+                cast:SetPoint(point, anchor, relative, x, -CAST_GAP - drop)
+            end
+        end
+    end
+    PositionAuraContainers(f)
 end
 
 -- Anchors health / power and the divider on their seam; the combo strip lies over the health bar's
@@ -4949,11 +4968,13 @@ local function LayoutBars(f)
         -- Forever Style: the bars sit in the frame plate's slots, the ring beside it
         f.Separator:Hide()
         if f.Combo then f.Combo:Hide() end
-        -- (Mana on Shapeshift: LayoutPlate splits the power slot between power and the strip)
         ns.UFRing.LayoutPlate(f)
         ns.UFRing.Layout(f)
         UpdatePortrait(f)
-        if f.ShiftMana then UF.PlateSplitText(f) end
+        if f.ShiftMana then
+            UF.PlateSlotText(f)
+            UF.PlateDropChanged(f)
+        end
         return
     end
 
@@ -5216,7 +5237,7 @@ local function LayoutFrame(f)
     local roomForText
     if nameBox then roomForText = ns.UFRing.PlatePowerText(f) else roomForText = powerHeight >= 10 end
     for _, fs in pairs(UF.SlotTexts(f, "power")) do fs:SetShown(roomForText and true or false) end
-    if nameBox and f.ShiftMana then UF.PlateSplitText(f) end
+    if nameBox and f.ShiftMana then UF.PlateSlotText(f) end
     if ringOn then
         ns.UFRing.LayoutLevel(f)
         -- the classic gems follow the ring's size and side
@@ -5303,7 +5324,8 @@ local function AttachExtras(f)
         local container = _G.PlayerBottomManagedFrameContainer
         if container then
             container:ClearAllPoints()
-            container:SetPoint("TOP", f, "BOTTOM", 0, -2)
+            -- (room for the plate's second power slot kept while its option is on: this one can't move in a fight)
+            container:SetPoint("TOP", f, "BOTTOM", 0, -2 - (ns.UFRing and ns.UFRing.PlateReserve(f) or 0))
         end
     end
 end
@@ -6507,9 +6529,12 @@ local function BuildSettings(unit)
                 local u = GetUnitDb(unit); if not u then return end
                 u.shiftMana = value
                 local f = frames[unit]
-                if f and f.ShiftMana then UF.UpdateShiftMana(f) end
+                if f and f.ShiftMana then
+                    UF.UpdateShiftMana(f)
+                    AttachExtras(f)
+                end
             end,
-            desc = L["Druids: a thin mana bar under the power bar, in forms without mana. The health bar gets shorter to make room; in Forever Style the power bar splits in two."] }
+            desc = L["Druids: a thin mana bar under the power bar, in forms without mana. The health bar gets shorter to make room; in Forever Style the frame gets a second power slot."] }
     end
     -- Range Check: the frames that fade out of range (target and focus); with the frame's own rows
     -- (it changes how the frame behaves, not how it looks)

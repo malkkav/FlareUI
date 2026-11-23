@@ -240,7 +240,8 @@ end)
 --------------------------------------------------
 ns.EscMenu = {}
 function ns.EscMenu.Add(menu)
-    if not (ns.db and ns.db.global and ns.db.global.escMenuButton) then return end
+    -- (not in the Gamepad UI: the game menu has the pad's focus, and an addon's button in it breaks that)
+    if ns.IsGamepadUI() or not (ns.db and ns.db.global and ns.db.global.escMenuButton) then return end
     local after
     for _, b in ipairs(menu.buttons or {}) do
         local text = b:GetText()

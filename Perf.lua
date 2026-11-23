@@ -257,6 +257,7 @@ function Perf.ShowText(titleText, text)
         note:SetText("Ctrl+C to copy, then paste it to the developer.")
         local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
         close:SetPoint("TOPRIGHT", -2, -2)
+        close:SetScript("OnClick", function() f:Hide() end)   -- (the template's own is refused in a fight)
 
         local scroll = CreateFrame("ScrollFrame", nil, f)
         scroll:SetPoint("TOPLEFT", 14, -34)

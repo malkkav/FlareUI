@@ -63,7 +63,7 @@ local db = {
     enabled = true, bagModule = true, bagModuleSeeded = true, autoRepair = true, repairGuild = false,
     fasterCameraZoom = true, maxCameraZoom = true, mapFade = true, keyDown = true, hideTips = true,
     hideErrors = true, hideZoneText = true, hidePortraitNumbers = true, hideLootAlerts = true,
-    fasterLoot = true, skipLootConfirm = true, combatPlates = true, combatFriendly = true, alertSounds = true,
+    fasterLoot = true, skipLootConfirm = true, combatPlates = true, combatFriendly = true, nameplateCombo = true, alertSounds = true,
     sellJunk = true, acceptRes = true, acceptSummon = true, merchantWide = true, petFood = true,
 }
 ns.db = { profile = { tweaks = db }, global = { forcedCVars = { keyDown = "0" } } }
@@ -136,13 +136,10 @@ assert(env.CameraZoomIn(1) == 4 and env.CameraZoomOut(0.5) == 0.5)
 assert(cv.mapFade == "1" and cv.ActionButtonUseKeyDown == "1" and cv.showTutorials == "0")
 assert(ns.CharDB().forcedCVars.keyDown == "0" and ns.db.global.forcedCVars.keyDown == nil)
 assert(ns.CharDB().mailName == "Marin Reed")
-assert(cv.nameplateShowEnemies == "0" and tweaks.FriendlyPicks() == "000" and tweaks.FriendlyHeld() == "101")
-assert(tweaks.FriendlyIndex("NamePlateShowFriendlyNpcs") == 2)
-
+-- Quality of Life never touches which nameplates show (11-23): that is the Nameplates module's
 ui:emit("PLAYER_REGEN_DISABLED")
-assert(cv.nameplateShowEnemies == "1" and tweaks.FriendlyPicks() == "101")
 ui:emit("PLAYER_REGEN_ENABLED")
-assert(cv.nameplateShowEnemies == "0" and tweaks.FriendlyPicks() == "000")
+assert(cv.nameplateShowEnemies == "1" and cv.nameplateShowFriendlyPlayers == "1" and cv.nameplateShowFriendlyNpcs == "0")
 ui:emit("UI_ERROR_MESSAGE", 1, "Out of range")
 assert(#texts == 0)
 ui:emit("UI_ERROR_MESSAGE", 1, env.ERR_INV_FULL)
@@ -197,6 +194,15 @@ assert(#confirmations == 0)
 ui:flushTimers()
 assert(confirmations[1][1] == "bind" and confirmations[1][2] == 4 and hidden[1] == "LOOT_BIND")
 assert(confirmations[2][3] == 3 and hidden[2] == "CONFIRM_LOOT_ROLL")
+-- the Gamepad UI: closing Blizzard's pop-up from addon code breaks its controller focus, so it asks (11-23)
+do
+    local isGamepad = ns.IsGamepadUI
+    ns.IsGamepadUI = function() return true end
+    ui:emit("LOOT_BIND_CONFIRM", 6)
+    ui:flushTimers()
+    assert(#confirmations == 2 and #hidden == 2)
+    ns.IsGamepadUI = isGamepad
+end
 
 ui:emit("READY_CHECK", "player")
 ui:emit("READY_CHECK", "party1")
@@ -244,12 +250,12 @@ ns.db.global.uiScale, ns.db.global.uiScaleCustom = "custom", 0.2
 assert(scale.Value() == scale.CUSTOM_MIN)
 
 db.cameraZoomSpeed, db.cameraMaxZoom, db.hideTips, db.hidePortraitNumbers = nil, nil, false, false
-db.hideLootAlerts, db.combatFriendly, db.combatPlates, db.mapFade, db.keyDown = false, false, false, false, false
+db.hideLootAlerts, db.mapFade, db.keyDown = false, false, false
 tweaks:Refresh()
 assert(cv.cameraZoomSpeed == "20" and cv.cameraDistanceMaxZoomFactor == "1.7" and env.CameraZoomIn(1) == 1)
 assert(cv.showTutorials == "1" and cv.showNPETutorials == "0" and env.PetFrameHealthBar.TextString:GetAlpha() == 1)
 assert(not env.LootAlertSystem.shouldIgnoreAlertsFunc("test") and env.LootAlertSystem.shouldIgnoreAlertsFunc("Blizzard ignores it"))
-assert(tweaks.FriendlyPicks() == "101" and cv.nameplateShowEnemies == "1" and cv.ActionButtonUseKeyDown == "0")
+assert(cv.nameplateShowEnemies == "1" and cv.ActionButtonUseKeyDown == "0")
 -- Quest automation leaves repeatable quests, manual reward choices and the Shift override alone.
 db.autoAcceptQuests, db.autoTurnInQuests, db.skipGossip = true, true, true
 env.Enum = { InputDeviceInterfaceType = { Mkb = 0, Gamepad = 1 } }
@@ -382,5 +388,25 @@ assert(ignored and bank and guildInvites and env.ChatTypeInfo.SAY.colorNameByCla
 assert(filters[1] == "SAY" and channels[1] == "General")
 ui:flushTimers()
 assert(actionBar and updated == 1 and opened[#opened][1] == "FLAREUI_SYNC_RELOAD")
+
+-- the Gamepad UI: synced settings and chat windows wait for the reload it asks for (11-23: applied live they
+-- run Blizzard's controller code in FlareUI's name)
+do
+    local isGamepad = ns.IsGamepadUI
+    ns.IsGamepadUI = function() return true end
+    local dockUpdates = 0
+    env.FCF_DockUpdate = function() dockUpdates = dockUpdates + 1 end
+    guid, cv.autoLootDefault, chatName, chatSize = "Player-Pad", "1", "Old", 11
+    local asked = #opened
+    tweaks.accountStarted = nil
+    assert(tweaks:ShouldLoad())
+    ui:flushTimers()
+    ui:flushTimers()
+    assert(ns.CharDB().syncApplied == 1001 and cv.autoLootDefault == "1" and dockUpdates == 0)
+    assert(#opened > asked and opened[#opened][1] == "FLAREUI_SYNC_RELOAD")
+    ui:emit("PLAYER_LOGOUT")
+    assert(cv.autoLootDefault == "0", "set as the session ends")
+    ns.IsGamepadUI = isGamepad
+end
 
 print("PASS: Quality of Life vendor, quests, sync, loot, visibility and CVar behavior")

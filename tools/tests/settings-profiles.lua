@@ -114,18 +114,18 @@ assert(plateRefreshes == 1, "importing shared plate options refreshes the cache 
 local observed = {}
 ns.Nameplates.ProfileChanged = function()
     local saved = db.sv.profiles[db:GetCurrentProfile()]
-    observed[#observed + 1] = { alpha = saved.nameplates.rangeAlpha, quest = saved.tweaks.nameplateQuest }
+    observed[#observed + 1] = { alpha = saved.nameplates.rangeAlpha, quest = saved.tweaks.autoRepair }
 end
 local function importIntoCurrent(changes)
     ns.ShowImportPicker({ addon = "FlareUI", name = "Plate settings", profile = changes })
     picker.intoRadio:Click()
     picker.import:Click()
 end
-imported.tweaks.nameplateQuest = true
+imported.tweaks.autoRepair = true
 importIntoCurrent({ nameplates = { rangeAlpha = 0.45 } })
 assert(#observed == 1 and observed[1].alpha == 0.45 and observed[1].quest == true,
     "a nameplates-only import notifies the cache with the new range setting")
-importIntoCurrent({ nameplates = { rangeAlpha = 0.8 }, tweaks = { nameplateQuest = false } })
+importIntoCurrent({ nameplates = { rangeAlpha = 0.8 }, tweaks = { autoRepair = false } })
 assert(#observed == 2 and observed[2].alpha == 0.8 and observed[2].quest == false,
     "the cache is notified once, after both plate-related sections have been replaced")
 

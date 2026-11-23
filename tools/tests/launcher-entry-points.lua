@@ -133,6 +133,11 @@ assert(not gameMenu:IsShown())
 ui.shopDisabled = true
 gameMenu:InitButtons()
 assert(gameMenu.buttons[3].layoutIndex == 1.5, "without Shop the entry goes after Options")
+local wasPad = ns.IsGamepadUI
+ns.IsGamepadUI = function() return true end
+gameMenu:InitButtons()
+assert(#gameMenu.buttons == 2, "no entry in the Gamepad UI's game menu")
+ns.IsGamepadUI = wasPad
 
 E.FlareUI_ToggleSettings()
 last("toggle")

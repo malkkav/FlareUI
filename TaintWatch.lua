@@ -28,6 +28,17 @@ local WATCHED = {
     { "GroupTargeting", function() return _G.GroupTargeting end },
     { "GamepadRadial", function() return _G.GamepadRadial end },
     { "GamepadPersistentInputLegend", function() return _G.GamepadPersistentInputLegend end },
+    { "GeneralDockManager", function() return _G.GeneralDockManager end },
+    { "ChatFrame1", function() return _G.ChatFrame1 end },
+    { "ChatFrame1.footer", function() return _G.ChatFrame1 and _G.ChatFrame1.footer end },
+    { "ChatFrame1EditBox", function() return _G.ChatFrame1EditBox end },
+    { "ChatFrame2", function() return _G.ChatFrame2 end },
+}
+
+-- globals the chat's controller focus reads (a tainted one is the dead controller after a tab switch)
+local WATCHED_GLOBALS = {
+    "LAST_ACTIVE_CHAT_EDIT_BOX", "ACTIVE_CHAT_EDIT_BOX", "SELECTED_CHAT_FRAME", "DEFAULT_CHAT_FRAME",
+    "GENERAL_CHAT_DOCK", "isButton", "FCFDock_SelectWindow", "FCFDock_UpdateTabs",
 }
 
 local running, ticker, events
@@ -49,7 +60,33 @@ local function Note(text)
     Say(text)
 end
 
+-- the pad's bound keys: one bound in a tainted run keeps its taint until a /reload
+local function ScanBindings(trigger)
+    local manager = GamepadSharedUtility and GamepadSharedUtility.InputBindingManager
+    for _, field in ipairs({ "activeBindings", "bindingSetStack" }) do
+        local list = manager and manager[field]
+        if type(list) == "table" then
+            for key in pairs(list) do
+                local secure, blamed = issecurevariable(list, key)
+                local id = not secure and (field .. "[" .. tostring(key) .. "]")
+                if id and not seen[id] then
+                    seen[id] = true
+                    Note(("%s is tainted (by %s)%s"):format(id, tostring(blamed or "?"), trigger and (", after " .. trigger) or ""))
+                end
+            end
+        end
+    end
+end
+
 local function Scan(trigger)
+    ScanBindings(trigger)
+    for _, name in ipairs(WATCHED_GLOBALS) do
+        local secure, blamed = issecurevariable(name)
+        if not secure and not seen[name] then
+            seen[name] = true
+            Note(("%s is tainted (by %s)%s"):format(name, tostring(blamed or "?"), trigger and (", after " .. trigger) or ""))
+        end
+    end
     for _, watched in ipairs(WATCHED) do
         local name, get = watched[1], watched[2]
         local t = get()

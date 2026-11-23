@@ -1722,6 +1722,8 @@ local function Check(entry, before)
         if fine then return 0, 1 end
         -- food: a click eats that one again while you have it (Bill's and Tride's idea 11-19)
         local food = def.key == "food" and ns.CharDB().buffFood
+        -- (a drink saved as the food, before 11-23: forgotten)
+        if food and BR.IsDrink and BR.IsDrink(food) then food, ns.CharDB().buffFood = nil, nil end
         if food and ItemCount(food) > 0 then
             return 1, 1, "player", nil, ItemIcon(food), running, { item = "item:" .. food, tipItem = food },
                 running and left or nil
@@ -2752,13 +2754,29 @@ function BR:Init()
     -- food eaten from the bags or an action button: held for 90 s; if the food buff comes in that
     -- time, the food reminder's click eats it next time (Check). Post-hooks only: nothing is tainted
     local DRINK_SPELL = 432
+    -- true a drink, false not one, nil not known yet
+    function BR.IsDrink(itemID)
+        local spellName = C_Item.GetItemSpell and C_Item.GetItemSpell(itemID)
+        if not spellName then return nil end
+        return spellName == C_Spell.GetSpellName(DRINK_SPELL)
+    end
     local function NoteFood(itemID)
         if type(itemID) ~= "number" then return end
         local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
         if classID ~= 0 or subclassID ~= 5 then return end
-        local spellName = C_Item.GetItemSpell and C_Item.GetItemSpell(itemID)
-        if spellName and spellName == C_Spell.GetSpellName(DRINK_SPELL) then return end
-        BR.pendingFood = { item = itemID, at = GetTime() }
+        local drink = BR.IsDrink(itemID)
+        if drink then return end
+        local note = { item = itemID, at = GetTime() }
+        if drink == false then BR.pendingFood = note return end
+        -- (11-23, Tride) what it does isn't loaded yet: a drink taken for food replaced the food eaten
+        -- with it. Asked for, and looked at again
+        if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(itemID) end
+        C_Timer.After(1, function()
+            if BR.IsDrink(itemID) then return end
+            local pending = BR.pendingFood
+            if not pending or pending.at <= note.at then BR.pendingFood = note end
+            if BR.ConfirmFood then BR.ConfirmFood() end
+        end)
     end
     if C_Container and C_Container.UseContainerItem then
         hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)

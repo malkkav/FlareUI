@@ -216,9 +216,18 @@ Ring.STRIP_ATLAS = PLATE.strip
 Ring.PLATE_POWER = { default = 9, min = 4, max = 15 }
 PLATE.healthFull = { PLATE.health[1], PLATE.health[2], PLATE.health[3], 53, tex = PLATE.health.tex,
                      mirrored = PLATE.health.mirrored }
--- Mana on Shapeshift: the power slot's two halves, split in the middle of its stretching row
-PLATE.powerTop = { PLATE.power[1], PLATE.power[2], PLATE.power[3], 49, tex = PLATE.power.tex, mirrored = PLATE.power.mirrored }
-PLATE.powerBottom = { PLATE.power[1], PLATE.power[2], 49, PLATE.power[4], tex = PLATE.power.tex, mirrored = PLATE.power.mirrored }
+-- Mana on Shapeshift (11-23, Malkkav's find): Blizzard's player plate with two power slots, unused on
+-- Forever. Its upper part is the target's plate, mirrored and 4 art pixels lower (measured on the sheet:
+-- x there = 197 - x here), so only what is below the power slot comes from it: the last row, 11 longer.
+-- It hangs below the frame, which can't resize in a fight. Two more pieces carry its corner on under the
+-- ring; the outer one is cut to a circle, as Blizzard's ring stands a little further out than ours.
+PLATE.two = {
+    atlas = "UI-HUD-UnitFrame-Player-PortraitOn-ClassResource", artW = 198, artH = 74, flipX = 197, downY = 4,
+    from = 51, to = 70, drop = 11,         -- the last row's y here, and how much lower it ends (59 to 70)
+    under = { 145, 158.6, 192 },           -- the two pieces under the ring: x from, between, to
+    maskD = 62, maskX = 154.6, maskY = 36.9,   -- the outer piece's circle
+    slot = { PLATE.power[1], PLATE.power[2], 56, 63.5, tex = PLATE.power.tex, mirrored = PLATE.power.mirrored },
+}
 local plateRows = {}
 -- the rows' deltas for a power slot of that height
 local function PlateRows(power)
@@ -1186,6 +1195,14 @@ local function BuildPlate(f)
     plate:SetAllPoints(f)
     plate.pieces = {}
     for i = 1, (#PLATE.cutX - 1) * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
+    -- the player's: the second power slot's corner under the ring (PLATE.two), behind the rest
+    if f.ShiftMana then
+        plate.underFrom = #plate.pieces
+        for i = 1, 2 do plate.pieces[plate.underFrom + i] = plate:CreateTexture(nil, "BACKGROUND", nil, -1) end
+        plate.UnderMask = plate:CreateMaskTexture()
+        plate.UnderMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        plate.pieces[plate.underFrom + 2]:AddMaskTexture(plate.UnderMask)
+    end
     -- Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
     -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
     -- light: the bright metal glows, the dark slots stay dark.
@@ -1198,6 +1215,7 @@ local function BuildPlate(f)
         g:SetDesaturated(true)
         g:Hide()
         plate.glow[i] = g
+        if plate.underFrom and i == plate.underFrom + 2 then g:AddMaskTexture(plate.UnderMask) end
         local fade = plate.GlowPulse:CreateAnimation("Alpha")
         fade:SetTarget(g)
         fade:SetFromAlpha(STATUS_PULSE[1])
@@ -1232,6 +1250,62 @@ local function PlaceBar(bar, f, s, flip, slot)
     if bar.bg then bar.bg:SetAlpha(0) end   -- the slot is the background
 end
 
+-- The second power slot (PLATE.two), over the last row's pieces and on under the ring; off: the pieces
+-- under the ring draw nothing. info: the plate's own atlas; s, flip as LayoutPlate's
+local function LayoutTwoSlots(f, plate, s, flip, two)
+    local T = PLATE.two
+    local du, dv = two and two.rightTexCoord - two.leftTexCoord, two and two.bottomTexCoord - two.topTexCoord
+    local function Draw(i, x1, x2)
+        local tex, g = plate.pieces[i], plate.glow[i]
+        if not two then
+            tex:SetTexture(nil)
+            g:SetTexture(nil)
+            return
+        end
+        local u1 = two.leftTexCoord + (T.flipX - x1) / T.artW * du
+        local u2 = two.leftTexCoord + (T.flipX - x2) / T.artW * du
+        if flip then u1, u2 = u2, u1 end
+        local v1 = two.topTexCoord + (T.from + T.downY) / T.artH * dv
+        local v2 = two.topTexCoord + (T.to + T.downY) / T.artH * dv
+        for _, t in ipairs({ tex, g }) do
+            t:SetTexture(two.file)
+            t:SetTexCoord(u1, u2, v1, v2)
+            PlaceOnPlate(t, f, s, flip, x1, x2, T.from, T.to, PLATE.rowDelta)
+        end
+        Ring.TintPlateArt(tex)
+        tex:Show()
+    end
+    if plate.underFrom then
+        Draw(plate.underFrom + 1, T.under[1], T.under[2])
+        Draw(plate.underFrom + 2, T.under[2], T.under[3])
+        local x = (T.maskX - PLATE.x1) * s
+        plate.UnderMask:ClearAllPoints()
+        plate.UnderMask:SetSize(T.maskD * s, T.maskD * s)
+        plate.UnderMask:SetPoint("CENTER", f, flip and "BOTTOMLEFT" or "BOTTOMRIGHT", flip and -x or x,
+            (RowY(PLATE.y1) - RowY(T.maskY)) * s)
+    end
+    if two then
+        local cols = #PLATE.cutX - 1
+        local first = (#PLATE.cutY - 2) * cols
+        for col = 1, cols do Draw(first + col, PLATE.cutX[col], PLATE.cutX[col + 1]) end
+    end
+end
+
+-- Whether the second power slot's art is there, and how far it reaches below the frame (0: not shown)
+function Ring.TwoSlots()
+    local info = C_Texture.GetAtlasInfo(PLATE.two.atlas)
+    return info and info.file and info.leftTexCoord and info or nil
+end
+function Ring.PlateDrop(f)
+    return f and f.PlateFrame and f.PlateFrame:IsShown() and f.plateDrop or 0
+end
+-- the room it needs while its option is on, shown or not
+function Ring.PlateReserve(f)
+    local udb = f and f.ShiftMana and Db(f)
+    if not (udb and udb.shiftMana and Ring.Plate(f) and Ring.TwoSlots()) then return 0 end
+    return PLATE.two.drop * Geometry(f).s
+end
+
 -- Lays out the plate and puts the bars in its slots (Forever Style)
 function Ring.LayoutPlate(f)
     local g = Geometry(f)
@@ -1241,6 +1315,10 @@ function Ring.LayoutPlate(f)
     plate:Show()
     local power = Ring.PlatePower(f)
     f.plateRows = PlateRows(power)
+    local UF = ns.UnitFrames
+    local split = f.ShiftMana and UF and UF.ShiftManaShown and UF.ShiftManaShown(f)
+    local two = split and Ring.TwoSlots() or nil
+    f.plateDrop = two and PLATE.two.drop * s or 0
     local info = C_Texture.GetAtlasInfo(PLATE.atlas)
     if info and info.file then
         local du, dv = info.rightTexCoord - info.leftTexCoord, info.bottomTexCoord - info.topTexCoord
@@ -1269,6 +1347,7 @@ function Ring.LayoutPlate(f)
             end
         end
     end
+    if two or plate.underFrom then LayoutTwoSlots(f, plate, s, flip, two) end
     plate.glowOn = nil   -- the lit copy's art was set again: Ring.PlateGlow redoes its colour
     for holder in pairs(plate.dispelCopies or {}) do Ring.SyncPlateDispel(plate, holder) end
     local n = PLATE.name
@@ -1293,31 +1372,20 @@ function Ring.LayoutPlate(f)
         plate.Strip:Hide()
     end
     local strip, line = f.ShiftMana, f.ShiftManaSeparator
-    local UF = ns.UnitFrames
-    local split = power > 0 and strip and UF and UF.ShiftManaShown and UF.ShiftManaShown(f)
-    if split then
-        -- Mana on Shapeshift: the power slot split in half, power above, mana below,
-        -- with the other styles' line between
-        PlaceBar(f.Health, f, s, flip, PLATE.health)
-        PlaceBar(f.Power, f, s, flip, PLATE.powerTop)
-        f.Power:Show()
-        strip:SetReverseFill(f.Power:GetReverseFill())
-        PlaceBar(strip, f, s, flip, PLATE.powerBottom)
-        strip:Show()
-        local K = UF.Kit
-        local h = (K and K.SEPARATOR_HEIGHT) or 1
-        line:ClearAllPoints()
-        line:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, h / 2)
-        line:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, h / 2)
-        line:SetHeight(h)
-        line:Show()
-    elseif power > 0 then
-        if strip then strip:Hide(); line:Hide() end
+    if strip then
+        -- Mana on Shapeshift: in the plate's second power slot, which has its own divider
+        if two then
+            strip:SetReverseFill(f.Power:GetReverseFill())
+            PlaceBar(strip, f, s, flip, PLATE.two.slot)
+        end
+        strip:SetShown(two ~= nil)
+        line:Hide()
+    end
+    if power > 0 then
         PlaceBar(f.Health, f, s, flip, PLATE.health)
         PlaceBar(f.Power, f, s, flip, PLATE.power)
         f.Power:Show()
     else
-        if strip then strip:Hide(); line:Hide() end
         -- Power Height Off: the health bar down to the power slot's bottom
         PlaceBar(f.Health, f, s, flip, PLATE.healthFull)
         f.Power:Hide()
@@ -1430,6 +1498,7 @@ local function HidePlate(f)
     if f.Health.bg then f.Health.bg:SetAlpha(1) end
     if f.Power.bg then f.Power.bg:SetAlpha(1) end
     f.Health.FlareUI_PlateInset, f.Power.FlareUI_PlateInset = nil, nil
+    f.plateDrop = nil
 end
 Ring.HidePlate = HidePlate
 

@@ -69,6 +69,7 @@ Modules\UnitFrames.lua
 Modules\UnitFramesRing.lua
 Modules\UnitFramesDoesItDie.lua
 Modules\PadGroupTargeting.lua
+Modules\PadTracker.lua
 Modules\PartyFrames.lua
 Modules\RaidFrames.lua
 Modules\BossFrames.lua
@@ -87,6 +88,7 @@ Modules\MinimapDurability.lua
 Modules\TweaksCVars.lua
 Modules\Tweaks.lua
 Modules\Nameplates.lua
+Modules\NameplateExtras.lua
 Modules\JunkDelete.lua
 Modules\Fishing.lua
 Modules\Bags.lua

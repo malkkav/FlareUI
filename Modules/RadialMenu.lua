@@ -265,7 +265,7 @@ function RM.BestRank(name)
             for offset = 1, count do
                 local item = C_SpellBook.GetSpellBookItemInfo(lineInfo.itemIndexOffset + offset, bank)
                 local id = item and item.spellID
-                local spellName = id and ns.IsPlayerSpell(id) and C_Spell.GetSpellName(id)
+                local spellName = id and not item.isPassive and ns.IsPlayerSpell(id) and C_Spell.GetSpellName(id)
                 if spellName then
                     local rank = RankOf(id)
                     if not rankOf[spellName] or rank > rankOf[spellName] then
@@ -1485,33 +1485,102 @@ local function PadStick()
     return state and state.sticks and state.sticks[padStickIndex]
 end
 
--- While the controller radial is open the right stick aims it, so the camera holds still. A frame
--- of FlareUI's own takes the camera stick's input while a radial is aimed (returning false: handled)
--- and passes the rest on. It listens ONLY while a controller radial is open, as Blizzard's radial
--- wheel does: left on for good, it takes both sticks from the game on some setups. Turning stick
--- input on is protected, so the secure open / close snippets do it (frame ref "stickguard"), which
--- works in a fight too. Made with the secure layer, out of combat.
-local cameraHeld = false
-local stickGuard
+-- While the controller radial is open the right stick aims it, so the camera holds still and the left
+-- stick keeps moving you. A frame that listens to the sticks takes BOTH from the game unless it passes
+-- its input on; a handler's "return true" only does that for Blizzard's own frames (11-23, ericusson:
+-- opening a radial stopped the character; likely the 11-09 dead sticks too). So two frames:
+--   Sticks.guard passes everything on and only watches. It listens ONLY while a controller radial is
+--     open. Turning stick input on is protected, so the secure open / close snippets do it (frame ref
+--     "stickguard"), which works in a fight too. Made with the secure layer, out of combat.
+--   Sticks.block takes what it gets. It is a plain frame, shown for the camera's event alone.
+-- Each frame the game sends the raw sticks (Left, Right), then their twins in the same order (Movement,
+-- Camera), each twin only if its raw stick moved; the game acts on the twins (ConsolePort's finding). So
+-- the block goes up right before Camera: after Right, or after Movement when the left stick moved too.
+-- A centred right stick is never blocked: the camera has to hear that it stopped.
+local Sticks = { held = false, left = false, waitMovement = false }   -- and guard, block, clock
+RM.Sticks = Sticks
+
+function Sticks.Watch(_, stick, x, y)
+    if not Sticks.held then return end
+    if stick == "Left" then
+        Sticks.left = true
+    elseif stick == "Right" then
+        if (x or 0) == 0 and (y or 0) == 0 then return end
+        if Sticks.left then Sticks.waitMovement = true else Sticks.block:Show() end
+    elseif stick == "Movement" and Sticks.waitMovement then
+        Sticks.waitMovement = false
+        Sticks.block:Show()
+    end
+end
+
+-- the next screen frame starts over
+function Sticks.FrameEnd()
+    Sticks.left, Sticks.waitMovement = false, false
+    Sticks.block:Hide()
+end
 
 local function GuardStick()
-    if stickGuard or InCombatLockdown() then return stickGuard end
-    stickGuard = CreateFrame("Frame", nil, UIParent, "SecureFrameTemplate")
-    stickGuard:SetScript("OnGamepadStick", function(_, stick)
-        if cameraHeld and stick == "Camera" then return false end
-        return true
+    if Sticks.guard or InCombatLockdown() then return Sticks.guard end
+    Sticks.block = CreateFrame("Frame", nil, UIParent)
+    Sticks.block:SetFrameStrata("TOOLTIP")
+    Sticks.block:SetPropagateKeyboardInput(false)
+    Sticks.block:EnableGamePadStick(true)
+    Sticks.block:SetScript("OnGamepadStick", function(self, stick, x, y)
+        if stick == "Camera" then self:Hide() else Sticks.Watch(nil, stick, x, y) end
     end)
-    stickGuard:EnableGamePadStick(false)
-    return stickGuard
+    Sticks.block:Hide()   -- (a hidden frame takes no input)
+    Sticks.clock = CreateFrame("Frame")
+    Sticks.clock:Hide()
+    Sticks.clock:SetScript("OnUpdate", function(_, elapsed)
+        Sticks.FrameEnd()
+        if Sticks.endIn then
+            Sticks.endIn = Sticks.endIn - elapsed
+            local stick = PadStick()
+            if Sticks.endIn <= 0 or not stick or (stick.len or 0) < Sticks.HOLD_LEN then Sticks.End() end
+        end
+    end)
+    -- (a fight: the listener goes off while it still can)
+    Sticks.clock:RegisterEvent("PLAYER_REGEN_DISABLED")
+    Sticks.clock:SetScript("OnEvent", function() if Sticks.endIn then Sticks.End() end end)
+    Sticks.guard = CreateFrame("Frame", nil, UIParent, "SecureFrameTemplate")
+    Sticks.guard:SetFrameStrata("BACKGROUND")
+    Sticks.guard:SetPropagateKeyboardInput(true)
+    Sticks.guard:SetScript("OnGamepadStick", Sticks.Watch)
+    Sticks.guard:EnableGamePadStick(false)
+    return Sticks.guard
 end
+
+-- Out of a fight, a radial closed with the right stick still out keeps the camera held until the stick
+-- is back (or HOLD_AFTER seconds): the stick springing back swung the camera. In a fight the close
+-- snippet turns the listener off at once, as it can't be turned off here.
+Sticks.HOLD_AFTER, Sticks.HOLD_LEN = 0.4, 0.2
 
 -- out of a fight, the listener goes off with the radial whatever closed it
 local function ReleaseStickGuard()
-    if stickGuard and not InCombatLockdown() then pcall(stickGuard.EnableGamePadStick, stickGuard, false) end
+    if Sticks.guard and not InCombatLockdown() then pcall(Sticks.guard.EnableGamePadStick, Sticks.guard, false) end
 end
 
 local function HoldCamera(on)
-    cameraHeld = on and true or false
+    Sticks.endIn = nil
+    Sticks.held = on and true or false
+    if not Sticks.block then return end
+    Sticks.clock:SetShown(Sticks.held)
+    if not Sticks.held then Sticks.FrameEnd() end
+end
+
+-- now
+function Sticks.End()
+    HoldCamera(false)
+    ReleaseStickGuard()
+end
+-- the radial closed: now, or once the stick is back
+function Sticks.Close()
+    local stick = Sticks.held and Sticks.block and not InCombatLockdown() and PadStick()
+    if stick and (stick.len or 0) >= Sticks.HOLD_LEN then
+        Sticks.endIn = Sticks.HOLD_AFTER
+    else
+        Sticks.End()
+    end
 end
 
 -- The right stick's directions come as keys (the aim button's clicks) only with the CVar on: on
@@ -1520,13 +1589,19 @@ end
 local function SetStickKeys(on)
     local global = ns.db and ns.db.global
     if not global then return end
+    local value = C_CVar.GetCVar(STICK_KEYS_CVAR)
+    if value == nil then return end
     if on then
-        if global.padStickKeysRestore ~= nil then return end
-        local value = C_CVar.GetCVar(STICK_KEYS_CVAR)
-        if value == nil or value == "1" then return end
-        if pcall(C_CVar.SetCVar, STICK_KEYS_CVAR, "1") then global.padStickKeysRestore = value end
+        -- (set even when it reads 1: a saved value isn't applied until it is set)
+        pcall(C_CVar.SetCVar, STICK_KEYS_CVAR, "1")
+        -- remembered only if it took: the game can refuse it in a fight without an error
+        if value ~= "1" and global.padStickKeysRestore == nil and C_CVar.GetCVar(STICK_KEYS_CVAR) == "1" then
+            global.padStickKeysRestore = value
+        end
     elseif global.padStickKeysRestore ~= nil then
-        if pcall(C_CVar.SetCVar, STICK_KEYS_CVAR, global.padStickKeysRestore) then global.padStickKeysRestore = nil end
+        pcall(C_CVar.SetCVar, STICK_KEYS_CVAR, global.padStickKeysRestore)
+        -- refused: asked again after the fight and at logout
+        if C_CVar.GetCVar(STICK_KEYS_CVAR) == tostring(global.padStickKeysRestore) then global.padStickKeysRestore = nil end
     end
 end
 
@@ -1607,6 +1682,14 @@ local function UpdateSelection()
         SetCancelSelected(true)
     end
 
+    -- what is lit is what a release or R3 uses: the direction keys alone move the kept aim only when
+    -- one is pressed, and several buttons share a direction. (Out of a fight; in one the keys decide.)
+    if openMode == "pad" and aimed and index ~= padSticky and header and not InCombatLockdown() then
+        padSticky = index
+        header:SetAttribute("flare-lit", index)
+        SecureHandlerExecute(header, [[ if MODE == "pad" then STICKY = self:GetAttribute("flare-lit") end ]])
+    end
+
     if index ~= selectedIndex then
         if selectedIndex and buttons[selectedIndex] then SetButtonSelected(buttons[selectedIndex], false) end
         if index and buttons[index] then SetButtonSelected(buttons[index], true) end
@@ -1673,7 +1756,9 @@ end
 --------------------------------------------------
 -- mode: "hold" (the keybind), "click" (a macro) or "pad" (the stick press)
 local function OpenRadial(radialID, mode)
-    if isOpen then CloseRadial() end
+    -- (one controller radial to another: the secure layer already has the sticks for the new one)
+    local keepSticks = isOpen and openMode == "pad" and mode == "pad"
+    if isOpen then CloseRadial(keepSticks) end
     -- Sub-Radials, Reset on Close: the art starts on each first button too, as the secure layer does
     if Option("subRadials", "reset") ~= "remember" then
         for _, list in pairs(resolvedCache) do
@@ -1690,6 +1775,7 @@ local function OpenRadial(radialID, mode)
     end
     StopAnimation()
     openMode = mode or "hold"
+    if openMode == "pad" and ns.PadTracker then ns.PadTracker.Close() end   -- one thing has the pad
     if radialID then
         RM:LoadRadial(radialID)
     else
@@ -1698,7 +1784,14 @@ local function OpenRadial(radialID, mode)
     -- the secure copy is rewritten only after something changed (RM.MarkDirty); otherwise the press
     -- draws what it already holds
     RM:LayoutRadial(not syncDirty and currentID ~= nil and resolvedCache[currentID] ~= nil and not InCombatLockdown())
-    if #resolved == 0 then return end
+    if #resolved == 0 then
+        -- nothing to draw after all, while the secure layer just opened it: its bindings (or the
+        -- full-screen catcher) would stay up with nothing on screen
+        if keepSticks then Sticks.End() SetStickKeys(false) end
+        openMode = nil
+        C_Timer.After(0, RM.CloseSecure)
+        return
+    end
     WatchButtonStates(true)
     local scale = tonumber(Option("scale", 1)) or 1
     radial:SetScale(scale)
@@ -1738,11 +1831,13 @@ local function OpenRadial(radialID, mode)
     Animate(false)
 end
 
-function CloseRadial()
+-- keepSticks: another controller radial opens right now
+function CloseRadial(keepSticks)
     if not isOpen then return end
-    HoldCamera(false)
-    ReleaseStickGuard()
-    SetStickKeys(false)
+    if not keepSticks then
+        Sticks.Close()
+        SetStickKeys(false)
+    end
     padSticky = nil
     isOpen = false
     openMode = nil
@@ -1765,6 +1860,15 @@ function CloseRadial()
     else
         Animate(true)
     end
+end
+
+-- ends the secure layer's open radial, out of a fight (its OnSecureClose closes the art)
+function RM.CloseSecure()
+    if not header or InCombatLockdown() then return end
+    SecureHandlerExecute(header, [[
+        self:RunAttribute("flare-closepad")
+        self:RunAttribute("flare-closeclick")
+    ]])
 end
 
 -- Called by the secure catcher (middle-click opens a nested radial, right-click goes back); the
@@ -1801,7 +1905,11 @@ end
 -- environment. LB / RB cycle the aimed slot; B, Escape or L3 close.
 -- OPENX / OPENY: where the radial opened (screen centre with "flare-center").
 --------------------------------------------------
-local ACTION_KEYS = "type spell item macro macrotext unit marker action"
+-- every attribute an ACTIONS entry sets (a field missing here never reaches the secure button: toys did
+-- nothing until 11-23)
+RM.RELEASE_IN, RM.RELEASE_OUT = 0.5, 0.8   -- how far out the stick still is when a release uses the button
+local ACTION_KEYS = "type spell item toy macro macrotext unit marker action"
+RM.ACTION_KEYS = ACTION_KEYS
 
 -- self is the header. Returns the aimed button index, or nil in the dead zone.
 local SELECT_SNIPPET = ([[
@@ -1883,8 +1991,9 @@ local CLOSE_PAD_SNIPPET = [[
     if MODE ~= "pad" then return end
     MODE, STICKY = nil, nil
     self:ClearBindings()
+    -- (out of a fight the art turns it off, maybe a moment later: Sticks.Close)
     local guard = self:GetFrameRef("stickguard")
-    if guard then guard:EnableGamePadStick(false) end
+    if guard and PlayerInCombat() then guard:EnableGamePadStick(false) end
     if not ... then self:CallMethod("OnSecureClose") end
 ]]
 
@@ -1894,14 +2003,16 @@ local OPEN_PAD_SNIPPET = [[
     if self:GetAttribute("flare-subreset") then CHILD = newtable() end
     ACTIVE, MODE, STICKY = id, "pad", nil
     HELD = newtable()
+    -- AIMED: a direction was pressed since it opened. CANCELDOWN: B or Escape was
+    AIMED, CANCELDOWN = nil, nil
     -- the camera stick is held only while open (see GuardStick)
     local guard = self:GetFrameRef("stickguard")
     if guard then guard:EnableGamePadStick(true) end
     -- the right stick's directions (keys while the CVar is on) keep the aim
-    self:SetBindingClick(true, "PADRSTICKUP", "]] .. AIM_NAME .. [[", "AimUp")
-    self:SetBindingClick(true, "PADRSTICKDOWN", "]] .. AIM_NAME .. [[", "AimDown")
-    self:SetBindingClick(true, "PADRSTICKLEFT", "]] .. AIM_NAME .. [[", "AimLeft")
-    self:SetBindingClick(true, "PADRSTICKRIGHT", "]] .. AIM_NAME .. [[", "AimRight")
+    self:SetBindingClick(true, "PADRSTICKUP", "]] .. AIM_NAME .. [[Up", "AimUp")
+    self:SetBindingClick(true, "PADRSTICKDOWN", "]] .. AIM_NAME .. [[Down", "AimDown")
+    self:SetBindingClick(true, "PADRSTICKLEFT", "]] .. AIM_NAME .. [[Left", "AimLeft")
+    self:SetBindingClick(true, "PADRSTICKRIGHT", "]] .. AIM_NAME .. [[Right", "AimRight")
     self:SetBindingClick(true, "]] .. PAD_CANCEL .. [[", "]] .. PAD_NAME .. [[", "RightButton")
     self:SetBindingClick(true, "ESCAPE", "]] .. PAD_NAME .. [[", "RightButton")
     self:SetBindingClick(true, "]] .. PAD_PREV .. [[", "]] .. PAD_NAME .. [[", "Button4")
@@ -1914,6 +2025,12 @@ local OPEN_PAD_SNIPPET = [[
 -- triggers held, or close an open one; MiddleButton (R3, while open) fires the aimed button;
 -- RightButton (B, Escape) closes.
 local PAD_SNIPPET = [[
+    -- B and Escape close on a release whose press was seen: a radial opened by a bar slot on B opens on the
+    -- press, and B's own release closed it at once
+    if down then
+        if button == "RightButton" then CANCELDOWN = true end
+        return false
+    end
     -- LB / RB: the aimed slot's previous / next sub-radial button, as the mouse wheel
     if button == "Button4" or button == "Button5" then
         if MODE ~= "pad" then return false end
@@ -1945,7 +2062,8 @@ local PAD_SNIPPET = [[
     end
     -- B or Escape
     if button == "RightButton" then
-        control:RunAttribute("flare-closepad")
+        if CANCELDOWN then control:RunAttribute("flare-closepad") end
+        CANCELDOWN = nil
         return false
     end
     -- what this press opens: a stick press, the radial of the triggers held with it (LT / RT are the
@@ -1984,21 +2102,30 @@ local PAD_SNIPPET = [[
     return false
 ]]
 
--- self is the aim button, control the header; button is the direction (AimUp ...), down its
--- press or release. Each direction key the right stick sends keeps the button it points at
--- (STICKY), so letting go of the stick still knows the aim. With Release the stick to use on, the
--- last direction let go with the stick back near the middle uses that button.
+-- self is one of the four aim buttons (a button each: two releases of one button in the same frame reach
+-- it only once, and a diagonal lets go of two), control the header; button is the direction (AimUp ...),
+-- down its press or release. The directions keep the button the stick points at (STICKY), so letting go
+-- still knows the aim. With Release the stick to use on, a release uses it: the stick back inside
+-- RELEASE_IN, or the last direction let go well off the rim (RELEASE_OUT). A direction's release can go
+-- missing, so a press clears the others. A release before any press (the stick was already out when it
+-- opened) is ignored.
 local AIM_SNIPPET = ([[
     if MODE ~= "pad" or not ACTIVE then return false end
-    HELD = HELD or newtable()
-    HELD[button] = down or nil
+    if down then
+        HELD = newtable()
+        HELD[button] = true
+        AIMED = true
+    elseif HELD then
+        HELD[button] = nil
+    end
     local count = control:GetAttribute(ACTIVE .. "-count") or 0
     if count == 0 then return false end
     local state = GetGamePadState()
     local stick = state and state.sticks and state.sticks[control:GetAttribute("flare-padstick") or 2]
     if not stick then return false end
     if control:GetAttribute("flare-padlog") then control:CallMethod("OnSecureAimLog", button, down, stick.len, next(HELD) or "", STICKY or 0) end
-    if stick.len >= %s then
+    -- (a release springs back through any angle: only a stick well out moves the aim then)
+    if stick.len >= (down and %s or %s) then
         local interval = 2 * math.pi / count
         local angle = math.atan2(stick.y, stick.x)
         local index = math.floor(((math.pi / 2 - angle) %% (2 * math.pi) + interval / 2) / interval) %% count + 1
@@ -2007,13 +2134,9 @@ local AIM_SNIPPET = ([[
             control:CallMethod("OnSecureSticky", index)
         end
     end
-    if down or not control:GetAttribute("flare-padrelease") or not STICKY then return false end
-    -- rolling the stick from one direction to the next can leave the first one's release unsent:
-    -- the stick back near the middle is the release, whatever is still marked held
-    if next(HELD) then
-        if stick.len >= 0.3 then return false end
-        HELD = newtable()
-    end
+    if down or not AIMED or not control:GetAttribute("flare-padrelease") or not STICKY then return false end
+    if stick.len >= %s and (next(HELD) or stick.len >= %s) then return false end
+    HELD = newtable()
     local prefix = control:RunAttribute("flare-aimed")
     control:RunAttribute("flare-closepad")
     if not prefix then return false end
@@ -2023,7 +2146,7 @@ local AIM_SNIPPET = ([[
         self:SetAttribute(key, control:GetAttribute(prefix .. key))
     end
     return nil, "fired"
-]]):format(PAD_AIM_LEN)
+]]):format(PAD_AIM_LEN, PAD_DEAD_LEN, RM.RELEASE_IN, RM.RELEASE_OUT)
 
 -- self is the caster, control the header. Returning false cancels the click (a press, or a release
 -- in the dead zone). Toggle's second press closes the radial without using anything: only a click
@@ -2342,11 +2465,13 @@ local function CreateSecureLayer()
     -- a stick bound only with a trigger held stays bound while its radial is open: L3 closes it
     header.OnSecurePadOpen = function(_, radialID)
         OpenRadial(radialID, "pad")
-        RM.padRadialOpen = true
+        RM.padRadialOpen = RM:IsPadOpen() or nil
         RM.UpdateTriggerSticks()
     end
     header.OnSecureClose = function()
         if openMode == "click" or openMode == "pad" then CloseRadial() end
+        -- (nothing was drawn: the listener still has to go off)
+        if not isOpen and not Sticks.endIn then Sticks.End() end
         if RM.padRadialOpen then
             RM.padRadialOpen = nil
             RM.UpdateTriggerSticks()
@@ -2394,18 +2519,20 @@ local function CreateSecureLayer()
 
     -- the stick press clicks this on its release
     padButton = CreateFrame("Button", PAD_NAME, UIParent, "SecureActionButtonTemplate")
-    padButton:RegisterForClicks("AnyUp")
+    padButton:RegisterForClicks("AnyDown", "AnyUp")   -- (the press is only noted, for B)
     padButton:SetAttribute("useOnKeyDown", false)
     padButton:SetAttribute("pressAndHoldAction", false)
     SecureHandlerWrapScript(padButton, "OnClick", header, PAD_SNIPPET, CLEAR_SNIPPET)
 
     -- the right stick's directions click this, on their press and their release, while a
     -- controller radial is open; a release can use the kept aim (AIM_SNIPPET)
-    aimButton = CreateFrame("Button", AIM_NAME, UIParent, "SecureActionButtonTemplate")
-    aimButton:RegisterForClicks("AnyDown", "AnyUp")
-    aimButton:SetAttribute("useOnKeyDown", false)
-    aimButton:SetAttribute("pressAndHoldAction", false)
-    SecureHandlerWrapScript(aimButton, "OnClick", header, AIM_SNIPPET, CLEAR_SNIPPET)
+    for _, direction in ipairs({ "Up", "Down", "Left", "Right" }) do
+        aimButton = CreateFrame("Button", AIM_NAME .. direction, UIParent, "SecureActionButtonTemplate")
+        aimButton:RegisterForClicks("AnyDown", "AnyUp")
+        aimButton:SetAttribute("useOnKeyDown", false)
+        aimButton:SetAttribute("pressAndHoldAction", false)
+        SecureHandlerWrapScript(aimButton, "OnClick", header, AIM_SNIPPET, CLEAR_SNIPPET)
+    end
     header.OnSecureSticky = function(_, index) padSticky = index end
     -- /fui padlog: each right-stick direction event while a controller radial is open, for
     -- "Release the stick to use" reports: which key, press or release, how far out, what is still held
@@ -3403,6 +3530,11 @@ function RM.PadLogCommand()
     print("FlareUI pad log " .. (on and "on" or "off"))
 end
 
+-- a controller radial is open
+function RM:IsPadOpen()
+    return isOpen and openMode == "pad"
+end
+
 -- Release the stick to use (store.padRelease): on unless switched off
 function RM:IsPadReleaseOn()
     local store = GetStore()
@@ -3506,6 +3638,8 @@ function RM:PLAYER_REGEN_ENABLED()
     end
     if self.bindingPending then ApplyBinding() end
     if not isOpen then
+        SetStickKeys(false)
+        ReleaseStickGuard()
         -- what the fight held back: a layout, or secure frames left up by a close other than a release
         if layoutPending then
             if previewID then self:RefreshPreview() else self:LayoutRadial() end
@@ -3594,8 +3728,12 @@ function RM:Init()
         if isOpen and openMode == "hold" then
             RM.EndHold()
             CloseRadial()
+        elseif isOpen then
+            RM.CloseSecure()
         end
     end)
+    -- the player's stick setting goes back even if the radial never closed
+    self:RegisterEvent("PLAYER_LOGOUT", function() SetStickKeys(false) end)
     -- a character that picks its faction now gets that faction's radials (absent on some clients)
     pcall(self.RegisterEvent, self, "NEUTRAL_FACTION_SELECT_RESULT", function() self:AvailabilityChanged() end)
     -- an item button resolves once its name is cached; the event fires for every item loaded

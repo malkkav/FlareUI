@@ -122,6 +122,54 @@ for _, client in ipairs({ "enUS", "zhCN" }) do
     check(files.korean, "Fonts\\2002.TTF", client .. " Korean face")
 end
 
+-- A family's text draws with its members' shadow: each shadow is a family of its own (11-23)
+local made = {}
+local function newFont()
+    local font = { SetShadowColor = function(self, r, g, b, a) self.color = a end, SetShadowOffset = function(self, x, y) self.x, self.y = x, y end }
+    return font
+end
+local shadowed = compile([[return function(ns, GetLocale, CreateFontFamily, canaccessallvalues)
+]] .. source:sub(membersStart, membersEnd - 1) .. source:sub(assert(source:find("\nfunction ns.ApplyShadow", 1, true)), assert(source:find("\n-- A font split off another", 1, true)) - 1) .. [[
+return ns
+end]])()({ TEXT_SCALE = 1 }, function() return "enUS" end, function()
+    local family = newFont()
+    family.members = {}
+    family.GetFontObjectForAlphabet = function(self, alphabet)
+        self.members[alphabet] = self.members[alphabet] or newFont()
+        return self.members[alphabet]
+    end
+    made[#made + 1] = family
+    return family
+end, function() return true end)
+local text = newFont()
+text.red, text.h = 1, "LEFT"
+function text:SetFontObject(font) self.font, self.red, self.h, self.sets = font, 0, "CENTER", (self.sets or 0) + 1 end
+function text:GetTextColor() return self.red, 0.5, 0.5, 1 end
+function text:SetTextColor(r) self.red = r end
+function text:GetJustifyH() return self.h end
+function text:SetJustifyH(h) self.h = h end
+function text:GetJustifyV() return "MIDDLE" end
+function text:SetJustifyV() end
+shadowed.SetFontFamily(text, "chosen.ttf", 12, "")
+text.red, text.h = 0.25, "LEFT"
+shadowed.ApplyShadow(text, { enableShadow = true, shadowX = 2, shadowY = -2 })
+check(#made, 2, "the shadow has its own family")
+check(text.font, made[2], "the text uses it")
+check(made[2].members.russian.x, 2, "its members carry the shadow")
+check(made[2].y, -2, "so does the family")
+check(made[1].color, nil, "the plain family has none")
+check(text.red, 0.25, "the colour is kept")
+check(text.h, "LEFT", "the alignment is kept")
+check(text.x, 2, "and the text's own shadow is set")
+shadowed.SetFontFamily(text, "chosen.ttf", 12, "")
+check(text.font, made[2], "styled again: the same family at once")
+shadowed.ApplyShadow(text, { enableShadow = true, shadowX = 2, shadowY = -2 })
+check(text.sets, 3, "nothing to change")
+shadowed.ApplyShadow(text, { enableShadow = false })
+check(text.font, made[1], "no shadow: the plain family")
+check(text.color, 0, "and no shadow of its own")
+check(#made, 2, "families are shared")
+
 -- This test must fail against the old ruRU-only decision and pass once CJK
 -- locales participate in the same family selection.
 print("PASS: font family locale decisions, members, and API fallback")

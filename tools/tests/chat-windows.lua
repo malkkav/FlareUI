@@ -285,14 +285,15 @@ assert(general.fading and general.fadeResets == resets + 2)
 chat.SyncTabHits()
 ui:flushTimers()
 local hits = assert(bar.FlareUI_Hits and bar.FlareUI_Hits[1], "a click box over the first tab")
-assert(hits:GetFrameStrata() == bar:GetFrameStrata() and hits:GetFrameLevel() == bar:GetFrameLevel() + 10)
+local over = { LOW = "MEDIUM", MEDIUM = "HIGH" }
+assert(hits:GetFrameStrata() == over[bar:GetFrameStrata()] and hits:GetFrameLevel() == 0,
+    "one layer up: a click on the chat raises its window over boxes on its own")
 env.DamageMeter = env.DamageMeter or {}
 local oldStrata = env.DamageMeter.FlareUI_ChatStrata
 env.DamageMeter.FlareUI_ChatStrata = "HIGH"
 chat.ApplyHeaderStrata()
 ui:flushTimers()
-assert(bar:GetFrameStrata() == "HIGH" and hits:GetFrameStrata() == "HIGH", "the box follows the bar up: " .. tostring(hits:GetFrameStrata()))
-assert(hits:GetFrameLevel() == bar:GetFrameLevel() + 10)
+assert(bar:GetFrameStrata() == "HIGH" and hits:GetFrameStrata() == "DIALOG", "the box follows the bar up: " .. tostring(hits:GetFrameStrata()))
 env.DamageMeter.FlareUI_ChatStrata = oldStrata
 chat.ApplyHeaderStrata()
 ui:flushTimers()
@@ -499,4 +500,19 @@ chat:HideBlizzardTabs()
 chat:UpdateCustomTabs(general, db)
 assert(cv.chatStyle == "im" and env.ChatFrame1Tab:GetAlpha() == 1 and env.ChatFrame1Tab:IsMouseEnabled())
 assert(not bar:IsShown() and select(2, dock:GetPoint()) == skin)
+-- nothing of Blizzard's dock is run from here, and the Copy button stays off the D-pad's way (11-23: both
+-- broke the pad's focus until a /reload)
+do
+    local updates, resizes = hooks.FCF_DockUpdate, hooks.PanelTemplates_TabResize
+    chat:UpdateTabFonts(db)
+    assert(hooks.FCF_DockUpdate == updates and hooks.PanelTemplates_TabResize == resizes)
+    db.copyButton = true
+    chat:StyleChatFrame(general, db)
+    assert(not general.FlareUI_CopyButton:IsShown())
+    ui.gamepad = false
+    chat:StyleChatFrame(general, db)
+    chat:UpdateTabFonts(db)
+    assert(general.FlareUI_CopyButton:IsShown() and (hooks.FCF_DockUpdate or 0) > (updates or 0))
+    ui.gamepad = true
+end
 print("PASS: chat window styling, dock tabs, edit box history, previews and independent fading")

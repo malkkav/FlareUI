@@ -119,7 +119,7 @@ assert(log:find("UNIT_AURA 1 calls", 1, true) and log:find("PLAYER_LOGIN 1 calls
 assert(log:find("Outer (9.0 ms)", 1, true) and log:find("their memory reads as 0): 1", 1, true))
 
 env.SmartNavigation = { open = true, cursor = true }
-env.issecurevariable = function(_, key) return key == "open", "TestAddon" end
+env.issecurevariable = function(t, key) return key == "open" or type(t) == "string", "TestAddon" end
 ui:load("TaintWatch.lua", ns)
 ns.TaintWatch.Command()
 local taintTicker = ui.timers[#ui.timers]
@@ -138,6 +138,19 @@ ns.TaintWatch.Command()
 assert(taintTicker.cancelled)
 ns.TaintWatch.Command("clear")
 assert(#notes == 0)
+-- the chat's globals and the pad's bound keys are watched too: those stay tainted until a /reload (11-23)
+ui.combat = false
+env.GamepadSharedUtility = { InputBindingManager = { activeBindings = { PADDUP = {} }, bindingSetStack = { {} } } }
+env.issecurevariable = function(t, key)
+    local poisoned = t == "LAST_ACTIVE_CHAT_EDIT_BOX" or key == "PADDUP" or key == 1
+    return not poisoned, poisoned and "FlareUI" or nil
+end
+ns.TaintWatch.Command()
+local joined = table.concat(notes, "\n")
+assert(joined:find("LAST_ACTIVE_CHAT_EDIT_BOX is tainted (by FlareUI)", 1, true) and joined:find("activeBindings[PADDUP]", 1, true)
+    and joined:find("bindingSetStack[1]", 1, true))
+ns.TaintWatch.Command()
+ns.TaintWatch.Command("clear")
 
 local function chat(index, text, group)
     local window = env.CreateFrame("ScrollingMessageFrame", "ChatFrame" .. index)

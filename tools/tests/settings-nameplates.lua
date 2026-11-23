@@ -18,13 +18,8 @@ E.CVarCallbackRegistry = {
     SetCVarBitfieldMask = function(_, key, value) assert(key == "nameplateStackingTypes"); mask = value end,
 }
 local friendly, held = "000", {}
-ns.Tweaks = {
-    Refresh = function() end,
-    FriendlyHeld = function() return held.combatFriendly end,
-    FriendlyPicks = function() return friendly end,
-    SetFriendlyPicks = function(value) friendly = value end,
-    ForcedCVars = function() return held end,
-}
+-- (no Quality of Life: the page must not need it; only its memory of held game settings is shared)
+ns.Tweaks = { ForcedCVars = function() return held end }
 ns.CastGlowOn = function(value) return value ~= false end
 ns.CastGlowDefault = function() return true end
 ns.UnitFrames = { Kit = { BuildTextureValues = function()
@@ -76,7 +71,12 @@ function NP.TextSlots(data) return data.barText and data.barText.health or { lef
 function NP.NameAbovePick(data) return data.nameAbove end
 -- A pending profile can enable quest marks while the active plates still have them off.
 local previewQuest
-function NP.Refresh() previewQuest = S:GetPath("tweaks.nameplateQuest") end
+function NP.Refresh() previewQuest = S:GetPath("nameplates.questMarks") end
+function NP.FriendlyHeld() return held.combatFriendly end
+function NP.FriendlyPicks() return friendly end
+function NP.SetFriendlyPicks(value) friendly = value end
+local combatApplied = 0
+function NP.ApplyCombatShow() combatApplied = combatApplied + 1 end
 function NP.QuestOn(preview) return preview and previewQuest or false end
 function NP.CreateSample(parent) return E.CreateFrame("Frame", nil, parent) end
 function NP.DrawSample(frame, states) frame.states = states; return 150, 60 end
@@ -191,7 +191,7 @@ assert(not row("auraRows"):IsHidden())
 
 P:Open("np", "visibility")
 set("enemyShow", "combat")
-assert(row("enemyShow"):Get() == "combat" and db.enabled)
+assert(row("enemyShow"):Get() == "combat" and db.enabled and db.enemyInCombat and combatApplied == 1)
 set("enemyShow", "off")
 assert(row("enemyShow"):Get() == "off" and game.nameplateShowEnemies == "0")
 set("enemyTypes", "players,minions")

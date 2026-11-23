@@ -243,6 +243,13 @@ end
 local square = setup("square")
 local ui, minimap, map, db, cluster = square.ui, square.minimap, square.map, square.db, square.cluster
 local env, bar, surface = ui.env, square.bar, square.surface
+-- the Info Bar's values are white, as Blizzard's money and bag numbers (11-23)
+for fs in pairs(minimap.infoTexts) do
+    local r, g, b = fs:GetTextColor()
+    assert(r == 1 and g == 1 and b == 1, "Info Bar text is white")
+end
+-- no "how to move" line in the icons' tooltips (11-23): the hint is gone
+assert(minimap.Moves.AddHint == nil and minimap.Moves.hinted == nil)
 assert(minimap.IsSquare() and map:GetWidth() == 243 and minimap.Frame:GetWidth() == 248)
 assert(map:GetHeight() == map:GetWidth() and map.mask == minimap.SquareMask())
 assert(map.questRing == 0 and map.taskRing == 0 and map.archRing == 0 and env.GetMinimapShape() == "SQUARE")

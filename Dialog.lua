@@ -3,7 +3,8 @@ local _, ns = ...
 --------------------------------------------------
 -- DIALOG
 -- FlareUI's yes / no questions in place of StaticPopups, which hang the client in the Gamepad UI
--- when shown from addon code. Reads the pad itself: bottom face button yes, right face button no.
+-- when shown from addon code. Reads the pad itself: bottom face button yes, right face button no, left
+-- face button the third answer.
 --------------------------------------------------
 -- ns.Dialogs[key] fields:
 --   text                  "%s" takes ns.ShowDialog's textArg
@@ -18,7 +19,8 @@ local _, ns = ...
 --   reloads               yes reloads the UI after OnAccept (section 2)
 --   macro                 the secure button runs this macro (or function(data)); PreClick calls
 --                         OnMacro, OnAccept stays the pad's and combat's answer
---   padSecure             with macro: pad yes / no are bound to the secure buttons
+--   padSecure             with macro: pad yes / no are bound to the secure buttons (a reloads dialog
+--                         always does in the Gamepad UI: only a secure press may reload)
 --   readable              never smaller than at the 1080p scale: asked right after a UI Scale
 --                         change, when the whole interface may be tiny (not with reloads / macro)
 ns.Dialogs = ns.Dialogs or {}
@@ -91,6 +93,20 @@ function ns.SecureReloadParent()
     return parent
 end
 
+-- A dialog whose yes only works as a secure press: pad yes / no / third answer are bound to the buttons
+local padBound = false
+local function BindPad(on)
+    if InCombatLockdown() or not (frame and padBound) then return end
+    local keys = {
+        [GAMEPAD_FACE_BOTTOM or "PAD1"] = "FlareUIDialogReload",
+        [GAMEPAD_FACE_RIGHT or "PAD2"] = "FlareUIDialogPadNo",
+        [GAMEPAD_FACE_LEFT or "PAD3"] = current and current.button3 and "FlareUIDialogPadAlt" or nil,
+    }
+    for key, button in pairs(keys) do
+        if on then SetOverrideBindingClick(frame, true, key, button, "LeftButton") else SetOverrideBinding(frame, true, key, nil) end
+    end
+end
+
 local function GetReloadButton()
     if reloadButton then return reloadButton end
     reloadButton = CreateFrame("Button", "FlareUIDialogReload", ns.SecureReloadParent(), "SecureActionButtonTemplate, UIPanelButtonTemplate")
@@ -108,7 +124,7 @@ local function GetReloadButton()
         -- a dialog closed in combat keeps its Enter binding until combat ends (the macro stops
         -- itself in combat): Enter opens the chat, as it would without the dialog
         if not current then
-            if InCombatLockdown() and IsKeyDown("ENTER") and ChatFrameUtil and ChatFrameUtil.OpenChat then ChatFrameUtil.OpenChat(nil) end
+            if InCombatLockdown() and not ns.IsGamepadUI() and IsKeyDown("ENTER") and ChatFrameUtil and ChatFrameUtil.OpenChat then ChatFrameUtil.OpenChat(nil) end
             return
         end
         if accepted then return end
@@ -137,7 +153,11 @@ local function GetReloadButton()
     swap:RegisterEvent("PLAYER_REGEN_ENABLED")
     swap:SetScript("OnEvent", function(_, event)
         if not (secureReload and current and frame and frame:IsShown()) then return end
-        frame.Button1:SetShown(event == "PLAYER_REGEN_DISABLED")
+        local fight = event == "PLAYER_REGEN_DISABLED"
+        frame.Button1:SetShown(fight)
+        -- the pad's buttons are the game's again for the whole fight (the bindings can't go during one:
+        -- A and B of the action bar would do nothing); they come back with the secure yes
+        BindPad(not fight)
     end)
     return reloadButton
 end
@@ -159,7 +179,7 @@ local function ReleaseReloadButton()
         releaseWaiter:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
-    secureReload = false
+    secureReload, padBound = false, false
     reloadButton:Hide()
     ClearOverrideBindings(frame)
 end
@@ -184,16 +204,25 @@ end
 
 local PAD_YES = GAMEPAD_FACE_BOTTOM or "PAD1"
 local PAD_NO  = GAMEPAD_FACE_RIGHT or "PAD2"
+local PAD_ALT = GAMEPAD_FACE_LEFT or "PAD3"
 
-local function OnGamePadButtonDown(self, button)
-    local yes = button == PAD_YES
-    local no = button == PAD_NO and current and (current.hideOnEscape or current.button2)
-    if not InCombatLockdown() then self:SetPropagateKeyboardInput(not (yes or no)) end
-    if yes then
+-- The pad's own listener, apart from the keyboard's: it takes EVERY button and passes none on (the game
+-- would run a passed-on press as FlareUI's, and its controller code stays broken until a /reload). Off in
+-- a fight, when the pad is the game's.
+local function OnGamePadButtonDown(_, button)
+    if InCombatLockdown() then return end
+    if button == PAD_YES then
         Answer(true)
-    elseif no then
+    elseif button == PAD_NO and current and (current.hideOnEscape or current.button2) then
         Answer(false)
+    elseif button == PAD_ALT and current and current.button3 then
+        AnswerAlt()
     end
+end
+local function ListenToPad(on)
+    if not frame then return end
+    frame.padWanted = on and true or false
+    frame.Pad:EnableGamePadButton(frame.padWanted and not InCombatLockdown())
 end
 
 --------------------------------------------------
@@ -225,7 +254,7 @@ local function Build()
     frame:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1)
     frame:Hide()
     -- keep Blizzard's gamepad cursor out: a pad click would run FlareUI code inside its navigation
-    frame.smartNavigationIgnored = true
+    ns.IgnorePadNav(frame)
 
     frame.Alert = frame:CreateTexture(nil, "ARTWORK")
     frame.Alert:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
@@ -248,12 +277,21 @@ local function Build()
     -- a name, so a controller binding can click "no" (padSecure)
     frame.PadNo = CreateFrame("Button", "FlareUIDialogPadNo", frame)
     frame.PadNo:SetScript("OnClick", function() Answer(false) end)
+    frame.PadAlt = CreateFrame("Button", "FlareUIDialogPadAlt", frame)
+    frame.PadAlt:SetScript("OnClick", function() AnswerAlt() end)
 
     frame:SetScript("OnKeyDown", OnKeyDown)
-    frame:SetScript("OnGamePadButtonDown", OnGamePadButtonDown)
+    frame.Pad = CreateFrame("Frame", nil, frame)
+    frame.Pad:SetScript("OnGamePadButtonDown", OnGamePadButtonDown)
+    frame.Pad:RegisterEvent("PLAYER_REGEN_DISABLED")
+    frame.Pad:RegisterEvent("PLAYER_REGEN_ENABLED")
+    frame.Pad:SetScript("OnEvent", function(self, event)
+        self:EnableGamePadButton(frame.padWanted == true and frame:IsShown() and event == "PLAYER_REGEN_ENABLED")
+    end)
     frame:SetScript("OnShow", function() ns.WindowOpenSound() end)
     frame:SetScript("OnHide", function(self)
         self.EditBox:ClearFocus()
+        ListenToPad(false)
         if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         ReleaseReloadButton()
         if current then
@@ -275,7 +313,7 @@ local function Layout(def, text)
         secondButtonSpace = BUTTON_GAP + noWidth
     end
     if def.button3 then
-        frame.Button3:SetText(def.button3)
+        frame.Button3:SetText(PadLabel(PAD_ALT, def.button3, def.padInput))
         local altWidth = ns.Settings.ButtonWidthForText(frame.Button3, BUTTON_W)
         frame.Button3:SetWidth(altWidth)
         secondButtonSpace = secondButtonSpace + BUTTON_GAP + altWidth
@@ -343,8 +381,9 @@ function ns.ShowDialog(key, textArg, data)
         frame:EnableKeyboard(true)
         frame:SetPropagateKeyboardInput(true)
     end
-    local padSecure = def.padSecure and def.macro and not InCombatLockdown()
-    frame:EnableGamePadButton(not padSecure and (ns.IsGamepadUI() or def.padInput == true))
+    -- (a reload from the pad's own handler is addon code, which ReloadUI refuses)
+    local padSecure = not InCombatLockdown() and ((def.padSecure and def.macro) or (def.reloads and (ns.IsGamepadUI() or def.padInput)))
+    ListenToPad(not padSecure and (ns.IsGamepadUI() or def.padInput == true))
 
     if def.hasEditBox then
         frame.EditBox:SetMaxLetters(def.maxLetters or 0)
@@ -364,10 +403,8 @@ function ns.ShowDialog(key, textArg, data)
         reloadButton:SetText(frame.Button1:GetText())
         secureReload = true
         SetOverrideBindingClick(frame, true, "ENTER", "FlareUIDialogReload", "LeftButton")
-        if padSecure then
-            SetOverrideBindingClick(frame, true, PAD_YES, "FlareUIDialogReload", "LeftButton")
-            SetOverrideBindingClick(frame, true, PAD_NO, "FlareUIDialogPadNo", "LeftButton")
-        end
+        padBound = padSecure and true or false
+        BindPad(true)
     end
     frame:Show()
     frame:Raise()

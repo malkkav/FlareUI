@@ -17,7 +17,8 @@ local db = {
     targetGlow = true, targetBarColor = true,
 }
 ns.db.profile.nameplates = db
-ns.db.profile.tweaks = { nameplateQuest = true }
+-- (Quality of Life's old switches, moved once into the module's own: MigrateProfile)
+ns.db.profile.tweaks = { nameplateQuest = true, combatPlates = true, nameplateHideNames = true }
 ns.defaults.profile.nameplates = { plate = "bar", castTimer = true, auraRows = "stacked" }
 local units = {}
 local secret = {}
@@ -56,6 +57,8 @@ ui:load("Modules/Nameplates.lua", ns)
 local plates = ns.Nameplates
 
 assert(plates:ShouldLoad())
+assert(db.ownSwitches and db.questMarks and not db.comboPoints and not db.enemyInCombat and next(ns.db.profile.tweaks) == nil,
+    "the quest switch moves; In Combat plates did nothing with Quality of Life off, so they don't start now")
 assert(db.targetArrows == "npe" and db.types.enemy == nil and db.types.friendly == nil and db.types.minion == nil)
 assert(db.combatPlates == "friendlyPlayer,friendlyNpc,enemyPlayer,enemyNpc,minor")
 assert(db.auraSwipe == false and db.auraTimer == "none" and db.auraTimerColor)
@@ -482,7 +485,7 @@ do
         end
     end
     local restorePlate = guardReads(db, { "targetScale", "notTargetScale", "rangeAlpha", "nonTargetAlpha", "role", "palette", "customColors" })
-    local restoreQuest = guardReads(ns.db.profile.tweaks, { "nameplateQuest" })
+    local restoreQuest = guardReads(db, { "questMarks" })
     local presetOf, presetValue = plates.PresetOf, plates.PresetValue
     local function resolveAgain() error("live plate resolved its preset again") end
     plates.PresetOf, plates.PresetValue = resolveAgain, resolveAgain
@@ -740,20 +743,20 @@ ui:flushTimers()
 nextFrame()
 assert(live.quest:IsShown() and live.questText:IsShown() and live.questText:GetText() == "3/8")
 do
-    local tweaks, questieIcons = ns.Tweaks, false
-    ns.Tweaks = { QuestieHasNameplateIcons = function() return questieIcons end }
+    local profile = { nameplateEnabled = false }
+    env.Questie = { db = { profile = profile } }
     reads = {}
     send("QUEST_LOG_UPDATE")
     send("UNIT_QUEST_LOG_CHANGED")
-    questieIcons = true
+    profile.nameplateEnabled = true
     nextFrame()
     assert(not live.quest:IsShown() and not live.questText:IsShown(), "Questie took over before the queued repaint")
     assert(not reads.tooltip, "hiding FlareUI quest markers does not read the unit tooltip")
-    questieIcons = false
+    profile.nameplateEnabled = false
     send("QUEST_LOG_UPDATE")
     nextFrame()
     assert(reads.tooltip == 1 and live.quest:IsShown() and live.questText:IsShown() and live.questText:GetText() == "3/8")
-    ns.Tweaks = tweaks
+    env.Questie = nil
 end
 tooltipLine.leftText = secret
 plates.UpdateQuest(live)
@@ -887,7 +890,7 @@ local originalProfile = ns.db.profile
 db.notTargetScale, db.nonTargetAlpha, db.rangeAlpha = 0.82, 0.62, 0.45
 db.customColors.tapped = { 0.3, 0.2, 0.1 }
 testMob.tapped, testMob.inRange = true, false
-originalProfile.tweaks.nameplateQuest = false
+db.questMarks = false
 questRelated, tooltipLine.leftText = true, "Spider fangs: 3/8"
 do
     ui:load("Settings/Copy.lua", ns)
@@ -1072,6 +1075,15 @@ nextFrame()
 assert(not reads.health and live.health:GetValue() == 47, "an old queued event cannot update the new owner")
 assert(live.cast.Text:GetText() == "Fireball" and not live.cast.flashing, "interrupt metadata belongs to a single claim")
 checkCastTarget("Willow", 0.2, 0.4, 0.6, 0)
+-- (11-23, Tride) Level: Follow Name goes in front of the name above the plate too
+local above = { SetFormattedText = function(self, format, ...) self.text = format:format(...) end,
+    SetText = function(self, text) self.text = text end, IsShown = function() return true end, SetTextColor = function() end }
+local named = { aboveName = above, aboveKind = "fullname", unit = token, name = live.name, levelFollow = true }
+plates.UpdateNameAbove(named)
+assert(above.text:find("44", 1, true), "the level comes with the name: " .. tostring(above.text))
+named.levelFollow = false
+plates.UpdateNameAbove(named)
+assert(not above.text:find("44", 1, true))
 plates.StandDown()
 assert(not plates.PartsFor(gamePlate) and not next(callbacks) and size[1] == 110 and size[2] == 17)
 assert(cvars.nameplateSelectedScale == "1.3" and cvars.nameplateTargetRadialPosition == "0")

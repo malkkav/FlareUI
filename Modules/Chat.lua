@@ -300,7 +300,9 @@ local COPY_HOVER = { 1.00, 0.78, 0.46 }   -- bright bronze
 local function UpdateCopyButton(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     local btn = chatFrame.FlareUI_CopyButton
-    if not db.copyButton then
+    -- (not in the Gamepad UI: the D-pad reaches it inside the chat, and its window takes the keyboard from
+    -- the chat's box, which leaves Blizzard's controller focus broken until a /reload)
+    if not db.copyButton or ns.IsGamepadUI() then
         if btn then btn:Hide() end
         return
     end
@@ -1406,7 +1408,7 @@ local function ShowCopyBox(url)
         box:SetPoint("BOTTOMLEFT", 16, 14)
         box:SetPoint("BOTTOMRIGHT", -14, 14)
         box:SetHeight(22)
-        box:SetAutoFocus(true)
+        box:SetAutoFocus(not ns.IsGamepadUI())   -- (as ShowCopyChat's: a click takes it there)
         box:SetScript("OnEscapePressed", function() f:Hide() end)
         box:SetScript("OnEnterPressed", function() f:Hide() end)
         f.box = box
@@ -1415,7 +1417,7 @@ local function ShowCopyBox(url)
     end
     copyFrame.box:SetText(url)
     copyFrame.box:HighlightText()
-    copyFrame.box:SetFocus()
+    if not ns.IsGamepadUI() then copyFrame.box:SetFocus() end
     if not copyFrame:IsShown() then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
     copyFrame:Show()
     copyFrame:Raise()
@@ -1463,6 +1465,7 @@ function Chat:ShowCopyChat(chatFrame)
         f.note:SetJustifyH("LEFT")
         local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
         close:SetPoint("TOPRIGHT", -2, -2)
+        close:SetScript("OnClick", function() f:Hide() end)   -- (the template's own is refused in a fight)
 
         local scroll = CreateFrame("ScrollFrame", nil, f)
         scroll:SetPoint("TOPLEFT", 14, -34)
@@ -1512,7 +1515,7 @@ function Chat:ShowCopyChat(chatFrame)
     if not f:IsShown() then PlaySound(SOUNDKIT.IG_MAINMENU_OPEN) end
     f:Show()
     f:Raise()
-    f.box:SetFocus()
+    if not ns.IsGamepadUI() then f.box:SetFocus() end
     f.box:HighlightText()
     -- newest lines in view, once the box has its height
     C_Timer.After(0.05, function()
@@ -2044,7 +2047,7 @@ function StyleCombatLogBar()
     bar:SetPoint("BOTTOMLEFT", combatLog, "TOPLEFT", -COMBAT_BAR_INSET, COMBAT_BAR_TEXT_GAP)
     bar:SetPoint("BOTTOMRIGHT", combatLog, "TOPRIGHT", COMBAT_BAR_INSET, COMBAT_BAR_TEXT_GAP)
     bar:SetFrameLevel((combatLog:GetFrameLevel() or 1) + 5)
-    if ns.IsGamepadUI() then bar.smartNavigationIgnored = true end
+    if ns.IsGamepadUI() then ns.IgnorePadNav(bar) end
     -- Blizzard's arrow for filters that don't fit: taller than the bar, so centred on it
     local more = _G.CombatLogQuickButtonFrame_CustomAdditionalFilterButton
     if more then
@@ -2416,6 +2419,9 @@ end
 -- under them.
 local TabHit = { bars = {} }
 
+TabHit.OVER = { BACKGROUND = "LOW", LOW = "MEDIUM", MEDIUM = "HIGH", HIGH = "DIALOG", DIALOG = "FULLSCREEN" }
+function TabHit.StrataOver(strata) return TabHit.OVER[strata] or strata end
+
 local function TabSwitchAllowed(btn)
     return btn and btn.realTab and btn.chatFrame and not btn.justDragged and not IsPopped(btn.chatFrame)
         and not (_G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown())
@@ -2469,7 +2475,13 @@ end
 
 local function HitPostClick(self, button)
     local btn = self.tab
-    if not (btn and btn:IsVisible()) then return end
+    if not btn then return end
+    if not btn:IsVisible() then
+        -- in a fight, after a switch: the box is the window's before it (they share one place), and the
+        -- secure click has switched
+        if InCombatLockdown() and button == "LeftButton" and self:GetAttribute("type1") == "click" then AfterTabSwitch(btn) end
+        return
+    end
     if button == "MiddleButton" then
         TabHit.CloseWhisper(btn)
     elseif button == "RightButton" then
@@ -2487,8 +2499,8 @@ local function HitFor(scrollFrame, index)
     end
     if hits[index] or InCombatLockdown() then return hits[index] end
     local hit = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
-    hit:SetFrameStrata(scrollFrame:GetFrameStrata())
-    hit:SetFrameLevel(scrollFrame:GetFrameLevel() + 10)
+    hit:SetFrameStrata(TabHit.StrataOver(scrollFrame:GetFrameStrata()))
+    hit:SetFrameLevel(0)
     hit:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
     hit:RegisterForDrag("LeftButton")
     hit:SetAttribute("useOnKeyDown", false)
@@ -2536,8 +2548,10 @@ function TabHit.Sync()
                             -- (11-23, BearAE) over the tab bar's layer as it is now: the bar moves to
                             -- the meter's layer with the Meter tab (Chat.ApplyHeaderStrata), and a box
                             -- left under it sent clicks to the FlareUI tab, whose switch waits out a fight
-                            hit:SetFrameStrata(scrollFrame:GetFrameStrata())
-                            hit:SetFrameLevel(scrollFrame:GetFrameLevel() + 10)
+                            -- (11-23 again) one layer up, at its bottom: a click on the chat raises the whole
+                            -- window (toplevel) over boxes on its own layer, which can't follow in a fight
+                            hit:SetFrameStrata(TabHit.StrataOver(scrollFrame:GetFrameStrata()))
+                            hit:SetFrameLevel(0)
                             hit.tab = btn
                             hit:SetAttribute("clickbutton", btn.realTab)
                             hit:SetAttribute("type1", "click")
@@ -2887,10 +2901,12 @@ function Chat:UpdateTabFonts(db)
                 ns.ApplyShadow(fs, font)
                 fs:SetTextColor(c.r, c.g, c.b, c.a)
             end
-            PanelTemplates_TabResize(tab, 10)
+            -- (not in the Gamepad UI: its controller focus reads what these write; its tabs get their
+            -- width from Blizzard's own next update)
+            if not ns.IsGamepadUI() then PanelTemplates_TabResize(tab, 10) end
         end
     end
-    FCF_DockUpdate()
+    if not ns.IsGamepadUI() then FCF_DockUpdate() end
 end
 
 -- TAB SETS CHANNEL (chat.tabChannel, off by default). Picking a tab (a click on
@@ -3554,7 +3570,7 @@ local function CreateOrGetSkinFrame(chatFrame)
         skin = CreateFrame("Frame", nil, chatFrame, "BackdropTemplate")
         chatFrame.FlareUI_Skin = skin
         -- keeps Blizzard's gamepad cursor on the edit box, off FlareUI's tabs and buttons
-        if ns.IsGamepadUI() then skin.smartNavigationIgnored = true end
+        if ns.IsGamepadUI() then ns.IgnorePadNav(skin) end
         -- the line under the tab row
         local line = skin:CreateTexture(nil, "OVERLAY")
         line:SetTexture(SEPARATOR)
@@ -4376,6 +4392,10 @@ end
 --------------------------------------------------
 -- Blizzard's gamepad chat only works in IM style, so the Gamepad UI switches to it; the player's
 -- style comes back in keyboard mode. The CVar is account-wide, so the saved style is too.
+-- A change while you play runs Blizzard's chat code inside this call, and what that writes (the last active
+-- edit box) stays tainted: the controller was dead after the next tab switch until a /reload (11-23,
+-- minizuka). So it's set as the session ends, when the next one is known to be a Gamepad one (switching
+-- reloads); at login only if that didn't happen.
 function Chat:ApplyGamepadChatStyle()
     local global = ns.db.global
     local current = C_CVar.GetCVar("chatStyle")
@@ -4474,6 +4494,9 @@ function Chat:Init()
     whispers:RegisterEvent("CHAT_MSG_BN_WHISPER")
     whispers:SetScript("OnEvent", function() Chat.PlayWhisperSound() end)
     Chat:ApplyGamepadChatStyle()
+    local ending = CreateFrame("Frame")
+    ending:RegisterEvent("PLAYER_LOGOUT")
+    ending:SetScript("OnEvent", function() if ns.IsGamepadUI() then Chat:ApplyGamepadChatStyle() end end)
     SetupGamepadTabHints()
     -- Blizzard's own fading is off per frame (StyleChatFrame); never blank the FCF_Fade* globals
     Chat:ProtectButtons()
@@ -4594,7 +4617,8 @@ function Chat:Init()
             local selectedFrame = dock and FCFDock_GetSelectedWindow(dock)
             if selectedFrame and not selectedFrame:IsForbidden() then
                 -- (ChatFrame1 is protected in a fight: Blizzard shows the selected window itself then)
-                if not (InCombatLockdown() and selectedFrame:IsProtected()) then selectedFrame:Show() end
+                -- (the Gamepad UI: always Blizzard's to show, as it takes the pad)
+                if not ns.IsGamepadUI() and not (InCombatLockdown() and selectedFrame:IsProtected()) then selectedFrame:Show() end
                 if selectedFrame.isTemporary and not selectedFrame.FlareUI_Skin then
                     Chat:StyleChatFrame(selectedFrame, db)
                     Chat:StyleEditBox(selectedFrame, db)

@@ -42,7 +42,7 @@ for _, path in ipairs({
     "tweaks.autoDelete", "tweaks.autoRepair", "tweaks.enabled",
     "tweaks.fasterCameraZoom", "tweaks.fasterLoot", "tweaks.hideErrors",
     "tweaks.hideTips", "tweaks.hideZoneText", "tweaks.maxCameraZoom", "tweaks.moveAnyFrame",
-    "tweaks.moveLootToasts", "tweaks.nameplateCombo", "tweaks.nameplateHideLevel", "tweaks.nameplateQuest",
+    "tweaks.moveLootToasts", "tweaks.nameplateCombo", "tweaks.nameplateQuest",
     "tweaks.sellJunk", "tweaks.syncUI", "tweaks.trainAll", "tweaks.way",
     "unitframes.auraStyle", "unitframes.auraTimer", "unitframes.classColor", "unitframes.enabled",
     "unitframes.palette",

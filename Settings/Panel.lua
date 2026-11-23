@@ -566,11 +566,7 @@ local preview = {}
 -- the page's own picture (its tab's), or nil for the page's art
 local function PageSpec()
     local tab = currentTab[current]
-    if current == 'qol' then
-        tab = tab or 'gameplay'
-        if tab == 'nameplates' then return { kind = 'nameplate', key = 'qol.npOverview' } end
-        return nil
-    end
+    if current == 'qol' then return nil end
     -- Bags & Looting: the bags picture, the loot feed's on Looting
     if current == 'bl' then
         tab = tab or 'bags'
@@ -2800,6 +2796,9 @@ function Panel.DressWindow(f)
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     if edge then close:SetPoint("TOPRIGHT", edge, "TOPRIGHT", -2, -2) else close:SetPoint("TOPRIGHT", -4, -4) end
     close:SetFrameLevel(f:GetFrameLevel() + 40)
+    -- (not the template's own click: the game refuses HideUIPanel to an addon's window in a fight, so the X
+    -- did nothing; 11-23, BearAE)
+    close:SetScript("OnClick", function() f:Hide() end)
     return close
 end
 
@@ -3018,6 +3017,7 @@ local function BuildWindow()
         close:SetPoint("CENTER", frame, "TOPRIGHT", -5, -3)
     end
     close:SetFrameLevel(frame:GetFrameLevel() + 40)
+    close:SetScript("OnClick", function() frame:Hide() end)   -- (as DressWindow's)
 
     -- columns
     local body = CreateFrame("Frame", nil, frame)

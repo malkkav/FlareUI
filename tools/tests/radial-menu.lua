@@ -30,7 +30,7 @@ env.UnitName = function(unit) return unit == "party1" and "Aria" or "Frost" end
 env.UnitExists = function(unit) return unit == "player" or unit == "party1" end
 env.C_ClassColor = { GetClassColor = function() return env.CreateColor(0.7, 0.7, 1, 1) end }
 
-local binds, secureWrites = {}, {}
+local binds, secureWrites, bodies = {}, {}, {}
 env.ClearOverrideBindings = function(owner)
     assert(not ui.combat)
     binds[owner] = {}
@@ -44,6 +44,7 @@ env.SecureHandlerSetFrameRef = function(owner, key, frame)
     owner.references[key] = frame
 end
 env.SecureHandlerWrapScript = function(frame, event, owner, body)
+    if frame:GetName() then bodies[frame:GetName()] = body end
     frame.secureScripts = frame.secureScripts or {}
     frame.secureScripts[event] = { owner, body }
 end
@@ -194,6 +195,20 @@ ui:flushTimers()
 assert(rm:ResolveEntry({ kind = "item", id = 500 }).name == "Healing Potion")
 assert(not rm:ResolveEntry({ kind = "item", id = 599 }))
 assert(rm:ResolveEntry({ kind = "toy", id = 501 }).attributes.toy == 501)
+-- every attribute an action sets reaches the secure button (11-23: "toy" didn't, so toys did nothing)
+local copied = {}
+for key in rm.ACTION_KEYS:gmatch("%S+") do copied[key] = true end
+do
+    local source = assert(io.open("Modules/RadialMenu.lua")):read("*a")
+    local checked = 0
+    for body in source:gmatch("{ (type = \"%a+\"[^}]*)}") do
+        for key in (", " .. body):gmatch(", (%a+) = ") do
+            assert(copied[key], "the secure button never gets the attribute " .. key)
+            checked = checked + 1
+        end
+    end
+    assert(checked > 20)
+end
 assert(not rm:ResolveEntry({ kind = "mount", id = 2 }))
 assert(rm:ResolveEntry({ kind = "mount", id = 1 }).attributes.spell == "Summon Horse")
 assert(rm:ResolveEntry({ kind = "spell", id = 101 }).attributes.spell == 101, "deliberate lower rank stays pinned")
@@ -292,6 +307,170 @@ rm:SetControllerEnabled(false)
 assert(not rm:IsControllerEnabled() and not binds[radial].PADRSTICK)
 rm:SetControllerEnabled(true)
 assert(rm:IsControllerEnabled() and binds[radial].PADRSTICK)
+
+env.C_GamePad.GetDeviceMappedState = function() return { sticks = { {}, { x = 0, y = 0, len = 0 } } } end
+assert(not rm:IsPadOpen())
+-- the sticks while it is open (11-23): the guard passes everything on and only watches; the blocker, up for
+-- the camera's event alone, holds the camera still, so the left stick keeps moving the character
+local guard, block = rm.Sticks.guard, rm.Sticks.block
+assert(guard.propagate and not block.propagate, "only the blocker takes input")
+assert(not guard.stickEnabled and block.stickEnabled and not block:IsShown(), "idle, neither takes a stick")
+local function send(stick, x)   -- the game's dispatch: the blocker is above the guard; true: the game got it
+    for _, w in ipairs({ block, guard }) do
+        if w == guard or w:IsShown() then
+            w:RunScript("OnGamepadStick", stick, x or 1, 0, x or 1)
+            if not w.propagate then return false end
+        end
+    end
+    return true
+end
+assert(send("Right") and send("Camera") and not block:IsShown(), "no radial: the camera turns")
+local trackerClosed = 0
+ns.PadTracker = { Close = function() trackerClosed = trackerClosed + 1 end }
+header.OnSecurePadOpen(header, "r1")
+assert(rm:IsPadOpen() and trackerClosed == 1, "the quest tracker gives the pad up")
+ns.PadTracker = nil
+local frameEnd = assert(rm.Sticks.clock)
+assert(frameEnd:IsShown())
+local function nextFrame() frameEnd:RunScript("OnUpdate", 0.016) end
+assert(send("Left") and send("Movement"), "moving")
+nextFrame()
+assert(send("Right") and not send("Camera") and not block:IsShown(), "aiming alone: the camera holds still")
+nextFrame()
+assert(send("Left") and send("Right") and send("Movement") and not send("Camera"), "moving and aiming: only the camera is held")
+nextFrame()
+assert(send("Left") and send("Movement"), "and movement goes on")
+nextFrame()
+assert(send("Right", 0) and send("Camera", 0), "the camera hears the stick centre")
+nextFrame()
+send("Right")
+assert(block:IsShown())
+nextFrame()
+assert(not block:IsShown(), "never left up past its frame")
+-- closed with the stick still out: the camera is held until it is back, at most HOLD_AFTER seconds
+local stickLen = 1
+env.C_GamePad.GetDeviceMappedState = function() return { sticks = { {}, { x = stickLen, y = 0, len = stickLen } } } end
+send("Right")
+header.OnSecureClose(header)
+assert(not rm:IsPadOpen() and frameEnd:IsShown(), "still held: the stick is out")
+frameEnd:RunScript("OnUpdate", 0.1)
+assert(not block:IsShown() and send("Right") and not send("Camera"), "the spring-back doesn't turn the camera")
+stickLen = 0.1
+frameEnd:RunScript("OnUpdate", 0.1)
+assert(not block:IsShown() and not frameEnd:IsShown() and not guard.stickEnabled)
+assert(send("Right") and send("Camera"), "closed: the camera is the game's again")
+stickLen = 1
+header.OnSecurePadOpen(header, "r1")
+header.OnSecureClose(header)
+frameEnd:RunScript("OnUpdate", 0.5)
+assert(not frameEnd:IsShown(), "never held longer than that")
+header.OnSecurePadOpen(header, "r1")
+header.OnSecureClose(header)
+frameEnd:RunScript("OnEvent", "PLAYER_REGEN_DISABLED")
+assert(not frameEnd:IsShown(), "a fight ends the hold")
+-- from one controller radial to another the sticks stay ours, with no gap
+header.OnSecurePadOpen(header, "r1")
+guard.stickEnabled = true   -- (the secure snippet's)
+header.OnSecurePadOpen(header, "r1")
+assert(rm:IsPadOpen() and guard.stickEnabled and frameEnd:IsShown() and stickValue == "1")
+stickLen = 0
+header.OnSecureClose(header)
+assert(stickValue == "0" and global.padStickKeysRestore == nil and not guard.stickEnabled)
+-- the game refusing the setting in a fight: nothing is remembered that never took, and a refused
+-- restore is asked again after the fight
+do
+    local set, refuse = env.C_CVar.SetCVar, true
+    env.C_CVar.SetCVar = function(...) if not refuse then set(...) end end
+    header.OnSecurePadOpen(header, "r1")
+    assert(stickValue == "0" and global.padStickKeysRestore == nil)
+    header.OnSecureClose(header)
+    refuse = false
+    header.OnSecurePadOpen(header, "r1")
+    assert(stickValue == "1" and global.padStickKeysRestore == "0")
+    refuse = true
+    header.OnSecureClose(header)
+    assert(stickValue == "1" and global.padStickKeysRestore == "0")
+    refuse = false
+    rm:PLAYER_REGEN_ENABLED()
+    assert(stickValue == "0" and global.padStickKeysRestore == nil)
+    env.C_CVar.SetCVar = set
+end
+-- what is lit is what a release uses: the secure layer gets the lit button, out of a fight
+stickLen = 1
+header.OnSecurePadOpen(header, "r1")
+radial:RunScript("OnUpdate", 0.02)
+assert(type(header:GetAttribute("flare-lit")) == "number" and secureWrites[#secureWrites]:find("flare-lit", 1, true))
+stickLen = 0
+header.OnSecureClose(header)
+header.OnSecureOpen(header, "r1")
+assert(not rm:IsPadOpen())
+header.OnSecureClose(header)
+
+-- the secure snippets themselves, run with a stand-in for the restricted environment
+do
+    local stick, fired, closed = { x = 0, y = 1, len = 1 }, nil, 0
+    local attributes = { ["r-count"] = 4, ["flare-padrelease"] = true, ["flare-keys"] = "type", ["slot-type"] = "spell" }
+    local control = {
+        GetAttribute = function(_, key) return attributes[key] end,
+        CallMethod = function(_, method, index) if method == "OnSecureSticky" then attributes.sticky = index end end,
+        RunAttribute = function(_, name)
+            if name == "flare-closepad" then closed = closed + 1 elseif name == "flare-aimed" then return "slot-" end
+        end,
+    }
+    local globals
+    local function reset()
+        globals = { MODE = "pad", ACTIVE = "r", HELD = {}, LAST = {}, math = math, next = next, gmatch = string.gmatch, strlower = string.lower,
+            newtable = function() return {} end, GetGamePadState = function() return { sticks = { {}, stick } } end }
+        fired, closed = nil, 0
+    end
+    local function run(frameName, button, down)
+        local chunk = assert(loadstring("local self, control, button, down = ... " .. bodies[frameName]))
+        setfenv(chunk, globals)
+        local _, message = chunk({ SetAttribute = function() end }, control, button, down)
+        if message == "fired" then fired = (fired or 0) + 1 end
+    end
+    local names = {}
+    for _, d in ipairs({ "Up", "Down", "Left", "Right" }) do
+        names[d] = "FlareUI_RadialAim" .. d
+        assert(bodies[names[d]], "an aim button for each direction: " .. d)
+    end
+    local function key(d, down) run(names[d], "Aim" .. d, down) end
+    local function at(x, y) stick.x, stick.y, stick.len = x, y, math.sqrt(x * x + y * y) end
+    -- a plain flick: up, let go
+    reset() at(0, 1) key("Up", true) at(0, 0.2) key("Up", false)
+    assert(fired == 1 and closed == 1)
+    -- a diagonal: both keys down, one release lost
+    reset() at(0.7, 0.7) key("Up", true) key("Right", true) at(0.1, 0.1) key("Right", false)
+    assert(fired == 1, "one of a diagonal's two releases is enough")
+    reset() at(0.7, 0.7) key("Up", true) key("Right", true) at(0.1, 0.1) key("Up", false)
+    assert(fired == 1, "also when the release that arrives is the other one's")
+    -- rolling round the rim fires nothing
+    reset() at(0, 1) key("Up", true) at(0.7, 0.7) key("Right", true) at(1, 0.1) key("Up", false)
+    assert(not fired, "rolling on keeps the radial open")
+    at(0.2, 0) key("Right", false)
+    assert(fired == 1)
+    -- the last release arrives while the stick is still fairly far out
+    reset() at(0, 1) key("Up", true) at(0, 0.7) key("Up", false)
+    assert(fired == 1)
+    -- springing back past the middle doesn't move the aim
+    reset() at(0, 1) key("Up", true)
+    local aim = attributes.sticky
+    at(0, -0.3) key("Up", false)
+    assert(fired == 1 and globals.STICKY == aim and attributes.sticky == aim)
+    -- the stick was already out when the radial opened: its release uses nothing
+    reset() at(0, 0.2) globals.STICKY = 2 key("Up", false)
+    assert(not fired)
+    attributes["flare-padrelease"] = nil
+    reset() at(0, 1) key("Up", true) at(0, 0.1) key("Up", false)
+    assert(not fired, "Release the stick to use is off")
+    -- B closes only on a release whose press was seen (a bar slot on B opens on the press)
+    reset()
+    run("FlareUI_RadialPad", "RightButton", false)
+    assert(closed == 0)
+    run("FlareUI_RadialPad", "RightButton", true)
+    run("FlareUI_RadialPad", "RightButton", false)
+    assert(closed == 1)
+end
 
 local sample = rm.CreateSample(env.UIParent)
 local sampleWidth, sampleHeight = rm.DrawSample(sample)

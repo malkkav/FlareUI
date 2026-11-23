@@ -79,4 +79,12 @@ S.modules.ch:SetOn(false)
 P:Open("ch")
 assert(not frame.footer:IsShown() and not E.FlareUI_SettingsReload:IsShown(), "reverting the module toggle clears the reload footer")
 
+-- (11-23, BearAE) the X closes the window in a fight too
+P:Open("ch")
+ui:flushTimers()
+ui.combat = true
+local x = assert(ui:find(function(w) return w.template == "UIPanelCloseButton" and w:GetParent() == frame end))
+x:Click()
+assert(not frame:IsShown(), "the X hides the window itself")
+ui.combat = false
 print("PASS: settings panel navigation, search, widgets and reload")

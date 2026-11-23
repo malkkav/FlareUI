@@ -292,6 +292,10 @@ local gearMenu = menu()
 local newWindow = gearMenu:CreateButton("Show New Window")
 menuHooks.MENU_DAMAGE_METER_WINDOW_SETTINGS(second.SettingsDropdown, gearMenu)
 assert(newWindow.disabled and newWindow.tooltip, "the gear menu enforces the window limit")
+ns.IsGamepadUI = function() return true end
+secondTab:Click("RightButton")
+assert(not menus[secondTab], "no addon menu in the Gamepad UI: it breaks the pad's focus")
+ns.IsGamepadUI = function() return false end
 ui.combat = true
 secondTab:Click("RightButton")
 local moveOut = menus[secondTab].entries["Move to Own Window"]

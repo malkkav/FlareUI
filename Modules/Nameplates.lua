@@ -175,11 +175,6 @@ local function SharedSettings(preview)
     local cache = SettingsFor(preview)
     return cache and cache.shared or DB()
 end
-local function TweakSettings(preview)
-    local cache = SettingsFor(preview)
-    if cache then return cache.tweaks end
-    return ns.db and ns.db.profile and ns.db.profile.tweaks
-end
 
 -- PLATE TYPES: enemyPlayer, enemyNpc, friendlyPlayer, friendlyNpc and minor (pets, totems, guardians
 -- and minor mobs).
@@ -353,10 +348,8 @@ local function CacheSettings(cache)
     for key, value in pairs(db) do
         if key ~= "types" then shared[key] = Copy(value) end
     end
-    local tweaks = ns.db.profile.tweaks or {}
     cache = cache or { types = {} }
     cache.shared = shared
-    cache.tweaks = { nameplateQuest = tweaks.nameplateQuest, nameplateCombo = tweaks.nameplateCombo }
     cache.combatTypes = CombatTypes(shared.combatPlates)
     cache.colors = C.COLORS
     if shared.palette == "custom" and type(shared.customColors) == "table" then
@@ -2107,7 +2100,10 @@ function NP.UpdateNameAbove(p)
     local fs = p.aboveName
     if not (fs and p.aboveKind and fs:IsShown()) then return end
     if p.unit and UnitExists(p.unit) then
-        fs:SetText(ns.UnitDisplayName(p.unit, nil, p.aboveKind == "fullname"))
+        -- (11-23, Tride) Level: Follow Name goes in front of this name too
+        local name = ns.UnitDisplayName(p.unit, nil, p.aboveKind == "fullname")
+        local prefix = p.levelFollow and NP.LevelPrefix(p.unit)
+        if prefix then fs:SetFormattedText("%s%s", prefix, name) else fs:SetText(name) end
     else
         fs:SetText(p.sampleName or "")
     end
@@ -2616,10 +2612,10 @@ function NP.QuestProgress(unit)
     return ""
 end
 
--- Objective Icon (tweaks.nameplateQuest, shared with Blizzard's plates) and Objective Progress
+-- Objective Icon (nameplates.questMarks) and Objective Progress
 -- (nameplates.questProgress; never set, it follows the icon, as before the two were split)
--- Objective Icon and Progress, per type (11-20): the icon needs the shared quest switch (it also
--- serves Blizzard's plates) and the type's own Objective Icon; Progress never set follows the icon.
+-- Objective Icon and Progress, per type (11-20): the icon needs the shared quest switch
+-- and the type's own Objective Icon; Progress never set follows the icon.
 -- With no plate: whether any type shows them (the module's quest events).
 local function TypeQuest(tdb, master)
     local icon = master and tdb.questIcon ~= false
@@ -2627,11 +2623,17 @@ local function TypeQuest(tdb, master)
     if progress == nil then progress = icon end
     return icon and true or false, progress and true or false
 end
+-- Questie draws its own quest icons on nameplates. Read each time: its option applies live
+function NP.QuestieHasIcons()
+    local questie = _G.Questie
+    local db = type(questie) == "table" and questie.db
+    local profile = type(db) == "table" and db.profile
+    return type(profile) == "table" and profile.nameplateEnabled == true
+end
 function NP.QuestParts(p, preview)
-    local t = TweakSettings(preview or (p and p.sample))
-    local master = (t and t.nameplateQuest) and true or false
-    -- Questie draws its own quest icons on plates when its option is on
-    if ns.Tweaks and ns.Tweaks.QuestieHasNameplateIcons and ns.Tweaks:QuestieHasNameplateIcons() then return false, false end
+    local shared = SharedSettings(preview or (p and p.sample))
+    local master = (shared and shared.questMarks) and true or false
+    if NP.QuestieHasIcons() then return false, false end
     if p then return TypeQuest(PDB(p), master) end
     local anyIcon, anyProgress = false, false
     for _, kind in ipairs(C.KINDS) do
@@ -2666,7 +2668,7 @@ function NP.Relayout()
     NP.Sync()
 end
 
--- Combo Points per type (11-20): Tweaks.lua asks before it puts the points on your target's plate
+-- Combo Points per type (11-20): asked before the points go on your target's plate (NameplateExtras.lua)
 function NP.ComboAllowed(unit)
     if not NP.ready or NP.standDown then return true end
     local want, kind = NP.WantsPlate(unit)
@@ -3209,7 +3211,7 @@ function NP.Claim(unit)
     end)
     if ok then
         stats.claimed = stats.claimed + 1
-        if ns.Tweaks and ns.Tweaks.PlateChanged then pcall(ns.Tweaks.PlateChanged, unit) end
+        if NP.ComboPlateChanged then pcall(NP.ComboPlateChanged) end
     else
         stats.failed = stats.failed + 1
         stats.lastError = err
@@ -3255,8 +3257,7 @@ function Release(p)
     local known = false
     for _, s in ipairs(spare) do if s == p then known = true break end end
     if not known then spare[#spare + 1] = p end
-    -- (a unit still on screen: its quest tag and combo points go back to Blizzard's plate)
-    if unit and ns.Tweaks and ns.Tweaks.PlateChanged then pcall(ns.Tweaks.PlateChanged, unit) end
+    if unit and NP.ComboPlateChanged then pcall(NP.ComboPlateChanged) end
 end
 NP.ReleasePlate = Release
 
@@ -3324,7 +3325,7 @@ function NP.OtherAddon()
     if NP.otherAddon then return true end
 end
 
--- Our parts of a game plate, for Quality of Life's combo points and quest tags (Tweaks.lua)
+-- Our parts of a game plate, for the combo points (NameplateExtras.lua)
 function NP.PartsFor(plate)
     local p = plate and byPlate[plate]
     if p and p.unit then return p end
@@ -3780,8 +3781,8 @@ function NP.DrawSample(f, kind)
     -- combo points under the plate (below the cast bar while it shows), 3 of 5, as the live ones
     NP.PlaceBelow(p)
     -- (the unit type's own Combo Points too, and never on a Name Only plate: NP.ComboAllowed)
-    local tweaks = TweakSettings(true)
-    local comboOn = tweaks and tweaks.nameplateCombo
+    local shared = SharedSettings(true)
+    local comboOn = shared and shared.comboPoints
         and db.combo ~= false and not p.nameOnly
         and (st.combo or type(kind) ~= "table")
     p.sampleCombo = p.sampleCombo or {}
@@ -4026,8 +4027,8 @@ function NP.TestIcons(p, tdb)
         p.questText:SetShown(progress)
         if changed and p.testIcons then NP.PlaceSides(p) end
     end
-    local tweaks = TweakSettings()
-    local comboOn = tweaks and tweaks.nameplateCombo and ns.CreateComboPoint and PDB(p).combo ~= false and not p.nameOnly
+    local shared = SharedSettings()
+    local comboOn = shared and shared.comboPoints and ns.CreateComboPoint and PDB(p).combo ~= false and not p.nameOnly
     -- (made out of combat only: frames made on a nameplate in a fight come out forbidden)
     if comboOn and not p.testCombo and not InCombatLockdown() then
         p.testCombo = {}
@@ -4131,6 +4132,7 @@ function NP:Refresh()
     end
     settings = CacheSettings(settings)
     NP.ApplyPlateSettings()
+    if NP.ApplyCombo then NP.ApplyCombo() end
 end
 
 -- The game's own plate zoom (distance, target, larger plates) is set to 1 while the module is on, so
@@ -4218,6 +4220,23 @@ local function MigrateProfile()
             db.combatPlates = #out > 0 and table.concat(out, ",") or "none"
         end
     end
+    -- 11-23: Combo Points, Quest Objective and the In Combat plates were saved with Quality of Life. Once
+    -- per profile (a Quality of Life import later on never reaches the plates). In Combat only worked with
+    -- Quality of Life on: with it off nothing is carried over, so no one's plates start to hide.
+    if db and not db.ownSwitches then
+        db.ownSwitches = true
+        local tw = ns.db.profile.tweaks
+        if tw then
+            if tw.nameplateCombo then db.comboPoints = true end
+            if tw.nameplateQuest then db.questMarks = true end
+            if tw.enabled then
+                if tw.combatPlates then db.enemyInCombat = true end
+                if tw.combatFriendly then db.friendlyInCombat = true end
+            end
+            for _, key in ipairs({ "nameplateCombo", "nameplateQuest", "combatPlates", "combatFriendly", "nameplateHideLevel",
+                    "nameplateHideNames", "nameplateLevelName" }) do tw[key] = nil end
+        end
+    end
     NP.MigratePresets()
     -- (11-22) the plates read the unit frames' Aura Swipe, Aura Timer and Timer Colour before they had
     -- their own: those values are saved here once as the old shared ones (C.WAS_SHARED), so every
@@ -4233,6 +4252,7 @@ local function MigrateProfile()
     if db and (db.targetArrows == "chevron" or db.targetArrows == "hook") then db.targetArrows = "npe" end
     return db
 end
+NP.MigrateProfile = MigrateProfile
 
 function NP:ProfileChanged()
     if not self.ready or self.standDown then return end
@@ -4311,4 +4331,5 @@ function NP:Init()
         end
     end
     NP.Sync()
+    if NP.ApplyCombo then NP.ApplyCombo() end
 end

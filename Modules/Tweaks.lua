@@ -3,7 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- QUALITY OF LIFE (Tweaks)
--- The Quality of Life toggles: windows, Sync Blizz UI, vendor, camera, nameplates, convenience,
+-- The Quality of Life toggles: windows, Sync Blizz UI, vendor, camera, convenience,
 -- hiding, /way, plus the always-on party unclamp and Edit Mode layout per input mode. Most apply
 -- live; the ones that replace Blizzard scripts need a reload.
 --------------------------------------------------
@@ -618,9 +618,10 @@ local function SaveSync(event)
     if forced and forced.combatPlates ~= nil and store.cvars.nameplateShowEnemies ~= nil then
         store.cvars.nameplateShowEnemies = forced.combatPlates
     end
-    local heldFriendly = ns.db.global and Tweaks.FriendlyHeld()
+    local NP = ns.Nameplates
+    local heldFriendly = ns.db.global and NP and NP.FriendlyHeld and NP.FriendlyHeld()
     if heldFriendly then
-        for i, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do
+        for i, cvar in ipairs(NP.FRIENDLY_CVARS) do
             if store.cvars[cvar] ~= nil then store.cvars[cvar] = heldFriendly:sub(i, i) end
         end
     end
@@ -809,6 +810,7 @@ local function LoadSync()
 
     -- CVars
     local changed = 0
+    local NP = ns.Nameplates
     local forced = ns.db.global and Tweaks.ForcedCVars("combatPlates")
     for name, value in pairs(store.cvars or {}) do
         if not IsNew(cvarStamps[name]) then
@@ -816,15 +818,22 @@ local function LoadSync()
         elseif name == "nameplateShowEnemies" and forced and forced.combatPlates ~= nil then
             -- Enemy Nameplates in Combat Only holds the CVar: the source's value is what comes back later
             forced.combatPlates = tostring(value)
-        elseif Tweaks.FriendlyIndex(name) and ns.db.global and Tweaks.FriendlyHeld() then
+        elseif NP and NP.FriendlyIndex and NP.FriendlyIndex(name) and ns.db.global and NP.FriendlyHeld() then
             -- combat-only holds the friendly switches: the source's pick is what comes back later
-            local i, held = Tweaks.FriendlyIndex(name), Tweaks.FriendlyHeld()
+            local i, held = NP.FriendlyIndex(name), NP.FriendlyHeld()
             local on = (tostring(value) == "1" or value == true) and "1" or "0"
             Tweaks.ForcedCVars("combatFriendly").combatFriendly = held:sub(1, i - 1) .. on .. held:sub(i + 1)
         elseif CVarKnown(name) then
             local ok, current = pcall(GetCVar, name)
             if ok and not SameCVar(current, value) then
-                if pcall(SetCVar, name, value) and not Tweaks.SYNC_NO_RELOAD[name] then changed = changed + 1 end
+                if ns.IsGamepadUI() then
+                    -- a watched setting runs Blizzard's code inside the call, its controller focus too: set
+                    -- as the session ends (the reload this asks for, or a logout)
+                    Tweaks.SetAtLogout(name, value)
+                    changed = changed + 1
+                elseif pcall(SetCVar, name, value) and not Tweaks.SYNC_NO_RELOAD[name] then
+                    changed = changed + 1
+                end
             end
         end
     end
@@ -907,10 +916,16 @@ local function LoadSync()
                 end
             end
         end
-        C_Timer.After(1, function()
-            for i = 1, Constants.ChatFrameConstants.MaxChatWindows do pcall(FloatingChatFrame_Update, i, true) end
-            pcall(FCF_DockUpdate)
-        end)
+        -- (the Gamepad UI's chat focus reads what these write, and breaks until a /reload: there the
+        -- reload below shows the changes instead)
+        if ns.IsGamepadUI() then
+            chatChanged = true
+        else
+            C_Timer.After(1, function()
+                for i = 1, Constants.ChatFrameConstants.MaxChatWindows do pcall(FloatingChatFrame_Update, i, true) end
+                pcall(FCF_DockUpdate)
+            end)
+        end
     end
 
     -- Bag flags
@@ -976,6 +991,20 @@ local function LoadSync()
     Tweaks.syncLoading = false
 end
 
+function Tweaks.SetAtLogout(name, value)
+    local later = Tweaks.atLogout
+    if not later then
+        later = {}
+        Tweaks.atLogout = later
+        local ending = CreateFrame("Frame")
+        ending:RegisterEvent("PLAYER_LOGOUT")
+        ending:SetScript("OnEvent", function()
+            for cvar, v in pairs(later) do pcall(SetCVar, cvar, v) end
+        end)
+    end
+    later[name] = value
+end
+
 -- A throw halfway releases syncLoading and says so
 local function RunLoadSync()
     local ok, err = pcall(LoadSync)
@@ -993,7 +1022,9 @@ local function InitSyncUI()
     local watched = {}
     for _, n in ipairs(SYNC_CVARS) do watched[n:lower()] = true end
     SyncEvents:RegisterEvent("CVAR_UPDATE", function(_, name)
-        if type(name) == "string" and name ~= "nameplateShowEnemies" and not (Tweaks.FriendlyIndex(name) and Tweaks.FriendlyHeld())
+        local NP = ns.Nameplates
+        if type(name) == "string" and name ~= "nameplateShowEnemies"
+            and not (NP and NP.FriendlyIndex and NP.FriendlyIndex(name) and NP.FriendlyHeld())
             and watched[name:lower()] then QueueSaveSync() end
     end)
     SyncEvents:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED", QueueSaveSync)
@@ -1439,760 +1470,6 @@ local function InitHide()
     ApplyPortraitNumbers()
     ApplyTips()
     if db.hideLootAlerts then Tweaks.ApplyLootAlerts() end
-end
-
---------------------------------------------------
--- 9. NAMEPLATE COMBO POINTS
--- Combo points (Core.lua: Blizzard's points, or FlareUI's gem while the count is secret) under the
--- target nameplate's health bar; Forever loads no nameplate combo bar. A readable count hides the
--- row at zero.
---------------------------------------------------
-local NP_COMBO_SIZE     = 14   -- the point's side
-local NP_COMBO_SPACING  = ns.ComboPointStep(NP_COMBO_SIZE)   -- Blizzard's art never touches its neighbour
-local NP_COMBO_OFFSET_Y = -5   -- below the cast bar slot, clear of the aggro glow (negative = down)
-local NP_COMBO_SCALE    = 1.1  -- on top of the nameplate's own scale
-local NP_COMBO_MAX      = 10
-local NP_COMBO_FALLBACK = 5
-
-local npComboRow, npComboEvents
-
--- The combo points and quest tags stand down while a nameplate addon is loaded. FlareUI's own
--- Nameplates module isn't one: they sit on its plates (NP.PartsFor).
-local NAMEPLATE_ADDONS = {
-    { "Plater", "Plater" }, { "Kui_Nameplates", "KuiNameplates" },
-    { "TidyPlates_ThreatPlates", "Threat Plates" }, { "TidyPlates", "Tidy Plates" },
-    { "NeatPlates", "NeatPlates" }, { "BetterBlizzPlates", "BetterBlizzPlates" },
-    { "EllesmereUINameplates", "EllesmereUI Nameplates" }, { "nPlates", "nPlates" },
-    { "DaylightUI_Nameplates", "DaylightUI Nameplates" },
-}
-
--- Any other nameplate addon: one that took Blizzard's unit frame off its plate (FlareUI never moves
--- that frame). Looked at no more than every 2 s while none is found; a find is kept.
-function Tweaks.PlatesTakenOver()
-    local now = GetTime()
-    if Tweaks.platesCheckedAt and now - Tweaks.platesCheckedAt < 2 then return false end
-    Tweaks.platesCheckedAt = now
-    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
-        local unitFrame = plate.UnitFrame
-        if unitFrame and not unitFrame:IsForbidden() and unitFrame:GetParent() ~= plate then return true end
-    end
-    return false
-end
-
--- The name of the nameplate addon in charge, or nil. Asked on every nameplate update, so the answer is
--- kept until the next addon loads (false: none).
-function Tweaks:GetNameplateAddon()
-    local known = Tweaks.nameplateAddon
-    if known then return known end
-    if known == false then
-        if Tweaks.PlatesTakenOver() then
-            Tweaks.nameplateAddon = L["Another nameplate addon"]
-            return Tweaks.nameplateAddon
-        end
-        return nil
-    end
-    for _, entry in ipairs(NAMEPLATE_ADDONS) do
-        if C_AddOns.IsAddOnLoaded(entry[1]) then
-            Tweaks.nameplateAddon = entry[2]
-            return entry[2]
-        end
-    end
-    if Tweaks.PlatesTakenOver() then
-        Tweaks.nameplateAddon = L["Another nameplate addon"]
-        return Tweaks.nameplateAddon
-    end
-    -- a UI suite whose nameplates are a module that can be switched off: read each time, its
-    -- settings may not be loaded yet on the first ask
-    if C_AddOns.IsAddOnLoaded("ElvUI") then
-        local E = _G.ElvUI and _G.ElvUI[1]
-        if type(E) == "table" and type(E.private) == "table" and type(E.private.nameplates) == "table"
-            and E.private.nameplates.enable then
-            return "ElvUI"
-        end
-        return
-    end
-    Tweaks.nameplateAddon = false
-end
-Tweaks.nameplateAddonWatch = CreateFrame("Frame")
-Tweaks.nameplateAddonWatch:RegisterEvent("ADDON_LOADED")
-Tweaks.nameplateAddonWatch:SetScript("OnEvent", function() Tweaks.nameplateAddon = nil end)
-
-local function LayoutComboRow(row, count)
-    for i = 1, count do
-        local gem = row.gems[i]
-        if not gem then
-            gem = ns.CreateComboPoint(row, i, NP_COMBO_SIZE)
-            row.gems[i] = gem
-        end
-        gem:ClearAllPoints()
-        gem:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * NP_COMBO_SPACING, 0)
-        gem:Show()
-    end
-    for i = count + 1, #row.gems do row.gems[i]:Hide() end
-    row:SetSize((count - 1) * NP_COMBO_SPACING + NP_COMBO_SIZE, NP_COMBO_SIZE)
-    row.count = count
-end
-
--- Rogues, and druids in cat form, on a hostile target
-local function PlayerBuildsComboPoints()
-    local _, class = UnitClass("player")
-    if not canaccessvalue(class) or (class ~= "ROGUE" and class ~= "DRUID") then return false end
-    if class == "DRUID" then
-        local powerType = UnitPowerType("player")
-        if not (canaccessvalue(powerType) and powerType == Enum.PowerType.Energy) then return false end
-    end
-    local hostile = UnitCanAttack("player", "target")
-    return canaccessvalue(hostile) and hostile or false
-end
-
--- Below the plate's cast bar slot: Forever keeps it under the health bar whether the unit casts or
--- not (Blizzard's own widgets hang there too), so a cast never covers the points and they never
--- jump. Then the health bar, then the plate itself.
-local function PlateAnchor(plate)
-    -- FlareUI's own plate (Nameplates.lua): centred under it, below its cast bar while one shows
-    local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
-    if own then return own.below or own.box end
-    local unitFrame = plate.UnitFrame
-    local casts = unitFrame and unitFrame.CastBarsContainer
-    if casts and not casts:IsForbidden() then return casts end
-    local bar = unitFrame and unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
-    if bar and not bar:IsForbidden() then return bar end
-    return plate
-end
-
-local function UpdateNameplateCombo(_, event, _, powerToken)
-    local row = npComboRow
-    if not row then return end
-    -- energy ticks are not combo point changes
-    if event == "UNIT_POWER_FREQUENT" and canaccessvalue(powerToken) and powerToken ~= "COMBO_POINTS" then return end
-    local plate = C_NamePlate.GetNamePlateForUnit("target")
-    local points = GetComboPoints("player", "target")
-    -- the points the shine compares against: none known after a target change or while secret
-    local last = row.lastPoints
-    if event == "PLAYER_TARGET_CHANGED" then last = nil end
-    row.lastPoints = canaccessvalue(points) and points or nil
-    local show = plate ~= nil and PlayerBuildsComboPoints()
-    -- FlareUI's nameplates: the target's unit type may have Combo Points off (Nameplates.lua)
-    if show and ns.Nameplates and ns.Nameplates.ComboAllowed and not ns.Nameplates.ComboAllowed("target") then show = false end
-    if show and canaccessvalue(points) and points == 0 then show = false end
-    if not show then
-        row:Hide()
-        return
-    end
-
-    local max = UnitPowerMax("player", Enum.PowerType.ComboPoints)
-    if not (canaccessvalue(max) and max and max >= 1) then max = NP_COMBO_FALLBACK end
-    max = math_min(max, NP_COMBO_MAX)
-    if row.count ~= max then LayoutComboRow(row, max) end
-
-    if row:GetParent() ~= plate or not row:IsShown() then
-        local anchor = PlateAnchor(plate)
-        row:SetParent(plate)
-        row:ClearAllPoints()
-        row:SetPoint("TOP", anchor, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
-        row:SetFrameLevel(anchor:GetFrameLevel() + 5)
-    end
-    -- Blizzard's points (Core.lua), animated except right after a target change
-    for i = 1, max do ns.SetComboPoint(row.gems[i], points, last ~= nil) end
-    row:Show()
-end
-
--- Switched on and off live from the options
-local function ApplyNameplateCombo()
-    local db = GetDb()
-    if not (db and db.nameplateCombo) or Tweaks:GetNameplateAddon() then
-        if npComboEvents then npComboEvents:UnregisterAllEvents() end
-        if npComboRow then npComboRow:Hide() end
-        return
-    end
-    if not npComboRow then
-        npComboRow = CreateFrame("Frame", nil, UIParent)
-        npComboRow.gems = {}
-        npComboRow:SetScale(NP_COMBO_SCALE)
-        npComboRow:Hide()
-        npComboEvents = CreateFrame("Frame")
-        npComboEvents:SetScript("OnEvent", UpdateNameplateCombo)
-    end
-    for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "PLAYER_ENTERING_WORLD", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED" }) do
-        npComboEvents:RegisterEvent(event)
-    end
-    -- combo points arrive as the player's power; UNIT_FACTION catches a target turning hostile
-    for _, event in ipairs({ "UNIT_POWER_FREQUENT", "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER" }) do
-        npComboEvents:RegisterUnitEvent(event, "player")
-    end
-    npComboEvents:RegisterUnitEvent("UNIT_FACTION", "target")
-    UpdateNameplateCombo()
-end
-
---------------------------------------------------
--- 10. NAMEPLATE QUEST TAGS
--- A quest "!" just right of an enemy nameplate's level box (or health bar) whose unit is
--- related to an active quest. Plates are recycled: each plate has a tag, re-checked when a unit
--- gets a plate, when the quest log changes, and when the level box comes or goes.
---------------------------------------------------
-local QUEST_TAG_ATLAS   = "QuestNormal"   -- the map's quest-offer "!", no shield
-local QUEST_TAG_FILE    = "Interface\\GossipFrame\\AvailableQuestIcon"
-local QUEST_TAG_SIZE    = 22     -- used when the box's height is not known yet
-local QUEST_TAG_HEIGHT  = 0.85   -- the badge's height as a share of the box it sits on
-local questTags = {}           -- plate -> tag
-local questUnits = {}          -- nameplate unit tokens that currently have a plate
-local questLevelHooked = {}    -- level boxes whose show / hide already re-places the tag
-local questEvents
-local UpdateQuestTag
-
--- Questie draws its own quest icons on nameplates. Read each time: its option applies live
-function Tweaks:QuestieHasNameplateIcons()
-    local questie = _G.Questie
-    local db = type(questie) == "table" and questie.db
-    local profile = type(db) == "table" and db.profile
-    return type(profile) == "table" and profile.nameplateEnabled == true
-end
-
--- Width / height of the art, so the tag keeps its shape at any height
-local questTagAspect
-local function QuestTagAspect()
-    if not questTagAspect then
-        local info = C_Texture.GetAtlasInfo(QUEST_TAG_ATLAS)
-        questTagAspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
-    end
-    return questTagAspect
-end
-
--- The "!" art (also the settings preview's sample plate)
-function Tweaks.QuestTagArt(icon)
-    if C_Texture.GetAtlasInfo(QUEST_TAG_ATLAS) then icon:SetAtlas(QUEST_TAG_ATLAS) else icon:SetTexture(QUEST_TAG_FILE) end
-end
-
-local function GetQuestTag(plate)
-    local tag = questTags[plate]
-    if not tag then
-        tag = CreateFrame("Frame", nil, plate)
-        tag:SetSize(QUEST_TAG_SIZE, QUEST_TAG_SIZE)
-        tag.icon = tag:CreateTexture(nil, "OVERLAY")
-        tag.icon:SetAllPoints()
-        Tweaks.QuestTagArt(tag.icon)
-        questTags[plate] = tag
-    end
-    return tag
-end
-
--- The health bar itself (PlateAnchor gives the cast bar's container first, which sits under it even
--- while nothing is cast: with Hide Level the badge would sit below the bar)
-local function QuestTagBar(plate)
-    local unitFrame = plate.UnitFrame
-    local bar = unitFrame and unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
-    if bar and not bar:IsForbidden() then return bar end
-    return PlateAnchor(plate)
-end
-
--- Where the tag sits: the plate's level box when it shows, otherwise the health bar. The second
--- return is what sizes and layers it: the level box whenever there is one (with Hide Level it is only
--- invisible, so the tag keeps its usual size and stays above the plate), otherwise the health bar.
-local function QuestTagAnchor(plate)
-    -- FlareUI's own plate: beside its bar's frame
-    local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
-    if own then return own.box, own.box end
-    local unitFrame = plate.UnitFrame
-    local level = unitFrame and unitFrame.PlayerLevelDiffFrame
-    local db = GetDb()
-    if db and db.nameplateHideLevel then
-        local bar = QuestTagBar(plate)
-        if level and not level:IsForbidden() then return bar, level end
-        return bar, bar
-    end
-    if level and not level:IsForbidden() then
-        if not questLevelHooked[level] then
-            questLevelHooked[level] = true
-            local function Replace(self)
-                local now, owner = GetDb(), self:GetParent()
-                if now and now.nameplateQuest and owner and owner.unit and questUnits[owner.unit] then
-                    UpdateQuestTag(owner.unit)
-                end
-            end
-            level:HookScript("OnShow", Replace)
-            level:HookScript("OnHide", Replace)
-        end
-        if level:IsShown() then return level, level end
-    end
-    local bar = QuestTagBar(plate)
-    return bar, bar
-end
-
-function UpdateQuestTag(unit)
-    if not canaccessvalue(unit) then return end
-    local plate = C_NamePlate.GetNamePlateForUnit(unit)
-    if not plate or plate:IsForbidden() then return end
-    -- (FlareUI's own plates draw their quest mark themselves, with the progress: Nameplates.lua)
-    local own = ns.Nameplates and ns.Nameplates.PartsFor and ns.Nameplates.PartsFor(plate)
-    if own or Tweaks:QuestieHasNameplateIcons() then
-        if questTags[plate] then questTags[plate]:Hide() end
-        return
-    end
-    -- another nameplate addon found after the tags started (it took the plates over later): the tag
-    -- sat beside Blizzard's hidden plate, far off, with its switch greyed out (11-21). All off now.
-    if Tweaks:GetNameplateAddon() then
-        if questEvents then questEvents:UnregisterAllEvents() end
-        for _, tag in pairs(questTags) do tag:Hide() end
-        wipe(questUnits)
-        return
-    end
-    local hostile = UnitCanAttack("player", unit)
-    local related = C_QuestLog.UnitIsRelatedToActiveQuest(unit)
-    local show = canaccessvalue(hostile) and hostile and canaccessvalue(related) and related
-    if not show then
-        if questTags[plate] then questTags[plate]:Hide() end
-        return
-    end
-    local tag = GetQuestTag(plate)
-    local anchor, look = QuestTagAnchor(plate)
-    -- the box's height in the tag's own units (the level box does not share the plate's scale)
-    local size = look:GetHeight() * look:GetEffectiveScale() / tag:GetEffectiveScale() * QUEST_TAG_HEIGHT
-    if not (size > 0) then size = QUEST_TAG_SIZE end
-    local w = size * QuestTagAspect()
-    -- the same box and size as last time: the tag is already there
-    if tag.fuiAnchor ~= anchor or tag.fuiW ~= w or tag.fuiH ~= size then
-        tag.fuiAnchor, tag.fuiW, tag.fuiH = anchor, w, size
-        tag:SetSize(w, size)
-        tag:ClearAllPoints()
-        -- beside the box, clear of its edge (the art has its own margin, so no gap is added)
-        tag:SetPoint("LEFT", anchor, "RIGHT", 0, 0)
-    end
-    ns.CopyStrata(tag, look)   -- the level box draws at HIGH
-    tag:SetFrameLevel(look:GetFrameLevel() + 5)
-    tag:Show()
-end
-
-local function UpdateAllQuestTags()
-    for unit in pairs(questUnits) do UpdateQuestTag(unit) end
-end
-
--- QUEST_LOG_UPDATE comes in bursts: one pass on the next frame
-local function QueueAllQuestTags()
-    if Tweaks.questTagsQueued then return end
-    Tweaks.questTagsQueued = true
-    C_Timer.After(0, function()
-        Tweaks.questTagsQueued = nil
-        UpdateAllQuestTags()
-    end)
-end
-
--- A secret unit token cannot be used, so such a plate stays untagged
-local function OnQuestTagEvent(_, event, unit)
-    if unit and not canaccessvalue(unit) then return end
-    if event == "NAME_PLATE_UNIT_ADDED" then
-        questUnits[unit] = true
-        UpdateQuestTag(unit)
-    elseif event == "NAME_PLATE_UNIT_REMOVED" then
-        questUnits[unit] = nil
-        local plate = C_NamePlate.GetNamePlateForUnit(unit)
-        if plate and questTags[plate] then questTags[plate]:Hide() end
-    elseif event == "UNIT_FACTION" then
-        if questUnits[unit] then UpdateQuestTag(unit) end
-    else
-        QueueAllQuestTags()
-    end
-end
-
--- Switched on and off live from the options
-local function ApplyQuestTags()
-    local db = GetDb()
-    if not (db and db.nameplateQuest) or Tweaks:GetNameplateAddon() then
-        if questEvents then questEvents:UnregisterAllEvents() end
-        for _, tag in pairs(questTags) do tag:Hide() end
-        wipe(questUnits)
-        return
-    end
-    if not questEvents then
-        questEvents = CreateFrame("Frame")
-        questEvents:SetScript("OnEvent", OnQuestTagEvent)
-    end
-    for _, event in ipairs({ "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "QUEST_LOG_UPDATE", "UNIT_FACTION" }) do
-        questEvents:RegisterEvent(event)
-    end
-    questEvents:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
-    -- plates already on screen when the option comes on
-    wipe(questUnits)
-    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
-        local unit = plate.unitToken
-        if unit and canaccessvalue(unit) then questUnits[unit] = true end
-    end
-    UpdateAllQuestTags()
-end
-
--- FlareUI's Nameplates module took a plate or gave it back: the quest tag and the combo points move
--- to the plate now drawn (they may have been placed before the module's own handler ran)
-function Tweaks.PlateChanged(unit)
-    local db = GetDb()
-    if not db or Tweaks:GetNameplateAddon() then return end
-    if db.nameplateQuest and unit and questUnits[unit] then
-        local plate = C_NamePlate.GetNamePlateForUnit(unit)
-        local tag = plate and questTags[plate]
-        if tag then tag.fuiAnchor = nil end
-        UpdateQuestTag(unit)
-    end
-    if db.nameplateCombo and npComboRow then
-        npComboRow:Hide()
-        UpdateNameplateCombo()
-    end
-end
-
---------------------------------------------------
--- 11. HIDE LEVEL
--- Blizzard's level box on the right of a nameplate goes invisible, and the health bar takes its room
--- back after each of Blizzard's layouts. Blizzard's own check for the box is left alone (replacing it
--- would taint the plates, whose values can be secret); the box only loses its alpha.
---------------------------------------------------
-local levelHooked = {}   -- plate unit frames whose layout is followed
-local levelEvents
-
--- the health bar back to the plate's right edge (Blizzard's NamePlateUnitFrameMixin:UpdateAnchors
--- stops it short of the box)
-local function StretchHealthBar(unitFrame)
-    local db = GetDb()
-    if not (db and db.nameplateHideLevel) or unitFrame:IsForbidden() then return end
-    local container, cast = unitFrame.HealthBarsContainer, unitFrame.CastBarsContainer
-    if not (container and cast) or container:IsForbidden() then return end
-    local spacing = _G.NamePlateSetupOptions and _G.NamePlateSetupOptions.castBarToHealthBarSpacing or 0
-    pcall(container.SetPoint, container, "BOTTOMRIGHT", cast, "TOPRIGHT", 0, spacing)
-    -- the crowd control and loss-of-control icons right after the bar: Blizzard puts them past the
-    -- level box's width too, which would leave a gap with the box hidden
-    local auras = unitFrame.AurasFrame
-    if auras and not auras:IsForbidden() then
-        -- (no list table: this runs on every layout of every plate)
-        local cc, loc = auras.CrowdControlListFrame, auras.LossOfControlFrame
-        if cc and not cc:IsForbidden() then pcall(cc.SetPoint, cc, "LEFT", container, "RIGHT", 5, 0) end
-        if loc and not loc:IsForbidden() then pcall(loc.SetPoint, loc, "LEFT", container, "RIGHT", 5, 0) end
-    end
-end
-
-local function ApplyHideLevel(plate)
-    local unitFrame = plate and plate.UnitFrame
-    if not unitFrame or unitFrame:IsForbidden() then return end
-    local level = unitFrame.PlayerLevelDiffFrame
-    if not level or level:IsForbidden() then return end
-    local db = GetDb()
-    local on = db and db.nameplateHideLevel and not Tweaks:GetNameplateAddon()
-    -- never on this session: Blizzard's plate stays untouched
-    if not on and not levelEvents then return end
-    level:SetAlpha(on and 0 or 1)
-    if not levelHooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
-        levelHooked[unitFrame] = true
-        hooksecurefunc(unitFrame, "UpdateAnchors", StretchHealthBar)
-    end
-    if on then StretchHealthBar(unitFrame) end
-end
-
-local function ApplyHideLevelAll()
-    local db = GetDb()
-    local on = db and db.nameplateHideLevel and not Tweaks:GetNameplateAddon()
-    if on and not levelEvents then
-        levelEvents = CreateFrame("Frame")
-        levelEvents:SetScript("OnEvent", function(_, _, unit)
-            if not canaccessvalue(unit) then return end
-            ApplyHideLevel(C_NamePlate.GetNamePlateForUnit(unit))
-        end)
-    end
-    if levelEvents then
-        if on then levelEvents:RegisterEvent("NAME_PLATE_UNIT_ADDED") else levelEvents:UnregisterAllEvents() end
-    end
-    -- switched off, a plate gets the box's room back at Blizzard's next layout of it (calling that
-    -- layout from here would taint the plate)
-    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do ApplyHideLevel(plate) end
-    UpdateAllQuestTags()
-end
-
---------------------------------------------------
--- 11b. HIDE NAMES
--- A nameplate's unit name goes invisible. Only its alpha: Blizzard's health text turns off with a
--- hidden name (NamePlateHealthBarMixin). A friendly player shown by name only keeps it, as that name
--- is the whole plate. Blizzard re-lays a plate when that mode changes, so the layout is followed.
---------------------------------------------------
-local nameHooked = {}   -- plate unit frames whose layout is followed
-local nameEvents
-
-local function ApplyHideName(unitFrame)
-    if not unitFrame or unitFrame:IsForbidden() then return end
-    local name = unitFrame.name
-    if not name or name:IsForbidden() then return end
-    local db = GetDb()
-    local on = db and db.nameplateHideNames and not Tweaks:GetNameplateAddon()
-    -- never on this session: Blizzard's plate stays untouched
-    if not on and not nameEvents then return end
-    name:SetAlpha((on and not unitFrame:IsShowOnlyName()) and 0 or 1)
-    if not nameHooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
-        nameHooked[unitFrame] = true
-        hooksecurefunc(unitFrame, "UpdateAnchors", ApplyHideName)
-    end
-end
-
-local function ApplyHideNamesAll()
-    local db = GetDb()
-    local on = db and db.nameplateHideNames and not Tweaks:GetNameplateAddon()
-    if on and not nameEvents then
-        nameEvents = CreateFrame("Frame")
-        nameEvents:SetScript("OnEvent", function(_, _, unit)
-            if not canaccessvalue(unit) then return end
-            local plate = C_NamePlate.GetNamePlateForUnit(unit)
-            ApplyHideName(plate and plate.UnitFrame)
-        end)
-    end
-    if nameEvents then
-        if on then nameEvents:RegisterEvent("NAME_PLATE_UNIT_ADDED") else nameEvents:UnregisterAllEvents() end
-    end
-    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do ApplyHideName(plate.UnitFrame) end
-end
-
---------------------------------------------------
--- 11c. LEVEL BEFORE NAME
--- With Hide Level Box on and names shown, a nameplate's name gets the unit's level in front, in the
--- difficulty colour for enemies ("??" for a skull). Blizzard writes the name in
--- CompactUnitFrame_UpdateName; the hook writes it again from the same GetUnitName call, so the level is
--- never added twice. A secret level skips the plate; a secret name goes through SetFormattedText as is.
--- The hook is set the first time the option is on, so an untouched option leaves the plates alone.
---------------------------------------------------
-local LevelName = { written = {} }   -- written: plate unit frames that carry a level
-
-function LevelName.On()
-    local db = GetDb()
-    return db and db.nameplateHideLevel and db.nameplateLevelName and not db.nameplateHideNames
-        and not Tweaks:GetNameplateAddon() and true or false
-end
-
-function LevelName.Text(frame)
-    local unit = frame.unit
-    local showFullName = frame.optionTable and frame.optionTable.updateNameUsesGetUnitName and not frame.hideRealmName
-    return GetUnitName(unit, showFullName)
-end
-
--- the level with its colour, or nil when it can't be read
-function LevelName.Prefix(unit)
-    local level = UnitEffectiveLevel(unit)
-    if not canaccessvalue(level) or type(level) ~= "number" then return nil end
-    if level <= 0 then return LevelName.Format(level) end
-    local attackable = UnitCanAttack("player", unit)
-    local color
-    if canaccessvalue(attackable) and attackable then
-        color = ns.LevelDifficultyColor(unit, level)
-    else
-        color = _G.UNIT_LEVEL_NON_ATTACKABLE
-    end
-    return LevelName.Format(level, color)
-end
-
--- A level in its colour ("??" for a skull); also the settings preview's sample plate
-function LevelName.Format(level, color)
-    if level <= 0 then return "|cffff2020??|r" end
-    if color and color.r then
-        return ("|cff%02x%02x%02x%d|r"):format(color.r * 255, color.g * 255, color.b * 255, level)
-    end
-    return tostring(level)
-end
-
-function LevelName.Apply(frame)
-    if not frame or frame:IsForbidden() then return end
-    local unit = frame.unit
-    if not (unit and canaccessvalue(unit) and type(unit) == "string" and unit:find("^nameplate")) then return end
-    -- the settings preview and the commentator write their own names
-    if frame.UpdateNameOverride then return end
-    local name = frame.name
-    if not name or name:IsForbidden() then return end
-    if not LevelName.On() then
-        -- switched off: the plain name back where a level was written
-        if LevelName.written[frame] then
-            LevelName.written[frame] = nil
-            if name:IsShown() then name:SetText(LevelName.Text(frame)) end
-        end
-        return
-    end
-    if not name:IsShown() then return end
-    local prefix = LevelName.Prefix(unit)
-    if not prefix then return end
-    name:SetFormattedText("%s %s", prefix, LevelName.Text(frame))
-    LevelName.written[frame] = true
-end
-
-function LevelName.ApplyAll()
-    if LevelName.On() and not LevelName.hooked then
-        LevelName.hooked = true
-        hooksecurefunc("CompactUnitFrame_UpdateName", LevelName.Apply)
-    end
-    if not LevelName.hooked then return end
-    for _, plate in ipairs(C_NamePlate.GetNamePlates()) do LevelName.Apply(plate.UnitFrame) end
-end
-
---------------------------------------------------
--- 11d. SETTINGS PREVIEW SAMPLE
--- A stand-in for the target's enemy nameplate in the settings panel's picture: Blizzard's bar, name
--- and level box at the sizes Blizzard's nameplate setup has now, with this module's combo row, quest
--- "!", Hide Level Box, Hide Names and Level Before Name applied as on real plates. A plain frame: no
--- events, no mouse, real plates untouched.
---------------------------------------------------
-Tweaks.plateSample = {
-    PAD = 2,             -- the bar's backdrop reaches 2 px past its left edge
-    BAR_COLOR = { r = 1, g = 0, b = 0 },   -- hostile
-    HEALTH = 1,
-}
-
-function Tweaks.CreateSample(parent, kind)
-    if kind ~= nil and kind ~= "plate" then return nil end
-    local f = CreateFrame("Frame", nil, parent)
-    f.fuiSample = true
-    f:EnableMouse(false)
-    local bar = CreateFrame("StatusBar", nil, f)
-    local fill = bar:CreateTexture(nil, "ARTWORK")
-    fill:SetAtlas("UI-HUD-CoolDownManager-Bar")
-    -- a client that only takes a file here gets the plain bar
-    if not pcall(bar.SetStatusBarTexture, bar, fill) then bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar") end
-    bar:SetMinMaxValues(0, 1)
-    -- Blizzard's backdrop behind the bar, and a thin dark border round it
-    local bg = bar:CreateTexture(nil, "BACKGROUND")
-    bg:SetAtlas("UI-HUD-CoolDownManager-Bar-BG")
-    bg:SetPoint("TOPLEFT", bar, "TOPLEFT", -2, 3)
-    bg:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", 6, -6)
-    for _, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, -1 },
-            { "TOPLEFT", "BOTTOMLEFT", -1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
-        local edge = bar:CreateTexture(nil, "BORDER")
-        edge:SetColorTexture(0, 0, 0, 0.8)
-        edge:SetPoint(side[1], bar, side[1], side[3], side[4])
-        edge:SetPoint(side[2], bar, side[2], side[3], side[4])
-        if side[3] == 0 then edge:SetHeight(1) else edge:SetWidth(1) end
-    end
-    f.Bar = bar
-    -- texts over the bar
-    local texts = CreateFrame("Frame", nil, f)
-    texts:SetAllPoints(bar)
-    texts:SetFrameLevel(bar:GetFrameLevel() + 2)
-    f.Name = texts:CreateFontString(nil, "OVERLAY")
-    f.Name:SetWordWrap(false)
-    f.Health = texts:CreateFontString(nil, "OVERLAY")
-    f.Health:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
-    -- the level box (Forever's NameplateLevelFrame)
-    local level = CreateFrame("Frame", nil, f)
-    level:SetFrameLevel(bar:GetFrameLevel() + 3)
-    level.Icon = level:CreateTexture(nil, "BACKGROUND")
-    level.Icon:SetAtlas("ui-hud-nameplates-levelindicator")
-    level.Icon:SetAllPoints()
-    level.Text = level:CreateFontString(nil, "OVERLAY")
-    level.Text:SetPoint("CENTER", level.Icon, "CENTER", 0, 0)
-    f.Level = level
-    -- the cast bar's slot under the health bar: the combo row and a hidden box's quest tag hang on it
-    f.CastSlot = CreateFrame("Frame", nil, f)
-    f.Quest = CreateFrame("Frame", nil, f)
-    f.Quest:SetFrameLevel(bar:GetFrameLevel() + 5)
-    f.Quest.icon = f.Quest:CreateTexture(nil, "OVERLAY")
-    f.Quest.icon:SetAllPoints()
-    Tweaks.QuestTagArt(f.Quest.icon)
-    f.Combo = CreateFrame("Frame", nil, f)
-    f.Combo.gems = {}
-    f.Combo:SetScale(NP_COMBO_SCALE)
-    f.Combo:SetFrameLevel(bar:GetFrameLevel() + 5)
-    f:Hide()
-    return f
-end
-
-function Tweaks.DrawSample(f)
-    local db = GetDb() or {}
-    local look = Tweaks.plateSample
-    local so = _G.NamePlateSetupOptions or {}
-    local constants = _G.NamePlateConstants or {}
-    local styles = constants.NAME_ANCHOR_STYLES or {}
-    local addon = Tweaks:GetNameplateAddon()
-    local hideLevel = db.nameplateHideLevel and not addon
-    local hideName = db.nameplateHideNames and not addon
-    local showQuest = db.nameplateQuest and not addon and not Tweaks:QuestieHasNameplateIcons()
-    local showCombo = db.nameplateCombo and not addon
-
-    -- Blizzard's sizes (NamePlateDriverMixin:UpdateNamePlateOptions), its defaults where unset
-    local content = (constants.NAME_PLATE_WIDTH or 190) * (so.horizontalScale or 1) - 2 * (so.insetWidth or 12)
-    local healthHeight = so.healthBarHeight or 20
-    local levelWidth = so.playerLevelDiffWidth or 28
-    local castHeight = so.castBarHeight or 16
-    local castGap = so.castBarToHealthBarSpacing or 2
-    local nameAbove = so.unitNameAnchorStyle ~= nil and so.unitNameAnchorStyle ~= styles.InsideHealthBar
-    local nameRoom = nameAbove and ((so.healthBarFontHeight or 14) + (so.healthBarToNameAboveSpacing or 2)) or 0
-    local top = math.max(nameRoom, 3)   -- the level box reaches 3 px above the bar
-
-    -- Hide Level Box: the box only goes invisible, the bar takes its room (StretchHealthBar)
-    local barWidth = hideLevel and content or (content - levelWidth - 5)
-    local bar = f.Bar
-    bar:ClearAllPoints()
-    bar:SetPoint("TOPLEFT", f, "TOPLEFT", look.PAD, -top)
-    bar:SetSize(barWidth, healthHeight)
-    bar:SetValue(look.HEALTH)
-    bar:GetStatusBarTexture():SetVertexColor(look.BAR_COLOR.r, look.BAR_COLOR.g, look.BAR_COLOR.b)
-
-    local level = f.Level
-    level:ClearAllPoints()
-    level:SetPoint("TOPLEFT", bar, "TOPRIGHT", 5, 3)
-    level:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT", 5, -2)
-    level:SetWidth(levelWidth)
-    level:SetAlpha(hideLevel and 0 or 1)
-    level.Text:SetFontObject(_G.SystemFont_NamePlateLevel or GameFontNormalSmall)
-    local myLevel = UnitLevel("player")
-    if not (canaccessvalue(myLevel) and type(myLevel) == "number" and myLevel > 0) then myLevel = 1 end
-    local color = _G.FAIR_DIFFICULTY_COLOR or ns.LevelDifficultyColor(nil, myLevel)
-    level.Text:SetText(LevelName.Format(myLevel, color))
-
-    -- the name as Blizzard places it for the style, white; Level Before Name puts the level in front
-    local name = f.Name
-    name:SetFontObject(_G.SystemFont_NamePlate_Outlined or _G.SystemFont_NamePlate or GameFontNormalSmall)
-    name:SetTextColor(1, 1, 1)
-    local text = L["Duskbat"]
-    if hideLevel and db.nameplateLevelName and not hideName then text = LevelName.Format(myLevel, color) .. " " .. text end
-    name:SetText(text)
-    name:ClearAllPoints()
-    if nameAbove then
-        name:SetJustifyH(so.nameJustificationWhenAboveHealthBar or "LEFT")
-        name:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, so.healthBarToNameAboveSpacing or 2)
-        name:SetPoint("RIGHT", hideLevel and bar or level, "RIGHT", 0, 0)
-    else
-        name:SetJustifyH("LEFT")
-        name:SetPoint("LEFT", bar, "LEFT", 4, 0)
-        name:SetPoint("RIGHT", f.Health, "LEFT", -2, 0)
-    end
-    name:SetAlpha(hideName and 0 or 1)
-    f.Health:SetFontObject(_G.SystemFont_NamePlate_Outlined or _G.SystemFont_NamePlate or GameFontNormalSmall)
-    f.Health:SetTextColor(1, 1, 1)
-    f.Health:SetText(("%d%%"):format(look.HEALTH * 100))
-
-    local cast = f.CastSlot
-    cast:ClearAllPoints()
-    cast:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -castGap)
-    cast:SetSize(content, castHeight)
-
-    -- the quest "!" beside the box, or beside the cast slot with the box hidden (QuestTagAnchor),
-    -- sized by the box either way
-    local questWidth = 0
-    if showQuest then
-        local size = (healthHeight + 5) * QUEST_TAG_HEIGHT
-        questWidth = size * QuestTagAspect()
-        f.Quest:SetSize(questWidth, size)
-        f.Quest:ClearAllPoints()
-        f.Quest:SetPoint("LEFT", hideLevel and cast or level, "RIGHT", 0, 0)
-        f.Quest:Show()
-    else
-        f.Quest:Hide()
-    end
-
-    -- the combo row under the cast slot, three of five lit
-    local height = top + healthHeight + castGap + castHeight
-    if showCombo then
-        local row = f.Combo
-        if row.count ~= NP_COMBO_FALLBACK then LayoutComboRow(row, NP_COMBO_FALLBACK) end
-        for i = 1, NP_COMBO_FALLBACK do ns.SetComboPoint(row.gems[i], 3, false) end
-        row:ClearAllPoints()
-        row:SetPoint("TOP", cast, "BOTTOM", 0, NP_COMBO_OFFSET_Y)
-        row:Show()
-        height = height + (-NP_COMBO_OFFSET_Y + NP_COMBO_SIZE) * NP_COMBO_SCALE
-    else
-        f.Combo:Hide()
-    end
-
-    local width = look.PAD + content + math.max(questWidth, 6)   -- the backdrop reaches 6 px past the bar's right
-    height = height + 6
-    f:SetSize(width, height)
-    f:Show()
-    return width, height
 end
 
 --------------------------------------------------
@@ -2784,7 +2061,7 @@ local function InitWay()
 end
 
 --------------------------------------------------
--- 17. MAIL, MERCHANT, ALERTS, PET FOOD, LOOT CONFIRMATIONS, COMBAT NAMEPLATES
+-- 17. MAIL, MERCHANT, ALERTS, PET FOOD, LOOT CONFIRMATIONS
 --------------------------------------------------
 -- Every character is noted (name, realm, faction, class) for the Mail Address Book, whether the
 -- option is on or not, so the list is full the day it is switched on
@@ -3211,7 +2488,8 @@ local function InitLootConfirm()
     pcall(frame.RegisterEvent, frame, "CONFIRM_DISENCHANT_ROLL")
     frame:SetScript("OnEvent", function(_, event, id, rollType)
         local db = GetDb()
-        if not (db and db.skipLootConfirm and ns.BagModuleOn()) then return end
+        -- (the Gamepad UI: closing Blizzard's pop-up from here breaks its controller focus, so it asks)
+        if ns.IsGamepadUI() or not (db and db.skipLootConfirm and ns.BagModuleOn()) then return end
         -- after Blizzard's own dialog is up, so it can be closed
         C_Timer.After(0, function()
             if event == "LOOT_BIND_CONFIRM" then
@@ -3223,92 +2501,6 @@ local function InitLootConfirm()
             end
         end)
     end)
-end
-
--- Enemy Nameplates in Combat Only: shown when a fight starts, hidden after. The player's own setting
--- is kept and put back when the option goes off.
-local function SetEnemyPlates(on)
-    pcall(SetCVar, "nameplateShowEnemies", on and 1 or 0)
-end
-
-local function ApplyCombatPlates()
-    local db = GetDb()
-    local forced = Tweaks.ForcedCVars("combatPlates")
-    if InCombatLockdown() then return end
-    if db and db.combatPlates then
-        if forced.combatPlates == nil then forced.combatPlates = GetCVar("nameplateShowEnemies") or "1" end
-        SetEnemyPlates(false)
-    elseif forced.combatPlates ~= nil then
-        pcall(SetCVar, "nameplateShowEnemies", forced.combatPlates)
-        forced.combatPlates = nil
-    end
-end
-
--- Friendly Nameplates in Combat Only: the same for friends' plates, so you see who is low in a fight
--- without them cluttering the world after. Forever has no master switch for friendly plates (no
--- nameplateShowFriends, 11-21): only the three type switches, so those are held at 0 out of combat
--- and the player's picks are kept as a 3-character string ("101" = players on, NPCs off, minions on)
-Tweaks.FRIENDLY_CVARS = { "nameplateShowFriendlyPlayers", "nameplateShowFriendlyNpcs", "nameplateShowFriendlyPlayerMinions" }
--- 1-3 for a friendly type switch (CVAR_UPDATE may send the name in lower case), else nil
-function Tweaks.FriendlyIndex(name)
-    if type(name) ~= "string" then return nil end
-    name = name:lower()
-    for i, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do if cvar:lower() == name then return i end end
-end
-function Tweaks.FriendlyPicks()
-    local picks = ""
-    for _, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do picks = picks .. (GetCVarBool(cvar) and "1" or "0") end
-    return picks
-end
-function Tweaks.SetFriendlyPicks(picks)
-    for i, cvar in ipairs(Tweaks.FRIENDLY_CVARS) do pcall(SetCVar, cvar, picks:sub(i, i) == "1" and "1" or "0") end
-end
--- the held picks while combat-only holds the switches, else nil (a 1-character value is the old
--- master-switch memory, from before 11-21: that CVar never existed, so it is dropped)
-function Tweaks.FriendlyHeld()
-    local forced = Tweaks.ForcedCVars("combatFriendly")
-    local held = forced.combatFriendly
-    if held ~= nil and not (type(held) == "string" and held:match("^[01][01][01]$")) then forced.combatFriendly = nil return nil end
-    return held
-end
-function Tweaks.ApplyCombatFriendly()
-    local db = GetDb()
-    local forced = Tweaks.ForcedCVars("combatFriendly")
-    if InCombatLockdown() then return end
-    local held = Tweaks.FriendlyHeld()
-    if db and db.combatFriendly then
-        -- nothing picked: friendly players, what the option is about
-        if not held then
-            held = Tweaks.FriendlyPicks()
-            forced.combatFriendly = held == "000" and "100" or held
-        end
-        Tweaks.SetFriendlyPicks("000")
-    elseif held then
-        Tweaks.SetFriendlyPicks(held)
-        forced.combatFriendly = nil
-    end
-end
-
-local function InitCombatPlates()
-    local frame = CreateFrame("Frame")
-    frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    frame:SetScript("OnEvent", function(_, event)
-        local db = GetDb()
-        if event == "PLAYER_REGEN_DISABLED" then
-            -- still allowed: combat lockdown begins right after this event
-            if db and db.combatPlates then SetEnemyPlates(true) end
-            if db and db.combatFriendly then
-                local held = Tweaks.FriendlyHeld()
-                if held then Tweaks.SetFriendlyPicks(held) end
-            end
-        else
-            ApplyCombatPlates()
-            Tweaks.ApplyCombatFriendly()
-        end
-    end)
-    ApplyCombatPlates()
-    Tweaks.ApplyCombatFriendly()
 end
 
 --------------------------------------------------
@@ -3439,15 +2631,8 @@ function Tweaks:Refresh()
     ApplyPortraitNumbers()
     ApplyTips()
     if (GetDb() or {}).hideLootAlerts then Tweaks.ApplyLootAlerts() end
-    ApplyNameplateCombo()
-    ApplyQuestTags()
-    ApplyHideLevelAll()
-    ApplyHideNamesAll()
-    LevelName.ApplyAll()
     UpdateTrainAll()
     ApplyMailBook()
-    ApplyCombatPlates()
-    Tweaks.ApplyCombatFriendly()
     UpdatePetFood()
     if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MerchantFrame_UpdateMerchantInfo() end
     -- Blizzard's merchant update above shows the button again when Sell Junk goes off
@@ -3467,7 +2652,7 @@ function Tweaks:ShouldLoad()
             forced[key] = nil
             return value
         end
-        local maxZoom, zoomSpeed, tips, plates = Take("maxZoom"), Take("zoomSpeed"), Take("tips"), Take("combatPlates")
+        local maxZoom, zoomSpeed, tips = Take("maxZoom"), Take("zoomSpeed"), Take("tips")
         local mapFade = Take("mapFade")
         if mapFade ~= nil then pcall(SetCVar, "mapFade", mapFade) end
         local keyDown = Take("keyDown")
@@ -3475,10 +2660,6 @@ function Tweaks:ShouldLoad()
         if maxZoom then pcall(SetCVar, "cameraDistanceMaxZoomFactor", Tweaks.StoredCVar(maxZoom, "cameraDistanceMaxZoomFactor")) end
         if zoomSpeed then pcall(SetCVar, "cameraZoomSpeed", Tweaks.StoredCVar(zoomSpeed, "cameraZoomSpeed")) end
         if tips then Tweaks.RestoreTips(tips) end
-        if plates ~= nil then pcall(SetCVar, "nameplateShowEnemies", plates) end
-        local friendly = Tweaks.FriendlyHeld()
-        Take("combatFriendly")
-        if friendly then Tweaks.SetFriendlyPicks(friendly) end
         -- Move Any Window and Sync Blizz UI are General page options: they start
         -- with Quality of Life off too (with it on, Init starts them)
         if not Tweaks.accountStarted then
@@ -3530,7 +2711,7 @@ function Tweaks.InitAcceptSummon()
             return
         end
         C_SummonInfo.ConfirmSummon()
-        StaticPopup_Hide("CONFIRM_SUMMON")
+        if not ns.IsGamepadUI() then StaticPopup_Hide("CONFIRM_SUMMON") end   -- (it would break the pad's focus)
         Stop()
     end
     ns.Dialogs.FLAREUI_ACCEPT_SUMMON = {
@@ -3595,11 +2776,5 @@ function Tweaks:Init()
     Tweaks.InitAcceptSummon()
     InitPetFood()
     InitLootConfirm()
-    InitCombatPlates()
-    ApplyNameplateCombo()
-    ApplyQuestTags()
-    ApplyHideLevelAll()
-    ApplyHideNamesAll()
-    LevelName.ApplyAll()
     UnclampPartyFrame()
 end

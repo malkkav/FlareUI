@@ -3,22 +3,12 @@ local S = ns.Settings
 
 --------------------------------------------------
 -- QUALITY OF LIFE
--- Settings for Modules/Tweaks.lua in Gameplay, Nameplates, Interface and Systems (Camera, Gamepad)
+-- Settings for Modules/Tweaks.lua in Gameplay, Interface and Systems (Camera, Gamepad)
 -- tabs (Bags & Looting is its own module, BagsLooting.lua). Options that replace Blizzard scripts
 -- ask for a reload; the rest apply live.
 --------------------------------------------------
 local function Refresh()
     if ns.Tweaks then ns.Tweaks:Refresh() end
-end
-
--- greys the nameplate rows while another nameplate addon draws the plates
-local function NameplateAddon()
-    return ns.Tweaks and ns.Tweaks.GetNameplateAddon and ns.Tweaks:GetNameplateAddon() and true or false
-end
-
--- greys the quest badge row too while Questie draws its own nameplate icons
-local function QuestBadgeTaken()
-    return NameplateAddon() or (ns.Tweaks and ns.Tweaks.QuestieHasNameplateIcons and ns.Tweaks:QuestieHasNameplateIcons()) or false
 end
 
 -- greys the /way row: TomTom keeps the command
@@ -28,7 +18,7 @@ end
 
 S:Module{
     key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "nameplates" }, { key = "interface" }, { key = "systems" }, { key = "fonts" } },
+    tabs = { { key = "gameplay" }, { key = "interface" }, { key = "systems" }, { key = "fonts" } },
 }
 
 
@@ -93,29 +83,6 @@ S:Row{ key = "qol.rumbleAlerts", half = true, tab = "systems", path = "tweaks.ru
 S:Row{ key = "qol.rumbleProcs", half = true, tab = "systems", path = "tweaks.rumbleProcs" }
 
 -- INTERFACE --------------------------------------
--- whether enemy plates show at all first, then what goes on them, then their text
--- (Blizzard's own enemy plates, so another nameplate addon does not grey it out)
--- (combat plates, combo points and quest marks move to the Nameplates page while that module is on)
-local function NameplatesOn() return ns.Nameplates ~= nil and S:GetPath("nameplates.enabled") and true or false end   -- (the module may be absent)
-S:Row{ key = "qol.npCombat", tab = "nameplates", path = "tweaks.combatPlates", apply = Refresh, hidden = NameplatesOn }
--- friendly players' plates only in a fight (Blizzard's plates too)
-S:Row{ key = "qol.npCombatFriendly", tab = "nameplates", path = "tweaks.combatFriendly", apply = Refresh, hidden = NameplatesOn }
-S:Row{ key = "qol.npCombo", tab = "nameplates", path = "tweaks.nameplateCombo", apply = Refresh, disabled = NameplateAddon, hidden = NameplatesOn }
-S:Row{ key = "qol.npQuest", tab = "nameplates", path = "tweaks.nameplateQuest", apply = Refresh, disabled = QuestBadgeTaken, hidden = NameplatesOn }
-S:Row{ key = "qol.npNames", tab = "nameplates", path = "tweaks.nameplateHideNames", apply = Refresh, disabled = NameplateAddon }
--- live when switched on; switching off leaves visible plates' bars wide until Blizzard re-lays
--- them, so the reload bar offers a reload
-S:Row{ key = "qol.npLevel", tab = "nameplates", path = "tweaks.nameplateHideLevel", disabled = NameplateAddon,
-    apply = function(on)
-        Refresh()
-        S:TrackReload("qol.npLevel", on and "on" or "off", "on")
-    end }
--- the level moves in front of the name: needs the box hidden and the names shown
-S:Row{ key = "qol.npLevelName", tab = "nameplates", path = "tweaks.nameplateLevelName", parent = "qol.npLevel", apply = Refresh,
-    disabled = function()
-        return NameplateAddon() or not S:GetPath("tweaks.nameplateHideLevel") or S:GetPath("tweaks.nameplateHideNames") and true or false
-    end }
-
 S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
 S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }
 S:Row{ key = "qol.hideTips", half = true, tab = "interface", path = "tweaks.hideTips", apply = Refresh }

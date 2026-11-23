@@ -313,7 +313,7 @@ function PGT.Setup()
     w:SetSize(1, 1)
     w:SetPoint("CENTER")
     w:EnableMouse(false)
-    w.smartNavigationIgnored = true
+    ns.IgnorePadNav(w)
     w.FlareHighlight = function(_, index) PGT.ShowHighlight(index) end
     w.FlareBound = function(_, on) PGT.bound = on end
     w:SetAttribute("_onshow", PGT.SHOW_SNIPPET .. [[ if BOUND then self:CallMethod("FlareBound", true) end ]])

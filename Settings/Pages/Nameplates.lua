@@ -40,7 +40,6 @@ local function TV(key) local np = NP() return np and np.TypeDB(PIN.kind)[key] en
 -- what the preview shows: every state the type's settings draw (Can't Interrupt aside: the cast shows
 -- as one you can interrupt)
 local function Shows(state)
-    local tweaks = ns.db and ns.db.profile and ns.db.profile.tweaks or {}
     local cast = TV("castbar") and TV("plate") ~= "name"
     if state == "cast" then return cast and true or false end
     if state == "important" then return (cast and TV("castImportant")) and true or false end
@@ -50,7 +49,7 @@ local function Shows(state)
     if state == "focus" then return TV("colorFocus") and true or false end
     if state == "execute" then return TV("execute") ~= "off" end
     if state == "quest" then local np = NP() return (np and np.QuestOn and np.QuestOn(true)) and true or false end
-    if state == "combo" then return tweaks.nameplateCombo and true or false end
+    if state == "combo" then return S:GetPath("nameplates.comboPoints") and true or false end
     return true
 end
 local STATES = { "target", "cast", "important", "kick", "targeted", "threat", "focus", "execute", "quest", "combo" }
@@ -238,6 +237,22 @@ local function Build(host, np)
             end)
         end
     end)
+
+    -- the Gamepad UI: FlareUI's plain list in place of Blizzard's menu
+    if ns.PadNav and ns.PadNav.GuardDropdown then
+        ns.PadNav.GuardDropdown(host.presetDrop, function()
+            local list = {}
+            for _, pr in ipairs(PRESETS) do
+                list[#list + 1] = { text = PresetName(pr[1]), checked = function() return np.PresetOf(PIN.kind) == pr[1] end,
+                    pick = function()
+                        np.SetPreset(PIN.kind, pr[1])
+                        if np.Refresh then np:Refresh() end
+                        RefreshAll(DrawSide)
+                    end }
+            end
+            return list
+        end)
+    end
 
     -- LIVE PREVIEW: Test in Game beside the title, the plate below
     host.previewTitle = Label(host.previewBox, L["Live Preview"])
@@ -756,23 +771,21 @@ Row{ key = "np.mouseoverHighlight", kind = "dropdown", tab = "targeting", sectio
     resetValue = function() return "border,bar" end }
 
 -- EXTRAS: what sits on top of the plate - icons, bar effects, threat and the special colours
--- (moved from Quality of Life while this module is on: the same saved switches, Tweaks.lua)
-local function TweaksApply() if ns.Tweaks then ns.Tweaks:Refresh() end Refresh() end
 Row{ key = "np.rarityIcon", path = "rarityIcon", tab = "extras", section = "np.marks", half = true }
--- Combo Points and Objective Icon (11-20, per type): the shared Quality of Life switch (Blizzard's plates
--- use it too) and the type's own; ticking one on turns the shared one on as well
-local function TypeSwitch(tweakPath, key)
+-- Combo Points and Objective Icon (11-20, per type): the shared switch (nameplates.comboPoints, questMarks)
+-- and the type's own; ticking one on turns the shared one on as well
+local function TypeSwitch(path, key)
     return function()
-        return (S:GetPath(tweakPath) and TV(key) ~= false) and true or false
+        return (S:GetPath(path) and TV(key) ~= false) and true or false
     end, function(on)
         local np = NP()
-        if on then S:SetPath(tweakPath, true) end
+        if on then S:SetPath(path, true) end
         if np then np.TypeSet(PIN.kind, key, on and true or false) end
     end
 end
 do
-    local get, set = TypeSwitch("tweaks.nameplateCombo", "combo")
-    Row{ key = "np.comboPoints", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
+    local get, set = TypeSwitch("nameplates.comboPoints", "combo")
+    Row{ key = "np.comboPoints", tab = "extras", section = "np.marks", half = true, apply = Refresh,
         get = get, set = set, resetValue = function() return false end }
 end
 -- Objective Icon (the saved quest switch, shared with Blizzard's plates) and Objective Progress (never
@@ -780,14 +793,14 @@ end
 -- rows hide on the two player types
 local function PlayerType() return PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer" end
 do
-    local get, set = TypeSwitch("tweaks.nameplateQuest", "questIcon")
-    Row{ key = "np.questMarks", tab = "extras", section = "np.marks", half = true, apply = TweaksApply,
+    local get, set = TypeSwitch("nameplates.questMarks", "questIcon")
+    Row{ key = "np.questMarks", tab = "extras", section = "np.marks", half = true, apply = Refresh,
         get = get, set = set, resetValue = function() return false end, hidden = PlayerType }
 end
-Row{ key = "np.questProgress", tab = "extras", section = "np.marks", half = true, apply = TweaksApply, hidden = PlayerType,
+Row{ key = "np.questProgress", tab = "extras", section = "np.marks", half = true, apply = Refresh, hidden = PlayerType,
     get = function()
         local v = TV("questProgress")
-        if v == nil then v = S:GetPath("tweaks.nameplateQuest") and TV("questIcon") ~= false end
+        if v == nil then v = S:GetPath("nameplates.questMarks") and TV("questIcon") ~= false end
         return v and true or false
     end,
     set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "questProgress", on and true or false) end end,
@@ -912,20 +925,20 @@ local function Locked() return InCombatLockdown() end
 local function SetGameCVar(cvar, on)
     if NP() and NP().SetCVar then NP().SetCVar(cvar, on) elseif not InCombatLockdown() then SetCVar(cvar, on and "1" or "0") end
 end
-local function TweaksRefresh() if ns.Tweaks then ns.Tweaks:Refresh() end end
+local function CombatRefresh() if NP() and NP().ApplyCombatShow then NP().ApplyCombatShow() end end
 -- Show Enemy Plates / Show Friendly Plates: Off, Always, or Only in Combat. One choice over the
--- game's master switch and FlareUI's combat-only switch (Tweaks.lua holds the master off out of
+-- game's master switch and FlareUI's combat-only switch (NameplateExtras.lua holds the master off out of
 -- combat, and keeps the player's own value to put back)
-local function ShowRow(key, cvar, tweakKey)
+local function ShowRow(key, cvar, path)
     Row{ key = key, kind = "choice", choices = { "off", "always", "combat" }, tab = "visibility", section = "np.which",
         get = function()
-            if S:GetPath("tweaks." .. tweakKey) then return "combat" end
+            if S:GetPath(path) then return "combat" end
             return GetCVarBool(cvar) and "always" or "off"
         end,
         set = function(v)
             if InCombatLockdown() then return end
-            S:SetPath("tweaks." .. tweakKey, v == "combat")
-            TweaksRefresh()   -- (turning combat-only off puts the player's own value back first)
+            S:SetPath(path, v == "combat")
+            CombatRefresh()   -- (turning combat-only off puts the player's own value back first)
             if v ~= "combat" then SetGameCVar(cvar, v == "always") end
         end,
         resetValue = function() return "always" end,
@@ -953,7 +966,7 @@ local function SwitchesRow(key, section, list, setCVar)
         disabled = Locked, apply = function() end }
 end
 -- PLATES
-ShowRow("np.enemyShow", "nameplateShowEnemies", "combatPlates")
+ShowRow("np.enemyShow", "nameplateShowEnemies", "nameplates.enemyInCombat")
 -- Enemy Types (11-20): Players and NPCs too. The game has no switch for those two: they are FlareUI's
 -- (nameplates.enemyPlayers / enemyNpcs, Nameplates.lua NP.UnitHidden); Minions and Minor are the game's
 do
@@ -987,21 +1000,21 @@ do
 end
 -- Show Friendly Plates / Friendly Types (11-21): Forever has no master switch for friendly plates
 -- (nameplateShowFriends does not exist), only the three type switches. Off = all three off, Always =
--- at least one on (Players when none is), In Combat = Tweaks holds them at 0 out of a fight and keeps
--- the picks (Tweaks.FriendlyHeld), which Friendly Types then reads and writes instead of the game's
+-- at least one on (Players when none is), In Combat = NameplateExtras.lua holds them at 0 out of a fight
+-- and keeps the picks (NP.FriendlyHeld), which Friendly Types then reads and writes instead of the game's
 do
-    local T = ns.Tweaks
-    local FRIENDLY = { "players", "npcs", "minions" }   -- in Tweaks.FRIENDLY_CVARS order
+    local T = NP() or {}
+    local FRIENDLY = { "players", "npcs", "minions" }   -- in NP.FRIENDLY_CVARS order
     local function Picks() return (T.FriendlyHeld and T.FriendlyHeld()) or (T.FriendlyPicks and T.FriendlyPicks()) or "000" end
     Row{ key = "np.friendlyShow", kind = "choice", choices = { "off", "always", "combat" }, tab = "visibility", section = "np.which",
         get = function()
-            if S:GetPath("tweaks.combatFriendly") then return "combat" end
+            if S:GetPath("nameplates.friendlyInCombat") then return "combat" end
             return Picks() ~= "000" and "always" or "off"
         end,
         set = function(v)
             if InCombatLockdown() or not T.SetFriendlyPicks then return end
-            S:SetPath("tweaks.combatFriendly", v == "combat")
-            TweaksRefresh()   -- (turning combat-only off puts the player's picks back first)
+            S:SetPath("nameplates.friendlyInCombat", v == "combat")
+            CombatRefresh()   -- (turning combat-only off puts the player's picks back first)
             if v == "off" then T.SetFriendlyPicks("000")
             elseif v == "always" and T.FriendlyPicks() == "000" then T.SetFriendlyPicks("100") end
         end,
@@ -1020,7 +1033,7 @@ do
             local want, picks = {}, ""
             for token in tostring(value or ""):gmatch("[^,]+") do want[token] = true end
             for _, t in ipairs(FRIENDLY) do picks = picks .. (want[t] and "1" or "0") end
-            if T.FriendlyHeld() then T.ForcedCVars("combatFriendly").combatFriendly = picks
+            if T.FriendlyHeld() then ns.Tweaks.ForcedCVars("combatFriendly").combatFriendly = picks
             else T.SetFriendlyPicks(picks) end
         end,
         disabled = Locked, apply = function() end }

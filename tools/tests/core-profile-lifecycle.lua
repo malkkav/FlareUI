@@ -115,6 +115,28 @@ ns.ErrorsCommand()
 assert(logTitle == "FlareUI caught errors" and logText:find("7.0.4 | build 12345 | enUS | MAGE 34", 1, true))
 ns.ErrorsCommand("clear")
 assert(ns.db.global.errors == nil)
+-- what the game refused in FlareUI's name is in the log too (11-23)
+env.debugstack = function() return "[C]: in function 'UseAction'\n" .. string.rep("long ", 400) end
+ui:emit("ADDON_ACTION_FORBIDDEN", "OtherAddon", "UseAction()")
+assert(ns.db.global.errors == nil, "another addon's is its own")
+ui:emit("ADDON_ACTION_FORBIDDEN", "FlareUI", "UseAction()")
+local blocked = ns.db.global.errors
+assert(#blocked == 1 and blocked[1]:find("action forbidden | UseAction(), no fight, keyboard and mouse | [C]: in function", 1, true))
+assert(#blocked[1] < 1100 and blocked[1]:find("...", 1, true), "a long stack is cut")
+ui:emit("ADDON_ACTION_FORBIDDEN", "FlareUI", "UseAction()")
+ui:emit("ADDON_ACTION_FORBIDDEN", "FlareUI", "UseAction()")
+assert(#blocked == 1 and blocked[1]:find(" | 3 times", 1, true) and not blocked[1]:find("2 times", 1, true), "once, with a count")
+ui.combat = true
+ui:emit("ADDON_ACTION_BLOCKED", "FlareUI", "Frame:Hide()")
+ui.combat = false
+assert(#blocked == 2 and blocked[2]:find("action blocked | Frame:Hide(), in a fight", 1, true))
+ui:emit("ADDON_ACTION_BLOCKED", "FlareUI", "hidden-guid")
+assert(#blocked == 3 and blocked[3]:find("action blocked | ?, no fight", 1, true), "a value it can't read")
+ns.ErrorsCommand("clear")
+env.debugstack = nil
+ui:emit("ADDON_ACTION_FORBIDDEN", "FlareUI", "UseAction()")
+assert(#ns.db.global.errors == 1, "written again after a clear")
+ns.db.global.errors = nil
 ns.ErrorsCommand()
 assert(messages[#messages]:find("No errors caught", 1, true))
 

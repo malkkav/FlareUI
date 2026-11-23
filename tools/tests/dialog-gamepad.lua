@@ -14,10 +14,11 @@ env.GetBindingKey = function(action, mode)
     assert(mode == 1)
     if action == "GAMEPADLEFTMOD" then return "PADLSHOULDER" end
 end
-local labels = { PADLSHOULDER = "LB", PADRTRIGGER = "RT", PADLSTICK = "L3", PADRSTICK = "R3", PAD1 = "A", PAD2 = "B" }
+local labels = { PADLSHOULDER = "LB", PADRTRIGGER = "RT", PADLSTICK = "L3", PADRSTICK = "R3", PAD1 = "A", PAD2 = "B", PAD3 = "X" }
 env.GetBindingText = function(key) return labels[key] or key end
 env.RegisterStateDriver = function(widget, attribute, rule) widget.driver = { attribute, rule } end
 env.SetOverrideBindingClick = function(_, _, key, button) bindings[key] = button end
+env.SetOverrideBinding = function(_, _, key, action) assert(not ui.combat and action == nil); bindings[key] = nil end
 env.ClearOverrideBindings = function() env.wipe(bindings) end
 env.UnitIsUnit = function(a, b) return a == b end
 env.canaccessvalue = function() return true end
@@ -83,7 +84,7 @@ ns.Dialogs.SECURE = {
 }
 ns.ShowDialog("SECURE", nil, { index = 3 })
 local secure = env.FlareUIDialogReload
-assert(secure:IsShown() and not dialog.Button1:IsShown() and not dialog.gamepadEnabled)
+assert(secure:IsShown() and not dialog.Button1:IsShown() and not dialog.Pad.gamepadEnabled)
 assert(secure:GetAttribute("macrotext") == "/stopmacro [combat]\n/run C_EditMode.SetActiveLayout(3)")
 assert(bindings.ENTER == secure:GetName() and bindings.PAD1 == secure:GetName() and bindings.PAD2 == "FlareUIDialogPadNo")
 assert(env.FlareUI_ReloadParent.driver[2] == "[combat] hide; show")
@@ -106,6 +107,60 @@ ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(not secure:IsShown() and not next(bindings))
 
+-- The Gamepad UI (11-23): a reload answered with A must be a secure press, the third answer is X, and a
+-- fight gives A and B back to the game
+do
+    gamepad = true
+    ns.Dialogs.PADRELOAD = { text = "Reload", reloads = true, hideOnEscape = true, button3 = "Never", OnAlt = record("never"), OnCancel = record("later") }
+    ns.ShowDialog("PADRELOAD")
+    assert(not dialog.Pad.gamepadEnabled and bindings.PAD1 == secure:GetName() and bindings.PAD2 == "FlareUIDialogPadNo" and bindings.PAD3 == "FlareUIDialogPadAlt")
+    assert(secure:GetAttribute("macrotext") == "/stopmacro [combat]\n/reload" and dialog.Button3:GetText() == "X Never")
+    ui:emit("PLAYER_REGEN_DISABLED")   -- (still before the lockdown)
+    assert(not bindings.PAD1 and not bindings.PAD2 and not bindings.PAD3 and dialog.Button1:IsShown(), "a fight: the bar's buttons work")
+    ui.combat = true
+    ui.combat = false
+    ui:emit("PLAYER_REGEN_ENABLED")
+    assert(bindings.PAD1 == secure:GetName() and not dialog.Button1:IsShown())
+    env.FlareUIDialogPadAlt:Click()
+    assert(actions[#actions][1] == "never" and not ns.AnyDialogShown() and not next(bindings))
+    ns.ShowDialog("PADRELOAD")
+    env.FlareUIDialogPadNo:Click()
+    assert(actions[#actions][1] == "later" and not next(bindings))
+    -- a plain dialog reads the pad itself with a listener that passes nothing on (a passed-on press runs the
+    -- game's action as ours and breaks its controller code until a /reload), off in a fight
+    ns.ShowDialog("EDIT", "profile", data)
+    assert(dialog.Pad.gamepadEnabled)
+    local before = #actions
+    assert(not dialog.Pad.propagate)
+    dialog.Pad:RunScript("OnGamePadButtonDown", "PADLSHOULDER")
+    assert(not dialog.Pad.propagate and dialog:IsShown(), "another button isn't passed on either")
+    ui:emit("PLAYER_REGEN_DISABLED")
+    ui.combat = true
+    assert(not dialog.Pad.gamepadEnabled, "a fight: the pad is the game's")
+    dialog.Pad:RunScript("OnGamePadButtonDown", "PAD1")
+    dialog.Pad:RunScript("OnGamePadButtonDown", "PAD2")
+    assert(#actions == before and dialog:IsShown())
+    ui.combat = false
+    ui:emit("PLAYER_REGEN_ENABLED")
+    assert(dialog.Pad.gamepadEnabled)
+    dialog.Pad:RunScript("OnGamePadButtonDown", "PAD3")
+    assert(actions[#actions][1] == "reset" and not dialog:IsShown() and not dialog.Pad.gamepadEnabled)
+    -- Blizzard's navigation is kept off frames through its own call, after a fight if need be
+    local marked = {}
+    env.SmartNavigation_MarkFrameIgnored = function(w) assert(not ui.combat); marked[#marked + 1] = w end
+    ns.IgnorePadNav(dialog)
+    ui.combat = true
+    ns.IgnorePadNav(dialog.Pad)
+    assert(#marked == 1)
+    ui.combat = false
+    ui:emit("PLAYER_REGEN_ENABLED")
+    assert(marked[1] == dialog and marked[2] == dialog.Pad and dialog.smartNavigationIgnored == nil)
+    gamepad = false
+    ns.ShowDialog("PADRELOAD")
+    assert(not bindings.PAD1, "outside the Gamepad UI the pad's buttons stay other addons'")
+    dialog:Hide()
+end
+
 assert(ns.PadStickKey("L3") == "PADLSTICK" and ns.PadComboKey("L3", "TOP") == "PADCOMBO-L3")
 local stick, side = ns.ParsePadCombo(ns.PadComboKey("R3", "LTRT"))
 assert(stick == "R3" and side == "LTRT" and ns.KeyText("PADCOMBO-LTRT-R3") == "LB + RT + R3")
@@ -124,14 +179,14 @@ assert(not ns.AnyDialogShown())
 ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(ns.AnyDialogShown() and dialog.Button1:GetText() == "A Switch")
-dialog:RunScript("OnGamePadButtonDown", "PAD1")
+dialog.Pad:RunScript("OnGamePadButtonDown", "PAD1")
 assert(not ns.AnyDialogShown() and changes[1][1] == "InputDeviceInterfaceStyle" and changes[1][2] == 1)
 ui:flushTimers()
 assert(messages[#messages]:find("The switch did not go through", 1, true))
 gamepad = true
 ns.ToggleGamepadMode()
 assert(dialog.Text:GetText():find("keyboard and mouse", 1, true))
-dialog:RunScript("OnGamePadButtonDown", "PAD2")
+dialog.Pad:RunScript("OnGamePadButtonDown", "PAD2")
 assert(not ns.AnyDialogShown())
 
 ui:emit("READY_CHECK", "player")

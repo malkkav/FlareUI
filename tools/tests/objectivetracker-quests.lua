@@ -439,6 +439,7 @@ env.WorldMapFrame:Show()
 secure:RunScript("PreClick", "LeftButton")
 assert(secure:GetAttribute("macrotext1") == "/click FlareUIQuestPick\n/click FlareUIQuestPick")
 picker:RunScript("PreClick")
+assert(picker:GetAttribute("useOnKeyDown") == false, "the macro's /click is a release")
 assert(picker:GetAttribute("clickbutton") == questButton)
 env.QuestMapFrame.DetailsFrame.questID = 21
 env.QuestMapFrame.DetailsFrame:Show()
@@ -451,16 +452,53 @@ ui.combat = false
 ot.HideSecureClick()
 assert(not secure:IsShown())
 
+-- the Gamepad UI: FlareUI only says to open the quest log. It never turns Blizzard's page itself, even once
+-- the log is open (that ran Blizzard's controller focus in FlareUI's name; 11-23)
 local details
 env.QuestMapFrame_ShowQuestDetails = function(id) details = id end
 pad = true
 env.WorldMapFrame:Hide()
+local before = #ui.errors
 guard:Click()
-assert(not details and #ui.errors > 0)
+assert(not details and #ui.errors == before + 1)
 env.WorldMapFrame:Show()
 ui:flushTimers()
-assert(details == 11)
+assert(not details)
+ui.combat = true
+ot.PickForQuestLog()
+ui.combat = false
+assert(#ui.errors == before + 2)
 pad = false
+
+-- what the controller's navigation uses (PadTracker.lua; its own test: pad-tracker.lua)
+local padded = env.CreateFrame("Button", nil, env.UIParent)
+assert(ot.Pad.Parts().holder == holder and ot.Pad.Parts().scroll == scroll and #ot.Pad.Parts().lines > 0)
+assert(ot.Pad.AimDetails(padded, 21) and padded:GetAttribute("clickbutton") == nativeHeader)
+nativeHeader:SetParent(nil)
+assert(not ot.Pad.QuestIcon(21) and not ot.Pad.QuestIcon(11))
+local block = env.CreateFrame("Frame", nil, env.UIParent)
+nativeHeader:SetParent(block)
+block.poiButton = env.CreateFrame("Button", nil, block)
+assert(ot.Pad.QuestIcon(21) == block.poiButton)
+env.WorldMapFrame:Hide()
+assert(ot.Pad.AimDetails(padded, 11) and padded:GetAttribute("type") == "macro" and picker.questID == 11)
+assert(padded:GetAttribute("macrotext") == "/click QuestLogMicroButton\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
+env.WorldMapFrame:Show()
+assert(ot.Pad.AimDetails(padded, 11) and padded:GetAttribute("macrotext") == "/click FlareUIQuestPick\n/click FlareUIQuestPick")
+assert(not ot.Pad.AimDetails(padded, 999), "no such quest in the log")
+local wasPinned = ot.Pad.IsPinned(11)
+ot.Pad.TogglePinned(11)
+ui:flushTimers()
+assert((ot.Pad.IsPinned(11) and true or false) ~= (wasPinned and true or false))
+ot.Pad.TogglePinned(11)
+ui:flushTimers()
+local drawn = 0
+ns.PadTracker = { OnTrackerDrawn = function() drawn = drawn + 1 end }
+ot:Render()
+assert(drawn > 0 and not ot:IsSettingsPreview())
+ns.PadTracker.open = "list"
+assert(ot:IsSettingsPreview(), "a faded tracker shows while the controller is in it")
+ns.PadTracker = nil
 
 -- Quest items are assigned secure attributes outside combat and keep their slot during lockdown.
 for _, state in ipairs({ "Normal", "Pushed", "Highlight" }) do

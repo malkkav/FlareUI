@@ -4,6 +4,8 @@ local ui, ns = setup()
 local E, S = ui.env, ns.Settings
 ui.gamepad = true
 ns.KeyText = tostring
+local ignored = {}
+ns.IgnorePadNav = function(w) ignored[w] = true end
 ui:load("Settings/PadNav.lua", ns)
 local pad = ns.PadNav
 local window = E.CreateFrame("Frame", nil, E.UIParent)
@@ -38,6 +40,8 @@ initial:SetScript("OnClick", function() clicks = clicks + 1 end)
 initial.padX = function() removed = removed + 1 end
 slider:SetMinMaxValues(0, 3)
 slider.padCycle = function(delta) slider:SetValue(math.max(0, math.min(3, slider:GetValue() + delta))) end
+local trackerClosed
+ns.PadTracker = { Close = function() trackerClosed = true end }
 pad.Attach(window, {
     close = function() window:Hide() end,
     tab = function(delta) tab = tab + delta end,
@@ -50,10 +54,13 @@ local function up(key) listener:RunScript("OnGamePadButtonUp", key) end
 local ring = assert(ui:find(function(w) return w.edges ~= nil end))
 local function focused() local _, object = ring:GetPoint(); return object end
 ui:flushTimers()
-assert(window.smartNavigationIgnored and listener.gamepadEnabled and focused() == initial and hovered == 1,
+assert(trackerClosed, "the quest tracker gives the pad up")
+assert(ignored[window] and ignored[listener] and listener.gamepadEnabled and focused() == initial and hovered == 1,
     "controller focus starts on an enabled content control")
 press("PAD1")
-assert(clicks == 1 and listener.propagate == false)
+assert(clicks == 1 and not listener.propagate)
+press("PADBACK")
+assert(not listener.propagate, "no button is passed on to the game")
 press("PAD3")
 assert(removed == 1)
 press("PADDRIGHT")
@@ -83,9 +90,13 @@ press("PADLTRIGGER")
 ui:flushTimers()
 assert(tab == 1 and page == -1)
 ui.dialogOpen = true
+listener:RunScript("OnUpdate", 0.02)
+assert(not listener.gamepadEnabled, "the settings listener is off while a dialog is open")
 press("PAD1")
-assert(clicks == 1 and listener.propagate, "the settings listener yields to an open dialog")
+assert(clicks == 1)
 ui.dialogOpen = false
+listener:RunScript("OnUpdate", 0.02)
+assert(listener.gamepadEnabled)
 ui.combat = true
 ui:emit("PLAYER_REGEN_DISABLED")
 assert(not listener.gamepadEnabled and not ring:IsShown())

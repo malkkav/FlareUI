@@ -1685,14 +1685,15 @@ local function BuildLower(host, height, width)
     -- three-column grid, search at the bottom
     local catalogTitle = Text(host, "GameFontNormal", L["Catalog"])
     catalogTitle:SetPoint("TOPLEFT", catX + 4, -top)
-    local LINK_H, SLASH_W = 16, 14
+    local LINK_H, SLASH_MAX, SLASH_MIN = 16, 14, 8
     local rightX = catX + gridW - 10   -- (in line with the search box)
     local links, slashes = {}, {}
     for i, c in ipairs(CATEGORIES) do
         local link = CreateFrame("Button", nil, host)
-        link:SetNormalFontObject("GameFontNormalSmall")
-        link:SetText(c.label)
-        link:SetSize(link:GetFontString():GetStringWidth() + 2, LINK_H)
+        -- (its own text, not the button's: a button puts its font object back, which undid the fitted size
+        -- and ran the links into the title; 11-23, Tride)
+        link.Text = Text(link, "GameFontNormalSmall", c.label)
+        link.Text:SetPoint("CENTER")
         link.key = c.key
         link:SetScript("OnClick", function()
             ns.ButtonSound()
@@ -1701,7 +1702,7 @@ local function BuildLower(host, height, width)
             RefreshBrowse()
         end)
         link:SetScript("OnEnter", function(self)
-            if self.key ~= activeCategory then self:GetFontString():SetTextColor(0.9, 0.9, 0.9) end
+            if self.key ~= activeCategory then self.Text:SetTextColor(0.9, 0.9, 0.9) end
         end)
         link:SetScript("OnLeave", function() host.PaintCategories() end)
         links[i] = link
@@ -1711,41 +1712,47 @@ local function BuildLower(host, height, width)
         slashes[i] = slash
     end
     -- one line always, right up to the title: the slashes' gaps close in first, then the links' text
-    -- gets smaller until they fit
-    local room = rightX - (catX + 4 + catalogTitle:GetStringWidth() + 6)
-    local function Total(gap)
-        local sum = 0
-        for _, link in ipairs(links) do sum = sum + link:GetWidth() end
-        return sum + (#links - 1) * gap
-    end
-    if Total(SLASH_W) > room then SLASH_W = math.max(8, math.floor((room - Total(0)) / math.max(1, #links - 1))) end
-    if Total(SLASH_W) > room then
-        local k = math.max(0.6, (room - (#links - 1) * SLASH_W) / Total(0))
-        for _, link in ipairs(links) do
-            local fs = link:GetFontString()
-            local face, size, flags = fs:GetFont()
-            if face and size then fs:SetFont(face, size * k, flags) end
-            link:SetSize(fs:GetStringWidth() + 2, LINK_H)
+    -- gets smaller until they fit. Measured again with each refresh: the game font can change.
+    host.LayoutCategories = function()
+        local room = rightX - (catX + 4 + catalogTitle:GetStringWidth() + 6)
+        local face, size, flags = slashes[1]:GetFont()   -- (a slash keeps the font at its full size)
+        local scale, slashW = 1, SLASH_MAX
+        local function Links()
+            local sum = 0
+            for _, link in ipairs(links) do
+                if face and size then link.Text:SetFont(face, size * scale, flags or "") end
+                local w = link.Text:GetStringWidth() + 2
+                link:SetSize(w, LINK_H)
+                sum = sum + w
+            end
+            return sum
         end
+        local gaps = math.max(1, #links - 1)
+        local sum = Links()
+        slashW = math.max(SLASH_MIN, math.min(SLASH_MAX, math.floor((room - sum) / gaps)))
+        while sum + gaps * slashW > room and scale > 0.6 do
+            scale = scale - 0.04
+            sum = Links()
+        end
+        local linkX = rightX
+        for n = #links, 1, -1 do
+            links[n]:ClearAllPoints()
+            links[n]:SetPoint("TOPRIGHT", host, "TOPLEFT", linkX, -top)
+            linkX = linkX - links[n]:GetWidth() - slashW
+        end
+        -- a slash between links n - 1 and n
+        for n = 2, #links do
+            slashes[n]:ClearAllPoints()
+            slashes[n]:SetPoint("CENTER", links[n], "LEFT", -slashW / 2, 0)
+            slashes[n]:Show()
+        end
+        slashes[1]:Hide()
     end
-    local linkX = rightX
-    for i = #links, 1, -1 do
-        local w = links[i]:GetWidth()
-        local gap = i < #links and SLASH_W or 0
-        linkX = linkX - gap
-        links[i]:SetPoint("TOPRIGHT", host, "TOPLEFT", linkX, -top)
-        linkX = linkX - w
-    end
-    -- a slash between links i - 1 and i
-    for i = 2, #links do
-        slashes[i]:SetPoint("CENTER", links[i], "LEFT", -SLASH_W / 2, 0)
-        slashes[i]:Show()
-    end
-    slashes[1]:Hide()
+    host.categoryLinks, host.catalogTitle = links, catalogTitle
     host.PaintCategories = function()
         for _, link in ipairs(links) do
             local on = link.key == activeCategory
-            link:GetFontString():SetTextColor(on and 1 or 0.5, on and 0.82 or 0.5, on and 0 or 0.5)
+            link.Text:SetTextColor(on and 1 or 0.5, on and 0.82 or 0.5, on and 0 or 0.5)
         end
     end
 
@@ -1853,6 +1860,7 @@ function RefreshBrowse()
     for _, c in ipairs(CATEGORIES) do
         if c.key == activeCategory then category = c end
     end
+    editor.LayoutCategories()
     editor.PaintCategories()
     editor.categoryNote = category and category.note
 

@@ -3259,8 +3259,9 @@ function Dock.AddEntries(root, window, divider)
 end
 
 -- FlareUI's own small menu (another window's tab)
+-- (a menu opened from addon code breaks the Gamepad UI's focus: none there, nor below)
 function Dock.OpenMenu(owner, window)
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    if ns.IsGamepadUI() or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
     MenuUtil.CreateContextMenu(owner, function(_, root) Dock.AddEntries(root, window, false) end)
 end
 
@@ -3278,7 +3279,7 @@ end
 
 -- the Threat tab (out = true) or the separate threat window's header (false)
 function Dock.OpenThreatMenu(owner, out)
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    if ns.IsGamepadUI() or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
     MenuUtil.CreateContextMenu(owner, function(_, root)
         local label = out and L["Move to Own Window"] or L["Dock as a Tab"]
         local button = root:CreateButton(label, function() DamageMeter.SetThreatWindow(out) end)
@@ -3717,7 +3718,8 @@ function DamageMeter:Init()
 
     -- the meter's gear menu gets FlareUI's settings (its own "Open Settings" goes to a page this
     -- client doesn't have). Menu.ModifyMenu adds to Blizzard's menu without touching it.
-    if Menu and Menu.ModifyMenu and not self.gearMenuHooked then
+    -- Not in the Gamepad UI: its menus take the pad's focus, and addon entries taint that.
+    if Menu and Menu.ModifyMenu and not self.gearMenuHooked and not ns.IsGamepadUI() then
         self.gearMenuHooked = true
         -- a window's own title (right-click passes through to Blizzard's type menu): Move to Own Window
         -- or Dock as a Tab added under Blizzard's entries (23c)

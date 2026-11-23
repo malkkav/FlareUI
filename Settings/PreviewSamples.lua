@@ -10,10 +10,6 @@ local function Get(path, default)
         if spec.key == 'tt.healthBar' and path == 'tooltips.healthBarPlace' then return spec.value end
         if spec.key == 'tt.classNames' and path == 'tooltips.nameColor' then return spec.value and 'class' or 'none' end
         if spec.key == 'tt.borders' and path:match('^tooltips.borderBy') then return spec.value end
-        if spec.key == 'qol.npLevelName' then
-            if path == 'tweaks.nameplateHideLevel' then return true end
-            if path == 'tweaks.nameplateHideNames' then return false end
-        end
         if spec.key == 'ab.xpQuest' then
             if path == 'actionbars.xpbar.questXP' then return spec.value ~= 'off' end
             if path == 'actionbars.xpbar.questXPMode' then return spec.value end
@@ -908,35 +904,6 @@ function R.bags(c)
     Note(c)
 end
 
-function R.nameplate(c, spec)
-    Heading(c, L["Nameplates"])
-    if spec.key == 'qol.npCombat' and not Get('tweaks.combatPlates') then
-        c:Text('combatExample', L["In combat: enemy nameplates hidden"], 16, 90, c.width - 32); return
-    elseif spec.key == 'qol.npCombat' then
-        c:Text('combatExample', L["In combat: enemy nameplates visible"], 16, 158, c.width - 32)
-    end
-    if not Get('tweaks.nameplateHideNames') then c:Text('nameplateName', (Get('tweaks.nameplateHideLevel') and Get('tweaks.nameplateLevelName') and '12 ' or '') .. L["Forest Spider"], 22, 69) end
-    c:Bar('nameplate', 16, 94, c.width - 32, 17, 0.72, { 0.8, 0.15, 0.12 })
-    if not Get('tweaks.nameplateHideLevel') then c:Text('nameplateLevel', '12', c.width - 35, 96, 30) end
-    if Get('tweaks.nameplateQuest') then
-        local badge = Atlas(c, 'questBadge', 'QuestNormal', c.width - 17, 92, 15, 19)
-        if not C_Texture.GetAtlasInfo('QuestNormal') then badge:SetTexture('Interface\\GossipFrame\\AvailableQuestIcon') end
-    end
-    if Get('tweaks.nameplateCombo') then
-        for i = 1, 5 do
-            local p = c.objects['plateCombo' .. i]
-            if not p then p = ns.CreateComboPoint(c.frame, i, 14, false); c.objects['plateCombo' .. i] = p end
-            p:ClearAllPoints(); p:SetPoint('TOPLEFT', (c.width - 110) / 2 + (i - 1) * 24, -121); ns.SetComboPoint(p, 3, false); p:Show()
-        end
-    end
-    if spec.key == 'qol.npQuest' then
-        c:Text('questObjective', L["Quest objective"] .. ': 4/8', 16, 158, c.width - 32, { size = 11 })
-    elseif spec.key == 'qol.npCombo' then
-        c:Text('comboLabel', L["Combo Points"] .. ': ' .. (Get('tweaks.nameplateCombo') and '3/5' or L["Hidden"]), 16, 158, c.width - 32, { size = 11 })
-    end
-    Note(c)
-end
-
 -- The Nameplates page: drawn by the module itself (OWN below); this only shows if it can't be
 -- The Nameplates page: its picture is the strip pinned above the tabs (Pages/Nameplates.lua); the Info
 -- panel only tells it which state the row under the mouse is about
@@ -1469,7 +1436,6 @@ local OWN = {
     tracker = { 'ObjectiveTracker', function(spec) return spec.key == 'qt.minimizeButton' and 'header' or 'full' end },
     chat = { 'Chat', function() return 'chat' end },
     meter = { 'DamageMeter', function(spec) return THREAT_KEYS[spec.key] and 'threat' or 'damage' end },
-    nameplate = { 'Tweaks', function() return 'plate' end },
     -- a style card shows its own style (which may not be the one in use)
     minimap = { 'Minimap', function(spec, c)
         if c.isStyleCard or c.height < 120 then

@@ -774,11 +774,13 @@ local function CreateBar()
         f.Plates[i] = f:CreateTexture(nil, "BACKGROUND")
         Plate(f.Plates[i], f)
     end
-    local c = NORMAL_FONT_COLOR
+    -- the values in white, as Blizzard's money, bag and durability numbers (11-23, BorlandC: gold read
+    -- as a mistake next to the bags' white); the lines between the cells stay gold
+    local c, value = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
     for i = 1, #Bar.SIDES do
         local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetWordWrap(false)
-        fs:SetTextColor(c.r, c.g, c.b)
+        fs:SetTextColor(value.r, value.g, value.b)
         local db = GetDb()
         if db and (db.barFont or db.infoFont) then ApplyFont(fs, db.barFont or db.infoFont) end
         MM.infoTexts[fs] = true
@@ -1178,8 +1180,10 @@ MM.Moves = {
     -- map, Blizzard's own spot: SunSpot)
     SUN_SQUARE_ANGLE = 225,
     handles = {},                                   -- key -> handle
-    hinted = {},                                    -- icon -> its tooltip hint is hooked
 }
+-- (no "Shift+drag to move" line in the icons' own tooltips: it opened a second box over the LFG eye's
+-- own tooltip and cluttered the rest; removed 11-23, BorlandC / Malkkav. The handle's tip still shows
+-- with Shift or Ctrl held, or in Edit Mode.)
 do
     local Moves = MM.Moves
     local DragStop
@@ -1377,20 +1381,6 @@ do
         GameTooltip:Show()
     end
 
-    -- the icon's own tooltip ends with one grey line saying it can be moved (an icon with no tooltip
-    -- of its own gets just that line)
-    function Moves.AddHint(frame)
-        if not frame or Moves.hinted[frame] or not frame.HookScript then return end
-        Moves.hinted[frame] = true
-        frame:HookScript("OnEnter", function(self)
-            if Moves.editing or IsShiftKeyDown() or IsControlKeyDown() then return end
-            if GameTooltip:GetOwner() ~= self or not GameTooltip:IsShown() then ns.OwnGameTooltip(self, "ANCHOR_LEFT") end
-            GameTooltip:AddLine(L["Shift+drag to move, Ctrl+wheel to resize"], 0.6, 0.6, 0.6)
-            GameTooltip:Show()
-        end)
-        if not frame:GetScript("OnLeave") then frame:HookScript("OnLeave", GameTooltip_Hide) end
-    end
-
     -- one handle per icon, a child of its button (so it moves, scales and hides with it), over its face
     local function Handle(key, frame)
         local handle = Moves.handles[key]
@@ -1426,7 +1416,6 @@ do
         local ctrl = IsControlKeyDown() or editing
         local on = IsShiftKeyDown() or ctrl
         for _, key in ipairs(Moves.ORDER) do
-            Moves.AddHint(Moves.Frame(key))
             local frame = on and Moves.Frame(key)
             if frame and Blocked(frame) then frame = nil end
             local handle = Moves.handles[key]

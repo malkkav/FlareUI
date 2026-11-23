@@ -1013,6 +1013,10 @@ local defaults = {
             execute = "off",            -- Execute Range: off | auto | 20 | 25 | 30 | 35
             threatScale = false,        -- Threat Scale (tanks): lost mobs grow, held ones shrink a little
             nameOnlySize = 100,         -- Name Only Size (per type): the name on a Name Only plate, in % of the Names font
+            comboPoints = false,        -- combo point gems under your target's plate (each type can switch it off)
+            questMarks = false,         -- quest mark on enemies an active quest needs (each type can switch it off)
+            enemyInCombat = false,      -- Show Enemy Plates > In Combat (NameplateExtras.lua)
+            friendlyInCombat = false,   -- Show Friendly Plates > In Combat
             combatPlates = "none",      -- Show Plates in Combat (Name Only Mode): types that leave Name Only in a fight
             threatPercent = false,      -- Threat Percentage: your threat % in the bar's middle, coloured as the unit frames' Threat Text
             peacefulNames = false,      -- Name Only While Unattackable: enemy NPCs you can't attack show only their name
@@ -1065,7 +1069,6 @@ local defaults = {
         -- [[ TWEAKS MODULE ]]
         tweaks = {
             acceptSummon = false,       -- Accept Summons: taken after 10 seconds unless cancelled
-            combatFriendly = false,     -- Combat Friendly Plates: friendly players' plates only in a fight
             craftTotal = false,         -- Craft Batch Time: the batch's time left after the cast bar's timer
             enabled = false,
             moveAnyFrame = true,        -- drag any Blizzard panel by its header; positions in frames{}
@@ -1084,11 +1087,6 @@ local defaults = {
             lootFeedSkills = false,     -- skill-ups too ("Mining 76")
             lootFeedFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
-            nameplateCombo = false,     -- classic combo point gems under the target's nameplate
-            nameplateQuest = false,     -- quest badge on enemy nameplates that belong to an active quest
-            nameplateHideLevel = false, -- Blizzard's level box on the right of nameplates hidden
-            nameplateHideNames = false, -- unit names on Blizzard's nameplates hidden
-            nameplateLevelName = false, -- with the level box hidden: the level before the plate's name
             -- Bags & Looting (its own module, Settings/Pages/BagsLooting.lua): its switch
             -- (ns.BagModuleOn); all off leaves Blizzard's bag windows alone
             bagModule = false,
@@ -1148,7 +1146,6 @@ local defaults = {
             flightDestinations = false, -- Searchable destinations on the flight map
             fishCast = false,           -- Double-click to fish: a second right-click casts with a pole in hand
             fishSound = false,          -- Fishing sounds: music and ambience down, effects up while fishing
-            combatPlates = false,       -- Enemy Nameplates in Combat Only
             hideTips = false,
             hideLootAlerts = false,     -- Hide Clutter > Loot Alerts: Blizzard's loot / upgrade / money pop-ups (Tweaks.lua)
             autoDelete = false,         -- DELETE typed into the destroy-item confirmation
@@ -1213,6 +1210,46 @@ function ns.ErrorsCommand(args)
         select(2, GetBuildInfo()) or "?", GetLocale(), class or "?", UnitLevel("player") or 0)
     ns.Perf.ShowText(L["FlareUI caught errors"], head .. "\n\n" .. table.concat(list, "\n"))
 end
+
+-- BLOCKED ACTIONS (11-23): what the game refused in FlareUI's name (its "Disable / Ignore" popup, or the red
+-- "blocked" line) goes in the same log, which had nothing about them: the function, where you were, and
+-- the calls that led there. The events come inside the refused call, so the stack is that call's. One
+-- entry per function, kind and fight in a session, with a count.
+ns.BlockedLog = { seen = {}, STACK = 900 }
+function ns.BlockedLog.OnEvent(_, event, addon, func)
+    if not canaccessvalue(addon) or addon ~= "FlareUI" then return end
+    local log, list = ns.BlockedLog, nil
+    func = canaccessvalue(func) and tostring(func) or "?"
+    local kind = event == "ADDON_ACTION_FORBIDDEN" and "forbidden" or "blocked"
+    local fight = InCombatLockdown() and "in a fight" or "no fight"
+    local key = kind .. func .. fight
+    local seen = log.seen[key]
+    if seen then
+        seen.count = seen.count + 1
+        list = ns.db and ns.db.global and ns.db.global.errors
+        for i = #(list or {}), 1, -1 do
+            if list[i] == seen.line then
+                seen.line = seen.base .. " | " .. seen.count .. " times"
+                list[i] = seen.line
+                return
+            end
+        end
+        -- (cleared or pushed out since: written again)
+    end
+    local stack = debugstack and debugstack(2, 10, 6) or ""
+    stack = canaccessvalue(stack) and tostring(stack) or ""
+    if #stack > log.STACK then stack = stack:sub(1, log.STACK) .. "..." end
+    ns.LogError("action " .. kind, ("%s, %s, %s | %s"):format(func, fight,
+        ns.IsGamepadUI and ns.IsGamepadUI() and "Gamepad mode" or "keyboard and mouse", stack))
+    list = ns.db and ns.db.global and ns.db.global.errors
+    local line = list and list[#list]
+    if line then log.seen[key] = { count = 1, base = line, line = line } end
+end
+ns.BlockedLog.events = CreateFrame("Frame")
+ns.BlockedLog.events:SetScript("OnEvent", ns.BlockedLog.OnEvent)
+pcall(ns.BlockedLog.events.RegisterEvent, ns.BlockedLog.events, "ADDON_ACTION_FORBIDDEN")
+pcall(ns.BlockedLog.events.RegisterEvent, ns.BlockedLog.events, "ADDON_ACTION_BLOCKED")
+
 -- Buff and debuff timers read s, m, h and d in every language; Blizzard's own units follow the client's
 -- ("min" in some). The same bands as Blizzard's: a unit runs to 1.5 of the next one, rounded up.
 local AURA_TIME_BANDS = {
@@ -1510,6 +1547,7 @@ ns.TEXT_SCALE = 1
 
 local function SetFontRaw(fontString, path, size, flags)
     pendingFonts[fontString] = nil
+    if ns.FontFamily then ns.FontFamily.styled[fontString] = nil end
     -- remembered for the redraws (the base font is always in: nothing to redraw)
     local R = ns.FontRedraw
     if R and size and path ~= BaseFont() and R.Wanted(path) then
@@ -1564,6 +1602,8 @@ ns.FontFamily = {
                  ["fonts\\morpheus_cyr.ttf"] = true, ["fonts\\skurri_cyr.ttf"] = true },
     built = {},
     count = 0,
+    styled = setmetatable({}, { __mode = "k" }),    -- font string -> { path, size (scaled), flags }: its family
+    shadows = setmetatable({}, { __mode = "k" }),   -- font string -> "x,y", the shadow it was given
 }
 
 function ns.FontHasCyrillic(path)
@@ -1585,7 +1625,18 @@ function ns.SetFontFamily(fontString, path, size, flags)
         return ns.SetFont(fontString, path, size, flags)
     end
     if ns.TEXT_SCALE ~= 1 then size = size * ns.TEXT_SCALE end
-    local key = path .. "|" .. size .. "|" .. flags
+    F.Apply(fontString, path, size, flags)
+end
+
+-- A string's family, with the shadow it was last given (ns.ApplyShadow). (11-23, sadisticseagull)
+-- A family's text draws with its members' shadow, so the string's own showed nothing: each shadow has its
+-- own family, set on it and on every member. The shadow is remembered per string, so styling a string
+-- again lands on the same family at once (a change of font object drops its colour and alignment).
+function ns.FontFamily.Apply(fontString, path, size, flags)
+    local F = ns.FontFamily
+    local shadow = F.shadows[fontString] or ""
+    F.styled[fontString] = { path, size, flags }
+    local key = path .. "|" .. size .. "|" .. flags .. "|" .. shadow
     local family = F.built[key]
     if not family then
         local members = {}
@@ -1595,8 +1646,23 @@ function ns.SetFontFamily(fontString, path, size, flags)
         end
         F.count = F.count + 1
         local ok, made = pcall(CreateFontFamily, "FlareUI_FontFamily" .. F.count, members)
-        if not (ok and made) then return SetFontRaw(fontString, path, size, flags) end
+        if not (ok and made) then
+            F.styled[fontString] = nil
+            return SetFontRaw(fontString, path, size, flags)
+        end
         family, F.built[key] = made, made
+        local x, y = shadow:match("^(.-),(.-)$")
+        if x then
+            local function Dress(font)
+                font:SetShadowColor(0, 0, 0, 1)
+                font:SetShadowOffset(tonumber(x), tonumber(y))
+            end
+            Dress(made)
+            for _, alphabet in ipairs(made.GetFontObjectForAlphabet and F.alphabets or {}) do
+                local found, member = pcall(made.GetFontObjectForAlphabet, made, alphabet)
+                if found and member and member ~= made then Dress(member) end
+            end
+        end
         if ns.FontRedraw and ns.FontRedraw.Wanted(path) then
             local want = { family = true, size = size, flags = flags }
             ns.FontRedraw.objects[family] = want
@@ -1671,6 +1737,21 @@ end
 
 function ns.ApplyShadow(fontString, fontConfig)
     if not fontString or not fontConfig then return end
+    -- a family's text: its family with this shadow, which keeps its colour and alignment
+    local F = ns.FontFamily
+    local shadow = fontConfig.enableShadow and ((fontConfig.shadowX or 1) .. "," .. (fontConfig.shadowY or -1)) or nil
+    if F.shadows[fontString] ~= shadow then
+        F.shadows[fontString] = shadow
+        local styled = F.styled[fontString]
+        if styled then
+            local r, g, b, a = fontString:GetTextColor()
+            local h, v = fontString:GetJustifyH(), fontString:GetJustifyV()
+            F.Apply(fontString, styled[1], styled[2], styled[3])
+            if h then fontString:SetJustifyH(h) end
+            if v then fontString:SetJustifyV(v) end
+            if canaccessallvalues(r, g, b, a) and r then fontString:SetTextColor(r, g, b, a) end
+        end
+    end
     if fontConfig.enableShadow then
         fontString:SetShadowColor(0, 0, 0, 1)
         fontString:SetShadowOffset(fontConfig.shadowX or 1, fontConfig.shadowY or -1)
@@ -2613,6 +2694,31 @@ end
 function ns.IsGamepadUI()
     return C_InputInterfaceStyle ~= nil
         and C_InputInterfaceStyle.GetCurrentStyle() == Enum.InputDeviceInterfaceType.Gamepad
+end
+
+-- Keeps Blizzard's controller navigation off a frame and its children. Through Blizzard's own call, which
+-- sets its field securely out of a fight: written from here it would taint every walk over the frame. In
+-- a fight the call is refused, so it waits for the end.
+do
+    local waiting, waiter
+    function ns.IgnorePadNav(frame)
+        local mark = _G.SmartNavigation_MarkFrameIgnored
+        if not (frame and mark) then return end
+        if not InCombatLockdown() then
+            pcall(mark, frame)
+            return
+        end
+        waiting = waiting or {}
+        waiting[#waiting + 1] = frame
+        waiter = waiter or CreateFrame("Frame")
+        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waiter:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            local list = waiting or {}
+            waiting = nil
+            for _, f in ipairs(list) do pcall(mark, f) end
+        end)
+    end
 end
 
 -- Whether the target is in reach of your auto attack: true, false, or nil when there is no answer

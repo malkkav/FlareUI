@@ -3,6 +3,7 @@ local ui = UI.new()
 local env = ui.env
 local state = { gamepad = false, group = "solo", keys = {} }
 local ns = {
+    IgnorePadNav = function() end,
     IsGamepadUI = function() return state.gamepad end,
     OtherControllerAddon = function() return state.otherAddon end,
 }

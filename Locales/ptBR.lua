@@ -205,7 +205,6 @@ L["No ring while you hold a mouse button to turn the camera."] = "Sem anel enqua
 L["Nothing shows in towns and inns."] = "Nada aparece em cidades e estalagens."
 L["Number"] = "Número"
 L["Off while ConsolePort or another controller addon is loaded."] = "Desativado enquanto o ConsolePort ou outro addon de controle estiver carregado."
-L["Off: FlareUI's tracker stays, without its right-click menus."] = "Desativado: o rastreador do FlareUI continua, sem os menus de clique direito."
 L["omw, don't pull yet"] = "tô indo, não puxa ainda"
 L["Only Me"] = "Só eu"
 L["Only Provider"] = "Único provedor"

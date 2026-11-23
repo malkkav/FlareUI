@@ -16,8 +16,9 @@ local L = ns.L
 -- A control can tune this: padSkip (never focused), padActivate(), padCycle(delta) (a dropdown left
 -- and right change), padX(), padY(), padMove(delta) (moving it while picked up returns the control
 -- to focus next), and a list (the parent of its cells) PadScroll(delta).
--- Paused while a FlareUI dialog is up, a key is being captured, or in combat (the listener lets go
--- of the pad there: its input flags can't change in a fight).
+-- While it listens it takes EVERY button and passes none on: the game would run a passed-on press's
+-- action as FlareUI's, and its controller code stays broken until a /reload (seen in the client by
+-- another addon's author; 11-23). Off while a FlareUI dialog is up, a key is being captured, or in combat.
 --------------------------------------------------
 local PadNav = {}
 ns.PadNav = PadNav
@@ -369,8 +370,8 @@ end
 --------------------------------------------------
 local function SetListening(on)
     if not listener then return end
-    pcall(listener.EnableGamePadButton, listener, on and true or false)
-    if not InCombatLockdown() then listener:SetPropagateKeyboardInput(true) end
+    listener.paused = on and Paused() or false
+    pcall(listener.EnableGamePadButton, listener, on and not listener.paused or false)
     listener:SetShown(on)
     if not on then
         if focus then Run(HoverTarget(focus), "OnLeave") end
@@ -383,19 +384,23 @@ end
 local function Build()
     listener = CreateFrame("Frame", "FlareUI_PadNav", UIParent)
     listener:SetFrameStrata("TOOLTIP")
-    listener.smartNavigationIgnored = true
+    ns.IgnorePadNav(listener)
     listener:Hide()
-    listener:SetScript("OnGamePadButtonDown", function(self, key)
+    listener:SetScript("OnGamePadButtonDown", function(_, key)
         local handled = Press(key)
         if handled and DIRECTIONS[key] then repeatKey, nextRepeat = key, GetTime() + REPEAT_DELAY end
-        if not InCombatLockdown() then self:SetPropagateKeyboardInput(not handled) end
     end)
-    listener:SetScript("OnGamePadButtonUp", function(self, key)
+    listener:SetScript("OnGamePadButtonUp", function(_, key)
         if key == repeatKey then repeatKey = nil end
-        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
     end)
     local elapsed = 0
-    listener:SetScript("OnUpdate", function(_, dt)
+    listener:SetScript("OnUpdate", function(self, dt)
+        -- a dialog or a key capture has the pad while it is up
+        local paused = Paused() and true or false
+        if paused ~= self.paused then
+            self.paused = paused
+            pcall(self.EnableGamePadButton, self, not paused)
+        end
         local now = repeatKey and GetTime()
         if now and now >= nextRepeat then
             nextRepeat = now + REPEAT_RATE
@@ -449,12 +454,13 @@ end
 function PadNav.Attach(window, options)
     if not ns.IsGamepadUI() or not window then return end
     if not listener then Build() end
-    window.smartNavigationIgnored = true
+    ns.IgnorePadNav(window)
     local function Start()
         root, opts = window, options or {}
         hints:ClearAllPoints()
         hints:SetPoint("BOTTOMLEFT", window, "TOPLEFT", 8, 4)
         if InCombatLockdown() then return end
+        if ns.PadTracker then ns.PadTracker.Close() end   -- (the quest tracker had the pad)
         SetListening(true)
         C_Timer.After(0, function()
             if root == window and window:IsShown() then focus = nil; SetFocus(FirstControl(Controls())) end

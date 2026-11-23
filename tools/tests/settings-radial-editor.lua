@@ -194,6 +194,36 @@ local function catalogCount(kind)
     for _, item in ipairs(list.data) do if item.kind == kind then count = count + 1 end end
     return count
 end
+-- the category links stay clear of the Catalog title, smaller when the font is wide, also after a hover
+-- (11-23: the button put its own font back and "Panels" ran into the title)
+do
+    local links, title = host.categoryLinks, host.catalogTitle
+    local perChar   -- the font's width per character, in parts of its size
+    for _, link in ipairs(links) do
+        function link.Text:GetStringWidth() return #self:GetText() * perChar * select(2, self:GetFont()) end
+    end
+    local function gap()
+        local _, _, _, right = links[1]:GetPoint()
+        local _, titleX = title:GetPoint()
+        return (right - links[1]:GetWidth()) - (titleX + title:GetStringWidth())
+    end
+    local function size() return select(2, links[1].Text:GetFont()) end
+    perChar = 0.3
+    host.LayoutCategories()
+    local full = size()
+    assert(gap() >= 0, "a narrow font fits at full size")
+    perChar = 0.55
+    host.LayoutCategories()
+    local fitted = size()
+    assert(fitted < full and gap() >= 0, ("a wide font shrinks until it fits (size %s, gap %s)"):format(fitted, gap()))
+    links[2]:RunScript("OnEnter")
+    links[2]:RunScript("OnLeave")
+    assert(select(2, links[2].Text:GetFont()) == fitted and gap() >= 0)
+    perChar = 0.3
+    host.LayoutCategories()
+    assert(size() == full, "back to full size when there is room")
+    for _, link in ipairs(links) do link.Text.GetStringWidth = nil end
+end
 category("spells")
 assert(catalogCount("spell") == 3 and list:CellFor(1).Text:GetText() == "Spells", "the spellbook excludes future spells but includes the pet's castable action")
 category("party")

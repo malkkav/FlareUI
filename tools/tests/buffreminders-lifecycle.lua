@@ -227,7 +227,30 @@ auras.player["Well Fed"] = { expirationTime = env.GetTime() + 900, duration = 90
 ui:emit("UNIT_AURA", "player")
 ui:flushTimers()
 assert(ns.CharDB().buffFood == 123 and not br.pendingFood)
+-- (11-23, Tride) a drink whose use isn't loaded yet doesn't take the food's place
+local loadedSpell = env.C_Item.GetItemSpell
+local requested
 auras.player["Well Fed"] = nil
+env.C_Item.RequestLoadItemDataByID = function(id) requested = id end
+env.C_Item.UseItemByName(123)
+env.C_Item.GetItemSpell = function(id) if id ~= 125 then return loadedSpell(id) end end
+env.C_Item.UseItemByName(125)
+assert(requested == 125 and br.pendingFood.item == 123)
+env.C_Item.GetItemSpell = loadedSpell
+ui:flushTimers()
+assert(br.pendingFood.item == 123, "the drink is known by then")
+env.C_Item.GetItemSpell = function(id) if id ~= 126 then return loadedSpell(id) end end
+env.C_Item.UseItemByName(126)
+ui:flushTimers()
+assert(br.pendingFood.item == 126, "a food that never says what it does still counts")
+br.pendingFood = nil
+env.C_Item.GetItemSpell = loadedSpell
+auras.player["Well Fed"] = nil
+ns.CharDB().buffFood = 125
+instance, db.consumables, db.flask = "party", "instance", false
+br.Update()
+assert(ns.CharDB().buffFood == nil, "a drink saved as the food is forgotten")
+ns.CharDB().buffFood = 123
 instance, db.consumables, db.flask, db.durability = "party", "instance", false, true
 br.Update()
 assert(iconFor("food"):GetAttribute("item") == "item:123")

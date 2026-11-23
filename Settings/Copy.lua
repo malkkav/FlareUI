@@ -84,8 +84,8 @@ ns.Copy = {
         },
         qol = {
             desc = L["Small helpers that save you clicks."],
-            offCard = L["* Auto quests, auto repair and junk selling\n* Camera, nameplate and vendor helpers\n* Hides clutter like error and zone text"],
-            tabs = { L["Gameplay"], L["Nameplates"], L["Extras"], L["Systems"], L["Fonts"] },
+            offCard = L["* Auto quests, auto repair and junk selling\n* Camera and vendor helpers\n* Hides clutter like error and zone text"],
+            tabs = { L["Gameplay"], L["Extras"], L["Systems"], L["Fonts"] },
             title = L["Quality of Life"],
         },
         qt = {
@@ -2374,53 +2374,11 @@ ns.Copy = {
             section = "qol.windows",
             tip = L["Loot rolls, toasts and battleground objectives move in Edit Mode."],
         },
-        ["qol.npCombat"] = {
-            desc = L["Enemy nameplates show only during fights."],
-            label = L["Combat Enemy Plates"],
-            section = "qol.nameplates",
-            tip = L["Turning it off restores your own setting."],
-        },
-        ["qol.npCombatFriendly"] = {
-            desc = L["Friendly players' nameplates show only during a fight, so you can see who is low without them cluttering the world."],
-            label = L["Combat Friendly Plates"],
-            section = "qol.nameplates",
-            tags = { "friendly nameplates", "friends", "health bars", "combat only" },
-            tip = L["Turning it off restores your own setting."],
-        },
-        ["qol.npCombo"] = {
-            desc = L["Combo point gems under your target's nameplate."],
-            label = L["Combo Points"],
-            section = "qol.nameplates",
-        },
-        ["qol.npLevel"] = {
-            desc = L["Hides the level box beside Blizzard's nameplates."],
-            label = L["Hide Level Box"],
-            section = "qol.nameplates",
-            tip = L["Quest marks move to the health bar's edge."],
-        },
-        ["qol.npLevelName"] = {
-            desc = L["The unit's level before its name on Blizzard's nameplates, coloured by how hard an enemy is."],
-            label = L["Level Before Names"],
-            section = "qol.nameplates",
-            tags = { "level before name" },
-            tip = L["Needs Hide Level Box on and Hide Names off."],
-        },
-        ["qol.npNames"] = {
-            desc = L["Hides unit names on Blizzard's nameplates."],
-            label = L["Hide Names"],
-            section = "qol.nameplates",
-            tip = L["Friendly players shown by name only keep their names."],
-        },
-        ["qol.npQuest"] = {
-            desc = L["A quest mark on enemies you need for a quest."],
-            label = L["Quest Objectives"],
-            section = "qol.nameplates",
-        },
         ["qol.padTracker"] = {
             desc = L["In Gamepad mode, Blizzard's tracker replaces FlareUI's, so D-pad Up, quest items and menus work with the controller."],
             label = L["Force Blizzard Tracker"],
             section = "qol.controller",
-            tip = L["Off: FlareUI's tracker stays, without its right-click menus."],
+            tip = L["Off: the D-pad Up shortcut gives the controller FlareUI's tracker."],
         },
         ["qol.repair"] = {
             desc = L["Repairs your gear at vendors that can."],
@@ -3494,7 +3452,6 @@ ns.Copy = {
         ["qol.fonts"] = L["Screen Text"],
         ["qol.hideClutter"] = L["Hide Clutter"],
         ["qol.mapMail"] = L["Map & Mail"],
-        ["qol.nameplates"] = L["Enemy Plates"],
         ["qol.other"] = L["Convenience"],
         ["qol.questsNpcs"] = L["Quests & NPCs"],
         ["qol.scale"] = L["Interface Scale"],
