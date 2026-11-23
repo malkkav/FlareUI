@@ -1,32 +1,42 @@
 local H = dofile('tools/tests/perf-helpers.lua')
-local s = H.read('Modules/ActionBars.lua')
-H.load([[
+local path = 'Modules/ActionBars.lua'
 local scans, timers, formReads, broken = 0, {}, 0, false
-local activeButtons = {[{}] = true, [{}] = true}
-local function ActiveFormName() formReads = formReads + 1; if broken then error('unreadable form') end; return 'Bear' end
-local function UpdateActive(_, state) assert(state.form == (not broken and 'Bear' or nil)); scans = scans + 1 end
-local C_Timer = {After = function(delay, fn) timers[#timers + 1] = {delay, fn} end}
-]] .. H.section(s, 'local activeState =', 'local function UpdateActiveAll()') .. [[
-for i = 1, 100 do OnActiveEvent() end
+local function activeFormName()
+    formReads = formReads + 1
+    if broken then error('unreadable form') end
+    return 'Bear'
+end
+local env = setmetatable({
+    activeButtons = {[{}] = true, [{}] = true},
+    ActiveFormName = activeFormName,
+    UpdateActive = function(_, state)
+        assert(state.form == (not broken and 'Bear' or nil))
+        scans = scans + 1
+    end,
+    C_Timer = { After = function(delay, fn) timers[#timers + 1] = {delay, fn} end },
+}, { __index = _G })
+local onEvent = H.loadSections(path, {
+    {'local activeState =', 'local function UpdateActiveAll()'},
+}, env, 'OnActiveEvent')
+for _ = 1, 100 do onEvent() end
 assert(scans == 0 and #timers == 2)
 timers[1][2](); assert(scans == 2 and formReads == 1)
-OnActiveEvent(); assert(#timers == 3)
+onEvent(); assert(#timers == 3)
 timers[3][2](); assert(scans == 4 and formReads == 2)
 timers[2][2](); assert(scans == 6 and formReads == 3)
-broken = true; OnActiveEvent(); timers[4][2](); assert(scans == 8 and formReads == 4)
-]])
-H.load([[
-local C_ActionBar = {HasAction = function() return true end, IsAutoRepeatAction = function() return false end,
- IsCurrentAction = function() return false end}
-local function ActionSpellName() return 'Bear' end
-local function QueuedName() return false end
-local reads = 0
-local function ActiveFormName() reads = reads + 1; return 'Bear' end
-]] .. H.section(s, 'local function ActionActive(', 'local function IsActiveButton(') .. [[
-assert(ActionActive(1, {form = 'Bear'}))
-assert(not ActionActive(1, {}))
-assert(reads == 0)
-assert(ActionActive(1))
-assert(reads == 1)
-]])
+broken = true; onEvent(); timers[4][2](); assert(scans == 8 and formReads == 4)
+
+local function no() return false end
+env.C_ActionBar = { HasAction = function() return true end, IsAutoRepeatAction = no, IsCurrentAction = no }
+env.ActionSpellName = function() return 'Bear' end
+env.QueuedName = no
+local actionActive = H.loadSections(path, {
+    {'local function ActionActive(', 'local function IsActiveButton('},
+}, env, 'ActionActive')
+formReads, broken = 0, false
+assert(actionActive(1, {form = 'Bear'}))
+assert(not actionActive(1, {}))
+assert(formReads == 0)
+assert(actionActive(1))
+assert(formReads == 1)
 print('PASS: action event bursts coalesce, later frames refresh, delayed safety remains, form snapshot handles no form')

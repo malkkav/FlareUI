@@ -64,6 +64,32 @@ Malkkav fixes bugs fast, so check first:
   for t in tools/tests/*.lua; do [ "$t" = tools/tests/perf-helpers.lua ] || luajit "$t" || echo "FAILED: $t"; done
   ```
 
+### Lua line coverage
+
+To reproduce the CI coverage report, install LuaCov 0.17.0 and LuaFileSystem 1.8.0
+for LuaJIT. Move aside any existing `luacov.stats.out` before running the suite
+from the repository root so the report measures a fresh run.
+
+```bash
+(
+  set -e
+  export LUACOV_CONFIG=tools/.luacov
+  for test in tools/tests/*.lua; do
+    if [ "$test" = tools/tests/perf-helpers.lua ]; then
+      continue
+    fi
+    luajit -joff -lluacov "$test"
+  done
+  luacov
+  awk '/^Total / { print }' luacov.report.out
+)
+```
+
+Use `loadfile` when testing a complete addon file so LuaCov can attribute hits
+to the source. The coverage total includes untested files in the CI scope.
+WoW client doubles exercise addon logic offline. Combat lockdown, taint, and
+rendering still need an in-game check.
+
 ## 5. House rules for code and options
 
 The full list is in [AGENTS.md](AGENTS.md). It applies to people and AI tools alike. The short version:

@@ -1,11 +1,8 @@
 -- Bar Text: numbers in a slot show in the order they were ticked; older saves keep the old order.
-local f = assert(io.open("Modules/BarText.lua", "rb"))
-local src = f:read("*a")
-f:close()
 local ns = { L = setmetatable({}, { __index = function(_, k) return k end }), ShortNumber = function(n) return tostring(n) end }
 _G.canaccessvalue = function() return true end
 _G.unpack = _G.unpack or table.unpack
-assert(loadstring(src, "BarText.lua"))("FlareUI", ns)
+assert(loadfile("Modules/BarText.lua"))("FlareUI", ns)
 local BT = ns.BarText
 
 local function text(set)
