@@ -12,3 +12,6 @@ only = {
     "531", "532",         -- Mismatched assignment lengths.
     "571", "582",         -- Missing negative loop steps and ambiguous negation.
 }
+
+-- Any flight pin supplies the shared provider, so one iteration is enough.
+files["Modules/FlightDestinations.lua"].ignore = { "512" }
