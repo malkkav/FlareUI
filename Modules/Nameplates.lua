@@ -62,6 +62,7 @@ local C = {
     ELITE = 14,               -- elite / rare mark
     RAID = 18,                -- raid marker
     HIGHLIGHT = 0.18,         -- mouseover light
+    HOVER_BORDER = 0.35,      -- (11-23) mouseover: the border this much of the way to white
     TEXT_ROOM = 40,           -- what a slot of numbers takes beside the name
     -- Nameplate Colours: FlareUI's palette (muted, as the unit frames'); yours replace any of them
     -- (nameplates.palette "custom", nameplates.customColors), picked in the colour window
@@ -205,6 +206,8 @@ C.TYPE_KEYS = {
     -- (11-22) the Auras and Aura Positions sections
     auraStyle = true, auraSwipe = true, auraTimer = true, auraTimerColor = true, auraRows = true,
     nameAbove = true, nameOnlyFull = true, castGlow = true,
+    -- (11-23) the cast bar's own look; names by class on a full plate, guild colour, titles
+    castTexture = true, castBorder = true, nameClassColor = true, guildColor = true, showTitles = true,
 }
 -- these were one shared value before 11-20: a preset reads the profile's old shared value, so every
 -- type keeps the look it had; a type's Custom keeps its own from then on
@@ -1125,15 +1128,29 @@ end
 
 -- Your target stands out: its border in the target colour (Border), a tint over its bar (Bar Colour),
 -- a soft glow round it (Outer Glow) and the arrows. Everything else draws as it was.
+-- MOUSEOVER HIGHLIGHT (11-23, Malkkav / vyf; Targeting, shared): which parts light up on the plate under
+-- the mouse: Border (a lighter border, NP.PaintBorder), Bar (p.highlight's light) and Outer Glow (the
+-- target's glow). Border and Bar by default; saved as a list, "none" for nothing.
+function NP.HoverParts()
+    local db = DB()
+    local v = db and db.mouseoverHighlight
+    if type(v) ~= "string" then v = "border,bar" end
+    local parts = {}
+    for token in v:gmatch("[^,]+") do parts[token] = true end
+    return parts
+end
 function NP.UpdateTargetLook(p)
     local db = PDB(p)
-    local on = p.targetShown and not p.nameOnly and not p.hiddenPlate and not p.unitHidden
+    local plain = not p.nameOnly and not p.hiddenPlate and not p.unitHidden
+    local on = p.targetShown and plain
+    -- (the plate under the mouse takes the glow too, with Mouseover Highlight's Outer Glow)
+    local glow = (on and db.targetGlow) or (plain and not p.sample and state.mouseover == p and NP.HoverParts().glow) or false
     p.targetTint:SetShown(on and db.targetBarColor and true or false)
-    p.targetGlow:SetShown(on and db.targetGlow and true or false)
+    p.targetGlow:SetShown(glow and true or false)
     -- (the level box or disc glows with it: they and the bar read as one plate)
-    p.levelGlow:SetShown(on and db.targetGlow and p.levelFrame:IsShown() and true or false)
-    p.discGlow:SetShown(on and db.targetGlow and p.levelAnchor == p.levelArt and p.levelArt:IsShown() and true or false)
-    if on and db.targetGlow then NP.PaintGlow(p) end
+    p.levelGlow:SetShown(glow and p.levelFrame:IsShown() and true or false)
+    p.discGlow:SetShown(glow and p.levelAnchor == p.levelArt and p.levelArt:IsShown() and true or false)
+    if glow then NP.PaintGlow(p) end
     local art = C.ARROWS[db.targetArrows or "off"]
     local where = db.targetArrowSide or "both"
     local want = { left = where == "both" or where == "left", right = where == "both" or where == "right", top = where == "top" }
@@ -1422,6 +1439,22 @@ function NP.Edge(db)
     return edgeFile, edge, pad
 end
 
+-- (11-23, Malkkav) the cast bar's own Bar Texture and Border, per type, apart from the plate's so
+-- changing the health bar never changes it: FlareUI Dark and FlareUI Thin ("FlareUI Frames") by default
+C.CAST_TEXTURE, C.CAST_BORDER = "FlareUI Dark", "FlareUI Frames"
+function NP.CastTexture(db)
+    local own = db.castTexture
+    return (type(own) == "string" and own ~= "") and own or C.CAST_TEXTURE
+end
+-- its border file and edge size; nil for None
+function NP.CastBorder(db)
+    local own = db.castBorder
+    if type(own) ~= "string" or own == "" then own = C.CAST_BORDER end
+    local file = BorderFile(own)
+    if not file then return nil, 0 end
+    return file, math.min(ns.BorderEdgeSize(file, C.PLATE_EDGE), math_max(6, db.castHeight or 12))
+end
+
 -- Nothing sits above the bar but auras (the name is one of the bar's text slots)
 function NP.NameRoom() return 0 end
 
@@ -1588,18 +1621,21 @@ function NP.Layout(p)
         p.castAnchor:SetPoint("BOTTOMRIGHT", p.health, "BOTTOMRIGHT", inset, -(pad + C.CAST_GAP))
         -- (no border from the kit: its border step reads a frame's points, which the game refuses
         -- on a nameplate while addon restrictions are on; the border is set here from known sizes)
+        -- (11-23, Malkkav / vyf) the cast bar's own Bar Texture and Border (NP.CastTexture / CastBorder)
+        local castTexture = NP.CastTexture(db)
+        local castArt, castEdge = NP.CastBorder(db)
         K.LayoutCastBar(p.cast, {
             height = db.castHeight, icon = db.castIcon, timer = db.castTimer ~= false, name = true,
-            texture = textureName, border = false, borderTexture = borderName,
+            texture = castTexture, border = false, borderTexture = borderName,
             bgOpacity = db.bgOpacity, glow = ns.CastGlowOn(db.castGlow),
         }, p.castAnchor, "BOTTOM")
-        if edgeFile then
-            -- (a Thick plate keeps the Thin border on its cast bar: the slimmer bar reads better)
-            local castFile = borderName == "FlareUI Thick" and BorderFile("FlareUI Frames") or edgeFile
-            p.cast.Border:SetBackdrop({ edgeFile = castFile, edgeSize = math.min(edge, math_max(6, db.castHeight)) })
+        if castArt then
+            p.cast.Border:SetBackdrop({ edgeFile = castArt, edgeSize = castEdge })
             local c = ns.BORDER_COLOR
             p.cast.Border:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
             p.cast.Border:Show()
+        else
+            p.cast.Border:Hide()
         end
         ApplyFontTo(p.cast.Text, db.castFont)
         ApplyFontTo(p.cast.Time, db.castFont)
@@ -1616,15 +1652,13 @@ function NP.Layout(p)
         -- the important glow round the whole bar, icon too (its size from known numbers: a nameplate's
         -- regions can't be measured under addon restrictions)
         local glow = p.cast.important
-        NP.LayoutPulseBorder(glow, p.cast.Border, p.cast.Backdrop, edgeFile)
-        if edgeFile then glow:SetFrameLevel(p.cast.Border:GetFrameLevel() + 1) end
+        NP.LayoutPulseBorder(glow, p.cast.Border, p.cast.Backdrop, castArt)
+        if castArt then glow:SetFrameLevel(p.cast.Border:GetFrameLevel() + 1) end
         NP.PaintImportantGlow(glow, glow.color or NP.Color("important", p.sample))
         if db.castImportant then glow.pulse:Play() else glow.pulse:Stop() end
         -- Flash When Targeted: the frame's whole inside, under its border, corners cut as the
         -- border's (as the plate's background, from the cast bar's own edge)
-        local castEdge = edgeFile and math.min(edge, math_max(6, db.castHeight)) or 0
-        local castArt = edgeFile and (borderName == "FlareUI Thick" and BorderFile("FlareUI Frames") or edgeFile)
-        local fin = edgeFile and math_max(1, math.ceil(castEdge * 0.3) - 1) or 0
+        local fin = castArt and math_max(1, math.ceil(castEdge * 0.3) - 1) or 0
         local slanted = castArt and (castArt:find("FlareUI%-Frames") or castArt:find("FlareUI%-Thick"))
         p.cast.targeted:ClearAllPoints()
         p.cast.targeted:SetAllPoints(p.cast.Backdrop)
@@ -2111,9 +2145,18 @@ function NP.UpdateBarName(p)
             return
         end
     end
-    -- (11-22, Malkkav) the class colour only on a Name Only plate: on a full plate the bar already
-    -- carries it, and a class-coloured name on a class-coloured bar was hard to read (white instead)
-    if player and p.nameOnly then
+    -- (11-23, Malkkav / WildDaisy2) Colour Guild Members: your guild's names in Blizzard's guild green
+    -- on Friendly Player's Name Only plates (off)
+    if player and p.nameOnly and db.guildColor and p.kind == "friendlyPlayer" and UnitIsInMyGuild
+        and Readable(UnitIsInMyGuild(unit)) then
+        local g = ChatTypeInfo and ChatTypeInfo.GUILD
+        p.name:SetTextColor(g and g.r or 0.25, g and g.g or 1, g and g.b or 0.25)
+        return
+    end
+    -- (11-22, Malkkav) the class colour on a Name Only plate: on a full plate the bar already carries
+    -- it, and a class-coloured name on a class-coloured bar was hard to read (white instead).
+    -- (11-23, Ha'Beebs) Colour Names by Class (off) gives full plates their class colour too
+    if player and (p.nameOnly or db.nameClassColor) then
         local _, class = UnitClass(unit)
         local ok, color = pcall(C_ClassColor.GetClassColor, class)
         if ok and color then p.name:SetTextColor(color:GetRGB()) return end
@@ -2155,10 +2198,32 @@ function NP.NPCTitle(unit)
     if key and type(line) == "table" then C.TITLES[key] = title end
     return title or nil
 end
+-- SHOW TITLES (11-23, Malkkav / WildDaisy2; per type): NPC types on by default, players and Minor off
+function NP.TitlesOn(db, kind)
+    local v = db and db.showTitles
+    if v == nil then v = kind == "friendlyNpc" or kind == "enemyNpc" end
+    return v and true or false
+end
+-- a player's title: their PvP name ("Corporal Bob Smith") less their name; nil without one
+function NP.PlayerTitle(unit)
+    local pvp = UnitPVPName and UnitPVPName(unit)
+    local name = ns.UnitDisplayName(unit, nil, true)
+    if not (canaccessvalue(pvp) and canaccessvalue(name) and type(pvp) == "string" and type(name) == "string") then return nil end
+    if name == "" or pvp == name then return nil end
+    local a, b = pvp:find(name, 1, true)
+    if not a then return nil end
+    local title = (pvp:sub(1, a - 1) .. pvp:sub(b + 1)):gsub("%s+", " ")
+    title = title:gsub("^%s*,?%s*", ""):gsub("%s+$", "")
+    return title ~= "" and title or nil
+end
 function NP.UpdateTitle(p)
     local fs = p.npcTitle
     if not fs then return end
-    local title = p.nameOnly and p.unit and (p.kind == "friendlyNpc" or p.kind == "enemyNpc") and NP.NPCTitle(p.unit)
+    local title
+    if p.nameOnly and p.unit and NP.TitlesOn(PDB(p), p.kind) then
+        if p.kind == "friendlyPlayer" or p.kind == "enemyPlayer" then title = NP.PlayerTitle(p.unit)
+        else title = NP.NPCTitle(p.unit) end
+    end
     if not title then fs:Hide() return end
     fs:SetText(title)
     -- (11-21, Malkkav) its own colour, apart from the name's: the palette's light bronze, a tan as other
@@ -2222,9 +2287,12 @@ function NP.PaintBorder(p)
     elseif db.threatGlow and p.threatRGB then c = p.threatRGB end
     -- Threat Glow: the pulsing border and its glow too (not over your target's own border)
     local threat = c ~= nil and c == p.threatRGB and not p.nameOnly
+    -- (11-23, Malkkav: always on) the plate under the mouse: its border a little lighter, whatever
+    -- colour it has (the bronze, your target's or threat's); the bar's light is p.highlight (SetMouseover)
+    local hover = state.mouseover == p and NP.HoverParts().border or false
     local r1, g1, b1 = c and c[1], c and c[2], c and c[3]
-    if not p.borderDirty and p.paintedThreat == threat and p.paintedR == r1 and p.paintedG == g1 and p.paintedB == b1 then return end
-    p.paintedThreat, p.paintedR, p.paintedG, p.paintedB = threat, r1, g1, b1
+    if not p.borderDirty and p.paintedThreat == threat and p.paintedHover == hover and p.paintedR == r1 and p.paintedG == g1 and p.paintedB == b1 then return end
+    p.paintedThreat, p.paintedHover, p.paintedR, p.paintedG, p.paintedB = threat, hover, r1, g1, b1
     p.borderDirty = false
     p.threatFx:SetShown(threat)
     if threat then
@@ -2234,14 +2302,15 @@ function NP.PaintBorder(p)
     -- the level disc takes the same colour (the box's border below, with the plate's)
     if c then p.levelArt:SetVertexColor(c[1], c[2], c[3]) else p.levelArt:SetVertexColor(1, 1, 1) end
     if not p.edgeFile then return end
-    if c then
-        p.border:SetBackdropBorderColor(c[1], c[2], c[3], 1)
-        p.levelBorder:SetBackdropBorderColor(c[1], c[2], c[3], 1)
-    else
-        local b = ns.BORDER_COLOR
-        p.border:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
-        p.levelBorder:SetBackdropBorderColor(b.r, b.g, b.b, b.a)
+    local b = ns.BORDER_COLOR
+    local r, g, bl, a
+    if c then r, g, bl, a = c[1], c[2], c[3], 1 else r, g, bl, a = b.r, b.g, b.b, b.a end
+    if hover then
+        local k = C.HOVER_BORDER
+        r, g, bl = r + (1 - r) * k, g + (1 - g) * k, bl + (1 - bl) * k
     end
+    p.border:SetBackdropBorderColor(r, g, bl, a)
+    p.levelBorder:SetBackdropBorderColor(r, g, bl, a)
 end
 
 -- Kick Ready Mark: while your interrupt is cooling down, a spark where on this cast it will be ready
@@ -3271,9 +3340,15 @@ local function SetMouseover(p)
     local before = state.mouseover
     if before and before ~= p then before.highlight:Hide() end
     state.mouseover = p
-    if p then p.highlight:Show() watcher:Show() else watcher:Hide() end
+    if p and NP.HoverParts().bar then p.highlight:Show() end
+    if p then watcher:Show() else watcher:Hide() end
     if before and before ~= p then NP.QueuePlate(before, D.FADE) end
     if p and before ~= p then NP.QueuePlate(p, D.FADE) end
+    -- (the lighter border and the outer glow on the plate under the mouse: NP.PaintBorder, UpdateTargetLook)
+    if before ~= p then
+        if before and before.unit then NP.PaintBorder(before) NP.UpdateTargetLook(before) end
+        if p and p.unit then NP.PaintBorder(p) NP.UpdateTargetLook(p) end
+    end
 end
 watcher:SetScript("OnUpdate", function()
     local p = state.mouseover

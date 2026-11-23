@@ -395,8 +395,10 @@ end
 S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
     enabled = "nameplates.enabled",
     -- (11-20: Targeting moved next to Visibility; it, Visibility and Fonts are shared by every type)
-    tabs = { { key = "style" }, { key = "extras" }, { key = "cast" }, { key = "auras" }, { key = "targeting" },
-             { key = "visibility" }, { key = "fonts" } },
+    -- (11-23, #165 Nico-Mayer / Malkkav) two groups with a label each: the tabs that change only the unit
+    -- type picked in Plate Setup, then the ones every plate shares (Panel.lua UpdateHeader, groupLabel)
+    tabs = { { key = "style", groupLabel = L["This Unit Type"] }, { key = "extras" }, { key = "cast" }, { key = "auras" },
+             { key = "targeting", groupLabel = L["All Nameplates"] }, { key = "visibility" }, { key = "fonts" } },
     -- the page's subtitle names what the rows change
     subtitle = function(tab)
         local np = NP()
@@ -489,7 +491,8 @@ local function Textures()
 end
 -- FRAME: size and background first, then texture, border and level
 Row{ key = "np.width", kind = "range", path = "width", choices = Steps(50, 240, 10), tab = "style", section = "np.frameSection" }
-Row{ key = "np.height", kind = "range", path = "height", choices = Steps(10, 30, 1), tab = "style", section = "np.frameSection" }
+-- (11-23, Malkkav: down to 5, vyf) a slim bar with no text in it
+Row{ key = "np.height", kind = "range", path = "height", choices = Steps(5, 30, 1), tab = "style", section = "np.frameSection" }
 Row{ key = "np.bgOpacity", kind = "range", path = "bgOpacity", choices = Steps(0, 100, 5, function(v) return v .. "%" end), tab = "style", section = "np.frameSection" }
 Row{ key = "np.texture", kind = "choice", path = "texture", choices = Textures, tab = "style", section = "np.frameSection" }
 -- Border: None, FlareUI Thin and Thick (the "FlareUI Frames" and "FlareUI Thick" art), Shared Media
@@ -630,7 +633,10 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         local right = np and np.BlizzardHealthDefault and np.BlizzardHealthDefault() or {}
         return EncodeSlots({ left = { firstname = true }, middle = {}, right = right })
     end }
-Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health" }
+-- (11-23, Malkkav / Ha'Beebs) Colour Names by Class (off): players' names on full plates in their class
+-- colour (Name Only plates already are); beside Hide Value at Full Health
+Row{ key = "np.nameClassColor", path = "nameClassColor", tab = "style", section = "np.health", half = true }
+Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health", half = true }
 -- NAMES ABOVE PLATE (11-22, Malkkav): as the unit frames' Name Above Frames, per type (Nameplates.lua
 -- NP.LayoutNameAbove); saved as "<slot>:<firstname|fullname>", nothing for Off
 Row{ key = "np.nameAbove", kind = "choice", tab = "style", section = "np.health",
@@ -652,8 +658,20 @@ Row{ key = "np.nameOnlySize", kind = "range", path = "nameOnlySize", choices = S
     tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
 -- Show Full Name (11-22, Malkkav; per type, on): off, a Name Only plate shows the first name only
 -- (11-23, #164 Nico-Mayer) players only: NPCs have one name, so it would do nothing there
-Row{ key = "np.nameOnlyFull", path = "nameOnlyFull", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
+Row{ key = "np.nameOnlyFull", path = "nameOnlyFull", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
     hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
+-- (11-23, Malkkav / WildDaisy2) Colour Guild Members (Friendly Player only, off) and Show Titles (every
+-- type; on for NPC types, off for players and Minor: Nameplates.lua NP.TitlesOn)
+Row{ key = "np.guildColor", path = "guildColor", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
+    hidden = function() return PIN.kind ~= "friendlyPlayer" end }
+Row{ key = "np.showTitles", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
+    get = function()
+        local v = TV("showTitles")
+        if v == nil then v = PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end
+        return v and true or false
+    end,
+    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "showTitles", on and true or false) end end,
+    resetValue = function() return PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end }
 Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
     choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
     toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },
@@ -728,6 +746,14 @@ Row{ key = "np.targetBorder", path = "targetBorder", tab = "targeting", section 
 Row{ key = "np.targetBarColor", path = "targetBarColor", tab = "targeting", section = "np.highlights", half = true }
 Row{ key = "np.targetGlow", path = "targetGlow", tab = "targeting", section = "np.highlights", half = true }
 Row{ key = "np.colorFocus", path = "colorFocus", tab = "targeting", section = "np.highlights", half = true }
+-- Mouseover Highlight (11-23, Malkkav / vyf; shared): which parts light up under the mouse, Border and
+-- Bar by default (Nameplates.lua NP.HoverParts)
+Row{ key = "np.mouseoverHighlight", kind = "dropdown", tab = "targeting", section = "np.mouseoverSection",
+    choices = { "none", { divider = true }, "border", "bar", "glow" },
+    toggles = { exclusive = { "none" }, tokens = { "border", "bar", "glow" }, empty = "none" },
+    get = function() return S:GetPath("nameplates.mouseoverHighlight") or "border,bar" end,
+    set = function(v) S:SetPath("nameplates.mouseoverHighlight", v) Refresh() end,
+    resetValue = function() return "border,bar" end }
 
 -- EXTRAS: what sits on top of the plate - icons, bar effects, threat and the special colours
 -- (moved from Quality of Life while this module is on: the same saved switches, Tweaks.lua)
@@ -818,6 +844,18 @@ Row{ key = "np.raidColor", tab = "extras", section = "np.specialColors", half = 
 -- CAST BAR: the switch alone, then its frame and how it behaves
 local function NoCast() return not TV("castbar") end
 Row{ key = "np.castbar", path = "castbar", tab = "cast", section = "np.castSection" }
+-- (11-23, Malkkav / vyf) the cast bar's own Bar Texture and Border, above Cast Bar Height: FlareUI Dark
+-- and FlareUI Thin by default, apart from the plate's (Nameplates.lua NP.CastTexture / NP.CastBorder)
+Row{ key = "np.castTexture", kind = "choice", tab = "cast", section = "np.castFrame", disabled = NoCast,
+    choices = Textures,
+    get = function() return TV("castTexture") or "FlareUI Dark" end,
+    set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, "castTexture", v) end end,
+    resetValue = function() return "FlareUI Dark" end }
+Row{ key = "np.castBorder", kind = "choice", tab = "cast", section = "np.castFrame", disabled = NoCast,
+    choices = Borders,
+    get = function() return TV("castBorder") or "FlareUI Frames" end,
+    set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, "castBorder", v) end end,
+    resetValue = function() return "FlareUI Frames" end }
 Row{ key = "np.castHeight", kind = "range", path = "castHeight", choices = Steps(6, 18, 1), tab = "cast", section = "np.castFrame", disabled = NoCast }
 Row{ key = "np.castIcon", path = "castIcon", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 Row{ key = "np.castTimer", path = "castTimer", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }

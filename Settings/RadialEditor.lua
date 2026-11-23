@@ -462,6 +462,9 @@ local PROFESSION_SPELLS = {
     { 2383 },                        -- Find Herbs
     { 818 },                         -- Basic Campfire
     { 1804 },                        -- Pick Lock
+    -- (11-23, Tride: Forever's own profession spells, IDs from their /dump)
+    { 1278068 },                     -- Tanning
+    { 1278067 },                     -- Bait and Tackle
 }
 -- (the IDs alone find nothing on Forever, whose profession spells can carry other IDs: each one is
 -- also looked up by its name in your spellbook, which answers with the rank you have)

@@ -1,6 +1,98 @@
 # FlareUI changelog history
 
-Versions 7.0 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.1 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.1
+
+Sorry, everyone. The new nameplates came with more bugs than they should have, and the fixes took longer than I wanted. This update fixes every nameplate bug you reported, plus a long list of other fixes. Thank you for your patience and for all the reports.
+
+A big thank you to this release's contributors: **alex47** (the Items section, Healing & Damage, the preview fix), **parchinskiy** (collapsible backpack sections), **Braincell1980** (the French translation) and **Archy** (the complete Russian translation).
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Quest Tracker:** the right-click menu no longer has **Open Quest Log** or **Show on Map**. A left click on a quest opens both.
+- **Chat:** **Border** now only borders the chat window. The edit box has its own border option and keeps the look it had.
+- **Chat:** the Combat Log tab can be moved like any other tab. General stays first.
+- **Tooltips:** **Show Item Level**, **Compare with Shift** and **Simplified Item Stats** moved to a new **Items** section on the Content tab.
+
+## Highlights
+- **Nameplates:** every bug you reported is fixed, including the stutter when combat starts and ends.
+- **Bags:** collapsible backpack sections, and filling crates from the crafting bag works again.
+- **Nameplates:** NPC titles like "General Goods" under Name Only names.
+
+## New
+
+### Nameplates
+- NPC titles under the name on Name Only plates, in a soft tan. Always on.
+- **Threat Percentage** now shows during fights.
+
+### Bags
+- Click a section header in **Category Rows** and **Category Rows + Sets** to collapse or expand it. By parchinskiy.
+  - Each character remembers its own sections.
+
+### Tooltips
+- **Items** section on the Content tab. By alex47.
+- **Healing & Damage** (Off): shortens item lines with both healing and damage. By alex47.
+  - **Spell Healing / Spell Damage:** both numbers as they are.
+  - **Spell Healing / Spell Power:** the damage as Spell Power, plus the extra healing.
+
+### Chat
+- **Edit Box Style** (Modern):
+  - **FlareUI:** Blizzard's own edit box, in FlareUI's bronze.
+  - **Modern:** a dark box.
+- **Edit Box Border** (follows your old chat border): **None**, **FlareUI Thick** or **FlareUI Thin**. Shows with Modern only.
+
+### Resource Bars
+- **Paladin Seals:** **Show Icon** (off) in Edit Mode puts the seal's icon at the bar's left end.
+
+### Buff Reminders
+- **Warlock pet:** right-click the icon to pick the demon a click summons: **Last Used** (default) or any demon you know.
+- Every icon's right-click menu has a **FlareUI Settings** link.
+
+### Quest Tracker
+- The **Voice Button** also plays quest lines from Wayfarer (Russian voice-over).
+
+### Minimap
+- **Info Bar:** gold shows with coin icons, like in your bags.
+
+## Changed
+- **Unit Frames (Forever Style):** your own name box takes your class colour when that frame's **Class Colours** is on, as on target and party.
+- **Languages:**
+  - Russian: complete (739 new strings). By Archy.
+  - French: 7.0 strings translated. By Braincell1980.
+- **Russian client:** a dash replaces the middle dot "·", which Russian fonts draw as a box.
+
+## Fixed
+
+### Nameplates
+- A stutter when combat started and ended.
+- **Show Friendly Plates** reset to Off when you picked **Always**. **In Combat** and Quality of Life's **Combat Friendly Plates** didn't work either.
+- Chairs, signs, mailboxes and herb or ore nodes got enemy plates.
+- Pet and minor names were tiny, even at 200%.
+- **Full Name** in Bar Text showed only the first name.
+- The raid marker sat far from the name on Name Only plates.
+- Friendly players showed two names with the Musician addon.
+- Quest marks stayed beside plates when another nameplate addon was running, and couldn't be turned off.
+
+### Bags
+- Filling a crate, milling or prospecting from the crafting bag was blocked (**Crafting Bag in Backpack**).
+
+### Quest Tracker
+- After you opened a quest from the tracker, the world map could be blocked in a fight.
+
+### Gamepad
+- A "blocked action" popup after closing Edit Mode. In Gamepad mode, Edit Mode dropdowns and colour swatches now open FlareUI's own lists. Colour swatches offer ready colours.
+
+### Chat
+- The chat tabs took clicks meant for quest, merchant and crafting windows above them.
+
+### Other
+- **XP Bar:** a small gap stayed at the bottom of the screen.
+- **Settings previews:** squeezed previews cut their text short. By alex47.
+
+---
+
+Older versions (7.0 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
 
 # FlareUI 7.0
 

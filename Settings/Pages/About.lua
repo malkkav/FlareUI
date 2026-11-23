@@ -14,6 +14,7 @@ local CREDIT_LINKS = {
     parchinskiy = "https://github.com/parchinskiy",
     celbrund = "https://github.com/GregDuhamel",   -- Celbrund on Discord, GregDuhamel on GitHub
     kabaday = "https://github.com/Nico-Mayer",     -- Kabaday on Discord, Nico-Mayer on GitHub
+    bill = "https://github.com/BillChirico",       -- Bill on Discord, BillChirico on GitHub
 }
 
 -- the buttons under the thanks
@@ -127,6 +128,7 @@ local function Build(host)
     text = text:gsub(GOLD .. "parchinskiy|r", Link("parchinskiy", CREDIT_LINKS.parchinskiy))
     text = text:gsub(GOLD .. "Celbrund|r", Link("Celbrund", CREDIT_LINKS.celbrund))
     text = text:gsub(GOLD .. "Kabaday|r", Link("Kabaday", CREDIT_LINKS.kabaday))
+    text = text:gsub(GOLD .. "Bill|r", Link("Bill", CREDIT_LINKS.bill))
     local credits = Card(content, S:SectionText("about.credits"), text)
     credits:SetPoint("TOPLEFT", thanks, "BOTTOMLEFT", 0, -CARD_GAP)
     -- the licences note: small, grey, always at the card's bottom

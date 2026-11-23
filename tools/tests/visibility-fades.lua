@@ -245,4 +245,30 @@ assert(nearly(run(1.5), 0.55), "restarted: the rest runs its full 2 s (it was cu
 assert(run(1) < 0.55, "then it finishes")
 assert(nearly(run(0.5), 0.2), "down to Faded Opacity")
 
+-- Fade Delay (11-23): a frame stays its Fade Delay after its last reason to show, then fades
+vis:SetElementFade("bar2", "fadeOut", "instant")
+assert(vis:GetFadeDelay("bar2") == 0, "0 to start: today's fade")
+vis:SetFadeDelay("bar2", 2)
+assert(vis:GetFadeDelay("bar2") == 2 and db.elements.bar2.fadeDelay == 2)
+b.mouseOver = true
+assert(run(0.2) == 1)
+b.mouseOver = false
+assert(run(1.5) == 1, "still shown inside its Fade Delay")
+assert(nearly(run(0.8), 0.2), "faded once the delay is over")
+-- in a fade group the delay is the group's, shared by every member, and joining carries it over
+vis:SetFadeDelay("bar1", 3)
+assert(db.groups[1].fadeDelay == 3 and vis:GetFadeDelay("capLeft") == 3)
+vis:SetGroup("bar2", 2)
+assert(db.groups[2].fadeDelay == 2, "the first member brings its delay")
+-- the chat keeps its own, and frames the game shows and hides itself have none
+assert(vis:GetFadeDelay("chat") == 5 and vis:GetFadeDelay("uf_target") == 0)
+local function hasDelayRow(rows)
+    for _, row in ipairs(rows) do if row.name == "Fade Delay" then return true end end
+    return false
+end
+assert(hasDelayRow(vis:UnitFrameSettings("player")) and hasDelayRow(vis:UnitFrameSettings("pet")))
+assert(not hasDelayRow(vis:UnitFrameSettings("target")) and not hasDelayRow(vis:UnitFrameSettings("focus")))
+assert(hasDelayRow(vis:ResourceBarSettings("power")) and not hasDelayRow(vis:ResourceBarSettings("swingMain")))
+assert(not hasDelayRow(vis:PlayerCastSettings()))
+
 print("PASS: visibility migrates fades, groups bars, handles mouse and combat, and restores native opacity")

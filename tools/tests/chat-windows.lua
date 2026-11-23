@@ -458,6 +458,14 @@ ui:flushTimers()
 assert(bar.buttons[1].isUnread and bar.buttons[1].FlareUI_UnreadGlow:IsShown())
 chat:SelectMeterTab(false)
 assert(general.FontStringContainer:GetAlpha() == 1 and general.FlareUI_CopyButton:IsShown())
+-- (11-23) Keep Messages Shown: the lines ignore the window's fade; off again, they follow it
+function Widget:SetIgnoreParentAlpha(value) self.ignoreParentAlpha = value end
+db.keepMessages = true
+chat.ApplyLineFade()
+assert(general.FontStringContainer.ignoreParentAlpha == true, "the messages keep their alpha")
+db.keepMessages = nil
+chat.ApplyLineFade()
+assert(general.FontStringContainer.ignoreParentAlpha == false, "off: they fade with the frame")
 assert(not bar.buttons[1].FlareUI_UnreadGlow:IsShown())
 ns.DamageMeter = nil
 

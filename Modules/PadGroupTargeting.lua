@@ -337,8 +337,14 @@ end
 
 PGT.events = CreateFrame("Frame")
 PGT.events:SetScript("OnEvent", function(_, event, arg1)
-    if event == "PLAYER_LOGIN" then
+    -- (11-23, Taylor: LB + D-pad did nothing) set up at login only, it missed a Gamepad UI that comes on
+    -- later (a controller picked up after logging in): it tries again on every switch into it and
+    -- after each loading screen
+    if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         PGT.Setup()
+    elseif event == "INPUT_DEVICE_INTERFACE_TRANSITION" then
+        -- (once the game has switched: ns.IsGamepadUI reads the new state)
+        C_Timer.After(0, PGT.Setup)
     elseif event == "PLAYER_REGEN_ENABLED" then
         if PGT.setupPending then PGT.Setup() end
         if PGT.dirty or PGT.keysDirty then
@@ -364,7 +370,7 @@ PGT.events:SetScript("OnEvent", function(_, event, arg1)
         end
     end
 end)
-for _, event in ipairs({ "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE",
+for _, event in ipairs({ "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "INPUT_DEVICE_INTERFACE_TRANSITION", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE",
     "PLAYER_TARGET_CHANGED", "UPDATE_BINDINGS", "CVAR_UPDATE" }) do
     pcall(PGT.events.RegisterEvent, PGT.events, event)
 end

@@ -44,43 +44,46 @@ local FADE_DELAY = 0.08
 -- 3. ELEMENTS
 --------------------------------------------------
 -- in Edit Mode order, with their Blizzard system and sub-system
+-- delay: a Fade Delay row and its default, in seconds (11-23, Malkkav: every frame that is always there
+-- and fades only by its Visibility; not the frames the game itself shows and hides, as target, focus,
+-- the cast bar, totems, swing, flight, timer and seal bars)
 local ELEMENTS = {
-    { key = "bar1", frame = "MainActionBar", system = "ActionBar", index = "MainBar" },
-    { key = "bar2", frame = "MultiBarBottomLeft", system = "ActionBar", index = "Bar2" },
-    { key = "bar3", frame = "MultiBarBottomRight", system = "ActionBar", index = "Bar3" },
-    { key = "bar4", frame = "MultiBarRight", system = "ActionBar", index = "RightBar1" },
-    { key = "bar5", frame = "MultiBarLeft", system = "ActionBar", index = "RightBar2" },
-    { key = "bar6", frame = "MultiBar5", system = "ActionBar", index = "ExtraBar1" },
-    { key = "bar7", frame = "MultiBar6", system = "ActionBar", index = "ExtraBar2" },
-    { key = "bar8", frame = "MultiBar7", system = "ActionBar", index = "ExtraBar3" },
-    { key = "pet", frame = "PetActionBar", system = "ActionBar", index = "PetActionBar" },
-    { key = "stance", frame = "StanceBar", system = "ActionBar", index = "StanceBar" },
+    { key = "bar1", delay = 0, frame = "MainActionBar", system = "ActionBar", index = "MainBar" },
+    { key = "bar2", delay = 0, frame = "MultiBarBottomLeft", system = "ActionBar", index = "Bar2" },
+    { key = "bar3", delay = 0, frame = "MultiBarBottomRight", system = "ActionBar", index = "Bar3" },
+    { key = "bar4", delay = 0, frame = "MultiBarRight", system = "ActionBar", index = "RightBar1" },
+    { key = "bar5", delay = 0, frame = "MultiBarLeft", system = "ActionBar", index = "RightBar2" },
+    { key = "bar6", delay = 0, frame = "MultiBar5", system = "ActionBar", index = "ExtraBar1" },
+    { key = "bar7", delay = 0, frame = "MultiBar6", system = "ActionBar", index = "ExtraBar2" },
+    { key = "bar8", delay = 0, frame = "MultiBar7", system = "ActionBar", index = "ExtraBar3" },
+    { key = "pet", delay = 0, frame = "PetActionBar", system = "ActionBar", index = "PetActionBar" },
+    { key = "stance", delay = 0, frame = "StanceBar", system = "ActionBar", index = "StanceBar" },
     -- Blizzard's shaman Totem Bar: fade groups, and a Size row (ActionBars.lua)
-    { key = "totem", frame = "MultiCastActionBarFrame", system = "TotemActionBar" },
+    { key = "totem", delay = 0, frame = "MultiCastActionBarFrame", system = "TotemActionBar" },
     -- The gryphons: on Forever each is its own Edit Mode system; their Visibility is their own (they
     -- ignore bar 1's alpha, Refresh). Same as Action Bar 1 was removed 11-20 (Malkkav): a fade group with
     -- bar 1 does the same; saved "bar1" choices were moved once (Visibility.MigrateCapsBar1).
-    { key = "capLeft", cap = "LeftEndCap", system = "MainActionBarEndCap", index = "EndCapLeft",
+    { key = "capLeft", delay = 0, cap = "LeftEndCap", system = "MainActionBarEndCap", index = "EndCapLeft",
       indices = "EditModeMainActionBarEndCapSystemIndices" },
-    { key = "capRight", cap = "RightEndCap", system = "MainActionBarEndCap", index = "EndCapRight",
+    { key = "capRight", delay = 0, cap = "RightEndCap", system = "MainActionBarEndCap", index = "EndCapRight",
       indices = "EditModeMainActionBarEndCapSystemIndices" },
-    { key = "bags", frame = "BagsBar", system = "Bags" },
-    { key = "menu", frame = "MicroMenuContainer", system = "MicroMenu" },
-    { key = "xp" },   -- FlareUI's XP bar, its own Edit Mode frame
-    { key = "minimap", frame = "MinimapCluster", needsMinimap = true },   -- with the Minimap module
+    { key = "bags", delay = 0, frame = "BagsBar", system = "Bags" },
+    { key = "menu", delay = 0, frame = "MicroMenuContainer", system = "MicroMenu" },
+    { key = "xp", delay = 0 },   -- FlareUI's XP bar, its own Edit Mode frame
+    { key = "minimap", delay = 0, frame = "MinimapCluster", needsMinimap = true },   -- with the Minimap module
     -- FlareUI's own Edit Mode frames, each with its module
     -- (never: Visibility > Never hides them for good, SeanWcom's report 11-19)
-    { key = "buffs", module = "auras", never = true },
-    { key = "debuffs", module = "auras", never = true },
-    { key = "quest", module = "objectivetracker" },
+    { key = "buffs", delay = 0, module = "auras", never = true },
+    { key = "debuffs", delay = 0, module = "auras", never = true },
+    { key = "quest", delay = 0, module = "objectivetracker" },
     -- The unit frames (UnitFrames.lua section 14). own: the fader keeps the value and sets it through
     -- apply (an alpha left by the health curve can't be read back); health: Missing Health, from that unit
     -- instant: a unit frame (own speeds only, Instant until picked); noOpacity: no Faded Opacity (faded right out)
     -- noGroup: never in a fade group. The player and pet frames can join one: they then fade at the
     -- group's speeds, and pointing at either brings the whole group back.
     -- mana: Missing Mana too (the player frame only)
-    { key = "uf_player", unit = "player", module = "unitframes", own = true, instant = true, health = "player", mana = true },
-    { key = "uf_pet", unit = "pet", module = "unitframes", own = true, instant = true, health = "pet" },
+    { key = "uf_player", delay = 0, unit = "player", module = "unitframes", own = true, instant = true, health = "player", mana = true },
+    { key = "uf_pet", delay = 0, unit = "pet", module = "unitframes", own = true, instant = true, health = "pet" },
     { key = "uf_target", unit = "target", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_targettarget", unit = "targettarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_focus", unit = "focus", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
@@ -96,10 +99,10 @@ local ELEMENTS = {
     -- The resource bars (ResourceBars.lua), fade groups allowed. They still hide on their own where they
     -- don't apply (druid mana, combo points, a swing bar with no weapon); inuse: a swing bar's Only When In
     -- Use, which the bar shows and hides itself
-    { key = "rb_health", bar = "health", own = true, health = "player" },
-    { key = "rb_power", bar = "power", own = true },
-    { key = "rb_mana", bar = "mana", own = true },
-    { key = "rb_combo", bar = "combo", own = true },
+    { key = "rb_health", delay = 0, bar = "health", own = true, health = "player" },
+    { key = "rb_power", delay = 0, bar = "power", own = true },
+    { key = "rb_mana", delay = 0, bar = "mana", own = true },
+    { key = "rb_combo", delay = 0, bar = "combo", own = true },
     { key = "rb_swingMain", bar = "swingMain", own = true, inuse = true },
     { key = "rb_swingOff", bar = "swingOff", own = true, inuse = true },
     { key = "rb_swingRanged", bar = "swingRanged", own = true, inuse = true },
@@ -125,16 +128,16 @@ local ELEMENTS = {
     -- Opacity of its own, so on Always the alpha is left alone unless FlareUI faded the viewer this session.
     -- cdmGrow: a Growth in a Frame section (CooldownManager.GrowSetting); cdmShape: an Icon Shape in a Look
     -- section (CooldownManager.ShapeSetting); both above Fading
-    { key = "cdm_essential", page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
+    { key = "cdm_essential", delay = 0, page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
       cdmShape = "essential" },
-    { key = "cdm_utility", page = "cdm", frame = "UtilityCooldownViewer", system = "CooldownViewer", index = "Utility",
+    { key = "cdm_utility", delay = 0, page = "cdm", frame = "UtilityCooldownViewer", system = "CooldownViewer", index = "Utility",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
       cdmShape = "utility" },
-    { key = "cdm_buffs", page = "cdm", frame = "BuffIconCooldownViewer", system = "CooldownViewer", index = "BuffIcon",
+    { key = "cdm_buffs", delay = 0, page = "cdm", frame = "BuffIconCooldownViewer", system = "CooldownViewer", index = "BuffIcon",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
       cdmShape = "buffs", cdmGrow = "buffs" },
-    { key = "cdm_bars", page = "cdm", frame = "BuffBarCooldownViewer", system = "CooldownViewer", index = "BuffBar",
+    { key = "cdm_bars", delay = 0, page = "cdm", frame = "BuffBarCooldownViewer", system = "CooldownViewer", index = "BuffBar",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true, cdmGrow = "bars" },
 }
 local ELEMENT_BY_KEY = {}
@@ -558,15 +561,22 @@ function Visibility:GetMinAlpha(key)
     return owner and owner.minAlpha or 0
 end
 
--- Fade Delay (the chat and the meter): seconds it stays after its last reason to show. The element's
--- own, also in a fade group (the group's members have none)
+-- Fade Delay: seconds it stays after its last reason to show. The chat and the meter keep their own,
+-- also in a fade group (they wait themselves: Chat.lua FadeHold, DamageMeter.lua); every other frame
+-- takes its fade group's, as its speeds
+local function DelayOwner(key, create)
+    local e = ELEMENT_BY_KEY[key]
+    if e and (e.chat or e.external) then return ElementConfig(key, create) end
+    return ElementGroup(key) or ElementConfig(key, create)
+end
+
 function Visibility:GetFadeDelay(key)
-    local cfg, e = ElementConfig(key), ELEMENT_BY_KEY[key]
-    return math_max(0, tonumber(cfg and cfg.fadeDelay) or (e and e.delay) or 0)
+    local owner, e = DelayOwner(key), ELEMENT_BY_KEY[key]
+    return math_max(0, tonumber(owner and owner.fadeDelay) or (e and e.delay) or 0)
 end
 
 function Visibility:SetFadeDelay(key, value)
-    local cfg = ElementConfig(key, true)
+    local cfg = DelayOwner(key, true)
     if not cfg then return end
     cfg.fadeDelay = value
     self:Refresh()
@@ -602,6 +612,8 @@ function Visibility:SetGroup(key, group)
     group = group or 0
     if group == (cfg.group or 0) then return end
     local show, fadeIn, fadeOut, minAlpha = self:GetShow(key), self:GetFadeIn(key), self:GetFadeOut(key), self:GetMinAlpha(key)
+    local e = ELEMENT_BY_KEY[key]
+    local delay = e and e.delay and not (e.chat or e.external) and self:GetFadeDelay(key) or nil
     -- (the threat window on Same as Meter brings the meter's; the meter's Never can't lead a group)
     if show == "meter" then show = self:GetShow("meter") end
     if show == "never" and (key == "meter" or key == "threat") then show = "always" end
@@ -611,7 +623,11 @@ function Visibility:SetGroup(key, group)
     elseif target and GroupHasMembers(group, key) then
         target = nil
     end
-    if target then target.show, target.fadeIn, target.fadeOut, target.minAlpha = show, fadeIn, fadeOut, minAlpha end
+    if target then
+        target.show, target.fadeIn, target.fadeOut, target.minAlpha = show, fadeIn, fadeOut, minAlpha
+        -- (the Fade Delay too, when the frame has one: a group's members share it)
+        if delay then target.fadeDelay = delay ~= 0 and delay or nil end
+    end
     cfg.group = group
     self:Refresh()
     -- the dialog's other rows now show the group's values (after the dropdown's own click)
@@ -737,6 +753,7 @@ local Fader = CreateFrame("Frame")
 Fader.groups = {}
 Fader.groupOf = {}         -- element key -> its group's name in Fader.groups (ElementShown)
 Fader.delays = {}
+Fader.groupDelay = {}      -- group -> its Fade Delay in seconds (AddMember: the longest member's)
 Fader.updateTimer = 0
 Fader.dirty = {}
 Fader.updateEnabled = false
@@ -951,7 +968,8 @@ Fader.UpdateScript = function(self, elapsed)
             end
 
             if not self.delays[groupName] then self.delays[groupName] = 0 end
-            if groupShouldShow then self.delays[groupName] = FADE_DELAY
+            -- (plus the group's Fade Delay: the longest of its members')
+            if groupShouldShow then self.delays[groupName] = FADE_DELAY + (self.groupDelay[groupName] or 0)
             elseif self.delays[groupName] > 0 then self.delays[groupName] = self.delays[groupName] - tick end
 
             self.shows[groupName] = groupShouldShow or (self.delays[groupName] > 0)
@@ -1169,6 +1187,18 @@ local function BuildElementSettings(key)
             end,
             desc = L["Lines fade one by one, oldest first, Fade Delay seconds after they arrive. Pointing at the chat or typing brings them back."],
         }
+        -- Keep Messages Shown (11-23, Malkkav / Kalahan6; off): only the frame fades (Chat.lua KeepMessages)
+        rows[#rows + 1] = {
+            name = L["Keep Messages Shown"], kind = LEM.SettingType.Checkbox, default = false,
+            get = function() local c = ns.db and ns.db.profile.chat return c and c.keepMessages or false end,
+            set = function(_, value)
+                local c = ns.db and ns.db.profile.chat
+                if not c then return end
+                c.keepMessages = value and true or nil
+                if ns.Chat and ns.Chat.ApplyLineFade then ns.Chat.ApplyLineFade() end
+            end,
+            desc = L["The chat's frame, tabs and buttons fade as set, but the messages stay. Works with any Visibility."],
+        }
     end
     return rows
 end
@@ -1195,6 +1225,8 @@ function Visibility:UnitFrameSettings(unit)
     kept[#kept + 1] = rows[3]
     kept[#kept + 1] = rows[4]
     if not (e and e.noOpacity) then kept[#kept + 1] = rows[5] end
+    -- 6 Fade Delay: the player and pet frames only (e.delay)
+    if e and e.delay then kept[#kept + 1] = rows[6] end
     if unit == "pet" then
         local function Linked() return Visibility:PetLinked() end
         for _, row in ipairs(kept) do
@@ -1527,6 +1559,7 @@ local function AddMember(groupName, data)
     Fader.groups[groupName] = Fader.groups[groupName] or {}
     table_insert(Fader.groups[groupName], data)
     Fader.groupOf[data.key] = groupName
+    if data.delay and data.delay > (Fader.groupDelay[groupName] or 0) then Fader.groupDelay[groupName] = data.delay end
 end
 
 -- Whether the element is wanted now: its Visibility, or its fade group's (any member's reason, and the
@@ -1602,6 +1635,7 @@ function Visibility:Refresh()
     Fader.groups = {}
     Fader.groupOf = {}
     Fader.delays = {}
+    Fader.groupDelay = {}
     wipe(Visibility.neverFrames)   -- filled again below, for each frame on Never
     Fader.dirty = {}
     Fader.shows = {}
@@ -1707,7 +1741,9 @@ function Visibility:Refresh()
                                    fadeIn = ns.FadeTime(self:GetFadeIn(settingsKey)),
                                    fadeOut = ns.FadeTime(self:GetFadeOut(settingsKey)),
                                    fadeStaged = self:GetFadeOut(settingsKey) == "slower",
-                                   minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100 }
+                                   minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100,
+                                   -- Fade Delay (the chat waits itself, in its hold)
+                                   delay = e.delay and not e.chat and self:GetFadeDelay(settingsKey) or nil }
                     -- the pointer shows it only with Mouseover ticked
                     data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))
                     if e.chat then

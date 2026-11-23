@@ -787,20 +787,46 @@ local function ApplyBarFont(entry, db)
     local valueFs = statusBar and statusBar.Value or entry.Value
 
     -- a family: other players' names keep their Cyrillic and Chinese / Korean letters. A row reads
-    -- "1. Имя": the "1." makes the game pick the Latin member, so that member is the font's Cyrillic
-    -- twin where there is one (ns.CyrillicTwin, Core.lua), which has both alphabets
-    local rowPath = ns.CyrillicTwin(path)
-    local function ApplyToFS(fs)
-        if fs and fs.SetFont then
-            ns.SetFontFamily(fs, rowPath, size, flags)
-            ApplyFontEffects(fs, fontDb)
+    -- "1. Имя": the "1." makes the game pick the Latin member, so a row whose name has Russian letters
+    -- takes the font's Cyrillic twin (ns.CyrillicTwin, Core.lua), which has both alphabets.
+    -- (11-23, #163 ambonif) only those rows: the twin draws Latin letters a little differently, so
+    -- every other row and the values keep the chosen font. Rows are reused for other players, so
+    -- the name's own SetText picks again (DamageMeter.RowNameFont).
+    if nameFs and nameFs.SetFont then
+        nameFs.FlareUI_RowFont = { path = path, twin = ns.CyrillicTwin(path), size = size, flags = flags, fontDb = fontDb }
+        nameFs.FlareUI_RowPath = nil
+        if not nameFs.FlareUI_RowHooked then
+            nameFs.FlareUI_RowHooked = true
+            hooksecurefunc(nameFs, "SetText", DamageMeter.RowNameFont)
+            if nameFs.SetFormattedText then hooksecurefunc(nameFs, "SetFormattedText", DamageMeter.RowNameFont) end
         end
+        DamageMeter.RowNameFont(nameFs)
     end
-
-    -- the row's only texts, both on its status bar
-    ApplyToFS(nameFs)
-    ApplyToFS(valueFs)
+    if valueFs and valueFs.SetFont then
+        ns.SetFontFamily(valueFs, path, size, flags)
+        ApplyFontEffects(valueFs, fontDb)
+    end
     DamageMeter.ApplyBarTexture(statusBar, db)
+end
+
+-- Whether a text has Russian letters (Cyrillic's UTF-8 lead bytes); nil when it can't be read
+function DamageMeter.HasCyrillic(text)
+    if not canaccessvalue(text) or type(text) ~= "string" then return nil end
+    return text:find("[\208\209]") ~= nil
+end
+
+-- A row's name font: the Cyrillic twin for a name with Russian letters, else the chosen font. A
+-- name that can't be read keeps the font it has.
+function DamageMeter.RowNameFont(fs)
+    local font = fs and fs.FlareUI_RowFont
+    if not font then return end
+    local cyr = DamageMeter.HasCyrillic(fs:GetText())
+    if cyr == nil and fs.FlareUI_RowPath then return end
+    local want = cyr and font.twin or font.path
+    if fs.FlareUI_RowPath == want then return end
+    fs.FlareUI_RowPath = want
+    ns.SetFontFamily(fs, want, font.size, font.flags)
+    ApplyFontEffects(fs, font.fontDb)
 end
 
 -- Bar Texture: a unit frame texture on the fill (its colour stays the row's); "" keeps Blizzard's

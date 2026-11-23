@@ -3874,8 +3874,22 @@ end
 Chat.LINE_FADE_TIME = 3      -- seconds a line takes to fade
 Chat.LINE_MIN_VISIBLE = 3    -- shortest time a line stays
 
+-- KEEP MESSAGES SHOWN (11-23, Malkkav / Kalahan6; Edit Mode Fading, beside Fade Old Lines, off): the
+-- frame, tabs and buttons follow the chat's Visibility, the lines don't: they ignore the window's fade
+-- (any Visibility). Fade Old Lines still fades each line on its own.
+function Chat.KeepMessages(chatFrame, db)
+    local text = chatFrame and chatFrame.FontStringContainer
+    if not (text and text.SetIgnoreParentAlpha) then return end
+    local on = db and db.keepMessages and true or false
+    if text.FlareUI_KeepMessages ~= on then
+        text.FlareUI_KeepMessages = on
+        text:SetIgnoreParentAlpha(on)
+    end
+end
+
 function Chat.LineFadeOn(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
+    Chat.KeepMessages(chatFrame, db)
     if db and db.fadeLines then
         Chat.WatchLines(true)
         chatFrame:SetTimeVisible(math_max(Chat.LINE_MIN_VISIBLE, Chat.FadeDelay()))

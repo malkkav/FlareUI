@@ -1,3 +1,60 @@
+# FlareUI 7.0.6
+
+More control over fading, a stack of nameplate options you asked for, and Korean and German translations by a player.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Nameplates:** the cast bar has its own **Bar Texture** and **Border** now, FlareUI Dark and FlareUI Thin to start. It no longer copies the plate's texture and border, so set them again on the Cast Bar tab if you changed the plate's.
+- **Nameplates:** the plate under your mouse gets a lighter border and bar. Pick what lights up, or turn it off, with **Mouseover Highlight** on the Targeting tab.
+- **Loot Window:** with auto loot on, FlareUI's loot window opens for a moment like Blizzard's, and the items leave it as you pick them up.
+
+## Highlights
+- **Fade Delay** on every frame that fades by your choice.
+- **Nameplates:** class-coloured names, guild colours, titles and a separate cast bar look.
+- **Korean** and **German** translations by ithiel.
+
+## New
+
+### Fading
+- **Fade Delay** (0 seconds) in the Fading section of Edit Mode: how long a frame stays after its last reason to show, before it fades.
+  - On the action bars (1–8, pet, stance, Totem Bar), the gryphons, the bags bar, the micro menu, the player and pet frames, the Resource Bars' Health, Power, Mana and Combo Points, the XP bar, the minimap, Buffs, Debuffs, the Quest Tracker and the Cooldown Manager.
+  - In a fade group the whole group shares one delay.
+  - Frames the game shows and hides by itself (target, focus, the cast bar and similar) don't have it.
+- **Slower** Hide Speed: fades to about half over 2 seconds, waits 2 seconds, then fades out. By themese.
+
+### Chat
+- **Keep Messages Shown** (off) in the chat's Edit Mode Fading section, after Fade Old Lines: the window, tabs and buttons fade as set, but the messages stay readable.
+
+### Nameplates
+- **Colour Names by Class** (off) on the Plate tab: players' names on full plates in their class colour.
+- **Colour Guild Members** (off, Friendly Player): your guild's names in Blizzard's guild green on Name Only plates.
+- **Show Titles**: players' titles and NPC roles under the name. On for NPCs, off for players and Minor.
+- **Bar Texture** and **Border** for the cast bar, on the Cast Bar tab above Cast Bar Height.
+- **Mouseover Highlight** on the Targeting tab, under Target Highlight: tick **Border**, **Bar** and **Outer Glow** (Border and Bar to start).
+
+### Radial Menu
+- **Tanning** and **Bait and Tackle** in the Professions list.
+
+### Translations
+- **Korean** and **German**, by ithiel.
+
+## Changed
+- **Nameplates:**
+  - **Height** goes down to 5.
+  - The tab row is split into two labelled groups: **This Unit Type** and **All Nameplates**.
+  - The mouseover highlight also lightens the target and threat border colours.
+  - **Show Full Name** is hidden for NPC types, where it did nothing.
+  - Plates update more cheaply in big pulls. By parchinskiy.
+- **Party Frames:** in the Gamepad UI, the target highlight is twice as bright, to spot the member picked with the D-pad.
+- **Meters:** the Cyrillic font is used only for names with Russian letters.
+- **French:** the 7.0.4 and 7.0.5 text translated. By Brainc3ll.
+
+## Fixed
+- **Gamepad UI:** party targeting with LB and the D-pad didn't work if the Gamepad UI was switched on after login. **Controller players, please tell us if it works for you now.**
+- **Unit Frames:** **Values on Mouseover** with a druid's **Mana on Shapeshift** hid all the numbers in caster form.
+- **Buff Reminders:** the food reminder remembered a drink as your food. By GregDuhamel.
+- **Loot Window:** the gap above the first row now matches the sides.
+
 # FlareUI 7.0.5
 
 Two new windows from the community: a FlareUI loot window and a searchable flight list. Pet threat on nameplates, the same Health Text picker on raid frames, and a stack of fixes.
@@ -159,95 +216,3 @@ A quick hotfix for four things 7.0.1 broke or missed. Thanks for reporting them 
 - **Bags:** the crafting bag shows its items in the combined backpack again (**Crafting Bag in Backpack**). 7.0.1 left the section empty when you opened only the backpack.
 - **Nameplates:** **Full Name** is a choice in the plate's **Health Text**, so friendly players can show their surname. 7.0.1 drew it but left it out of the list.
 - **Nameplates:** the raid marker sits right beside full plates. The **Defensives** icons now go past it instead of pushing it far to the left.
-
-# FlareUI 7.0.1
-
-Sorry, everyone. The new nameplates came with more bugs than they should have, and the fixes took longer than I wanted. This update fixes every nameplate bug you reported, plus a long list of other fixes. Thank you for your patience and for all the reports.
-
-A big thank you to this release's contributors: **alex47** (the Items section, Healing & Damage, the preview fix), **parchinskiy** (collapsible backpack sections), **Braincell1980** (the French translation) and **Archy** (the complete Russian translation).
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Quest Tracker:** the right-click menu no longer has **Open Quest Log** or **Show on Map**. A left click on a quest opens both.
-- **Chat:** **Border** now only borders the chat window. The edit box has its own border option and keeps the look it had.
-- **Chat:** the Combat Log tab can be moved like any other tab. General stays first.
-- **Tooltips:** **Show Item Level**, **Compare with Shift** and **Simplified Item Stats** moved to a new **Items** section on the Content tab.
-
-## Highlights
-- **Nameplates:** every bug you reported is fixed, including the stutter when combat starts and ends.
-- **Bags:** collapsible backpack sections, and filling crates from the crafting bag works again.
-- **Nameplates:** NPC titles like "General Goods" under Name Only names.
-
-## New
-
-### Nameplates
-- NPC titles under the name on Name Only plates, in a soft tan. Always on.
-- **Threat Percentage** now shows during fights.
-
-### Bags
-- Click a section header in **Category Rows** and **Category Rows + Sets** to collapse or expand it. By parchinskiy.
-  - Each character remembers its own sections.
-
-### Tooltips
-- **Items** section on the Content tab. By alex47.
-- **Healing & Damage** (Off): shortens item lines with both healing and damage. By alex47.
-  - **Spell Healing / Spell Damage:** both numbers as they are.
-  - **Spell Healing / Spell Power:** the damage as Spell Power, plus the extra healing.
-
-### Chat
-- **Edit Box Style** (Modern):
-  - **FlareUI:** Blizzard's own edit box, in FlareUI's bronze.
-  - **Modern:** a dark box.
-- **Edit Box Border** (follows your old chat border): **None**, **FlareUI Thick** or **FlareUI Thin**. Shows with Modern only.
-
-### Resource Bars
-- **Paladin Seals:** **Show Icon** (off) in Edit Mode puts the seal's icon at the bar's left end.
-
-### Buff Reminders
-- **Warlock pet:** right-click the icon to pick the demon a click summons: **Last Used** (default) or any demon you know.
-- Every icon's right-click menu has a **FlareUI Settings** link.
-
-### Quest Tracker
-- The **Voice Button** also plays quest lines from Wayfarer (Russian voice-over).
-
-### Minimap
-- **Info Bar:** gold shows with coin icons, like in your bags.
-
-## Changed
-- **Unit Frames (Forever Style):** your own name box takes your class colour when that frame's **Class Colours** is on, as on target and party.
-- **Languages:**
-  - Russian: complete (739 new strings). By Archy.
-  - French: 7.0 strings translated. By Braincell1980.
-- **Russian client:** a dash replaces the middle dot "·", which Russian fonts draw as a box.
-
-## Fixed
-
-### Nameplates
-- A stutter when combat started and ended.
-- **Show Friendly Plates** reset to Off when you picked **Always**. **In Combat** and Quality of Life's **Combat Friendly Plates** didn't work either.
-- Chairs, signs, mailboxes and herb or ore nodes got enemy plates.
-- Pet and minor names were tiny, even at 200%.
-- **Full Name** in Bar Text showed only the first name.
-- The raid marker sat far from the name on Name Only plates.
-- Friendly players showed two names with the Musician addon.
-- Quest marks stayed beside plates when another nameplate addon was running, and couldn't be turned off.
-
-### Bags
-- Filling a crate, milling or prospecting from the crafting bag was blocked (**Crafting Bag in Backpack**).
-
-### Quest Tracker
-- After you opened a quest from the tracker, the world map could be blocked in a fight.
-
-### Gamepad
-- A "blocked action" popup after closing Edit Mode. In Gamepad mode, Edit Mode dropdowns and colour swatches now open FlareUI's own lists. Colour swatches offer ready colours.
-
-### Chat
-- The chat tabs took clicks meant for quest, merchant and crafting windows above them.
-
-### Other
-- **XP Bar:** a small gap stayed at the bottom of the screen.
-- **Settings previews:** squeezed previews cut their text short. By alex47.
-
----
-
-Older versions (7.0 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

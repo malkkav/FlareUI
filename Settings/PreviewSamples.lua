@@ -1311,7 +1311,7 @@ function R.lootWindow(c, spec)
     local LSM = LibStub('LibSharedMedia-3.0')
     local x, w = 8, c.width - 16
     -- LootWindow.lua's sizes, a little smaller to fit the canvas: header 30, row 41 + 3 gap, icon 31
-    local TOP, ROW_H, GAP, ICON, PAD, BOX_PAD = 30, 41, 3, 31, 8, 6
+    local TOP, ROW_H, GAP, ICON, PAD, BOX_PAD = 33, 41, 3, 31, 8, 6
     local wy = 30
     local rowW = w - 2 * PAD
     local bc = ns.BORDER_COLOR

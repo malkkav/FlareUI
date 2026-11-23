@@ -70,6 +70,11 @@ env.GamepadMainActionBarFrame = { PageUnit = { FriendlyTargetingActionBar = bar 
 ui.combat = true
 ui:emit("PLAYER_LOGIN")
 assert(pgt.setupPending and not pgt.watcher)
+-- (11-23, Taylor) a switch into the Gamepad UI after login sets up too (queued here: in combat)
+pgt.setupPending = nil
+ui:emit("INPUT_DEVICE_INTERFACE_TRANSITION")
+ui:flushTimers()
+assert(pgt.setupPending and not pgt.watcher, "the switch into the Gamepad UI tries the setup again")
 ui.combat = false
 state.units = { party1 = true, party2 = true, party3 = true, party4 = true, party5 = true }
 local function member(unit, x, y)

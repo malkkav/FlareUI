@@ -90,6 +90,9 @@ ui:load("Settings/PadNav.lua", ns)
 ui:load("Settings/Panel.lua", ns)
 local P = ns.SettingsPanel
 P:Open("np")
+-- (11-23, #165) the tab row in two labelled groups
+local function label(text) return ui:find(function(w) return w.GetText and w:GetText() == text and w:IsShown() end) end
+assert(label("This Unit Type") and label("All Nameplates"), "the two tab group labels")
 local function row(key) return assert(S.rows["np." .. key], key) end
 local function set(key, value) row(key):Set(value) end
 local function widgetFor(key)
@@ -149,10 +152,17 @@ ns.NameplatesPinned.Hover(nil)
 assert(not side.sample.states.threat and side.sample.states.target)
 -- (11-23, #164) Show Full Name only for player types
 assert(row("nameOnlyFull"):IsHidden(), "an NPC type has no full name")
+-- (11-23) the new rows: guild colour only for Friendly Player, titles on for NPC types, the cast bar's
+-- own texture and border with their defaults, class-coloured names off
+assert(row("guildColor"):IsHidden() and not row("showTitles"):IsHidden() and row("showTitles"):Get() == true)
+assert(not row("nameClassColor"):Get())
+assert(row("castTexture"):Get() == "FlareUI Dark" and row("castBorder"):Get() == "FlareUI Frames")
+assert(row("mouseoverHighlight"):Get() == "border,bar", "Mouseover Highlight starts on Border and Bar")
 side.unitGroup.cells[1]:Click()
 assert(side.sample.kind == "enemyPlayer" and row("questMarks"):IsHidden()
     and NP.TypeDB("enemyPlayer").colorBoss ~= true)
 assert(not row("nameOnlyFull"):IsHidden(), "a player type shows Show Full Name")
+assert(row("showTitles"):Get() == false, "players start without titles")
 side.unitGroup.cells[2]:Click()
 
 P:Open("np", "targeting")

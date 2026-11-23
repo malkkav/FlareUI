@@ -16,7 +16,8 @@ local ipairs, pairs = ipairs, pairs
 local LSM = LibStub("LibSharedMedia-3.0")
 
 -- after the loot roll window's (LootRolls.lua): side padding, the rows below its header separator
-local W, PAD, TOP = 260, 8, 30
+-- (11-23, Kelvan) TOP 34: the first row as far below the header line as the rows are from the sides
+local W, PAD, TOP = 260, 8, 34
 local ROW_H, ROW_GAP, ICON, BOX_PAD = 48, 4, 36, 6
 local ROW_W = W - 2 * PAD
 local FOOT = 26             -- the footer: a 22 px line and a gap above it
@@ -79,10 +80,6 @@ function LW.NameWithCount(name, count)
         return name .. " |cff999999(" .. count .. ")|r"
     end
     return name
-end
-
-function LW.ShouldShowOnOpen(autoLoot)
-    return not autoLoot
 end
 
 function LW:ShouldLoad()
@@ -696,7 +693,6 @@ end
 -- A window that fails to show must not leave the loot open with nothing on screen: Blizzard's window
 -- takes the loot again for the rest of the session, and this one closes.
 local function ShowSlots(rows)
-    events:UnregisterEvent("UI_ERROR_MESSAGE")
     local ok, err = pcall(function()
         Place()
         LW:Show(rows or LW.ReadSlots())
@@ -709,8 +705,7 @@ local function ShowSlots(rows)
     CloseLoot()
 end
 
--- Blizzard's sounds for a loot that opens (LootFrame.lua OnEvent). Its window shows for auto loot
--- too, so they play whether this one shows or not.
+-- Blizzard's sounds for a loot that opens (LootFrame.lua OnEvent)
 local function OpenSound(fromItem)
     local kit = SOUNDKIT
     if not kit then return end
@@ -759,30 +754,9 @@ local function OnEvent(_, event, a, b)
             ShowSlots()
             return
         end
-        if LW.ShouldShowOnOpen(a) then
-            ShowSlots()
-        else
-            -- auto loot keeps the window closed, unless the bags are full (as Blizzard's, LootFrame.lua
-            -- OnEvent) or anything else is still left half a second on: then what is left shows
-            events:RegisterEvent("UI_ERROR_MESSAGE")
-            local session = LW.session
-            C_Timer.After(0.5, function()
-                if not (LW.looting and LW.session == session) or win:IsShown() then return end
-                -- (a failed read goes to ShowSlots too, whose fallback closes the loot)
-                local ok, rows = pcall(LW.ReadSlots)
-                if not ok then
-                    ShowSlots()
-                elseif #rows > 0 then
-                    ShowSlots(rows)
-                else
-                    -- nothing to show: the loot closes, as Blizzard's when its window doesn't show
-                    -- (LootFrame.lua:145)
-                    CloseLoot()
-                end
-            end)
-        end
-    elseif event == "UI_ERROR_MESSAGE" then
-        if b == ERR_INV_FULL and LW.looting then ShowSlots() end
+        -- auto loot too: Blizzard's window opens for every loot (LootFrame.lua OnEvent) and its rows
+        -- go as the items are taken, until LOOT_CLOSED hides it (11-23, Kelvan)
+        ShowSlots()
     elseif event == "BAG_UPDATE_DELAYED" then
         if win:IsShown() then
             -- the owned counts follow the bags: the rows repainted in place (Render repaints the footer too)
@@ -803,7 +777,6 @@ local function OnEvent(_, event, a, b)
         end
     elseif event == "LOOT_CLOSED" then
         LW.looting = nil
-        events:UnregisterEvent("UI_ERROR_MESSAGE")
         win:Hide()
         -- the "will bind to you" question goes with the loot (as Blizzard's, LootFrame.lua OnHideAnimFinished)
         StaticPopup_Hide("LOOT_BIND")
@@ -833,7 +806,6 @@ function LW:Init()
 
     -- closed by ESC or its button: the loot closes too (as Blizzard's, LootFrame.lua OnHide)
     win:SetScript("OnHide", function()
-        events:UnregisterEvent("UI_ERROR_MESSAGE")
         events:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
         events:UnregisterEvent("BAG_UPDATE_DELAYED")
         if LW.looting then CloseLoot() end

@@ -469,6 +469,7 @@ local defaults = {
             copyButton = true,          -- the copy icon in each window's top right corner
             increaseLineHeight = false, -- a little more space between chat lines
             fadeLines = false,          -- Fade Old Lines (Edit Mode Fading): each line fades, oldest first
+            keepMessages = false,       -- Keep Messages Shown (Edit Mode Fading): only the frame fades, the lines stay
             formatNPC = false,
             formatPlayer = false,
             betterTimestamps = false,
@@ -2340,7 +2341,7 @@ do
         -- each aura kind's size, then how many (the Amount names until the Max Buffs / Max Debuffs rename)
         "Buff Size", "Max Buffs", "Buff Amount", "Debuff Size", "Max Debuffs", "Debuff Amount",
         -- the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
-        "Faded Opacity", "Fade Delay", "Fade Old Lines",
+        "Faded Opacity", "Fade Delay", "Fade Old Lines", "Keep Messages Shown",
         -- switches
         -- first of their sections' switches: Range Check (Look) and Show Level (Frame)
         -- the resource bars' two texts right under the sliders, before Range Check

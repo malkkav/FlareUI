@@ -828,27 +828,42 @@ local function UpdateRange(f)
     end
 end
 
+-- the Gamepad UI doubles the target highlight
+function PF.TargetBoost()
+    return ns.IsGamepadUI and ns.IsGamepadUI() and true or false
+end
+
 -- The player's target: a brighter border
 local function UpdateTarget(f)
     local hl = f.TargetHighlight
     -- the border's bright copy, or on the plate the name box's glow (the frame's alpha drives both)
     local plate = OnPlate(f) and f.PlateFrame and f.PlateFrame.Strip
+    -- the Gamepad UI: a second copy on top, twice as bright, to spot the target picked with the
+    -- D-pad (11-23, copycatgirl)
+    local boost = PF.TargetBoost()
     hl.Border:SetShown(not plate)
+    if hl.Border2 then hl.Border2:SetShown(not plate and boost) end
     if plate then
         if not hl.PlateGlow then
             hl.PlateGlow = hl:CreateTexture(nil, "OVERLAY")
             hl.PlateGlow:SetBlendMode("ADD")
+            hl.PlateGlow2 = hl:CreateTexture(nil, "OVERLAY")
+            hl.PlateGlow2:SetBlendMode("ADD")
         end
         if hl.plateFor ~= plate then
             hl.plateFor = plate
-            pcall(hl.PlateGlow.SetAtlas, hl.PlateGlow, ns.UFRing.STRIP_ATLAS, false)
-            hl.PlateGlow:SetVertexColor(1, 1, 1, 0.9)
-            hl.PlateGlow:ClearAllPoints()
-            hl.PlateGlow:SetAllPoints(plate)
+            for _, glow in ipairs({ hl.PlateGlow, hl.PlateGlow2 }) do
+                pcall(glow.SetAtlas, glow, ns.UFRing.STRIP_ATLAS, false)
+                glow:SetVertexColor(1, 1, 1, 0.9)
+                glow:ClearAllPoints()
+                glow:SetAllPoints(plate)
+            end
         end
         hl.PlateGlow:Show()
+        hl.PlateGlow2:SetShown(boost)
     elseif hl.PlateGlow then
         hl.PlateGlow:Hide()
+        hl.PlateGlow2:Hide()
     end
     if IsEditing() then hl:SetAlpha(0) return end
     local isTarget = UnitIsUnit(f.fuiUnit, "target")
@@ -2273,10 +2288,11 @@ local function LayoutMember(f)
         K.ApplyBorderStyle(f.Border, K.GetBorderFile(st.border), st.height or 46)
         f.Border:Show()
         -- added over the border, so any border art comes out brighter in its own shape
-        local bright = f.TargetHighlight.Border
-        bright:SetBackdrop(PF.EdgeBackdrop(f))
-        bright:SetBackdropBorderColor(1, 0.85, 0.5, 1)
-        bright:SetBorderBlendMode("ADD")
+        for _, bright in ipairs({ f.TargetHighlight.Border, f.TargetHighlight.Border2 }) do
+            bright:SetBackdrop(PF.EdgeBackdrop(f))
+            bright:SetBackdropBorderColor(1, 0.85, 0.5, 1)
+            bright:SetBorderBlendMode("ADD")
+        end
     end
 
     -- mirrored tiles turn the FlareUI Dark gradient with the fill
@@ -3158,6 +3174,10 @@ local function BuildTile(f, unit)
     hl:SetFrameLevel(level + 5)
     hl.Border = CreateFrame("Frame", nil, hl, "BackdropTemplate")
     hl.Border:SetAllPoints(f.Border)
+    -- (the Gamepad UI's second copy: UpdateTarget)
+    hl.Border2 = CreateFrame("Frame", nil, hl, "BackdropTemplate")
+    hl.Border2:SetAllPoints(f.Border)
+    hl.Border2:Hide()
     hl:SetAlpha(0)
     f.TargetHighlight = hl
 

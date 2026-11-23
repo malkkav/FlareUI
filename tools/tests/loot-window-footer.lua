@@ -2,7 +2,7 @@
 -- The footer holds only Free Bag Slots: it takes its height, and so room from the rows, only while
 -- tweaks.lootWindowFreeSlots is on.
 local ITEM = 1
-local TOP, PAD, FOOT, MORE, ROW_H, ROW_GAP = 30, 8, 26, 15, 48, 4
+local TOP, PAD, FOOT, MORE, ROW_H, ROW_GAP = 34, 8, 26, 15, 48, 4   -- (TOP 34 since 11-23)
 
 local frames = {}
 local Stub = {}

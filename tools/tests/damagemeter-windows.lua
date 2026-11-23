@@ -196,7 +196,14 @@ assert(not window.ScrollBar:IsMouseEnabled() and window.ScrollBar.Thumb:GetAlpha
 assert(select(2, scroll:GetPoint()) == window.FlareUI_DMSkin)
 assert(window.SettingsDropdown.FlareUI_Icon:GetTexture():find("DMSettings", 1, true))
 assert(not window.MinimizeButton:IsShown() and meterUI.loggedEvents.GROUP_LEFT)
-assert(row:GetName():GetFont():find("Cyrillic/", 1, true) and row:GetStatusBar():GetStatusBarTexture():GetTexture() == "Bars/Custom")
+-- (11-23, #163) only a name with Russian letters takes the Cyrillic twin; the row is reused, so a
+-- new name picks again
+row:GetName():SetText("1. Tester")
+assert(not row:GetName():GetFont():find("Cyrillic/", 1, true) and row:GetStatusBar():GetStatusBarTexture():GetTexture() == "Bars/Custom")
+row:GetName():SetText("2. Имя")
+assert(row:GetName():GetFont():find("Cyrillic/", 1, true), "a Russian name takes the twin")
+row:GetName():SetText("3. Aeloria")
+assert(not row:GetName():GetFont():find("Cyrillic/", 1, true), "a Latin name goes back")
 title.TypeName:SetText("Damage Done to Enemy")
 assert(title:GetWidth() >= #title.TypeName:GetText() * 6)
 local settings = window.SettingsDropdown

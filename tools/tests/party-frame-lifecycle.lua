@@ -140,4 +140,16 @@ assert(w == party.raid.width and h == party.raid.height and sample.Name:GetText(
 ui.editing = false
 libEdit.callbacks.exit()
 assert(a.unitWatched and a.Name:GetText() == "Mira Reed")
+
+-- the Gamepad UI doubles the target highlight with a second copy; the mouse UI keeps one
+local hl, isGamepad = a.TargetHighlight, ns.IsGamepadUI
+ui:emit("PLAYER_TARGET_CHANGED")
+assert(hl.Border:IsShown() and not hl.Border2:IsShown(), "mouse UI: one highlight")
+ns.IsGamepadUI = function() return true end
+ui:emit("PLAYER_TARGET_CHANGED")
+assert(hl.Border:IsShown() and hl.Border2:IsShown(), "Gamepad UI: the second copy shows")
+assert(hl.Border2:GetBackdrop() ~= nil, "the second copy has the border art")
+ns.IsGamepadUI = isGamepad
+ui:emit("PLAYER_TARGET_CHANGED")
+assert(not hl.Border2:IsShown())
 print("PASS: party frames live health, role/order, secure registration, pets, targets and Edit Mode")

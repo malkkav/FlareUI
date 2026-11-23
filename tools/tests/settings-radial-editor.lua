@@ -45,7 +45,7 @@ E.C_SpellBook = {
     end,
     HasPetSpells = function() return 1 end,
 }
-ns.IsPlayerSpell = function(id) return id == 11611 or id == 818 end
+ns.IsPlayerSpell = function(id) return id == 11611 or id == 818 or id == 1278068 end   -- (Tanning: a Forever profession spell, 11-23)
 E.Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 18 } }
 E.GetNumMacros = function() return 1, 1 end
 E.GetMacroInfo = function(index)
@@ -199,7 +199,7 @@ assert(catalogCount("spell") == 3 and list:CellFor(1).Text:GetText() == "Spells"
 category("party")
 assert(catalogCount("partycast") == 1 and list:CellFor(1).Text:GetText():find("Heal", 1, true))
 category("professions")
-assert(catalogCount("spell") == 2 and list:CellFor(1).Text:GetText() == "Professions")
+assert(catalogCount("spell") == 3 and list:CellFor(1).Text:GetText() == "Professions", "Alchemy, Basic Campfire and Tanning")
 category("items")
 assert(catalogCount("item") == 1 and list:CellFor(1).Text:GetText():find("(1)", 1, true), "bag items deduplicate and the quest item slot shows the count")
 category("macros")

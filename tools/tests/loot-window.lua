@@ -116,9 +116,6 @@ assert(top == 0 and math.abs(h - area * 0.3) < 1e-9, 'thumb at the top')
 top, h = LW.ScrollThumb(10, 3, 7, area)
 assert(math.abs(top + h - area) < 1e-9, 'thumb at the bottom')
 
-assert(LW.ShouldShowOnOpen(true) == false)
-assert(LW.ShouldShowOnOpen(false) == true)
-
 -- free bag slots: general bags only (0 + 3 + 2 + 0 + 1; the family-8 bag's 9 left out)
 assert(LW.FreeBagSlots() == 6, 'sums the family-0 bags only')
 

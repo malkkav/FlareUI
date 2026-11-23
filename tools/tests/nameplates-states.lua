@@ -813,6 +813,64 @@ plates.TypeSet("enemyNpc", "levelSide", "left")
 plates.TypeSet("enemyNpc", "level", "box")
 plates.Layout(live)
 
+-- (11-23) the cast bar's own look: FlareUI Dark and FlareUI Thin by default, None for no border
+assert(plates.CastTexture({}) == "FlareUI Dark" and plates.CastTexture({ castTexture = "Custom" }) == "Custom")
+assert(plates.CastBorder({ castHeight = 12 }) ~= nil, "a default border")
+assert(plates.CastBorder({ castBorder = "None", castHeight = 12 }) == nil, "None: no border")
+-- Show Titles: NPC types on, players and Minor off, unless set
+assert(plates.TitlesOn({}, "enemyNpc") and plates.TitlesOn({}, "friendlyNpc"))
+assert(not plates.TitlesOn({}, "friendlyPlayer") and not plates.TitlesOn({}, "minor"))
+assert(plates.TitlesOn({ showTitles = true }, "minor") and not plates.TitlesOn({ showTitles = false }, "enemyNpc"))
+-- a player's title: the PvP name less the name
+local oldPvp, oldDisplay = env.UnitPVPName, ns.UnitDisplayName
+env.UnitPVPName = function() return "Corporal Bob Smith" end
+ns.UnitDisplayName = function() return "Bob Smith" end
+assert(plates.PlayerTitle("nameplate9") == "Corporal", tostring(plates.PlayerTitle("nameplate9")))
+env.UnitPVPName = function() return "Bob Smith the Patient" end
+assert(plates.PlayerTitle("nameplate9") == "the Patient", tostring(plates.PlayerTitle("nameplate9")))
+env.UnitPVPName = function() return "Bob Smith" end
+assert(plates.PlayerTitle("nameplate9") == nil, "no title")
+env.UnitPVPName, ns.UnitDisplayName = oldPvp, oldDisplay
+-- the mouseover border: lighter than the plate's own bronze, back after (target and threat colours get lighter too)
+local savedThreat, savedTarget = live.threatRGB, live.targetShown
+live.threatRGB, live.targetShown = nil, nil
+live.borderDirty = true
+plates.PaintBorder(live)
+local restR = live.border:GetBackdropBorderColor()
+aliases.mouseover = gamePlate
+send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
+local hoverR = live.border:GetBackdropBorderColor()
+assert(live.edgeFile == nil or hoverR > restR, "the plate under the mouse gets a lighter border")
+live.threatRGB = { 0.5, 0, 0 }
+live.borderDirty = true
+plates.PaintBorder(live)
+local threatR = live.border:GetBackdropBorderColor()
+assert(threatR > 0.5, "a hovered threat colour is lighter too: " .. tostring(threatR))
+aliases.mouseover = nil
+send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
+live.threatRGB, live.targetShown = savedThreat, savedTarget
+-- Mouseover Highlight: Border and Bar by default; Outer Glow on request; None lights nothing
+assert(plates.HoverParts().border and plates.HoverParts().bar and not plates.HoverParts().glow)
+db.mouseoverHighlight = "glow"
+aliases.mouseover = gamePlate
+send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
+assert(not live.highlight:IsShown() and (live.targetGlow:IsShown() or live.targetShown), "Outer Glow only: no bar light, the glow shows")
+aliases.mouseover = nil
+send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
+db.mouseoverHighlight = "none"
+aliases.mouseover = gamePlate
+send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
+assert(not live.highlight:IsShown(), "None: no bar light")
+aliases.mouseover = nil
+send("UPDATE_MOUSEOVER_UNIT")
+nextFrame()
+db.mouseoverHighlight = nil
+
 -- (11-23) DOESITDIE: an invisible bar named like "health" over ours on the game plate, hidden on release
 env.DoesItDie = {}
 plates.DieProxy(gamePlate, live)

@@ -1,6 +1,6 @@
 -- Run from the repository root: luajit tools/tests/loot-window-events.lua
--- The window's loot events: an auto loot with nothing left after the half-second check closes the
--- loot (as Blizzard's window does when it doesn't show), and Owned Count follows BAG_UPDATE_DELAYED
+-- The window's loot events: an auto loot opens the window at once (as Blizzard's) and LOOT_CLOSED
+-- hides it without closing the loot again, and Owned Count follows BAG_UPDATE_DELAYED
 -- with the rows repainted in place.
 local ITEM = 1
 
@@ -94,26 +94,20 @@ local function item(i, link)
     return { type = ITEM, texture = 't' .. i, name = 'Item ' .. i, quantity = 1, quality = 1, link = link }
 end
 
--- auto loot with nothing left half a second on: the loot closes and nothing shows
-fire('LOOT_OPENED', true, false)
-assert(LW.looting and not win:IsShown(), 'auto loot: window stays closed')
-assert(closes == 0, 'auto loot: loot not closed before the check')
-runTimers()
-assert(closes == 1, 'empty auto loot: CloseLoot once, got ' .. closes)
-assert(not win:IsShown() and not rawget(win, 'shows'), 'empty auto loot: the window never shows')
-fire('LOOT_CLOSED')
-assert(LW.looting == nil, 'LOOT_CLOSED clears looting')
-assert(closes == 1, 'LOOT_CLOSED does not close the loot again, got ' .. closes)
-
--- auto loot with slots still left: what is left shows, the loot stays open
+-- auto loot: the window opens at once, as Blizzard's does (11-23), and the loot isn't closed by us
 slots = { item(1, 'link:1'), item(2, 'link:2') }
 fire('LOOT_OPENED', true, false)
+assert(LW.looting and win:IsShown(), 'auto loot: the window shows right away')
 runTimers()
-assert(win:IsShown(), 'auto loot with slots left: the window shows')
-assert(closes == 1, 'auto loot with slots left: no CloseLoot, got ' .. closes)
+assert(closes == 0, 'auto loot: no CloseLoot from the window, got ' .. closes)
 assert(#errors == 0, 'no show error: ' .. tostring(errors[1]))
+-- the game takes the items, then closes the loot: the window goes with it, without closing it again
+fire('LOOT_SLOT_CLEARED', 1)
+fire('LOOT_SLOT_CLEARED', 2)
 fire('LOOT_CLOSED')
-win:Hide()
+assert(LW.looting == nil, 'LOOT_CLOSED clears looting')
+assert(not win:IsShown(), 'LOOT_CLOSED hides the window')
+assert(closes == 0, 'LOOT_CLOSED does not close the loot again, got ' .. closes)
 
 -- Owned Count: two stacks of one item; looting the first raises the count the second shows
 slots = { item(1, 'link:1'), item(2, 'link:x'), item(3, 'link:x') }

@@ -21,7 +21,7 @@ H.load([[
 local reads, group = 0, false
 local Fader = {updateTimer = 0, dirty = {}, repairTimer = 0, ruleCache = {},
  groups = {a = {{show = 'ingroup'}}, b = {{show = 'ingroup'}}},
- delays = {}, shows = {}, counting = {}, settled = {}, watchesMouseover = true}
+ delays = {}, groupDelay = {}, shows = {}, counting = {}, settled = {}, watchesMouseover = true}
 local function wipe(t) for k in pairs(t) do t[k] = nil end end
 local FADE_DELAY, CHECK_INTERVAL, REPAIR_INTERVAL = 0, .05, 1
 local function SpellbookOpen() return false end

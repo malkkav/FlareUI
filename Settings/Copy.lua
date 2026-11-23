@@ -424,7 +424,7 @@ ns.Copy = {
             kind = "text",
             label = L["Credits"],
             section = "about.credits",
-            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for too many things to list here.\n* |cffffd100Kabaday|r for the loot roll window and the Cooldown Manager.\n* |cffffd100Celbrund|r for the minimap Info Bar."],
+            text = L["* Doggie art by |cffffd100Clari Turela|r.\n* |cffffd100sampconrad|r for the help with aura frames.\n* |cffffd100Jeor|r for the settings' new look idea.\n* |cffffd100parchinskiy|r for too many things to list here.\n* |cffffd100Kabaday|r for the loot roll window and the Cooldown Manager.\n* |cffffd100Celbrund|r for the minimap Info Bar.\n* |cffffd100Bill|r for improving the addon's testing."],
         },
         ["about.layout"] = {
             kind = "text",
@@ -1724,6 +1724,12 @@ ns.Copy = {
             section = "np.buffSection",
             tags = { "purgeable", "important buffs", "my buffs", "filters" },
         },
+        ["np.castBorder"] = {
+            desc = L["The cast bar's border, apart from the plate's."],
+            label = L["Border"],
+            section = "np.castFrame",
+            tags = { "cast bar border", "castbar border" },
+        },
         ["np.castGlow"] = {
             desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."],
             label = L["Edge Glow"],
@@ -1762,6 +1768,12 @@ ns.Copy = {
             label = L["Flash When Targeted"],
             section = "np.castBehaviour",
             tags = { "targeted", "cast target", "incoming spell" },
+        },
+        ["np.castTexture"] = {
+            desc = L["The cast bar's texture, apart from the health bar's."],
+            label = L["Bar Texture"],
+            section = "np.castFrame",
+            tags = { "cast bar texture", "castbar texture" },
         },
         ["np.castTimer"] = {
             desc = L["The time left on the cast, at the bar's right end."],
@@ -1904,6 +1916,12 @@ ns.Copy = {
             tags = { "group colour", "party members" },
             tip = L["Shows on friendly plates outside dungeons and raids: inside them the game keeps friendly plates its own."],
         },
+        ["np.guildColor"] = {
+            desc = L["Your guild's members show in Blizzard's guild green."],
+            label = L["Colour Guild Members"],
+            section = "np.nameOnlySection",
+            tags = { "guild colour", "guild color", "guild members", "guildies" },
+        },
         ["np.healthColor"] = {
             choices = { L["Off"], L["Reaction"], L["Class & Reaction"], L["Health"] },
             desc = L["How each plate's bar is coloured:\n* Off: Blizzard's own colours\n* Reaction: red for enemies, yellow for neutral\n* Class & Reaction: players in their class colour, everyone else by reaction\n* Health: green at full, yellow at half, red when nearly dead"],
@@ -1962,6 +1980,13 @@ ns.Copy = {
             label = L["Colour Where"],
             section = "np.specialColors",
         },
+        ["np.mouseoverHighlight"] = {
+            choices = { L["None"], L["Border"], L["Bar"], L["Outer Glow"] },
+            desc = L["What lights up on the plate under your mouse, a little softer than your target's:\n* Border: a lighter border\n* Bar: a light over the bar\n* Outer Glow: the soft glow round the plate"],
+            label = L["Mouseover Highlight"],
+            section = "np.mouseoverSection",
+            tags = { "mouseover", "hover", "highlight", "mouse over plate" },
+        },
         ["np.nameAbove"] = {
             choices = { L["Off"], L["Left: First Name"], L["Left: Full Name"], L["Centre: First Name"], L["Centre: Full Name"], L["Right: First Name"], L["Right: Full Name"] },
             desc = L["The name above the plate, on its left, centre or right. Buffs and debuffs above the plate move up to make room."],
@@ -1969,6 +1994,12 @@ ns.Copy = {
             section = "np.health",
             tags = { "name above", "name on top", "name outside bar" },
             tip = L["Take the name out of Health Text if you only want it above."],
+        },
+        ["np.nameClassColor"] = {
+            desc = L["Players' names on full plates in their class colour. Name Only plates always colour them."],
+            label = L["Colour Names by Class"],
+            section = "np.health",
+            tags = { "class colour name", "class color name", "coloured names" },
         },
         ["np.nameOnlyFull"] = {
             desc = L["Players' surnames show in Name Only Mode. Off, only the first name shows."],
@@ -2076,6 +2107,13 @@ ns.Copy = {
             desc = L["Plates of units just off the screen stay at its edge."],
             label = L["Offscreen Plates"],
             section = "np.platesBehaviour",
+        },
+        ["np.showTitles"] = {
+            desc = L["The title under the name: a player's title, or an NPC's role such as General Goods."],
+            label = L["Show Titles"],
+            section = "np.nameOnlySection",
+            tags = { "title", "npc title", "player title", "rank" },
+            tip = L["On for NPCs at first, off for players and Minor."],
         },
         ["np.stacking"] = {
             choices = { L["None"], L["Enemy"], L["Friendly"] },
@@ -3443,6 +3481,7 @@ ns.Copy = {
         ["np.highlights"] = L["Target Highlight"],
         ["np.look"] = L["Look"],
         ["np.marks"] = L["Icons"],
+        ["np.mouseoverSection"] = L["Mouseover Highlight"],
         ["np.nameOnlySection"] = L["Name Only Mode"],
         ["np.platesBehaviour"] = L["Behaviour"],
         ["np.scaleSection"] = L["Scale & Opacity"],

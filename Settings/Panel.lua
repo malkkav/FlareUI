@@ -2172,12 +2172,17 @@ local function UpdateHeader(module)
     -- (down to TAB_PAD_MIN). A tab's NEW badge sits on its top edge, centred, over the border,
     -- so it takes no width.
     local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 4   -- (TAB_LEFT: the first tab sits 4 in)
+    -- (11-23) tab groups: a tab with groupLabel starts a group, a little apart from the one before,
+    -- with its label above it (Nameplates: This Unit Type / All Nameplates)
+    local GROUP_GAP, GROUP_LABEL_H = 18, 14
     local shown, textW, isNew = {}, {}, {}
+    local groups = 0
     for i, b in ipairs(page.tabButtons) do
         local tab = module.tabs and module:IsOn() and module.tabs[i]
         b:SetShown(tab and true or false)
         if tab then
             b.tabKey = tab.key
+            if tab.groupLabel then groups = groups + 1 end
             b.Text:SetText(tab.label or names[i] or tab.key)
             shown[#shown + 1] = i
             textW[i] = b.Text:GetStringWidth() or 60
@@ -2187,7 +2192,7 @@ local function UpdateHeader(module)
     end
     local room = (page.header:GetWidth() or 0) > 0 and page.header:GetWidth() or CONTENT_W
     local function RowWidth(pad)
-        local w = TAB_LEFT + TAB_GAP * math.max(0, #shown - 1)
+        local w = TAB_LEFT + TAB_GAP * math.max(0, #shown - 1) + GROUP_GAP * math.max(0, groups - 1)
         for _, i in ipairs(shown) do w = w + textW[i] + pad end
         return w
     end
@@ -2211,9 +2216,31 @@ local function UpdateHeader(module)
         end
         b:SetWidth(textW[i] + pad)
     end
+    -- the groups: each starting tab moved apart and labelled (the labels pooled on the header)
+    page.tabGroupLabels = page.tabGroupLabels or {}
+    local used = 0
+    for n, i in ipairs(shown) do
+        local b, tab = page.tabButtons[i], module.tabs[i]
+        b:ClearAllPoints()
+        if n == 1 then b:SetPoint("BOTTOMLEFT", TAB_LEFT, 0)
+        else b:SetPoint("BOTTOMLEFT", page.tabButtons[shown[n - 1]], "BOTTOMRIGHT", (tab.groupLabel and TAB_GAP + GROUP_GAP) or TAB_GAP, 0) end
+        if tab.groupLabel then
+            used = used + 1
+            local label = page.tabGroupLabels[used]
+            if not label then
+                label = page.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                page.tabGroupLabels[used] = label
+            end
+            label:SetText(tab.groupLabel)
+            label:ClearAllPoints()
+            label:SetPoint("BOTTOMLEFT", b, "TOPLEFT", 3, 3)
+            label:Show()
+        end
+    end
+    for k = used + 1, #page.tabGroupLabels do page.tabGroupLabels[k]:Hide() end
     local tabbed = module.tabs and module:IsOn()
     page.tabLine:SetShown(false)   -- (no line between the tabs and the boxes)
-    if tabbed then height = height + 32 end
+    if tabbed then height = height + 32 + (used > 0 and GROUP_LABEL_H or 0) end
     page.header:SetHeight(height)
 end
 
