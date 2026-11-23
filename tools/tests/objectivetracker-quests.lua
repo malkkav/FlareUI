@@ -160,6 +160,11 @@ local db = {
 }
 local ns = {
     L = setmetatable({}, { __index = function(_, key) return key end }),
+    -- (the header icons, #159: Core.lua ns.BronzeIcon)
+    BronzeIcon = {
+        Apply = function(icon, path) icon:SetTexture(path); icon.FlareUI_Light = icon.FlareUI_Light or icon:GetParent():CreateTexture() end,
+        Paint = function(icon) icon.bronzePainted = true end,
+    },
     modules = { Tweaks = { initialized = true } },
     db = { profile = { objectivetracker = db, tweaks = tweaks } },
     PALETTE = { bronze4 = { 0.7, 0.4, 0.2 }, bronze5 = { 0.8, 0.6, 0.3 } },

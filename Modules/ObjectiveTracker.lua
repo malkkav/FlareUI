@@ -3351,11 +3351,26 @@ end
 
 Build.GLYPHS = { funnel = "QTFilter", exclaim = "QTExclaim", question = "QTQuestion", sort = "QTSort" }
 
+-- THE HEADER ICONS' COLOURS (PR #159 by GregDuhamel; 11-23 Malkkav: they follow the Colour Scheme).
+-- FlareUI: the box's bronze at rest, a switch that is on in the header's light bronze, the fold arrows
+-- tinted to it. Blizzard: Blizzard's header gold, dimmer at rest, and its own gold fold arrows.
+C.ICON_DIM = 0.75   -- Blizzard's gold at rest, against a switch that is on
+OT.iconRest, OT.iconOn = { a = 1 }, { a = 1 }
+function OT.IconColors()
+    local rest, on, heading = OT.iconRest, OT.iconOn, C.HEADING
+    if OT.soft == false then
+        rest.r, rest.g, rest.b = heading[1] * C.ICON_DIM, heading[2] * C.ICON_DIM, heading[3] * C.ICON_DIM
+    else
+        rest.r, rest.g, rest.b = C.BOX_COLOR[1], C.BOX_COLOR[2], C.BOX_COLOR[3]
+    end
+    on.r, on.g, on.b = heading[1], heading[2], heading[3]
+    return rest, on
+end
+
 function Build.IconButton(parent, size)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(size, size)
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    C.ICON_COLOR = C.ICON_COLOR or { r = C.BOX_COLOR[1], g = C.BOX_COLOR[2], b = C.BOX_COLOR[3], a = 1 }
 
     function b:Layout()
         local file = self.glyph or (self.plus and C.FOLD_EXPAND or C.FOLD_COLLAPSE)
@@ -3364,7 +3379,7 @@ function Build.IconButton(parent, size)
             self.icon:ClearAllPoints()
             if self.glyph then
                 self.icon:SetAllPoints()
-                ns.BronzeIcon.Apply(self.icon, C.ICON_PATH .. file .. ".tga", C.ICON_COLOR)
+                ns.BronzeIcon.Apply(self.icon, C.ICON_PATH .. file .. ".tga", (OT.IconColors()))
             else
                 self.icon:SetPoint("CENTER")
                 self.icon:SetSize(size * C.FOLD_SCALE, size * C.FOLD_SCALE)
@@ -3375,15 +3390,26 @@ function Build.IconButton(parent, size)
     end
     function b:Paint(lit)
         self.lit = lit
-        if not self.glyph then return end
-        self.icon.FlareUI_Light:SetShown(not self.active)
-        if self.active then
-            local gold = OT.blizzColors.HEADING
-            C.ICON_GOLD = C.ICON_GOLD or CreateColor(gold[1], gold[2], gold[3], 1)
-            self.icon:SetGradient("VERTICAL", C.ICON_GOLD, C.ICON_GOLD)
+        local rest, on = OT.IconColors()
+        if not self.glyph then
+            -- the fold arrows: Blizzard's gold, or greyed and tinted to the header's light bronze
+            local soft = OT.soft ~= false
+            self.icon:SetDesaturated(soft)
+            local k = lit and 1.15 or 1
+            if soft then
+                self.icon:SetVertexColor(math_min(1, on.r * k), math_min(1, on.g * k), math_min(1, on.b * k), 1)
+            else
+                self.icon:SetVertexColor(k, k, k, 1)
+            end
             return
         end
-        ns.BronzeIcon.Paint(self.icon, C.ICON_COLOR, lit)
+        self.icon.FlareUI_Light:SetShown(not self.active)
+        if self.active then
+            local c = CreateColor(on.r, on.g, on.b, 1)
+            self.icon:SetGradient("VERTICAL", c, c)
+            return
+        end
+        ns.BronzeIcon.Paint(self.icon, rest, lit)
     end
     function b:SetPlus(plus)
         self.plus = plus
@@ -3491,6 +3517,11 @@ function Build.StyleHeader(head, db)
     if head == header then OT.ApplyColorScheme(db) end
     ApplyFont(head.title, db.headerFont, 13)
     SetColor(head.title, C.HEADING)
+    -- the header icons in the scheme's colours (OT.IconColors)
+    for _, key in ipairs({ "minimize", "zone", "sort", "autoAccept", "autoTurnIn" }) do
+        local b = head[key]
+        if b and b.Paint then b:Paint(b.lit) end
+    end
 end
 
 -- the scroll bar: a dark bronze thumb down the list's right margin
