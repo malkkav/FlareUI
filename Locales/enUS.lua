@@ -1501,6 +1501,7 @@ L["Pass"] = true
 L["Paste a FlareUI profile string (Ctrl+V). It becomes a new profile."] = true
 L["Paste with |cffffd100Ctrl+V|r, name it and click |cffffd100Import|r."] = true
 L["Percent"] = true
+L["Percent | Health Lost"] = true
 L["Percent | Value"] = true
 L["Permanent"] = true
 L["Pet"] = true

@@ -23,7 +23,7 @@ BT.SLOTS = { "left", "middle", "right" }
 BT.BARS = { "health", "power", "mana" }
 BT.SEPARATOR = " / "
 -- the order of items without a ticked place (defaults, older saves)
-BT.ORDER = { "firstname", "fullname", "percent", "value", "max", "lost" }
+BT.ORDER = { "firstname", "fullname", "percent", "value", "max", "lost", "percentlost" }
 BT.NAMES = { firstname = true, fullname = true }
 BT.ITEMS = {
     health = { "firstname", "fullname", "percent", "value", "max", "lost" },
@@ -32,6 +32,7 @@ BT.ITEMS = {
 }
 BT.LABELS = {
     firstname = L["First Name"], fullname = L["Full Name"], percent = L["Health Percent"], value = L["Health Value"], max = L["Health Max"], lost = L["Health Lost"],
+    percentlost = L["Percent | Health Lost"],
 }
 BT.POWER_LABELS = { percent = L["Power Percent"], value = L["Power Value"], max = L["Power Max"] }
 
@@ -199,11 +200,11 @@ function BT.Toggle(udb, bar, slot, style, value, reset, firstOnly, oldKey, unit)
         return
     end
     local set = Renumber(Copy(mine[slot] or current[slot], firstOnly))
-    if BT.NAMES[value] then
-        -- a name stands alone
+    if BT.NAMES[value] or value == "percentlost" then
+        -- A name or the combined party health format occupies the whole slot.
         set = set[value] and {} or { [value] = 1 }
     else
-        set.firstname, set.fullname = nil, nil
+        set.firstname, set.fullname, set.percentlost = nil, nil, nil
         -- a new tick goes last; an untick closes the gap
         if set[value] then set[value] = nil else set[value] = 1000 end
         set = Renumber(set)
@@ -212,11 +213,14 @@ function BT.Toggle(udb, bar, slot, style, value, reset, firstOnly, oldKey, unit)
 end
 
 -- the dropdown's choices: None first, then the bar's items (no Name on the plate)
-function BT.Values(bar, style)
+function BT.Values(bar, style, unit)
     local values = { { text = L["None"], value = "none" } }
     local labels = bar == "health" and BT.LABELS or BT.POWER_LABELS
     for _, item in ipairs(BT.ITEMS[bar] or BT.ITEMS.power) do
         if not (BT.NAMES[item] and style ~= "plain") then values[#values + 1] = { text = labels[item], value = item } end
+    end
+    if unit == "party" and bar == "health" then
+        values[#values + 1] = { text = labels.percentlost, value = "percentlost" }
     end
     return values
 end
@@ -231,6 +235,16 @@ function BT.NameOf(set)
     return (set.fullname and "fullname") or (set.firstname and "firstname") or nil
 end
 
+function BT.FormatPercentLost(fs, percent, lost, prefix)
+    prefix = prefix or ""
+    -- The deficit can be secret in combat. Only compare it when readable.
+    if canaccessvalue(lost) and (lost == nil or lost <= 0) then
+        fs:SetFormattedText(prefix .. "%.0f%%", percent)
+    else
+        fs:SetFormattedText(prefix .. "%.0f%% | -%s", percent, ns.ShortNumber(lost))
+    end
+end
+
 -- Fills fs with a slot's numbers, " / " between them; prefix goes in front (the name's "/ " when the
 -- name shares the slot). Secret numbers go in as they are (SetFormattedText). Health Lost alone hides
 -- at full health through a curve on the text's alpha (its amount can't be compared when secret); with
@@ -239,6 +253,11 @@ end
 -- (buffers reused by every call: this runs on every health and power tick of every frame)
 BT.fmtBuf, BT.argBuf, BT.orderBuf = {}, {}, {}
 function BT.Fill(fs, set, src, prefix)
+    fs:SetAlpha(1)
+    if set.percentlost then
+        BT.FormatPercentLost(fs, src.percent, src.lost, prefix)
+        return true
+    end
     local fmt, args, n = BT.fmtBuf, BT.argBuf, 0
     local onlyLost = set.lost and not (set.percent or set.value or set.max)
     local list, count = BT.Ordered(set, BT.orderBuf)
@@ -263,7 +282,6 @@ function BT.Fill(fs, set, src, prefix)
             end
         end
     end
-    fs:SetAlpha(1)
     if n == 0 then
         fs:SetText("")
         return false
@@ -308,7 +326,7 @@ end
 -- closed box sums the three slots up left to right, "Full Name · — · Value".
 BT.MENU_SLOTS = { left = L["Left"], middle = L["Centre"], right = L["Right"] }
 BT.SHORT = { firstname = L["First Name"], fullname = L["Full Name"], percent = "%", value = L["Value"],
-             max = L["Max"], lost = L["Lost"] }
+             max = L["Max"], lost = L["Lost"], percentlost = BT.LABELS.percentlost }
 function BT.Summary(slots)
     local parts = {}
     for _, slot in ipairs(BT.SLOTS) do
@@ -340,7 +358,7 @@ function BT.Setting(o)
         generator = function(owner, rootDescription)
             for _, slot in ipairs(BT.SLOTS) do
                 local sub = rootDescription:CreateButton(BT.MENU_SLOTS[slot])
-                for _, v in ipairs(BT.Values(o.bar, o.style())) do
+                for _, v in ipairs(BT.Values(o.bar, o.style(), o.unit)) do
                     local value, label = v.value, v.text
                     local box = sub:CreateCheckbox(label, function() return Picked(slot, value) end, function()
                         BT.Toggle(o.db(), o.bar, slot, o.style(), value, false, FirstOnly(), o.oldKey, o.unit)

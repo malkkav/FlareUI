@@ -329,16 +329,17 @@ function UF.FormatBarText(fs, mode, cur, percent, max, unit)
         fs:SetFormattedText("%.0f%%", percent)
     elseif mode == "value" then
         fs:SetText(ns.ShortNumber(cur))
-    elseif mode == "valuelost" then
-        -- Value | Health Lost: "1234 | -216", the value alone at full health. A secret amount lost
-        -- can't be checked for 0 in Lua, so it shows as it is.
+    elseif mode == "valuelost" or mode == "percentlost" then
+        -- A readable zero deficit leaves just the current health or percent.
         local lost
         if unit then
             lost = UnitHealthMissing(unit, true)
         elseif canaccessvalue(cur) and canaccessvalue(max) and cur and max then
             lost = max - cur
         end
-        if lost == nil or (canaccessvalue(lost) and lost <= 0) then
+        if mode == "percentlost" then
+            ns.BarText.FormatPercentLost(fs, percent, lost)
+        elseif canaccessvalue(lost) and (lost == nil or lost <= 0) then
             fs:SetText(ns.ShortNumber(cur))
         else
             fs:SetFormattedText("%s | -%s", ns.ShortNumber(cur), ns.ShortNumber(lost))
@@ -1173,11 +1174,11 @@ function UF.HealthSource(unit, slots)
     UF.healthSrc = src
     src.cur, src.max = UnitHealth(unit), UnitHealthMax(unit)
     src.percent, src.lost, src.lostAlpha = nil, nil, nil
-    if not slots or UF.SlotsWant(slots, "percent") then src.percent = UnitHealthPercent(unit, true, percentCurve) end
-    if not slots or UF.SlotsWant(slots, "lost") then
-        src.lost = UnitHealthMissing(unit, true)
-        src.lostAlpha = UnitHealthPercent(unit, true, UF.LostCurve())
-    end
+    local percentLost = slots and UF.SlotsWant(slots, "percentlost")
+    local lost = not slots or UF.SlotsWant(slots, "lost")
+    if not slots or percentLost or UF.SlotsWant(slots, "percent") then src.percent = UnitHealthPercent(unit, true, percentCurve) end
+    if lost or percentLost then src.lost = UnitHealthMissing(unit, true) end
+    if lost then src.lostAlpha = UnitHealthPercent(unit, true, UF.LostCurve()) end
     return src
 end
 function UF.PowerSource(unit, powerType, slots)

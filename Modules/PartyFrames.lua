@@ -3333,6 +3333,8 @@ local function BuildSettings()
     if group and group.showPlayer ~= nil then showPlayerDefault = group.showPlayer end
 
     local Section, settings = K.EditSections()
+    local healthTextModes = { unpack(K.HEALTH_TEXT_MODES) }
+    healthTextModes[#healthTextModes + 1] = { text = ns.BarText.LABELS.percentlost, value = "percentlost", isRadio = true }
 
     Section("Party", {
         { name = L["Party Style"], kind = LEM.SettingType.Dropdown, default = "classic",
@@ -3473,7 +3475,7 @@ local function BuildSettings()
         -- Name Above Frames (BarText.lua): Classic tiles, not Raid Style nor Forever Style's plate
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
-        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = K.HEALTH_TEXT_MODES, get = getS("healthText"), set = setS("healthText"),
+        { name = L["Health Text"], kind = LEM.SettingType.Dropdown, default = D.healthText, values = healthTextModes, get = getS("healthText"), set = setS("healthText"),
           hidden = function() return not IsRaidStyle() end },
         -- (Raid Style's default is None, as on the raid frames: TilePowerMode)
         { name = L["Power Text"], kind = LEM.SettingType.Dropdown, default = builtKey == "raid" and "none" or "value", values = K.POWER_TEXT_MODES,

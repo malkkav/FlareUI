@@ -3301,6 +3301,11 @@ ns.Copy = {
             desc = L["Which way the frames grow from the first member."],
             label = L["Growth"],
         },
+        ["uf.party.healthText"] = {
+            choices = { L["Percent | Health Lost"] },
+            desc = L["The numbers on the health bar."],
+            label = L["Health Text"],
+        },
         ["uf.party.pets"] = {
             desc = L["A small frame for each pet, under its owner."],
             label = L["Pets"],
