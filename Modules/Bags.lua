@@ -1815,22 +1815,23 @@ local function BagFrames()
 end
 
 --------------------------------------------------
--- 4a. VENDOR: WARN BEFORE SELLING SET GEAR
+-- 4a. VENDOR: SALE WARNINGS FOR SET GEAR AND QUEST ITEMS
 -- Bag right-clicks and drops on the merchant use different Blizzard scripts. Wrap the sale
 -- entry points only at an open vendor, then let Blizzard handle the confirmed sale and any refund.
 --------------------------------------------------
 do
     local Sale = {}
-    Bags.SellSetGear = Sale
-    ns.modules["SellSetGear"] = Sale
+    Bags.VendorSaleWarning = Sale
+    ns.modules["VendorSaleWarning"] = Sale
 
-    local dialog = "FLAREUI_SELL_SET_GEAR"
+    local dialog = "FLAREUI_CONFIRM_VENDOR_SALE"
     local wrapped = {}
     local events
 
     local function Active()
         local db = GetDb()
-        return db and db.warnSellSetGear and ns.BagModuleOn() and MerchantFrame and MerchantFrame:IsShown()
+        return db and (db.warnSellSetGear or db.warnSellQuestItems) and ns.BagModuleOn()
+            and MerchantFrame and MerchantFrame:IsShown()
     end
 
     local function SlotLocation(button)
@@ -1868,14 +1869,54 @@ do
         if #names > 0 then return table.concat(names, ", ") end
     end
 
+    local function FindQuestUseItem(location)
+        if not (GetQuestLogSpecialItemInfo and C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return end
+        local itemID = C_Item.GetItemID(location)
+        if not itemID then return end
+        -- Match the usable item's link by ID. Quest objective text doesn't expose item IDs.
+        for logIndex = 1, C_QuestLog.GetNumQuestLogEntries() do
+            local quest = C_QuestLog.GetInfo(logIndex)
+            if quest and not quest.isHeader then
+                local link = GetQuestLogSpecialItemInfo(logIndex)
+                if type(link) == "string" and tonumber(link:match("item:(%d+)")) == itemID then
+                    return true, quest.title
+                end
+            end
+        end
+    end
+
+    local function QuestReason(location)
+        local bag, slot = location:GetBagAndSlot()
+        local info = bag and C_Container and C_Container.GetContainerItemQuestInfo
+            and C_Container.GetContainerItemQuestInfo(bag, slot)
+        local questID = info and info.questID
+        local title = questID and C_QuestLog and C_QuestLog.GetTitleForQuestID(questID)
+        -- Blizzard shows its quest-starter icon when a slot has a quest ID and the quest isn't active.
+        if questID and not info.isActive then
+            return title and title ~= "" and L["This item starts %s."]:format(title) or L["This item starts a quest."]
+        end
+
+        local isUseItem
+        if not title or title == "" then isUseItem, title = FindQuestUseItem(location) end
+        if title and title ~= "" then return L["This item is used for %s."]:format(title) end
+        -- Some quest items have a bag marker without a matching quest ID or title.
+        if questID or isUseItem or (info and info.isQuestItem) then return L["This is a quest item."] end
+    end
+
     local function Confirm(frame, nativeClick, fromCursor, location, ...)
         local guid = ItemGUID(location)
-        local sets = guid and SetNames(location)
-        if not sets then return false end
+        if not guid then return false end
+        local db = GetDb()
+        local sets = db.warnSellSetGear and SetNames(location)
+        local quest = db.warnSellQuestItems and QuestReason(location)
+        if not (sets or quest) then return false end
+
         local item = C_Item.GetItemLink(location) or L["Item"]
+        local text = sets and L["Sell %s? This item is saved in %s."]:format(item, sets) or L["Sell %s?"]:format(item)
+        if quest then text = text .. " " .. quest end
         local request = { guid = guid, fromCursor = fromCursor, tab = MerchantFrame.selectedTab, frame = frame,
             click = nativeClick, args = { ... } }
-        ns.ShowDialog(dialog, L["Sell %s? This item is saved in %s."]:format(item, sets), request)
+        ns.ShowDialog(dialog, text, request)
         return true
     end
 

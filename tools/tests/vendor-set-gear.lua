@@ -97,13 +97,13 @@ merchantItem:SetScript("OnDragStart", drop)
 local originalBagClick = gear:GetScript("OnClick")
 
 ui:load("Modules/Bags.lua", ns)
-assert(ns.modules.SellSetGear, "FlareUI registers the sale warning at login"):Init()
+assert(ns.modules.VendorSaleWarning, "FlareUI registers the sale warning at login"):Init()
 merchant:Show()
 gear:RunScript("OnClick", "RightButton")
 assert(#sales == 1 and not prompt and gear:GetScript("OnClick") == originalBagClick, "opt-out leaves native scripts intact")
 
 db.warnSellSetGear = true
-ns.Bags.SellSetGear.Refresh()
+ns.Bags.VendorSaleWarning.Refresh()
 gear:RunScript("OnClick", "RightButton")
 assert(#sales == 1 and prompt and prompt.text:find("[Steel Chestplate]", 1, true), "right-click waits for confirmation")
 assert(prompt.text:find("Tank", 1, true) and prompt.text:find("Healing", 1, true), "prompt names every set using the item")
@@ -164,11 +164,11 @@ merchant.selectedTab = 1
 ui.cursor = location(0, 1)
 merchant:RunScript("OnReceiveDrag")
 db.warnSellSetGear = false
-ns.Bags.SellSetGear.Refresh()
+ns.Bags.VendorSaleWarning.Refresh()
 assert(not prompt and not ui.cursor and #sales == 5, "turning the option off cancels a pending sale")
 assert(gear:GetScript("OnClick") == originalBagClick, "turning the option off restores the native bag click")
 db.warnSellSetGear = true
-ns.Bags.SellSetGear.Refresh()
+ns.Bags.VendorSaleWarning.Refresh()
 
 ui.cursor = location(0, 1)
 merchantItem:RunScript("OnDragStart")
@@ -203,4 +203,74 @@ assert(replacementSlot:GetScript("OnClick") == originalReplacementClick, "closin
 ui:emit("GLOBAL_MOUSE_DOWN", "RightButton")
 assert(replacementSlot:GetScript("OnClick") == originalReplacementClick, "clicking outside a vendor does not wrap it again")
 
-print("PASS: opt-in sale confirmation for set gear from bag clicks and vendor drops")
+-- Exercise quest protection independently of the equipment-set option.
+local questItems = { [0] = {}, [1] = { [1] = { questID = 23 } } }
+env.C_Container = { GetContainerItemQuestInfo = function(bag, index)
+    return questItems[bag][index] or { isQuestItem = false, isActive = false }
+end }
+local questTitles = { [23] = "The Lost Satchel" }
+env.C_QuestLog = { GetTitleForQuestID = function(id) return questTitles[id] end }
+
+db.warnSellSetGear = false
+db.warnSellQuestItems = false
+merchant:Show()
+local beforeQuestSales = #sales
+duplicate:RunScript("OnClick", "RightButton")
+assert(not prompt and #sales == beforeQuestSales + 1, "quest warnings are opt-in")
+beforeQuestSales = #sales
+
+db.warnSellQuestItems = true
+ns.Bags.VendorSaleWarning.Refresh()
+duplicate:RunScript("OnClick", "RightButton")
+assert(#sales == beforeQuestSales and prompt and prompt.text:find("starts The Lost Satchel", 1, true),
+    "quest starter right-click identifies the quest and waits")
+answer(false)
+assert(#sales == beforeQuestSales, "cancel keeps the quest starter")
+
+questItems[1][1] = { isQuestItem = true, isActive = true }
+ui.cursor = location(1, 1)
+merchant:RunScript("OnReceiveDrag")
+assert(#sales == beforeQuestSales and prompt and prompt.text:find("quest item", 1, true),
+    "a dragged quest item still warns when the client supplies no title")
+answer(true)
+assert(#sales == beforeQuestSales + 1 and not ui.cursor, "accept resumes the native quest-item drop")
+beforeQuestSales = #sales
+
+questItems[0][1] = { isQuestItem = true, questID = 23, isActive = true }
+ui:emit("GLOBAL_MOUSE_DOWN", "RightButton")
+replacementSlot:RunScript("OnClick", "RightButton")
+assert(prompt and prompt.text:find("used for The Lost Satchel", 1, true)
+    and not prompt.text:find("Tank", 1, true), "quest warnings also work in replacement bags with set protection off")
+answer(false)
+db.warnSellSetGear = true
+replacementSlot:RunScript("OnClick", "RightButton")
+assert(prompt and prompt.text:find("Tank", 1, true) and prompt.text:find("The Lost Satchel", 1, true),
+    "an item with both protections displays both reasons in a single prompt")
+items[0][1] = "new-gear-guid"
+answer(true)
+assert(#sales == beforeQuestSales, "a stale quest confirmation cannot sell the replacement item")
+items[0][1] = "gear-guid"
+
+questItems[1][1] = nil
+duplicate:RunScript("OnClick", "RightButton")
+assert(not prompt and #sales == beforeQuestSales + 1, "unrelated items sell normally with both warnings enabled")
+beforeQuestSales = #sales
+
+-- The quest log can expose an exact usable-item link without flagging the bag slot.
+env.C_Item.GetItemID = function(loc) return loc:GetBagAndSlot() == 1 and 789 or 456 end
+env.C_QuestLog.GetNumQuestLogEntries = function() return 2 end
+env.C_QuestLog.GetInfo = function(index)
+    if index == 1 then return { isHeader = true } end
+    return { title = "A Signal for Help", questID = 24 }
+end
+env.GetQuestLogSpecialItemInfo = function(index)
+    assert(index == 2, "quest headers do not have usable items")
+    return "|Hitem:789:0|h[Signal Flare]|h"
+end
+duplicate:RunScript("OnClick", "RightButton")
+assert(prompt and #sales == beforeQuestSales and prompt.text:find("used for A Signal for Help", 1, true),
+    "an exact quest-log item link warns even when the bag slot has no quest flag")
+answer(false)
+merchant:Hide()
+
+print("PASS: opt-in confirmations for equipment set gear and quest items")

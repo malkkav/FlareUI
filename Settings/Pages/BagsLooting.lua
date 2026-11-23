@@ -134,8 +134,13 @@ S:Row{ key = "qol.sellJunk", half = true, module = "bl", tab = "bags", section =
 S:Row{ key = "qol.merchantKnown", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.merchantKnown", apply = Refresh }
 S:Row{ key = "qol.bulkBuy", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.bulkBuy", apply = Refresh }
 S:Row{ key = "qol.merchantWide", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.merchantWide", reload = true }
+local function RefreshVendorWarnings()
+    if ns.Bags and ns.Bags.VendorSaleWarning then ns.Bags.VendorSaleWarning.Refresh() end
+end
 S:Row{ key = "qol.warnSellSetGear", module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellSetGear",
-    apply = function() if ns.Bags and ns.Bags.SellSetGear then ns.Bags.SellSetGear.Refresh() end end }
+    apply = RefreshVendorWarnings }
+S:Row{ key = "qol.warnSellQuestItems", module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellQuestItems",
+    apply = RefreshVendorWarnings }
 
 -- LOOTING ----------------------------------------
 S:Row{ key = "bl.fastLoot", half = true, tab = "looting", path = "tweaks.fasterLoot", apply = Refresh }

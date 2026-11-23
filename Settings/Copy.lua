@@ -2505,6 +2505,11 @@ ns.Copy = {
             reload = true,
             section = "qol.scale",
         },
+        ["qol.warnSellQuestItems"] = {
+            desc = L["Asks before selling quest items, quest starters, and usable items linked in your quest log when you right-click a bag slot or drag an item to a vendor."],
+            label = L["Warn Before Selling Quest Items"],
+            section = "qol.vendor",
+        },
         ["qol.warnSellSetGear"] = {
             desc = L["Asks before selling gear from a saved equipment set when you right-click a bag slot or drag it to a vendor. Works with Blizzard's bags and addons that use Blizzard's item buttons."],
             label = L["Warn Before Selling Set Gear"],

@@ -1073,6 +1073,7 @@ local defaults = {
             syncUI = false,             -- account-wide copy of character-specific Blizzard settings
             sellJunk = false,
             warnSellSetGear = false,    -- Warn Before Selling Set Gear: confirm manual vendor sales of equipment set items
+            warnSellQuestItems = false, -- Warn Before Selling Quest Items: confirm manual vendor sales of quest-related items
             autoRepair = false,
             maxCameraZoom = false,      -- Better Camera's old switch: on becomes cameraMaxZoom 2.6 (Tweaks.lua ApplyCamera)
             fasterCameraZoom = false,   -- ...and cameraZoomSpeed 50. The two sliders have no default: nil = Blizzard's own

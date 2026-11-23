@@ -1,4 +1,4 @@
--- The equipment-set warning is an independent, live Vendor option.
+-- The sale warnings are independent, live Vendor options.
 local function noop() end
 local env = setmetatable({
     LibStub = noop,
@@ -8,7 +8,7 @@ local refreshed = 0
 local ns = {
     L = setmetatable({}, { __index = function(_, key) return key end }),
     db = { profile = { tweaks = { bagModule = true } } },
-    Bags = { SellSetGear = { Refresh = function() refreshed = refreshed + 1 end } },
+    Bags = { VendorSaleWarning = { Refresh = function() refreshed = refreshed + 1 end } },
 }
 for _, path in ipairs({ "Settings/Copy.lua", "Settings/Registry.lua", "Settings/Fonts.lua", "Settings/Pages/BagsLooting.lua" }) do
     setfenv(assert(loadfile(path)), env)("FlareUI", ns)
@@ -28,6 +28,22 @@ assert(tweaks.warnSellSetGear == true and row:Get() == true and not tweaks.sellJ
 row:Set(false)
 assert(tweaks.warnSellSetGear == false and row:Get() == false and settings:PendingCount() == 0,
     "disabling the warning takes effect without a reload")
-assert(refreshed == 2, "both toggles refresh protection at an open vendor")
+assert(refreshed == 2, "both changes refresh protection at an open vendor")
 
-print("PASS: the equipment-set sale warning is an opt-in Vendor setting")
+local quest = assert(settings.rows["qol.warnSellQuestItems"], "Vendor has a setting for the quest-item warning")
+assert(quest.module == "bl" and quest.tab == "bags" and quest.section == "qol.vendor" and quest.kind == "toggle")
+assert(not quest:IsDisabled() and not quest:Get(), "the quest warning is off in existing profiles")
+assert(quest:Label() == "Warn Before Selling Quest Items" and quest:Description():find("drag", 1, true),
+    "the Vendor setting describes the quest-item warning")
+
+quest:Set(true)
+assert(tweaks.warnSellQuestItems == true and quest:Get() == true and not row:Get(),
+    "the quest warning can be enabled by itself")
+row:Set(true)
+quest:Set(false)
+assert(tweaks.warnSellQuestItems == false and quest:Get() == false and row:Get() == true,
+    "turning off the quest warning leaves the equipment-set warning enabled")
+assert(not tweaks.sellJunk and settings:PendingCount() == 0 and refreshed == 5,
+    "each warning updates at an open vendor without reloading or changing Auto Sell Junk")
+
+print("PASS: equipment-set and quest-item sale warnings are independent opt-in Vendor settings")
