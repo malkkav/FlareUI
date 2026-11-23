@@ -137,9 +137,9 @@ S:Row{ key = "qol.merchantWide", half = true, module = "bl", tab = "bags", secti
 local function RefreshVendorWarnings()
     if ns.Bags and ns.Bags.VendorSaleWarning then ns.Bags.VendorSaleWarning.Refresh() end
 end
-S:Row{ key = "qol.warnSellSetGear", module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellSetGear",
+S:Row{ key = "qol.warnSellSetGear", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellSetGear",
     apply = RefreshVendorWarnings }
-S:Row{ key = "qol.warnSellQuestItems", module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellQuestItems",
+S:Row{ key = "qol.warnSellQuestItems", half = true, module = "bl", tab = "bags", section = "qol.vendor", path = "tweaks.warnSellQuestItems",
     apply = RefreshVendorWarnings }
 
 -- LOOTING ----------------------------------------

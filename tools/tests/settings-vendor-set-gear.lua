@@ -32,6 +32,7 @@ assert(refreshed == 2, "both changes refresh protection at an open vendor")
 
 local quest = assert(settings.rows["qol.warnSellQuestItems"], "Vendor has a setting for the quest-item warning")
 assert(quest.module == "bl" and quest.tab == "bags" and quest.section == "qol.vendor" and quest.kind == "toggle")
+assert(row.half and quest.half, "both vendor warnings use the same two-column row")
 assert(not quest:IsDisabled() and not quest:Get(), "the quest warning is off in existing profiles")
 assert(quest:Label() == "Warn Before Selling Quest Items" and quest:Description():find("drag", 1, true),
     "the Vendor setting describes the quest-item warning")
