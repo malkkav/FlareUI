@@ -88,9 +88,11 @@ env.C_Item = {
     GetItemCount = function(id) return bag[id] or 0 end,
     GetItemIconByID = function(id) return id + 2000000 end,
     GetItemNameByID = function(id) return "Item " .. id end,
-    GetItemSpell = function(id) return id == 123 and "Well Fed" or id == 124 and "Custom Buff" or nil end,
+    GetItemSpell = function(id)
+        return id == 123 and "Well Fed" or id == 124 and "Custom Buff" or id == 125 and "Drink" or nil
+    end,
     GetItemInfoInstant = function(id)
-        if id == 123 then return id, nil, nil, nil, nil, 0, 5 end
+        if id == 123 or id == 125 or id == 126 then return id, nil, nil, nil, nil, 0, 5 end
         return id, nil, nil, nil, nil, 2, 1
     end,
     GetWeaponEnchantInfo = function() return {} end,
@@ -210,9 +212,18 @@ custom:RunScript("OnMouseUp", "RightButton")
 menus["Remove This Reminder"]()
 assert(br.CustomCount() == 0)
 
-bag[123] = 3
+bag[123], bag[125], bag[126] = 3, 5, 2
+names[432] = "Drink"
+env.C_Item.UseItemByName(125)
+assert(not br.pendingFood)
+auras.player["Well Fed"] = { expirationTime = env.GetTime() + 500, duration = 900 }
+env.C_Item.UseItemByName(126)
+ui:emit("UNIT_AURA", "player")
+ui:flushTimers()
+assert(ns.CharDB().buffFood == nil and br.pendingFood.item == 126)
 env.C_Item.UseItemByName(123)
-auras.player["Well Fed"] = { expirationTime = 1000 }
+env.C_Item.UseItemByName(125)
+auras.player["Well Fed"] = { expirationTime = env.GetTime() + 900, duration = 900 }
 ui:emit("UNIT_AURA", "player")
 ui:flushTimers()
 assert(ns.CharDB().buffFood == 123 and not br.pendingFood)
