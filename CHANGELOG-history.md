@@ -1,6 +1,16 @@
 # FlareUI changelog history
 
-Versions 7.0.1 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.2 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.2
+
+A quick hotfix for four things 7.0.1 broke or missed. Thanks for reporting them so fast.
+
+## Fixed
+- **Quest Tracker:** a left click on a quest opens it again. 7.0.1 only showed "Open your quest log to read this quest" for most quests.
+- **Bags:** the crafting bag shows its items in the combined backpack again (**Crafting Bag in Backpack**). 7.0.1 left the section empty when you opened only the backpack.
+- **Nameplates:** **Full Name** is a choice in the plate's **Health Text**, so friendly players can show their surname. 7.0.1 drew it but left it out of the list.
+- **Nameplates:** the raid marker sits right beside full plates. The **Defensives** icons now go past it instead of pushing it far to the left.
 
 # FlareUI 7.0.1
 

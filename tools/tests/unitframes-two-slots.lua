@@ -105,4 +105,49 @@ missing = false
 draw()
 UF.DrawSample(f, "addon")
 assert(f.ShiftMana:IsShown() and Ring.PlateDrop(f) == 0 and not plate:IsShown())
+
+-- /fui druidbar: the same on a class without it, nothing saved
+ns.UnitShownLevel = function() return 43 end
+ns.UnitLevelColor = function() end
+ns.SetHighLevelText = function() end
+env.UnitAffectingCombat = env.UnitAffectingCombat or function() end
+env.IsResting = env.IsResting or function() end
+env.UnitThreatSituation = env.UnitThreatSituation or function() end
+local said = {}
+env.print = function(text) said[#said + 1] = text end
+db.units.player.shiftMana = nil
+power = 0
+UF.PlayerFrame = function() end
+UF.ShiftManaTest()
+assert(said[1]:find("is off", 1, true) and not UF.shiftTest)
+local other = UF.CreateSample(env.UIParent, "player")
+other.fuiSample = nil
+UF.PlayerFrame = function() return other end
+local redrawn = 0
+UF.Redraw = function(frame)
+    redrawn = redrawn + 1
+    frame.fuiSample = true
+    assert(UF.DrawSample(frame, "forever"))
+    frame.fuiSample = nil
+end
+ui.combat = true
+UF.ShiftManaTest()
+assert(not other.ShiftMana and not UF.shiftTest, "made out of a fight")
+ui.combat = false
+UF.ShiftManaTest()
+assert(redrawn == 1 and other.ShiftMana and other.shiftTestOnly and UF.shiftTest)
+assert(other.ShiftMana:IsShown() and other.ShiftMana:GetValue() == 0.7 and Ring.PlateDrop(other) > 0 and Ring.PlateReserve(other) > 0)
+assert(other.ShiftManaText:GetText() ~= nil and db.units.player.shiftMana == nil)
+-- off and on again in a fight, as shifting is
+ui.combat = true
+UF.ShiftManaTest()
+assert(not other.ShiftMana:IsShown() and Ring.PlateDrop(other) == 0 and not UF.shiftTest)
+UF.ShiftManaTest()
+assert(other.ShiftMana:IsShown() and redrawn == 1)
+ui.combat = false
+UF.ShiftManaTest()
+-- a druid's saved option means nothing on this class, whatever its power
+db.units.player.shiftMana, power = true, 1
+UF.UpdateShiftMana(other)
+assert(not other.ShiftMana:IsShown())
 print("PASS: Mana on Shapeshift in Forever Style has the plate's second power slot, below the frame")

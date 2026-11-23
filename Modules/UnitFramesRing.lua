@@ -1196,7 +1196,7 @@ local function BuildPlate(f)
     plate.pieces = {}
     for i = 1, (#PLATE.cutX - 1) * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
     -- the player's: the second power slot's corner under the ring (PLATE.two), behind the rest
-    if f.ShiftMana then
+    if f.ShiftMana or (f.fuiUnit == "player" and not f.fuiSample and not f.ctx) then
         plate.underFrom = #plate.pieces
         for i = 1, 2 do plate.pieces[plate.underFrom + i] = plate:CreateTexture(nil, "BACKGROUND", nil, -1) end
         plate.UnderMask = plate:CreateMaskTexture()
@@ -1302,7 +1302,8 @@ end
 -- the room it needs while its option is on, shown or not
 function Ring.PlateReserve(f)
     local udb = f and f.ShiftMana and Db(f)
-    if not (udb and udb.shiftMana and Ring.Plate(f) and Ring.TwoSlots()) then return 0 end
+    local test = ns.UnitFrames and ns.UnitFrames.shiftTest
+    if not (udb and (udb.shiftMana or test) and Ring.Plate(f) and Ring.TwoSlots()) then return 0 end
     return PLATE.two.drop * Geometry(f).s
 end
 

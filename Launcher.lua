@@ -223,6 +223,9 @@ loader:SetScript("OnEvent", function(self)
         elseif msg == "range" then
             -- a developer's probe for target / focus range fading (UnitFrames.lua), for bug reports
             if ns.UnitFrames and ns.UnitFrames.RangeReport then ns.UnitFrames.RangeReport() end
+        elseif msg == "druidbar" then
+            -- a developer's test: Mana on Shapeshift on any class (UnitFrames.lua)
+            if ns.UnitFrames and ns.UnitFrames.ShiftManaTest then ns.UnitFrames.ShiftManaTest() end
         elseif msg == "plates" then
             -- what the Nameplates module sees, for bug reports (Nameplates.lua)
             if ns.Nameplates and ns.Nameplates.Report then ns.Nameplates.Report() end

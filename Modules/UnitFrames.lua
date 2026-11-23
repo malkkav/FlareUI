@@ -428,6 +428,7 @@ end
 -- 4. HELPERS
 --------------------------------------------------
 local frames = {}          -- unit -> frame
+function UF.PlayerFrame() return frames.player end
 local pendingLayout = false   -- false, or the name of the last layout step a fight put off (UF.lastPendingWhy, for /fui perf trace)
 local LayoutAuras          -- defined in 7
 
@@ -4908,11 +4909,14 @@ function UF.ShiftManaHeight(f)
 end
 function UF.ShiftManaShown(f)
     if not f.ShiftMana then return false end
+    -- (/fui druidbar: shown on any class; made for that test, it shows for nothing else)
+    local test = UF.shiftTest and f.fuiUnit == "player" and not f.fuiSample
+    if f.shiftTestOnly and not test then return false end
     local udb = GetUnitDb(f.fuiUnit)
-    if not (udb and udb.shiftMana) then return false end
+    if not (udb and (udb.shiftMana or test)) then return false end
     -- Forever Style: in the plate's second slot, if the client has its art
     if ns.UFRing and ns.UFRing.Plate(f) and not ns.UFRing.TwoSlots() then return false end
-    if ns.EditPreviewing() then return true end
+    if test or ns.EditPreviewing() then return true end
     local powerType = UnitPowerType("player")
     if not canaccessvalue(powerType) then return f.ShiftMana:IsShown() end
     return powerType ~= Enum.PowerType.Mana
@@ -5066,6 +5070,24 @@ local function LayoutBars(f)
     end
 end
 
+-- the bar, its line and its texts (a druid's player frame; /fui druidbar makes them on any class)
+function UF.CreateShiftMana(f)
+    local level = f:GetFrameLevel()
+    f.ShiftMana = CreateBar(f, level + 1)
+    f.ShiftMana:Hide()
+    f.ShiftManaSeparator = f.Overlay:CreateTexture(nil, "ARTWORK")
+    f.ShiftManaSeparator:SetTexture(SEPARATOR_TEXTURE)
+    f.ShiftManaSeparator:SetVertexColor(1, 1, 1, 1)
+    f.ShiftManaSeparator:Hide()
+    -- its number (Power Text) on a layer above the strip, so it comes and goes with it
+    local textLayer = CreateFrame("Frame", nil, f.ShiftMana)
+    textLayer:SetAllPoints()
+    textLayer:SetFrameLevel(level + 5)
+    f.ShiftManaText = UF.NewText(textLayer)
+    f.ShiftManaTextLeft = UF.NewText(textLayer)
+    f.ShiftManaTextMid = UF.NewText(textLayer)
+end
+
 -- Shows or hides the bar (re-laying the frame when that changes) and feeds its values
 function UF.UpdateShiftMana(f)
     local bar = f.ShiftMana
@@ -5077,8 +5099,17 @@ function UF.UpdateShiftMana(f)
     end
     if not shown then return end
     local mana = Enum.PowerType.Mana
-    bar:SetMinMaxValues(0, UnitPowerMax("player", mana))
     local udb = GetUnitDb(f.fuiUnit)
+    if f.shiftTestOnly then
+        -- (the test on a class with no mana: a sample)
+        bar:SetMinMaxValues(0, 1)
+        bar:SetValue(0.7)
+        local c = ns.MANA_BLUE
+        bar:SetStatusBarColor(c[1], c[2], c[3])
+        UF.FillSlots(f, "mana", UF.SampleSource(0.7, 4800))
+        return
+    end
+    bar:SetMinMaxValues(0, UnitPowerMax("player", mana))
     ns.SetBarValue(bar, UnitPower("player", mana), not appeared and udb and udb.smoothBars)
     local r, g, b = ns.PowerColor("MANA", mana)
     bar:SetStatusBarColor(r or ns.MANA_BLUE[1], g or ns.MANA_BLUE[2], b or ns.MANA_BLUE[3])
@@ -5315,6 +5346,26 @@ local function LayoutFrame(f)
 end
 
 --------------------------------------------------
+-- 10b. /fui druidbar: Mana on Shapeshift shown on any class, for looking at it without a druid. Each call
+-- turns it on or off, in a fight too (as shifting does); nothing is saved, a /reload ends it.
+--------------------------------------------------
+function UF.ShiftManaTest()
+    local f = UF.PlayerFrame and UF.PlayerFrame()
+    local function Say(text) print("|cff33ff99FlareUI:|r " .. text) end
+    if not f then Say("the player frame is off.") return end
+    if not f.ShiftMana then
+        if InCombatLockdown() then Say("out of a fight the first time.") return end
+        UF.CreateShiftMana(f)
+        f.shiftTestOnly = true
+        UF.Redraw(f)
+    end
+    UF.shiftTest = not UF.shiftTest or nil
+    UF.UpdateShiftMana(f)
+    if not InCombatLockdown() and UF.AttachPlayerExtras then UF.AttachPlayerExtras() end
+    Say("druid mana bar test " .. (UF.shiftTest and "on" or "off") .. ". /fui druidbar again " .. (UF.shiftTest and "hides" or "shows") .. " it; it works in a fight too.")
+end
+
+--------------------------------------------------
 -- 11. BLIZZARD EXTRAS THAT FOLLOW OUR FRAMES
 -- PlayerBottomManagedFrameContainer (anchored to PlayerFrame) goes under the player frame.
 --------------------------------------------------
@@ -5329,6 +5380,7 @@ local function AttachExtras(f)
         end
     end
 end
+function UF.AttachPlayerExtras() if frames.player then AttachExtras(frames.player) end end
 
 local extrasHooked = false
 local function HookExtras()
@@ -5716,21 +5768,7 @@ local function CreateUnitFrame(unit)
     BuildBody(f)
     local level, overlay = f:GetFrameLevel(), f.Overlay
 
-    if unit == "player" and PlayerClass() == "DRUID" then
-        f.ShiftMana = CreateBar(f, level + 1)
-        f.ShiftMana:Hide()
-        f.ShiftManaSeparator = overlay:CreateTexture(nil, "ARTWORK")
-        f.ShiftManaSeparator:SetTexture(SEPARATOR_TEXTURE)
-        f.ShiftManaSeparator:SetVertexColor(1, 1, 1, 1)
-        f.ShiftManaSeparator:Hide()
-        -- its number (Power Text) on a layer above the strip, so it comes and goes with it
-        local textLayer = CreateFrame("Frame", nil, f.ShiftMana)
-        textLayer:SetAllPoints()
-        textLayer:SetFrameLevel(level + 5)
-        f.ShiftManaText = UF.NewText(textLayer)
-        f.ShiftManaTextLeft = UF.NewText(textLayer)
-        f.ShiftManaTextMid = UF.NewText(textLayer)
-    end
+    if unit == "player" and PlayerClass() == "DRUID" then UF.CreateShiftMana(f) end
 
     if info.portrait then
         BuildPortrait(f)

@@ -50,9 +50,10 @@ BT.DEFAULTS = {
         health = { middle = { value = true, max = true } },
         power = { middle = { value = true, max = true } },
     },
-    -- (11-23, Malkkav) raid tiles (the raid frames, the party's Raid Style): the Centre slot only, no
-    -- name (it sits on top of the tile); both start empty, as their old Health / Power Text did
+    -- (11-23, Malkkav) raid frames: the Centre slot only, no name (it sits on top of the tile); the
+    -- party's Raid Style: all three, no name. Both start empty, as their old Health / Power Text did
     tile = { health = {}, power = {} },
+    partytile = { health = {}, power = {} },
 }
 -- the slots each style offers in its Edit Mode dropdown
 BT.STYLE_SLOTS = { tile = { "middle" } }
@@ -297,8 +298,9 @@ function BT.StatusSlot(slots)
 end
 
 -- Fills { left, middle, right } texts from a bar's slots; status (Dead, Offline) in place of the numbers
-function BT.FillAll(texts, slots, src, status)
-    local statusSlot = status and BT.StatusSlot(slots) or "middle"
+-- at: the status's slot, when the frame has its own place for it (the party's Raid Style: the middle)
+function BT.FillAll(texts, slots, src, status, at)
+    local statusSlot = at or (status and BT.StatusSlot(slots)) or "middle"
     for _, slot in ipairs(BT.SLOTS) do
         local fs = texts[slot]
         if status then

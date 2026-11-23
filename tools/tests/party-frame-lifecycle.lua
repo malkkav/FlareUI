@@ -111,20 +111,55 @@ ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(a:GetWidth() == party.raid.width and holder:GetWidth() > a:GetWidth())
 assert(a.Power:IsShown() and not b.Power:IsShown(), "Raid Style's mana-only excludes warriors")
--- (11-23) the same tiles leave Classic: its Left / Middle texts go, Raid Style's Centre pick shows alone
-assert(a.btTexts and a.btTexts.health, "Classic made its slot texts")
-for _, bar in ipairs({ "health", "power" }) do
-    local t = a.btTexts[bar]
-    if t then assert(not t.left:IsShown() and not t.middle:IsShown(), bar .. ": Classic texts left on a Raid Style tile") end
+-- Raid Style (11-23, Malkkav): all three text places, as Classic, with no name in them
+local slotTexts = a.btTexts.health
+for _, slot in ipairs({ "left", "middle", "right" }) do assert((slotTexts[slot]:GetText() or "") == "", slot .. ": empty to start, nothing left of Classic's") end
+local function refreshHealth()
+    pf:Refresh()
+    a:RunScript("OnEvent", "UNIT_HEALTH", "party1")
+    for _, frame in ipairs(ui.widgets) do
+        if frame:IsVisible() then frame:RunScript("OnUpdate", 0.1) end
+    end
 end
+-- a pick made with the old Centre-only picker stays in the middle
 ns.BarText.Toggle(party.raid, "health", "middle", "tile", "percent", false, nil, nil, "party")
+refreshHealth()
+assert((slotTexts.middle:GetText() or ""):find("%%") and slotTexts.middle:IsShown(), "the Centre pick: " .. tostring(slotTexts.middle:GetText()))
+assert((slotTexts.right:GetText() or "") == "")
+ns.BarText.Toggle(party.raid, "health", "left", "partytile", "max", false, nil, nil, "party")
+ns.BarText.Toggle(party.raid, "health", "right", "partytile", "value", false, nil, nil, "party")
+refreshHealth()
+assert(slotTexts.right == a.HealthText and (slotTexts.right:GetText() or "") ~= "" and (slotTexts.left:GetText() or "") ~= "")
+local function spot(fs) local p, anchor, r, _, dy = fs:GetPoint() return p, anchor, r, dy end
+local lp, lf, lr, ly = spot(slotTexts.left)
+assert(lp == "LEFT" and lf == a.Health and lr == "LEFT" and ly == -4, "under the name on top of the tile")
+assert(select(1, spot(slotTexts.middle)) == "CENTER" and select(1, spot(slotTexts.right)) == "RIGHT")
+assert(select(2, a.Name:GetPoint()) == a.RoleIcon and a.Name:IsShown() and a.Name:GetText() == "Mira Reed", "the name stays on top, beside the role icon")
+-- no names in the list, and no level; the party's Show Name keeps deciding
+for _, v in ipairs(ns.BarText.Values("health", "partytile")) do assert(v.value ~= "fullname" and v.value ~= "firstname") end
+-- a slim power bar: its texts at the health bar's foot
+ns.BarText.Toggle(party.raid, "power", "left", "partytile", "percent", false, nil, nil, "party")
+party.raid.powerHeight = 6
 pf:Refresh()
-a:RunScript("OnEvent", "UNIT_HEALTH", "party1")
-for _, frame in ipairs(ui.widgets) do
-    if frame:IsVisible() then frame:RunScript("OnUpdate", 0.1) end
-end
-assert((a.HealthText:GetText() or ""):find("%%"), "the Centre pick: " .. tostring(a.HealthText:GetText()))
-assert(not a.btTexts.health.middle:IsShown())
+assert(a.btTexts.power.left:GetPoint() == "BOTTOMLEFT" and select(2, a.btTexts.power.left:GetPoint()) == a.Health)
+assert(a.btTexts.power.middle:GetPoint() == "BOTTOM")
+party.raid.powerHeight = 12
+pf:Refresh()
+assert(a.btTexts.power.left:GetPoint() == "LEFT" and select(2, a.btTexts.power.left:GetPoint()) == a.Power)
+party.raid.powerHeight = 6
+-- Dead and Offline stay in the middle
+unit.party1.offline = true
+local connected = env.UnitIsConnected
+env.UnitIsConnected = function(token) return token ~= "party1" and connected(token) end
+refreshHealth()
+assert((slotTexts.middle:GetText() or "") ~= "" and (slotTexts.left:GetText() or "") == "" and (slotTexts.right:GetText() or "") == "")
+env.UnitIsConnected, unit.party1.offline = connected, nil
+refreshHealth()
+assert((slotTexts.left:GetText() or "") ~= "")
+-- one Health Text and one Power Text row, whatever the style
+local rows = { ["Health Text"] = 0, ["Power Text"] = 0 }
+for _, entry in ipairs(holder.settings) do if rows[entry.name] then rows[entry.name] = rows[entry.name] + 1 end end
+assert(rows["Health Text"] == 1 and rows["Power Text"] == 1)
 holder.moved(holder, "Other", "CENTER", 20.6, -30)
 libEdit.callbacks.layout("Other")
 local point, _, _, x, y = holder:GetPoint()

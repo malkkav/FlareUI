@@ -443,7 +443,7 @@ local function UpdateName(f)
     -- the party frames pass "party" (first-name rules); raid and boss tiles show the whole name
     -- (bar text tiles: the slot's First Name or Full Name)
     local full = nil
-    if PF.SlotOn(f) then full = f.btFullName ~= false end
+    if PF.SlotOn(f) and not RaidTile(f) then full = f.btFullName ~= false end
     f.Name:SetText(SafeName(ns.UnitDisplayName(f.fuiUnit, not f.ctx and "party" or nil, full)))
     if f.NameAboveText then ns.NameAbove.SetName(f, PF.NameAboveDb(f), f.fuiUnit) end
 end
@@ -1954,8 +1954,7 @@ local function LayoutTexts(f)
         f.PowerText:SetPoint("CENTER", power, "CENTER", 0, 0)
         f.PowerText:SetJustifyH("CENTER")
     end
-    if PF.SlotOn(f) then PF.LayoutSlotTexts(f)
-    else PF.HideSlotTexts(f) end
+    if PF.SlotOn(f) then PF.LayoutSlotTexts(f) end
     -- Values on Mouseover (11-20): the old texts, and the slots' on slot tiles
     local list = { f.HealthText, f.PowerText }
     if PF.SlotOn(f) then
@@ -1971,15 +1970,16 @@ end
 -- ctx.TextDb(): the stored table (BT.Slots converts an old Health / Power Text choice into it once).
 -- The Right slot is the old HealthText / PowerText; Left and Middle are made here.
 PF.SLOT_RIGHT = { health = "HealthText", power = "PowerText" }
--- (11-20: the party's Classic tiles too, with no ctx; Raid Style keeps the single Health / Power Text)
+-- (11-20: the party's Classic tiles too, with no ctx; 11-23, Malkkav: and its Raid Style, whose name stays
+-- on top of the tile)
 -- the table holding a tile's Name Above Frames pick: its Bar Text's
 function PF.NameAboveDb(f) return f.ctx and f.ctx.TextDb and f.ctx.TextDb() or TS(f) end
 function PF.SlotOn(f)
     if not (f and ns.BarText) then return false end
     if f.ctx then return f.ctx.barText and true or false end
-    return f.index ~= nil and not RaidTile(f) or false   -- (the party's own tiles: live and samples)
+    return f.index ~= nil   -- (the party's own tiles: live and samples)
 end
--- RAID TILES (11-23, Malkkav: the party's Raid Style and the raid frames): the same picker with the
+-- RAID FRAMES (11-23, Malkkav): the same picker with the
 -- Centre slot only (BarText.lua style "tile"); the old Health / Power Text choice converts once. The
 -- tile's own HealthText / PowerText show it, where they always sat.
 PF.MID_DESC = L["What the middle of the bar shows. Several numbers show together, split by /."]
@@ -2013,24 +2013,16 @@ function PF.FillMid(f, bar, unit, powerType)
     ns.BarText.Fill(bar == "health" and f.HealthText or f.PowerText, set, src)
 end
 
+function PF.SlotStyle(f)
+    return OnPlate(f) and "plate" or RaidTile(f) and "partytile" or "plain"
+end
 function PF.TileSlots(f, bar)
     f.btSlots = f.btSlots or {}
     if not f.btSlots[bar] then
         local db = f.ctx and f.ctx.TextDb() or TS(f)
-        f.btSlots[bar] = ns.BarText.Slots(db, bar, OnPlate(f) and "plate" or "plain", nil, nil, f.ctx and f.ctx.textUnit or "party")
+        f.btSlots[bar] = ns.BarText.Slots(db, bar, PF.SlotStyle(f), nil, nil, f.ctx and f.ctx.textUnit or "party")
     end
     return f.btSlots[bar]
-end
--- (11-23) a tile that leaves the slots (the party switched from Classic to Raid Style: the same tiles
--- are kept) clears and hides the Left and Middle texts Classic made; the Right one is its own
--- HealthText / PowerText, which Raid Style uses
-function PF.HideSlotTexts(f)
-    for _, t in pairs(f.btTexts or {}) do
-        for _, slot in ipairs({ "left", "middle" }) do
-            if t[slot] then t[slot]:SetText("") t[slot]:Hide() end
-        end
-    end
-    f.btSlots = nil
 end
 function PF.TileSlotTexts(f, bar)
     f.btTexts = f.btTexts or {}
@@ -2048,7 +2040,7 @@ function PF.LayoutSlotTexts(f)
     local BT = ns.BarText
     local st = TS(f)
     f.btSlots = nil
-    local plate = OnPlate(f)
+    local plate, raid = OnPlate(f), RaidTile(f)
     local key = PF.FontKey(f)
     local near, far = Sides(f)
     -- off the plate Left is the name side (it follows Mirror), on the plate the bar's own end
@@ -2067,14 +2059,21 @@ function PF.LayoutSlotTexts(f)
             if slot ~= "right" then K.ApplyFont(fs, font) end
             fs:ClearAllPoints()
             fs:SetJustifyH(at)
-            fs:SetPoint(at, barFrame, at, Inset(at), 0)
+            if raid and bar == "power" and (st.powerHeight or 0) < 10 then
+                -- a slim power bar: at the health bar's foot
+                local foot = at == "CENTER" and "BOTTOM" or "BOTTOM" .. at
+                fs:SetPoint(foot, f.Health, foot, Inset(at), 2)
+            else
+                -- (Raid Style: the health texts a little under the middle, clear of the name on top)
+                fs:SetPoint(at, barFrame, at, Inset(at), raid and bar == "health" and -4 or 0)
+            end
             if bar == "power" then fs:SetShown(f.powerShown and true or false) else fs:Show() end
         end
     end
     -- the name: the plate keeps its name box (LayoutTexts); off it, in the slot holding a name pick,
     -- stopping short of the text across the bar
     f.btFullName = true
-    if plate then return end
+    if plate or raid then return end   -- (Raid Style: on top of the tile, as LayoutTexts placed it)
     local slots, texts = PF.TileSlots(f, "health"), PF.TileSlotTexts(f, "health")
     local nameSlot, pick
     for _, slot in ipairs(BT.SLOTS) do
@@ -2113,7 +2112,8 @@ function PF.FillHealthSlots(f, unit)
     local status
     if not UnitIsConnected(unit) then status = K.OFFLINE_TEXT
     elseif K.IsDead(unit) then status = UnitIsGhost(unit) and K.GHOST_TEXT or K.DEAD_TEXT end
-    ns.BarText.FillAll(texts, slots, (not status) and ns.UnitFrames.HealthSource(unit, slots) or nil, status)
+    ns.BarText.FillAll(texts, slots, (not status) and ns.UnitFrames.HealthSource(unit, slots) or nil, status,
+        RaidTile(f) and "middle" or nil)
 end
 function PF.FillPowerSlots(f, unit, powerType)
     local texts, slots = PF.TileSlotTexts(f, "power"), PF.TileSlots(f, "power")
@@ -2331,7 +2331,7 @@ local function LayoutMember(f)
     LayoutTexts(f)
     -- Name Above Frames (BarText.lua): the bar text tiles (party Classic, boss, flag carriers), not
     -- Forever Style's plate (its name box)
-    ns.NameAbove.Layout(f, (PF.SlotOn(f) and not OnPlate(f)) and PF.NameAboveDb(f) or nil, f, f.Name)
+    ns.NameAbove.Layout(f, (PF.SlotOn(f) and not OnPlate(f) and not RaidTile(f)) and PF.NameAboveDb(f) or nil, f, f.Name)
     LayoutIcons(f)
     if f.Cast then
         -- FlareUI Style: the cast bar ends where the ring starts at its height
@@ -2909,7 +2909,7 @@ ApplyPreview = function(f)
     -- Full Player Names on: the sample's surname too, as ns.UnitDisplayName joins them
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
     local full = not (uf and uf.fullNames == false)
-    if PF.SlotOn(f) then full = f.btFullName ~= false end
+    if PF.SlotOn(f) and not RaidTile(f) then full = f.btFullName ~= false end
     if data.surname and full then
         f.Name:SetText(data.name .. " " .. data.surname)
     else
@@ -2942,7 +2942,8 @@ ApplyPreview = function(f)
     f.HealthText:SetAlpha(1)
     if PF.SlotOn(f) then
         ns.BarText.FillAll(PF.TileSlotTexts(f, "health"), PF.TileSlots(f, "health"),
-            (not data.dead) and ns.UnitFrames.SampleSource(data.health or 1, 24000) or nil, data.dead and K.DEAD_TEXT or nil)
+            (not data.dead) and ns.UnitFrames.SampleSource(data.health or 1, 24000) or nil, data.dead and K.DEAD_TEXT or nil,
+            RaidTile(f) and "middle" or nil)
     elseif data.dead then
         f.HealthText:SetText(K.DEAD_TEXT)
     elseif PF.MidOn(f) then
@@ -3510,6 +3511,7 @@ local function BuildSettings()
 
     -- Forever Style (classic look): the plate keeps Blizzard's proportions; Scale sizes it
     local function onPlate() return PlateStyle() and not IsRaidStyle() end
+    local function textStyle() return IsRaidStyle() and "partytile" or onPlate() and "plate" or "plain" end   -- (as PF.SlotStyle)
     -- the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("party") or 100,
@@ -3568,37 +3570,15 @@ local function BuildSettings()
               return v
           end,
           set = setS("portrait"), hidden = classicOnly },
-        -- Classic: the unit frames' Left / Middle / Right slots (11-20; an old choice converts once,
-        -- BarText.lua BT.Slots). Raid Style keeps the single list (its name sits on top of the tile).
-        (function()
-            local item = ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "party", db = function() return (S()) end,
-                changed = function() Refresh() end, style = function() return onPlate() and "plate" or "plain" end })
-            item.hidden = IsRaidStyle
-            return item
-        end)(),
-        (function()
-            local item = ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "party", db = function() return (S()) end,
-                changed = function() Refresh() end, style = function() return onPlate() and "plate" or "plain" end })
-            item.hidden = IsRaidStyle
-            return item
-        end)(),
+        -- the unit frames' Left / Middle / Right slots, in both styles (11-20, 11-23; an old choice converts
+        -- once, BarText.lua BT.Slots). Raid Style's hold no name: it sits on top of the tile.
+        ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "party", db = function() return (S()) end,
+            changed = function() Refresh() end, style = textStyle }),
+        ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "party", db = function() return (S()) end,
+            changed = function() Refresh() end, style = textStyle }),
         -- Name Above Frames (BarText.lua): Classic tiles, not Raid Style nor Forever Style's plate
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
-        -- Raid Style (11-23, Malkkav): the same picker with the Centre slot only (PF.MidOn); the old
-        -- Health / Power Text choice converts once (BarText.lua style "tile")
-        (function()
-            local item = ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "party", db = function() return (S()) end,
-                changed = function() Refresh() end, style = function() return "tile" end, desc = PF.MID_DESC })
-            item.hidden = function() return not IsRaidStyle() end
-            return item
-        end)(),
-        (function()
-            local item = ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "party", db = function() return (S()) end,
-                changed = function() Refresh() end, style = function() return "tile" end, desc = PF.MID_DESC })
-            item.hidden = function() return not IsRaidStyle() end
-            return item
-        end)(),
         -- (Classic off the plate: the name is a Health Text pick)
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return getS("showName")() ~= false end, set = setS("showName"),
           hidden = function() return not (IsRaidStyle() or onPlate()) end },

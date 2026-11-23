@@ -25,7 +25,7 @@ ns.Tweaks = { UIScale = { Reset = record("reset") } }
 ns.Visibility = { DebugPlayer = function() record("fade")() end }
 ns.Minimap = { DebugLayers = function() record("map")() end }
 ns.RadialMenu = { PadLogCommand = record("padlog") }
-ns.UnitFrames = { RangeReport = record("range") }
+ns.UnitFrames = { RangeReport = record("range"), ShiftManaTest = record("druidbar") }
 ns.Nameplates = { Report = record("plates") }
 ns.db.profile.tweaks = { enabled = true, way = true }
 S:Module{ key = "ch", group = "interface" }
@@ -104,7 +104,7 @@ local actions = {
     { " ", "toggle" }, { "CM", "fcm" }, { "gamepad", "pad" }, { "tour", "tour" }, { " BUFFS ", "open", "br" },
     { "perf RecordA", "perf", " RecordA" }, { "fadedebug", "fade" }, { "mapdebug", "map" }, { "scale reset", "reset" },
     { "errors CLEAR", "errors", "clear" }, { "taint START", "taint", " start" }, { "padlog", "padlog" },
-    { "saylog SHOW", "saylog", " show" }, { "range", "range" }, { "plates", "plates" },
+    { "saylog SHOW", "saylog", " show" }, { "range", "range" }, { "plates", "plates" }, { "druidbar", "druidbar" },
 }
 for _, action in ipairs(actions) do command(action[1]); last(action[2], action[3]) end
 ui.fcm = true
