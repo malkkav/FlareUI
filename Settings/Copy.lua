@@ -2241,6 +2241,11 @@ ns.Copy = {
             label = L["Zone Text"],
             section = "qol.fonts",
         },
+        ["qol.flightDestinations"] = {
+            label = L["Flight Destination List"],
+            desc = L["Adds a list to the flight map. Search by destination or zone."],
+            section = "qol.mapMail",
+        },
         ["qol.gamepadPrompt"] = {
             desc = L["Pressing a controller button asks whether to switch to Blizzard's Gamepad UI."],
             label = L["Gamepad Mode Prompt"],

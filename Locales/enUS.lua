@@ -213,6 +213,7 @@ L["Addon Language"] = true
 L["Addon Reset"] = true
 L["Addons in the Drawer"] = true
 L["Adds \"Target: Name\" to unit tooltips."] = true
+L["Adds a list to the flight map. Search by destination or zone."] = true
 L["Adds item and spell IDs."] = true
 L["Adds the player's rank after their guild's name."] = true
 L["Adds your own frame to the party frames."] = true
@@ -778,6 +779,7 @@ L["FlareUI's XP bar, with your watched reputation or honor:\n* Off: Blizzard's b
 L["Flash When Targeted"] = true
 L["Flashes the taskbar and plays a sound for:\n* Ready checks\n* Summons and resurrections\n* Group invites\n* Dungeon queues"] = true
 L["Flask"] = true
+L["Flight Destination List"] = true
 L["Flight time: %s"] = true
 L["Flight Timer"] = true
 L["Flip Portrait"] = true

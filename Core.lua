@@ -1143,6 +1143,7 @@ local defaults = {
             skipGossip = false,         -- Skip Gossip: a lone banker / vendor / trainer... option is picked at once (Tweaks.lua GOSSIP_SHOW)
             deleteJunkWhenFull = false, -- Delete Junk When Full: bags full, a loot click deletes the cheapest grey item first (JunkDelete.lua)
             taxiMap = false,            -- Open Flight Map at Once: a flight master with no quests skips its talk
+            flightDestinations = false, -- Searchable destinations on the flight map
             fishCast = false,           -- Double-click to fish: a second right-click casts with a pole in hand
             fishSound = false,          -- Fishing sounds: music and ambience down, effects up while fishing
             combatPlates = false,       -- Enemy Nameplates in Combat Only
