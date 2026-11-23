@@ -167,6 +167,7 @@ S:Row{
         S:SetPath("objectivetracker.autoMinimize.combat", set.combat and "minimize" or "none")
         S:SetPath("objectivetracker.autoMinimize.taxi", set.taxi and "minimize" or "none")
     end,
+    resetValue = function() return "none" end,
 }
 
 local trackerKey = S:BindingAccessors("FLAREUI_TRACKER")

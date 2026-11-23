@@ -38,7 +38,8 @@ Row{ key = "br.consumables", tab = "reminders",
     get = ConsumablesOn,
     set = function(on)
         S:SetPath("auras.reminder.consumables", on and (S:GetPath("auras.reminder.consumablesWhere") or "instance") or "off")
-    end }
+    end,
+    resetValue = function() return false end }
 -- which elixirs are watched, and each or any one of them
 Row{ key = "br.elixirSource", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
     choices = { "ticked", "bags" }, disabled = function() return not ConsumablesOn() end }
@@ -147,7 +148,8 @@ Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",
     set = function(value)
         local set = ns.Conditions.Set(value)
         for _, role in ipairs(ROLE_ORDER) do S:SetPath("auras.reminder." .. ROLE_KEYS[role], set[role] == true) end
-    end }
+    end,
+    resetValue = function() return "none" end }
 
 -- ALERTS --------------------------------------
 Row{ key = "br.sound", kind = "choice", tab = "when", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
