@@ -21,6 +21,7 @@ jobs:
 
   release:
     needs: tests
+    environment: release     # secrets live in the release environment (needs Malkkav's approval)
     runs-on: ubuntu-latest
     permissions:
       contents: write          # to create the GitHub release
