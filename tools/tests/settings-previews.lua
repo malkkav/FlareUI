@@ -6,7 +6,13 @@ local profile = ns.db.profile
 E.UnitName = function(unit) assert(unit == "player"); return "Tester" end
 ns.HEALTH_GREEN = { 0.2, 0.8, 0.2 }
 ns.ObjectiveTracker = { SampleColors = { TITLE = { 1, 1, 1 }, TITLE_FOCUS = { 0, 0.5, 1 },
-    ZONE = { 1, 0.8, 0 }, OBJECTIVE = { 0.9, 0.9, 0.9 } } }
+    ZONE = { 1, 0.8, 0 }, OBJECTIVE = { 0.9, 0.9, 0.9 } },
+    -- (11-23) the Colour Scheme's sources: Blizzard's colours, FlareUI's bronze picks
+    blizzColors = { HEADING = { 1, 0.82, 0 }, ZONE = { 1, 0.82, 0 }, TITLE = { 1, 0.82, 0 }, TITLE_DONE = { 0.13, 1, 0.13 },
+        TITLE_FOCUS = { 0.3, 0.6, 1 }, OBJECTIVE = { 0.8, 0.8, 0.8 }, OBJECTIVE_DONE = { 0.55, 0.55, 0.55 } },
+    SCHEME_BRONZE = { HEADING = "bronze5", ZONE = "bronze5", TITLE = "bronze4" } }
+ns.PALETTE = { bronze4 = { 0.7, 0.5, 0.3 }, bronze5 = { 0.8, 0.6, 0.35 } }
+ns.SoftColor = function(r, g, b) return r * 0.8, g * 0.8, b * 0.8 end
 ui:load("Settings/PreviewSamples.lua", ns)
 
 local c = P.Create(E.UIParent, 280, 270)
@@ -28,6 +34,24 @@ assert(original == o.chatLine1 and not shown(o.combatTab) and profile.chat.hideC
     "new settings render on cached objects without saving the preview value")
 draw("chat", "ch.minAlpha", 0.35, "chat.minAlpha")
 assert(c.frame:GetAlpha() == 0.35)
+c.frame:SetAlpha(1)
+-- (11-23) Frame Style, Header Buttons, Edit Box Style and Border, Icons and Tab Glow
+draw("chat", "ch.frameStyle", "flareui", "chat.frameStyle")
+assert(shown(o.chatStrip) and shown(o.chatFoot) and o.chatBox:GetBackdrop().edgeFile == "border/FlareUI Thick")
+draw("chat", "ch.frameStyle", "modern", "chat.frameStyle")
+assert(not shown(o.chatStrip))
+draw("chat", "ch.headerButtons", "volume")
+assert(shown(o.chatHeader4) and not shown(o.chatHeader1) and not shown(o.chatHeader2), "only the hovered pick")
+draw("chat", "ch.editBoxStyle", "flareui", "chat.editBoxStyle")
+assert(shown(o.editMid) and shown(o.editLeft))
+draw("chat", "ch.editBoxBorder", "thick")
+assert(not shown(o.editMid) and o.editBox:GetBackdrop().edgeFile == "border/FlareUI Thick")
+draw("chat", "ch.icons", "raceIcons")
+assert(text(o.chatLine1, "SCOURGE") and not text(o.chatLine1, "ClassIcon_Mage"), "the hovered icon pick")
+draw("chat", "ch.unreadGlow", "guild", "chat.unreadGlow")
+assert(text(o.chatTab2, "Guild") and shown(o.chatTabGlow))
+draw("chat", "ch.unreadGlow", "none", "chat.unreadGlow")
+assert(not shown(o.chatTabGlow))
 
 profile.tooltips = { showThreat = true, showTarget = true, showGuild = true, showGuildRank = true, nameColor = "class" }
 draw("tooltip", "tt.healthBar", "inside")
@@ -48,6 +72,21 @@ local _, _, _, opacity = o.trackerBox:GetBackdropColor()
 assert(opacity == 0, "the Blizzard tracker style has no painted background")
 draw("tracker", "qt.minimizeButton")
 assert(o.trackerBox:GetHeight() == 35 and o.trackerTitle:GetText() == "+" and not shown(o.objective2))
+-- (11-23) the header buttons, the Colour Scheme, the complete tag, a finished objective, the scroll bar
+profile.objectivetracker = { frameStyle = "flareui" }
+draw("tracker", "qt.overview")
+assert(shown(o.trackerFold) and shown(o.trackerBtn_sort) and shown(o.trackerBtn_filter) and not shown(o.trackerBtn_accept))
+assert(text(o.quest1, "(Complete)") and shown(o.objectiveDone) and shown(o.trackerScroll))
+local r = o.trackerTitle:GetTextColor()
+assert(math.abs(r - 0.8) < 1e-6, "FlareUI scheme: the bronze heading, got " .. tostring(r))
+draw("tracker", "qt.colorScheme", "blizzard")
+r = o.trackerTitle:GetTextColor()
+assert(r == 1, "hovering Blizzard: Blizzard's gold heading, got " .. tostring(r))
+draw("tracker", "qt.headerButtons", "accept,turnin")
+assert(shown(o.trackerBtn_accept) and shown(o.trackerBtn_turnin) and not shown(o.trackerBtn_sort), "a hovered Header Buttons pick")
+profile.objectivetracker = { frameStyle = "flareui", showCompleteTag = false, hideFinished = true, hideScrollBar = true }
+draw("tracker", "qt.overview")
+assert(not text(o.quest1, "(Complete)") and not shown(o.objectiveDone) and not shown(o.trackerScroll))
 
 profile.damagemeter = { threatValueDisplay = "percent", threatTankLead = true, threatPullLine = true }
 draw("meter", "dm.pullFlash", true, "damagemeter.threatPullFlash")
@@ -74,12 +113,37 @@ draw("minimap", "mm.clockStats")
 assert(text(map.clockFPS, "60 fps") and text(map.clockWorld, "36 ms") and not shown(map.drawer))
 draw("minimap", "mm.microMenu")
 assert(text(map.microText, "Spellbook"))
+-- (11-23) the Info Bar: no cells, no bar (unless a bar row is hovered); its cells, box and place
+assert(not shown(map.infoBar), "no Info Bar with every cell None")
+profile.minimap.infoBar = { left = "gold", center = "coords", right = "fps" }
+draw("minimap", "mm.barLeft")
+assert(text(map.infoLeft, "128g") and text(map.infoCenter, "45.3, 62.1") and text(map.infoRight, "60 fps") and shown(map.infoBar))
+local overY = select(3, map.infoBar:GetPoint())
+draw("minimap", "mm.barBelow", true, "minimap.infoBarBelow")
+local belowY = select(3, map.infoBar:GetPoint())
+assert(belowY < overY, "Below the Map puts it lower")
+draw("minimap", "mm.barBox", false, "minimap.infoBarBox")
+assert(not shown(map.infoBar) and text(map.infoCenter, "45.3"), "Show Box off: the text alone")
+profile.minimap.style = "round"
+draw("minimap", "mm.barCenter")
+assert(text(map.infoCenter, "45.3") and not shown(map.infoLeft) and not shown(map.infoRight), "the round map: Centre only")
+profile.minimap.style, profile.minimap.infoBar = nil, nil
 
 profile.tweaks = { bagColumns = 6, bagKeyring = true, bagReagent = true, bagButtons = true, bagJunkIcon = true, petFood = true, bagThickBorders = true }
 draw("bags", "bl.bagView")
-assert(shown(o.bagItem18) and not shown(o.bagItem19) and shown(o.junk) and shown(o.petFood))
+-- (11-23) 18 slots, the last two empty with their bag's picture
+assert(shown(o.bagItem16) and not shown(o.bagItem17) and shown(o.bagEmpty17) and shown(o.bagEmpty18) and not shown(o.bagItem19))
+assert(shown(o.junk) and shown(o.petFood))
+assert(not shown(o.bagIlvl) and not shown(o.bagBoE) and not shown(o.bagEye), "the sword's marks are off")
 assert(o.bagBorder1:GetBackdrop().edgeFile == "border/FlareUI Thick")
 assert(text(o["tweaks.bagKeyringTitle"], "Keyring") and text(o["tweaks.bagReagentTitle"], "Crafting Bag") and shown(o.bagButton4))
+profile.tweaks.bagItemLevel, profile.tweaks.bagBoE, profile.tweaks.bagUncollected = true, true, true
+draw("bags", "bl.bagItemLevel")
+assert(text(o.bagIlvl, "18") and text(o.bagBoE, "BoE") and shown(o.bagEye), "the sword shows its marks")
+profile.tweaks.bagCombineEmpty = true
+draw("bags", "bl.bagCombineEmpty")
+assert(shown(o.bagEmpty17) and not shown(o.bagEmpty18) and text(o.bagFree, "2"), "one combined empty slot with the free count")
+profile.tweaks.bagCombineEmpty, profile.tweaks.bagItemLevel, profile.tweaks.bagBoE, profile.tweaks.bagUncollected = nil, nil, nil, nil
 draw("lootFeed", "bl.lootFeed")
 assert(text(o.feedOff, "Disabled"))
 draw("lootFeed", "bl.lootFeedQuality", 3, "tweaks.lootFeedQuality")
@@ -93,6 +157,25 @@ draw("lootRolls", "bl.lootRolls", true, "tweaks.lootRolls")
 assert(o.rollsWin.rock:GetAlpha() == 1 and text(o.rollsRowResulta, "Tester") and text(o.rollsRowResultb, "Miri"))
 c.frame:RunScript("OnUpdate", 6)
 assert(o.rollsTime:GetText() == "15" and o.rollsTimer:GetValue() == 0.5)
+-- (11-23) the loot window: off says so; on, its rows take the Bags marks; Show Free Bag Slots adds
+-- the footer in place of the money row
+draw("lootWindow", "bl.lootWindow")
+assert(text(o.lootWinOff, "Disabled"))
+profile.tweaks.lootWindow, profile.tweaks.bagItemLevel, profile.tweaks.bagBoE = true, true, false
+draw("lootWindow", "bl.lootWindow")
+assert(shown(o.lootWinPanel) and text(o.lootWinName1, "Silver") and o.lootWinPanel.rock:GetAlpha() == 1)
+assert(shown(o.lootWinMarks2.ilvl) and not shown(o.lootWinMarks2.boe) and shown(o.lootWinMarks4.junk))
+assert(text(o.lootWinName3, "(4)"), "the owned count always shows")
+profile.tweaks.lootWindowFreeSlots = true
+draw("lootWindow", "bl.lootWindowFreeSlots")
+assert(shown(o.lootWinFree) and not text(o.lootWinName1, "Silver"), "the footer takes the money row's room")
+profile.tweaks.lootWindow, profile.tweaks.lootWindowFreeSlots = nil, nil
+-- (11-23) the Buff Reminders page's own rows route to its preview (they kept old au.* keys before)
+for _, key in ipairs({ "br.group", "br.before", "br.consumables", "br.upkeepPick" }) do
+    local spec = P.Resolve({ key = key, Get = function() return nil end })
+    assert(spec and spec.kind == "reminders", key .. " has no preview")
+end
+assert(P.Module("br").kind == "reminders")
 
 profile.radialmenu = { showNames = true }
 draw("radial", "rm.scale", 1.5, "radialmenu.scale")

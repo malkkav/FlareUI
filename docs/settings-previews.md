@@ -18,17 +18,18 @@ ordinary hover updates help text without redrawing the specimen or restarting it
 | Section | Preview |
 | --- | --- |
 | Unit Frames | Three rendered styles using the production ring atlas coordinates, class/palette colours, separate player/pet/target examples and fade |
-| Minimap | Interior terrain specimen with separately rendered square/round borders, coordinates and overlay buttons; the complete canonical layout scales down for cards |
+| Minimap | Interior terrain specimen with separately rendered square/round borders, coordinates and overlay buttons; the Info Bar (Left/Centre/Right cells, Show Box, Below the Map, Centre only inside the round map); the complete canonical layout scales down for cards |
 | Buffs & Debuffs / unit auras | Production aura renderer: shapes, timers, swipe; sample arrival and cooldown bar |
-| Chat | Border, background opacity, input position, formatting, header buttons and faded opacity |
+| Chat | Frame Style (FlareUI strip art or Modern), border, background opacity, Edit Box Style and Border, input position, formatting, Icons, Header Buttons, Tab Glow and faded opacity |
 | Tooltips | Character/item sample, client tooltip art, colours, health bar, details, scale and anchor diagram |
-| Quest Tracker | Sample quests, borders, zone headers, tags, wrapping, counts, buttons and minimized form |
+| Quest Tracker | Sample quests in the Colour Scheme, borders, header icons (Header Buttons), zone headers, tags, the complete tag, a finished objective, the scroll bar, wrapping, counts, buttons and minimized form |
 | Damage Meter | Three sample rows, frame styling, chat tab/header controls, threat text, line and warning |
 | Action Bars | Sample buttons with artwork, bindings, macro labels, status colours, end caps and proc glow |
 | Experience | Bar texture, value format and quest XP segment |
 | Resource Bars | Health/power/swing samples and production combo point widgets |
-| Quality of Life | Bag columns/gaps/borders/badges and nameplate name/level/quest/combo examples |
+| Quality of Life | Bag columns/gaps/borders/badges, item level, BoE, uncollected, empty slots (plain or combined), and nameplate name/level/quest/combo examples |
 | Radial Options | Client wheel art and separate round icons, relative scale and name visibility; behavioural settings keep the wheel unchanged |
+| Loot Window | Sample panel with money and item rows: the icon edge and marks follow the Bags options (Skin Item Slots, Item Level, Junk, BoE, Uncollected), the owned count, and the free bag slots footer |
 | Fonts | Selected face, size, outline and shadow on names, values and timer text |
 
 Rendered style specimens show representative layouts, not every per-character Edit Mode customization.

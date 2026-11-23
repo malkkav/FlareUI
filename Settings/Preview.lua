@@ -15,11 +15,11 @@ end
 Route('unit', 'uf', 'frameStyle palette simplePet simpleTargetOf')
 Route('unitAuras', 'uf', 'auraShape auraSwipe auraTimer auraTimerColor')
 Route('auras', 'au', 'shape swipe timer timerColor arrive')
-Route('minimap', 'mm', 'style squareBorder bagAddons clockStats microMenu coords fps bagHover')
+Route('minimap', 'mm', 'style squareBorder bagAddons clockStats microMenu coords fps bagHover barLeft barCenter barRight barBox barBelow')
 Route('minimapDrawer', 'mm', 'drawerStyle flareButton bagButtonSize')
-Route('chat', 'ch', 'opacity border editBoxOpacity editBox lineHeight formatNPC formatPlayer timestamps channelNames raceIcons classIcons linkIcons whisperMarkers levels social channels menu volume copyButton combatLog minAlpha')
+Route('chat', 'ch', 'opacity border frameStyle editBoxOpacity editBox editBoxStyle editBoxBorder lineHeight formatNPC formatPlayer timestamps channelNames icons whisperMarkers levels headerButtons copyButton combatLog minAlpha unreadGlow')
 Route('tooltip', 'tt', 'scale anchor healthBar borders classNames showThreat showTarget showGuild showGuildRank showPvP showFaction shortItemStats healingDamage itemLevel ids compareShift showWorld showFrames showBars')
-Route('tracker', 'qt', 'opacity border frameStyle zoneHeaders tags wrap count hideLevel questButtons minimizeButton colorNames')
+Route('tracker', 'qt', 'opacity border frameStyle zoneHeaders tags wrap count hideLevel questButtons minimizeButton colorNames colorScheme headerButtons completeTag hideFinished hideScrollBar')
 Route('meter', 'dm', 'opacity border minAlpha chatTab combatTimer readyCheck countdown threatValue pullLine pullFlash tankLead')
 Route('actions', 'ab', 'buttonScale')
 Route('cdm', 'cdm', 'skin barColor softOverlay effectCooldown keybinds press')
@@ -29,11 +29,13 @@ Route('actions', 'qol', 'gryphons')   -- (QoL > Hide Clutter)
 Route('xp', 'ab', 'xpBar xpText xpNumbers xpQuest xpBubbles')
 Route('frames', 'uf', 'main party raid boss castbar tot tof')
 Route('resources', 'rb', 'health power mana combo swingMain swingOff swingRanged seal flight timer')
-Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagView bagSkinSlots bagJunkIcon petFood bagKeyring bagReagent')
+Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagView bagSkinSlots bagJunkIcon petFood bagKeyring bagReagent bagItemLevel bagBoE bagUncollected bagPlainEmpty bagCombineEmpty')
 Route('nameplate', 'qol', 'npCombo npQuest npNames npLevel npLevelName npCombat')
-Route('reminders', 'au', 'reminders reminderGroup reminderBefore reminderConsumables reminderCamping reminderGathering reminderGlow reminderGlowExpiring')
+-- (11-23: Buff Reminders has had its own page, "br", since 11-10; the old au.* keys showed nothing)
+Route('reminders', 'br', 'group before consumables upkeepPick')
 Route('lootFeed', 'bl', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')
 Route('lootRolls', 'bl', 'lootRolls')
+Route('lootWindow', 'bl', 'lootWindow lootWindowFreeSlots')
 Route('radial', 'rm', 'scale names')
 
 -- How tall the drawn picture is, from the canvas's top to the lowest thing shown (the panel sizes
@@ -81,7 +83,8 @@ function P.Resolve(row, value)
 end
 
 local defaults = { uf = 'unit', mm = 'minimap', ch = 'chat', tt = 'tooltip', qt = 'tracker',
-    dm = 'meter', ab = 'actions', rb = 'resources', au = 'auras', rm = 'radial', np = 'nameplates', cdm = 'cdm' }
+    dm = 'meter', ab = 'actions', rb = 'resources', au = 'auras', rm = 'radial', np = 'nameplates', cdm = 'cdm',
+    br = 'reminders' }
 function P.Module(module)
     local kind = defaults[module]
     return kind and { kind = kind, key = module .. '.overview' } or nil

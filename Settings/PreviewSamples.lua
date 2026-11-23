@@ -292,6 +292,41 @@ function R.minimap(outer, spec)
         c:Box('microPanel', x + 45, y + 65, 154, 72, 'FlareUI Frames', 0.95)
         c:Text('microText', L["Character"] .. '\n' .. L["Spellbook"] .. '\n' .. L["Game Menu"], x + 54, y + 74, 130, { size = 12 })
     end
+    -- (11-23) the Info Bar: Left, Centre and Right cells over the map's bottom edge, or under the map
+    -- (Below the Map); the round map keeps the Centre cell alone, inside the circle, unless below it.
+    -- Show Box puts the plate behind them.
+    if not card then
+        local SAMPLE = { gold = '|cffffd56b128g|r', bags = '42/80', durability = '92%', fps = '60 fps', latency = '32 ms',
+                         coords = '45.3, 62.1', coordsSimple = '45, 62', xp = '62%' }
+        local below = Get('minimap.infoBarBelow')
+        local cells = {}
+        for _, side in ipairs({ 'left', 'center', 'right' }) do
+            local v = Get('minimap.infoBar.' .. side, 'none')
+            if round and not below and side ~= 'center' then v = 'none' end
+            cells[side] = SAMPLE[v]
+        end
+        local barRow = spec.key and spec.key:find('^mm%.bar')
+        if cells.left or cells.center or cells.right or barRow then
+            local bw = round and not below and 120 or size - 8
+            local bx = x + (size - bw) / 2
+            local by = below and y + size + 2 or (round and y + size - 52 or y + size - 22)
+            if Get('minimap.infoBarBox', true) ~= false then
+                local plate = c:Box('infoBar', bx, by, bw, 18, 'FlareUI Thin', 0.85)
+                plate:SetFrameLevel(c.overlay:GetFrameLevel() + 1)
+            end
+            local function Cell(id, value, cx, justify, w)
+                if not value then return end
+                local t = c:Text(id, value, cx, by + 4, w or (bw / 3 - 6), { size = 10 })
+                t:SetJustifyH(justify)
+                t:SetWordWrap(false)
+            end
+            Cell('infoLeft', cells.left, bx + 5, 'LEFT')
+            -- (the round map's lone Centre cell takes the whole plate)
+            if round and not below then Cell('infoCenter', cells.center, bx + 3, 'CENTER', bw - 6)
+            else Cell('infoCenter', cells.center, bx + bw / 3 + 3, 'CENTER') end
+            Cell('infoRight', cells.right, bx + 2 * bw / 3 + 1, 'RIGHT')
+        end
+    end
     if not card then Note(outer) end
 end
 
@@ -350,10 +385,46 @@ end
 function R.auras(c, spec) Auras(c, false, spec) end
 function R.unitAuras(c, spec) Auras(c, true, spec) end
 
+-- (11-23) a toggle dropdown's picks, also while one is hovered: the hovered row's value, else read()
+local function Picks(spec, key, read)
+    if spec.key == key and type(spec.value) == 'string' then
+        local on = {}
+        for token in spec.value:gmatch('[^,]+') do on[token] = true end
+        return on
+    end
+    return read()
+end
+
 function R.chat(c, spec)
     local top, height = 43, 125
-    c:Box('chatBox', 4, top, c.width - 8, height, Get('chat.borderTexture'), Get('chat.opacity', 0.75))
+    -- Frame Style: FlareUI takes the tracker's look (FlareUI Thick, Blizzard's title strip behind the
+    -- tabs, a line along the bottom); Modern a plain frame with the chosen border
+    local flare = Get('chat.frameStyle', 'modern') == 'flareui'
+    c:Box('chatBox', 4, top, c.width - 8, height, flare and 'FlareUI Thick' or Get('chat.borderTexture'), Get('chat.opacity', 0.75))
+    if flare then
+        local OTC = ns.ObjectiveTracker and ns.ObjectiveTracker.C
+        local strip = Atlas(c, 'chatStrip', OTC and OTC.ART_TITLE or 'ui-questtracker-primary-objective-header', 12, top + 4, c.width - 24, 24)
+        strip:SetDrawLayer('BACKGROUND', 2)
+        c:Texture('chatFoot', 'Interface\\Common\\UI-TooltipDivider-Transparent', 12, top + height - 10, c.width - 24, 8, true)
+    end
     c:Text('chatTab', L["General"], 12, top + 8, c.width - 24, Font('chat.tabFont'))
+    -- Tab Glow: a second tab lit by a guild line while you read General (any pick lights it)
+    local glow = Picks(spec, 'ch.unreadGlow', function()
+        local on = {}
+        for token in tostring(Get('chat.unreadGlow', 'none')):gmatch('[^,]+') do on[token] = true end
+        return on
+    end)
+    glow.none = nil
+    if next(glow) and spec.key ~= 'ch.combatLog' then
+        local tab = c:Text('chatTab2', L["Guild"], 85, top + 8, 80, Font('chat.tabFont'))
+        tab:SetWordWrap(false)
+        local lit = c:Texture('chatTabGlow', ns.Chat and ns.Chat.UNREAD_GLOW or 'Interface\\ChatFrame\\ChatFrameTab-NewMessage', 79, top + 6, 54, 18)
+        lit:SetBlendMode('ADD')
+        lit:SetVertexColor(0.25, 1, 0.25, 0.8)
+    end
+    local icons = Picks(spec, 'ch.icons', function()
+        return { linkIcons = Get('chat.linkIcons'), raceIcons = Get('chat.raceIcons'), classIcons = Get('chat.classIcons') }
+    end)
     local stamp = Get('chat.betterTimestamps') and '[12:30] ' or ''
     local channelMode = Get('chat.channelNames', Get('chat.shortChannels') and 'number' or 'full')
     local channel = channelMode == 'number' and '[2] ' or channelMode == 'short' and '[2. Trade] ' or '[2. Trade - City] '
@@ -361,8 +432,8 @@ function R.chat(c, spec)
     if Get('chat.showLevel') then name = '(60) ' .. name end
     local spacing = math.max(Get('chat.increaseLineHeight') and 24 or 19, (Font('chat.chatFont').size or 12) + 4)
     local sampleName = name
-    if Get('chat.classIcons') then sampleName = '|TInterface\\Icons\\ClassIcon_Mage:12|t ' .. sampleName end
-    if Get('chat.raceIcons') then sampleName = '|TInterface\\CHARACTERFRAME\\TEMPORARYPORTRAIT-MALE-SCOURGE:12|t ' .. sampleName end
+    if icons.classIcons then sampleName = '|TInterface\\Icons\\ClassIcon_Mage:12|t ' .. sampleName end
+    if icons.raceIcons then sampleName = '|TInterface\\CHARACTERFRAME\\TEMPORARYPORTRAIT-MALE-SCOURGE:12|t ' .. sampleName end
     local colon = ' '
     for i, line in ipairs({ '|cff40ff40' .. stamp .. channel .. sampleName .. colon .. L["Ready?"] .. '|r',
         '|cff40ff40' .. stamp .. channel .. '[Aeloria]: ' .. L["Ready!"] .. '|r',
@@ -372,17 +443,34 @@ function R.chat(c, spec)
             t:SetWordWrap(false)
         end
     end
-    if spec.key == 'ch.icons' then c.objects.chatLine1:SetText((Get('chat.linkIcons') and '|TInterface\\Icons\\Spell_Frost_FrostBolt02:12|t ' or '') .. '|cff71d5ff[' .. L["Frostbolt"] .. ']|r') end
+    if spec.key == 'ch.icons' and c.objects.chatLine2 then c.objects.chatLine2:SetText((icons.linkIcons and '|TInterface\\Icons\\Spell_Frost_FrostBolt02:12|t ' or '') .. '|cff71d5ff[' .. L["Frostbolt"] .. ']|r') end
     if spec.key == 'ch.whisperMarkers' then c.objects.chatLine1:SetText((Get('chat.whisperMarkers') and '|cff40ff40> |r' or '') .. '|cffff80ff[Aeloria]: ' .. L["Ready?"] .. '|r') end
     local position = Get('chat.editBoxPosition', 'inside')
     local editY = position == 'above' and top - 27 or position == 'below' and top + height + 4 or top + height - 24
-    c:Box('editBox', 8, editY, c.width - 16, 23, 'FlareUI Thin', Get('chat.editBoxOpacity', 1))
+    -- Edit Box Style: FlareUI is Blizzard's own box (its three-part art); Modern a dark box with the
+    -- Edit Box Border (none, thin or thick; the chat's when never set: Chat.EditBoxBorder)
+    if Get('chat.editBoxStyle', 'modern') == 'flareui' then
+        c:Box('editBox', 8, editY, c.width - 16, 23, 'None', 0)
+        local art = 'Interface\\ChatFrame\\UI-ChatInputBorder-'
+        c:Texture('editLeft', art .. 'Left2', 4, editY - 4, 32, 32)
+        c:Texture('editRight', art .. 'Right2', c.width - 36, editY - 4, 32, 32)
+        c:Texture('editMid', art .. 'Mid2', 36, editY - 4, c.width - 72, 32)
+    else
+        local v = (spec.key == 'ch.editBoxBorder' and spec.value)
+            or (ns.Chat and ns.Chat.EditBoxBorder and ns.Chat.EditBoxBorder(S:GetPath('chat'))) or 'thin'
+        local file = (v == 'thick' and 'FlareUI Thick') or (v == 'none' and 'None') or 'FlareUI Thin'
+        c:Box('editBox', 8, editY, c.width - 16, 23, file, Get('chat.editBoxOpacity', 1))
+    end
     c:Text('editText', L["Say:"] .. ' ...', 14, editY + 5, c.width - 28, Font('chat.editBoxFont'))
     c.objects.editText:SetWordWrap(false)
     local buttonX = 12
-    for i, def in ipairs({ { 'chat.socialHide', 'ChatSocial', true }, { 'chat.channelHide', 'ChatChannels', true },
-        { 'chat.menuHide', 'ChatOptions', true }, { 'chat.showVolume', 'Volume-Speaker-High', false } }) do
-        if Get(def[1], not def[3]) ~= def[3] then
+    -- Header Buttons (one toggle dropdown since 11-16: social, channels, menu, volume)
+    local buttons = Picks(spec, 'ch.headerButtons', function()
+        return { social = not Get('chat.socialHide'), channels = not Get('chat.channelHide'),
+                 menu = not Get('chat.menuHide'), volume = Get('chat.showVolume') and true or false }
+    end)
+    for i, def in ipairs({ { 'social', 'ChatSocial' }, { 'channels', 'ChatChannels' }, { 'menu', 'ChatOptions' }, { 'volume', 'Volume-Speaker-High' } }) do
+        if buttons[def[1]] then
             c:Texture('chatHeader' .. i, P.MEDIA .. 'Icons\\' .. def[2], buttonX, 13, 18, 18)
             buttonX = buttonX + 24
         end
@@ -483,12 +571,65 @@ function R.tooltip(c, spec)
     Note(outer)
 end
 
+-- (11-23) the tracker's colours in a Colour Scheme (ObjectiveTracker.lua OT.ApplyColorScheme): Blizzard's,
+-- or FlareUI's (light bronze headings and titles, every other colour softer)
+local function TrackerColors(scheme)
+    local OT = ns.ObjectiveTracker
+    local out = {}
+    for _, key in ipairs({ 'HEADING', 'ZONE', 'TITLE', 'TITLE_DONE', 'TITLE_FOCUS', 'OBJECTIVE', 'OBJECTIVE_DONE' }) do
+        local from = OT.blizzColors and OT.blizzColors[key] or OT.SampleColors[key] or { 1, 1, 1 }
+        local r, g, b = from[1], from[2], from[3]
+        if scheme == 'flareui' then
+            local bronze = OT.SCHEME_BRONZE and OT.SCHEME_BRONZE[key] and ns.PALETTE and ns.PALETTE[OT.SCHEME_BRONZE[key]]
+            if bronze then r, g, b = bronze[1], bronze[2], bronze[3] elseif ns.SoftColor then r, g, b = ns.SoftColor(r, g, b) end
+        end
+        out[key] = { r, g, b }
+    end
+    return out
+end
+-- the header buttons shown (Header Buttons, also a hovered pick): filter, sort, accept, turnin
+local function TrackerButtons(spec)
+    if spec.key == 'qt.headerButtons' and type(spec.value) == 'string' then
+        local on = {}
+        for token in spec.value:gmatch('[^,]+') do on[token] = true end
+        return on
+    end
+    return { filter = Get('objectivetracker.headerFilter', true) ~= false, sort = Get('objectivetracker.headerSort', true) ~= false,
+             accept = Get('objectivetracker.autoAcceptButton') and true or false, turnin = Get('objectivetracker.autoTurnInButton') and true or false }
+end
+
 function R.tracker(c, spec)
-    local colors = ns.ObjectiveTracker.SampleColors
     local style = Get('objectivetracker.frameStyle') or 'flareui'
+    local scheme = style == 'blizzard' and 'blizzard'
+        or (spec.key == 'qt.colorScheme' and spec.value) or Get('objectivetracker.colorScheme') or 'flareui'
+    local colors = TrackerColors(scheme)
     local border = (style == 'blizzard' and 'None') or (style == 'flareui' and 'FlareUI Frames') or Get('objectivetracker.borderTexture')
     c:Box('trackerBox', 4, 12, c.width - 8, 184, border, style == 'blizzard' and 0 or Get('objectivetracker.opacity', 0.75))
-    c:Text('trackerTitle', L["Quests"] .. ' (2)', 12, 22, c.width - 24, Font('objectivetracker.headerFont')):SetTextColor(unpack(colors.TITLE))
+    c:Text('trackerTitle', L["Quests"] .. ' (2)', 12, 22, c.width - 24, Font('objectivetracker.headerFont')):SetTextColor(unpack(colors.HEADING))
+    -- (11-23) the header buttons, right to left as the tracker has them: the fold arrow, sort, filter,
+    -- then "?" and "!"; bronze or Blizzard's gold by the scheme (OT.IconColors)
+    do
+        local soft = scheme == 'flareui'
+        local h = colors.HEADING
+        local rest = soft and { 0.50, 0.38, 0.21 } or { h[1] * 0.75, h[2] * 0.75, h[3] * 0.75 }
+        local on, x, size = TrackerButtons(spec), c.width - 26, 13
+        local arrow = c:Texture('trackerFold', nil, x, 23, size, size, true)
+        if C_Texture.GetAtlasInfo('ui-questtrackerbutton-secondary-collapse') then arrow:SetAtlas('ui-questtrackerbutton-secondary-collapse') end
+        arrow:SetDesaturated(soft)
+        if soft then arrow:SetVertexColor(h[1], h[2], h[3], 1) end
+        for _, b in ipairs({ { 'sort', 'QTSort' }, { 'filter', 'QTFilter' }, { 'turnin', 'QTQuestion' }, { 'accept', 'QTExclaim' } }) do
+            if on[b[1]] then
+                x = x - size - 4
+                local icon = c:Texture('trackerBtn_' .. b[1], P.MEDIA .. 'Icons\\' .. b[2] .. '.tga', x, 23, size, size, true)
+                icon:SetVertexColor(rest[1], rest[2], rest[3], 1)
+            end
+        end
+        c.objects.trackerTitle:SetWidth(math.max(40, x - 16))
+    end
+    -- the scroll bar: a dark bronze thumb in the right margin, unless Hide Scroll Bar (or Blizzard style)
+    if style ~= 'blizzard' and not Get('objectivetracker.hideScrollBar') then
+        c:Texture('trackerScroll', nil, c.width - 9, 52, 2, 70, true):SetColorTexture(0.32, 0.24, 0.13, 1)
+    end
     if spec.key == 'qt.minimizeButton' then
         c.objects.trackerBox:SetHeight(35)
         c.objects.trackerTitle:SetText(Get('objectivetracker.minimizeStyle') == 'button' and '+' or L["Quests"])
@@ -498,6 +639,11 @@ function R.tracker(c, spec)
     if Get('objectivetracker.zoneHeaders') then c:Text('zone', L["Elwynn Forest"], 12, y, c.width - 24):SetTextColor(unpack(colors.ZONE)); y = y + 22 end
     for i, title in ipairs({ L["A Threat Within"], L["Kobold Camp Cleanup"] }) do
         local text = (Get('objectivetracker.hideLevel') and '' or '[5] ') .. title .. (Get('objectivetracker.showTags') and ' [G]' or '')
+        -- (11-23) the first quest is finished: Show Complete Tag adds the green "(Complete)"
+        if i == 1 and Get('objectivetracker.showCompleteTag') ~= false then
+            local tc = colors.TITLE_DONE
+            text = text .. (' |cff%02x%02x%02x'):format(tc[1] * 255, tc[2] * 255, tc[3] * 255) .. L["(Complete)"] .. '|r'
+        end
         local indent, right = 12, 12
         -- the voice button at the title's right end, as the tracker draws it (box, then Play inside)
         if Get('objectivetracker.playButtons') then
@@ -524,7 +670,17 @@ function R.tracker(c, spec)
         if y + h + (Font('objectivetracker.objectiveFont').size or 12) > 190 then t:Hide(); break end
         c:Text('objective' .. i, i == 1 and L["Speak to the Marshal"] or '4/8 ' .. L["Kobolds defeated"], 20, y + h, c.width - 32, Font('objectivetracker.objectiveFont')):SetWordWrap(false)
         c.objects['objective' .. i]:SetTextColor(unpack(colors.OBJECTIVE))
-        y = y + h + 30
+        -- (11-23) a finished objective, greyed, unless Show Completed Objectives is off
+        local extra = 0
+        if i == 2 and not Get('objectivetracker.hideFinished') then
+            local objH = (Font('objectivetracker.objectiveFont').size or 12) + 4
+            if y + h + 2 * objH < 190 then
+                c:Text('objectiveDone', '1/1 ' .. L["Kobold Candle"], 20, y + h + objH, c.width - 32, Font('objectivetracker.objectiveFont')):SetWordWrap(false)
+                c.objects.objectiveDone:SetTextColor(unpack(colors.OBJECTIVE_DONE))
+                extra = objH
+            end
+        end
+        y = y + h + 30 + extra
     end
     c.objects.trackerBox:SetHeight(math.min(184, y - 10))
     Note(c)
@@ -690,21 +846,55 @@ function R.bags(c)
     groupGap = groupGap * scale
     local size = 32 * scale
     gap = gap * scale
-    for i = 1, columns * 3 do
+    -- (11-23) the last two slots are empty: each with its bag's picture, or plain (Plain Empty Slots);
+    -- Combine Empty Slots shows one, with the free count on it
+    local total = columns * 3
+    local combine, plain = Get('tweaks.bagCombineEmpty'), Get('tweaks.bagPlainEmpty')
+    for i = 1, total do
         local x, y = 8 + ((i - 1) % columns) * (size + gap), 45 + math.floor((i - 1) / columns) * (size + gap) + (i > columns and groupGap or 0)
+        local empty = i > total - 2
+        if empty and combine and i == total then break end
+        if empty then
+            local slot = c:Texture('bagEmpty' .. i, nil, x, y, size, size, true)
+            if plain or combine then
+                slot:SetColorTexture(0.06, 0.05, 0.04, 0.9)
+            else
+                slot:SetTexture('Interface\\Icons\\INV_Misc_Bag_08')
+                slot:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                slot:SetDesaturated(true)
+                slot:SetVertexColor(1, 1, 1, 0.3)
+            end
+            if combine then c:Text('bagFree', '2', x + size * 0.5, y + size * 0.5, size * 0.45, { size = math.max(8, size * 0.4) }) end
+        else
         Icon(c, 'bagItem' .. i, ({ 'INV_Potion_54', 'INV_Misc_Bag_08', 'INV_Sword_04', 'INV_Misc_LeatherScrap_01' })[(i - 1) % 4 + 1], x, y, size)
+        end
         local border = c:Box('bagBorder' .. i, x, y, size, size, Get('tweaks.bagThickBorders') and 'FlareUI Thick' or 'FlareUI Thin', 0)
         local thick = Get('tweaks.bagThickBorders')
         local outset = (thick and 2 or 3) * scale
         border:ClearAllPoints(); border:SetPoint('TOPLEFT', x - outset, -(y - outset)); border:SetSize(size + 2 * outset, size + 2 * outset)
         border:SetBackdrop({ edgeFile = LibStub('LibSharedMedia-3.0'):Fetch('border', thick and 'FlareUI Thick' or 'FlareUI Thin'), edgeSize = (thick and 16 or 8) * scale })
         border:SetFrameLevel(c.overlay:GetFrameLevel() + 1)
-        if Get('tweaks.bagSkinSlots') ~= false then border:SetBackdropBorderColor(i % 2 == 0 and 0.1 or 0.64, i % 2 == 0 and 1 or 0.21, i % 2 == 0 and 0.1 or 0.93, 1) end
+        if Get('tweaks.bagSkinSlots') ~= false and not empty then border:SetBackdropBorderColor(i % 2 == 0 and 0.1 or 0.64, i % 2 == 0 and 1 or 0.21, i % 2 == 0 and 0.1 or 0.93, 1) end
         if i == 4 and Get('tweaks.petFood') then
             c:Texture('petFood', P.MEDIA .. 'Previews\\Focus.tga', x, y, size * 0.45, size * 0.45, true)
         end
         if i == 3 then c:Text('bagStack', '5', x + size * 0.55, y + size * 0.5, size * 0.45, { size = math.max(8, size * 0.4) }) end
         if i == 1 and Get('tweaks.bagJunkIcon') then c:Texture('junk', P.MEDIA .. 'Previews\\Coin.tga', x, y, size * 0.5, size * 0.5, true) end
+        -- (11-23) the sword's marks, where the bags put them: item level bottom left in its quality
+        -- colour, BoE top left, the uncollected eye top right
+        if i == 3 then
+            local small = { size = math.max(7, size * 0.32) }
+            if Get('tweaks.bagItemLevel') then
+                c:Text('bagIlvl', '|cff1eff0018|r', x + 2, y + size - small.size - 2, size, small)
+            end
+            if Get('tweaks.bagBoE') then
+                c:Text('bagBoE', '|cff1eff00' .. L["BoE"] .. '|r', x + 2, y + 2, size, small)
+            end
+            if Get('tweaks.bagUncollected') then
+                local eye = c:Texture('bagEye', nil, x + size * 0.6, y + 1, size * 0.38, size * 0.38, true)
+                if C_Texture.GetAtlasInfo('transmog-icon-hidden') then eye:SetAtlas('transmog-icon-hidden') end
+            end
+        end
     end
     local extraY = 45 + 3 * size + 2 * gap + groupGap + 7
     for _, group in ipairs({{'tweaks.bagKeyring', L["Keyring"], 'INV_Misc_Key_01'}, {'tweaks.bagReagent', L["Crafting Bag"], 'INV_Fabric_Linen_01'}}) do
@@ -1112,6 +1302,146 @@ function R.lootRolls(c, spec)
         bar:SetStatusBarColor(1 - 0.1 * low, 0.75 - 0.55 * low, 0.1 + 0.05 * low)
         c.objects.rollsTime:SetText(math.ceil(fraction * 30))
     end)
+end
+
+-- The loot window (PR #146 by Xentinus; 11-23 slimmed as LootWindow.lua): money and item rows in the
+-- loot roll window's panel at full strength, the icon edge and marks from the Bags options (Skin Item
+-- Slots, Item Level, Junk, BoE, Uncollected), the owned count always, Show Free Bag Slots' footer
+function R.lootWindow(c, spec)
+    Heading(c,L["Loot Window"])
+    if spec.key == 'bl.lootWindow' and not Get('tweaks.lootWindow') then c:Text('lootWinOff',L["Disabled"],12,90); return end
+    local LSM = LibStub('LibSharedMedia-3.0')
+    local x, w = 8, c.width - 16
+    -- LootWindow.lua's sizes, a little smaller to fit the canvas: header 30, row 41 + 3 gap, icon 31
+    local TOP, ROW_H, GAP, ICON, PAD, BOX_PAD = 30, 41, 3, 31, 8, 6
+    local wy = 30
+    local rowW = w - 2 * PAD
+    local bc = ns.BORDER_COLOR
+
+    local function QualityColor(q)
+        local r, g, b
+        if C_Item and C_Item.GetItemQualityColor then r, g, b = C_Item.GetItemQualityColor(q or 1) end
+        return r or 1, g or 1, b or 1
+    end
+
+    -- the panel: the thick border a little darker than its bronze, the rock at full strength
+    local border = 'FlareUI Thick'
+    local rows = {}
+    local slotTypes = Enum and Enum.LootSlotType
+    local MONEY, ITEM = slotTypes and slotTypes.Money or 'money', slotTypes and slotTypes.Item or 'item'
+    do
+        rows[1] = { slot = 1, type = MONEY, icon = 'INV_Misc_Coin_01',
+            name = (SILVER_AMOUNT or '%d Silver'):format(2) .. ' ' .. (COPPER_AMOUNT or '%d Copper'):format(34) }
+        -- (id: the item's own icon, as LootWindow.lua's samples; icon: the file without one)
+        rows[2] = { slot = 2, type = ITEM, icon = 'INV_Axe_09', name = L["Barbaric Battle Axe of the Gorilla"], quality = 2, ilvl = 18, boe = true, uncollected = true }
+        rows[3] = { slot = 3, type = ITEM, id = 3173, name = L["Bear Meat"], quality = 1, quantity = 4, owned = 4 }
+        rows[4] = { slot = 4, type = ITEM, id = 3169, name = L["Large Bear Tooth"], quality = 0, quantity = 4, owned = 4, junk = true }
+    end
+    -- the footer takes a row's room on the column's canvas: the fixed money row, the one that shows
+    -- no option (the Live Preview has room)
+    local foot = Get('tweaks.lootWindowFreeSlots') and 26 or 0
+    if foot > 0 then table.remove(rows, 1) end
+
+    local height = TOP + #rows * ROW_H + (#rows - 1) * GAP + foot + PAD
+    local box = c:Box('lootWinPanel', x, wy, w, height, border, 0)
+    box:SetBackdropBorderColor(bc.r * 0.75, bc.g * 0.75, bc.b * 0.75, bc.a)
+    if not box.rock then
+        box.rock = box:CreateTexture(nil, 'BACKGROUND', nil, 1)
+        box.rock:SetPoint('TOPLEFT', 3, -3)
+        box.rock:SetPoint('BOTTOMRIGHT', -3, 3)
+        box.rock:SetTexture('Interface\\FrameGeneral\\UI-Background-Rock', 'REPEAT', 'REPEAT')
+        box.rock:SetHorizTile(true)
+        box.rock:SetVertTile(true)
+        box.shade = box:CreateTexture(nil, 'BACKGROUND', nil, 3)
+        box.shade:SetAllPoints(box.rock)
+        box.shade:SetColorTexture(1, 1, 1)
+        box.shade:SetGradient('VERTICAL', CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
+    end
+
+    c:Text('lootWinTitle', '|cffcc9957' .. L["Loot"] .. '|r', x + 17, wy + 9, w - 60, {size=11}):SetWordWrap(false)
+    c:Texture('lootWinClose', nil, x + w - 32.5, wy + 4, 22, 22, true):SetAtlas('RedButton-Exit')
+    c:Texture('lootWinLine', 'Interface\\Common\\UI-TooltipDivider-Transparent', x + 3, wy + 24, w - 6, 8, true)
+
+    -- (the Bags tab's switches, as the window reads them)
+    local thick = Get('tweaks.bagThickBorders') and true or false
+    local edgeDef = thick and { 'FlareUI Thick', 16, 2 } or { 'FlareUI Thin', 8, 3 }
+    local rarity = Get('tweaks.bagRarity') ~= false
+    local showIlvl, showJunk = Get('tweaks.bagItemLevel'), Get('tweaks.bagJunkIcon')
+    local showBoE, showEye = Get('tweaks.bagBoE'), Get('tweaks.bagUncollected')
+    local function Atlas(t, name, size)
+        if C_Texture.GetAtlasInfo(name) then t:SetAtlas(name, not size); if size then t:SetSize(size, size) end end
+    end
+
+    for i, r in ipairs(rows) do
+        local isMoney = r.type == MONEY
+        local ry = wy + TOP + (i - 1) * (ROW_H + GAP)
+        local rx = x + PAD
+        local qr, qg, qb = QualityColor(r.quality)
+        local rowBox = c:Box('lootWinRow' .. i, rx, ry, rowW, ROW_H, 'FlareUI Thin', 0)
+        rowBox:SetBackdropColor(0, 0, 0, 0.3)
+        rowBox:SetFrameLevel(box:GetFrameLevel() + 1)
+        rowBox:SetBackdropBorderColor(bc.r, bc.g, bc.b, bc.a)
+
+        local ix, iy = rx + BOX_PAD, ry + (ROW_H - ICON) / 2
+        c:Texture('lootWinBlack' .. i, nil, ix - 1, iy - 1, ICON + 2, ICON + 2, true):SetColorTexture(0, 0, 0, 1)
+        local iconTex = Icon(c, 'lootWinIcon' .. i, r.icon or 'INV_Misc_QuestionMark', ix, iy, ICON)
+        -- (texture: a rolled row's own, as LW.ReadSlots')
+        local itemIcon = r.texture or r.id and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(r.id)
+        if itemIcon then iconTex:SetTexture(itemIcon) end
+        local er, eg, eb = qr, qg, qb
+        if isMoney or not rarity then er, eg, eb = bc.r, bc.g, bc.b end
+        local edge = c:Box('lootWinEdge' .. i, ix - edgeDef[3], iy - edgeDef[3], ICON + 2 * edgeDef[3], ICON + 2 * edgeDef[3], edgeDef[1], 0)
+        edge:SetBackdrop({ edgeFile = LSM:Fetch('border', edgeDef[1]), edgeSize = edgeDef[2] })
+        edge:SetBackdropBorderColor(er, eg, eb, 1)
+        edge:SetFrameLevel(c.overlay:GetFrameLevel() + 1)
+
+        -- the marks on the icon, above its edge as on the bags
+        local marks = c:Object('lootWinMarks' .. i, 'Frame')
+        marks:SetPoint('TOPLEFT', ix, -iy)
+        marks:SetSize(ICON, ICON)
+        marks:SetFrameLevel(c.overlay:GetFrameLevel() + 3)
+        if not marks.junk then
+            marks.junk = marks:CreateTexture(nil, 'OVERLAY', nil, 7)
+            marks.junk:SetPoint('TOPLEFT', 1, 0)
+            Atlas(marks.junk, 'bags-junkcoin')
+            marks.boe = marks:CreateFontString(nil, 'OVERLAY', 'NumberFontNormalSmall')
+            marks.boe:SetPoint('TOPLEFT', 2, -2)
+            marks.boe:SetText(L["BoE"])
+            marks.boe:SetTextColor(0.12, 1, 0.12)
+            marks.ilvl = marks:CreateFontString(nil, 'OVERLAY', 'NumberFontNormalSmall')
+            marks.ilvl:SetPoint('BOTTOMLEFT', 2, 2)
+            marks.eye = marks:CreateTexture(nil, 'OVERLAY', nil, 7)
+            marks.eye:SetPoint('TOPRIGHT', -1, -1)
+            Atlas(marks.eye, 'transmog-icon-hidden', 12)
+            marks.count = marks:CreateFontString(nil, 'OVERLAY', 'NumberFontNormal')
+            marks.count:SetPoint('BOTTOMRIGHT', -2, 2)
+        end
+        marks.junk:SetShown(showJunk and r.junk or false)
+        marks.boe:SetShown(showBoE and r.boe or false)
+        marks.eye:SetShown(showEye and r.uncollected or false)
+        marks.count:SetShown(r.quantity and r.quantity > 1 or false)
+        marks.count:SetText(r.quantity or '')
+        if showIlvl and ns.Bags and ns.Bags.StyleIconText then ns.Bags.StyleIconText(marks.ilvl, Get('tweaks.bagItemLevelFont')) end
+        marks.ilvl:SetShown(showIlvl and r.ilvl and true or false)
+        marks.ilvl:SetText(r.ilvl or '')
+        marks.ilvl:SetTextColor(qr, qg, qb)
+
+        local nx = ix + ICON + 8
+        local name = c:Text('lootWinName' .. i, r.name, nx, ry + (ROW_H - 11) / 2, rx + rowW - BOX_PAD - 2 - nx, {size=10})
+        -- up to two lines, centred on the row, as the window's names
+        name:ClearAllPoints()
+        name:SetPoint('LEFT', c.overlay, 'TOPLEFT', nx, -(ry + ROW_H / 2))
+        if name.SetMaxLines then name:SetMaxLines(2) end
+        name:SetTextColor(qr, qg, qb)
+        -- the owned count, as the window's grey suffix (LootWindow.lua LW.NameWithCount)
+        if r.owned and r.owned > 0 then name:SetText(r.name .. ' |cff999999(' .. r.owned .. ')|r') end
+    end
+    if foot > 0 then
+        local fy = wy + height - PAD - 22   -- the footer's 22 px row, as LootWindow.lua's
+        c:Text('lootWinFree', '17', x + w - PAD - 30, fy + 5, 24, { size = 10 }):SetJustifyH('RIGHT')
+        c:Texture('lootWinBag', 'Interface\\Buttons\\Button-Backpack-Up', x + w - PAD - 50, fy + 3, 16, 16, true)
+    end
+    c.used = wy + height
 end
 
 --------------------------------------------------
