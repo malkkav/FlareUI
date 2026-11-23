@@ -46,9 +46,12 @@ local function LegacyMapNodes(mapID)
     return bySlot
 end
 
-function Destinations.GetDestinations(frame, layout)
+-- TaxiFrame's renderer keeps private coordinates for every slot until the next OnShow.
+-- Its route handlers are safe only while the rendered geometry still matches the live map.
+local classicLayout, classicPinsCurrent
+
+function Destinations.GetDestinations(frame, nativeDraw)
     local entries = {}
-    local originSlot, modernNodes
     if not frame or not frame:IsShown() then return entries end
 
     if frame == _G.TaxiFrame then
@@ -57,10 +60,8 @@ function Destinations.GetDestinations(frame, layout)
         local nodes = validMap and LegacyMapNodes(mapID)
         local positions, namedPositions = {}, {}
         local count = NumTaxiNodes()
-        if layout then
-            layout.changed = layout.count ~= count or layout.mapID ~= mapID
-            layout.count, layout.mapID = count, mapID
-        end
+        if nativeDraw then classicLayout = { count = count, mapID = mapID } end
+        classicPinsCurrent = classicLayout and classicLayout.count == count and classicLayout.mapID == mapID
         for slot = 1, count do
             local state = TaxiNodeGetType(slot)
             local x, y, position, name, oldKey
@@ -76,18 +77,15 @@ function Destinations.GetDestinations(frame, layout)
                     namedPositions[oldKey] = (namedPositions[oldKey] or 0) + 1
                 end
             end
-            if layout then
-                local old = layout[slot]
-                if not old or old.state ~= state or old.x ~= x or old.y ~= y then
-                    layout[slot] = { state = state, x = x, y = y }
-                    layout.changed = true
-                end
+            if nativeDraw then
+                classicLayout[slot] = { state = state, x = x, y = y }
+            elseif classicPinsCurrent then
+                local drawn = classicLayout[slot]
+                classicPinsCurrent = drawn.state == state and drawn.x == x and drawn.y == y
             end
             local node = nodes and nodes[slot] or nil
             if node and node.name ~= name then node = nil end
-            if state == "CURRENT" then
-                originSlot = slot
-            elseif state == "REACHABLE" then
+            if state == "REACHABLE" then
                 local place, zone = SplitName(name)
                 entries[#entries + 1] = {
                     frame = frame, mapID = mapID, slot = slot, name = name, x = x, y = y,
@@ -100,19 +98,18 @@ function Destinations.GetDestinations(frame, layout)
             local position = entry.positionKey
             -- Names only disambiguate pins that Blizzard places at exactly the same coordinates.
             entry.sharedPosition = position and positions[position] > 1
-            entry.locationKey = position and not entry.sharedPosition and position or "named:" .. entry.oldFavoriteKey
             entry.ambiguousPoint = namedPositions[entry.oldFavoriteKey] > 1
             entry.favoriteKey = entry.nodeID
-            if not entry.favoriteKey and not entry.ambiguousPoint then entry.favoriteKey = entry.locationKey end
+            if not entry.favoriteKey and not entry.ambiguousPoint then
+                entry.favoriteKey = position and not entry.sharedPosition and position
+                    or "named:" .. GetLocale() .. ":" .. entry.oldFavoriteKey
+            end
         end
     elseif frame == _G.FlightMapFrame then
         local mapID = frame:GetMapID()
         if type(mapID) == "number" and mapID > 0 then
-            modernNodes = C_TaxiMap.GetAllTaxiNodes(mapID)
-            for _, node in ipairs(modernNodes) do
-                if node.state == Enum.FlightPathState.Current and not node.isMapLayerTransition then
-                    originSlot = node.slotIndex
-                elseif IsFlightTarget(node) then
+            for _, node in ipairs(C_TaxiMap.GetAllTaxiNodes(mapID)) do
+                if IsFlightTarget(node) then
                     local cost, priceText, priceColor = GetFare(node.slotIndex, node)
                     local place, zone = SplitName(node.name)
                     entries[#entries + 1] = {
@@ -123,18 +120,9 @@ function Destinations.GetDestinations(frame, layout)
                     }
                 end
             end
-            -- The current flight master may be on another layer.
-            if not originSlot and #entries > 0 then
-                for slot = 1, NumTaxiNodes() do
-                    if TaxiNodeGetType(slot) == "CURRENT" then
-                        originSlot = slot
-                        break
-                    end
-                end
-            end
         end
     end
-    return entries, originSlot, modernNodes
+    return entries
 end
 
 local function FindLiveNode(entry)
@@ -192,24 +180,21 @@ local function SameDestination(a, b)
         and a.mapID == b.mapID and a.nodeID == b.nodeID and a.x == b.x and a.y == b.y
 end
 
-local hoveredEntry, hoveredPin, hoveredNode, hoveredPath
-local hoveredSlots, hiddenRoutePins
+local hoveredEntry, hoveredPin, hoveredNode, hoveredSlots
 
--- A newly learned stop can change the path without changing the destination.
--- Only the route under the pointer needs to be compared when node data changes.
-local function RoutePath(slot, slots, hiddenPins)
-    local legs = {}
-    for hop = 1, GetNumRoutes(slot) do
-        legs[2 * hop - 1] = TaxiGetNodeSlot(slot, hop, true) or 0
-        legs[2 * hop] = TaxiGetNodeSlot(slot, hop, false) or 0
-    end
-    if hiddenPins then
-        for _, routeSlot in ipairs(legs) do
-            local pin = slots[routeSlot]
-            if pin and not pin:IsShown() then hiddenPins[pin] = pin.taxiNodeData end
+-- The client can change its slot data between a list refresh and a mouse handler.
+local function CanUseClassicRouteLines()
+    if not classicPinsCurrent or NumTaxiNodes() ~= classicLayout.count
+        or (GetTaxiMapID and GetTaxiMapID()) ~= classicLayout.mapID then return false end
+    for slot, drawn in ipairs(classicLayout) do
+        local state = TaxiNodeGetType(slot)
+        if state ~= drawn.state then return false end
+        if state ~= "NONE" then
+            local x, y = TaxiNodePosition(slot)
+            if x ~= drawn.x or y ~= drawn.y then return false end
         end
     end
-    return table.concat(legs, ",")
+    return true
 end
 
 -- MapCanvas can give the same pin to a different node when it redraws a layer.
@@ -218,14 +203,12 @@ local function OwnsHoveredNode()
         and hoveredNode.nodeID == hoveredEntry.nodeID and hoveredNode.slotIndex == hoveredEntry.slot
 end
 
-local function CanKeepHighlight(entry, checkPath)
+local function CanKeepHighlight(entry)
     if not SameDestination(hoveredEntry, entry) or not hoveredPin:IsShown() then return false end
     if hoveredNode then
-        if not OwnsHoveredNode() or not IsFlightTarget(hoveredNode) then return false end
-    elseif hoveredPin ~= _G["TaxiButton" .. entry.slot] then
-        return false
+        return OwnsHoveredNode() and IsFlightTarget(hoveredNode)
     end
-    return not checkPath or hoveredPath == RoutePath(entry.slot)
+    return classicPinsCurrent and hoveredPin == _G["TaxiButton" .. entry.slot]
 end
 
 function Destinations.Leave(skipClassicLines)
@@ -233,31 +216,25 @@ function Destinations.Leave(skipClassicLines)
     local frame = hoveredEntry.frame
     if frame == _G.TaxiFrame then
         hoveredPin:UnlockHighlight()
-        if not skipClassicLines and frame:IsShown() and NumTaxiNodes() > 0 then DrawOneHopLines() end
+        if not skipClassicLines and frame:IsShown() and CanUseClassicRouteLines() then DrawOneHopLines() end
     elseif frame:IsShown() and frame:GetMapID() == hoveredEntry.mapID
         and hoveredPin:IsShown() and OwnsHoveredNode() then
         hoveredPin.owner:RemoveRouteToPin(hoveredPin)
-        -- Blizzard removes the current route. A reroute may have dropped a stop that our preview revealed.
-        for pin, node in pairs(hiddenRoutePins) do
-            if pin:IsShown() and pin.taxiNodeData == node and hoveredSlots[node.slotIndex] == pin
-                and node.state == Enum.FlightPathState.Unreachable and not node.isMapLayerTransition then pin:Hide() end
-        end
         hoveredPin:SetFlightPathStyle(hoveredNode.state)
     end
-    hoveredEntry, hoveredPin, hoveredNode, hoveredPath = nil, nil, nil, nil
-    hoveredSlots, hiddenRoutePins = nil, nil
+    hoveredEntry, hoveredPin, hoveredNode, hoveredSlots = nil, nil, nil, nil
 end
 
 function Destinations.Hover(frame, entry)
     if frame and frame == _G.TaxiFrame then
-        local pin = Destinations.CanFly(frame, entry) and _G["TaxiButton" .. entry.slot]
+        local pin = Destinations.CanFly(frame, entry) and CanUseClassicRouteLines() and _G["TaxiButton" .. entry.slot]
         if not pin or not pin:IsShown() then
             Destinations.Leave()
             return false
         end
         -- The native hover handler replaces every route line with the next preview.
         Destinations.Leave(true)
-        hoveredEntry, hoveredPin, hoveredPath = entry, pin, RoutePath(entry.slot)
+        hoveredEntry, hoveredPin = entry, pin
         pin:LockHighlight()
         TaxiNodeOnButtonEnter(pin)
         -- The list already shows the name and price; keep the route visible.
@@ -275,8 +252,7 @@ function Destinations.Hover(frame, entry)
         if not node or node.nodeID ~= entry.nodeID or node.name ~= entry.name or node.slotIndex ~= entry.slot
             or not IsFlightTarget(node) or not pin:IsShown() then return false end
         hoveredEntry, hoveredPin, hoveredNode = entry, pin, node
-        hoveredSlots, hiddenRoutePins = slots, {}
-        hoveredPath = RoutePath(entry.slot, slots, hiddenRoutePins)
+        hoveredSlots = slots
         pin.owner:HighlightRouteToPin(pin)
         pin.Icon:SetAtlas(pin.atlasFormat:format("Taxi_Frame_Yellow"))
         return true
@@ -333,12 +309,12 @@ local function LeaveControl(panel, control, other)
     end
 end
 
-local function EnterRow(panel, row, control, checkPath)
+local function EnterRow(panel, row, control)
     local entry = row.entry
     if not entry then return end
     local previousControl = panel.hoveredControl
     panel.hoveredControl, panel.pendingLeave = control, nil
-    if not CanKeepHighlight(entry, checkPath) then Destinations.Hover(panel.map, entry) end
+    if not CanKeepHighlight(entry) then Destinations.Hover(panel.map, entry) end
     if control == row.favorite then
         GameTooltip:SetOwner(control, "ANCHOR_LEFT")
         GameTooltip:SetText(entry.isFavorite and BATTLE_PET_UNFAVORITE or BATTLE_PET_FAVORITE)
@@ -381,7 +357,11 @@ local function NewFavoriteButton(panel, row)
         local char = ns.CharDB()
         char.favoriteFlightDestinations = char.favoriteFlightDestinations or {}
         local favorites = char.favoriteFlightDestinations
-        favorites[entry.favoriteKey] = not favorites[entry.favoriteKey] or nil
+        if favorites[entry.favoriteKey] then
+            favorites[entry.favoriteKey] = nil
+        else
+            favorites[entry.favoriteKey] = type(entry.favoriteKey) == "string" and entry.name or true
+        end
         SortAndFilter(panel)
     end)
     return star
@@ -397,8 +377,6 @@ local function NewRow(panel, index)
     row:GetHighlightTexture():SetAlpha(0.45)
 
     row.favorite = NewFavoriteButton(panel, row)
-    row.time = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    row.time:SetPoint("TOPRIGHT", row.favorite, "TOPLEFT", -3, -3)
     row.fare = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     row.fare:SetPoint("BOTTOMRIGHT", -5, 5)
     row.fare:SetJustifyH("RIGHT")
@@ -406,7 +384,7 @@ local function NewRow(panel, index)
     row.fare:SetMaxLines(1)
     row.place = row:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     row.place:SetPoint("TOPLEFT", 5, -3)
-    row.place:SetPoint("TOPRIGHT", row.time, "TOPLEFT", -5, 0)
+    row.place:SetPoint("TOPRIGHT", row.favorite, "TOPLEFT", -5, -3)
     row.place:SetJustifyH("LEFT")
     row.place:SetWordWrap(false)
     row.zone = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
@@ -433,7 +411,7 @@ local function NewRow(panel, index)
     return row
 end
 
-local function FilterRows(panel, resetScroll, checkPath)
+local function FilterRows(panel, resetScroll)
     local offset = resetScroll and 0 or panel.scroll:GetVerticalScroll()
     local query, count = panel.search:GetText(), 0
     for _, entry in ipairs(panel.entries) do
@@ -458,7 +436,6 @@ local function FilterRows(panel, resetScroll, checkPath)
             row.fare:SetText(entry.fare)
             row.fare:SetTextColor((entry.priceColor or HIGHLIGHT_FONT_COLOR):GetRGB())
             row.fare:SetWidth(entry.priceText and math.min(SPECIAL_FARE_MAX_WIDTH, math.ceil(row.fare:GetUnboundedStringWidth()) + 1) or 0)
-            row.time:SetText(entry.time)
             row:Show()
         end
     end
@@ -475,7 +452,7 @@ local function FilterRows(panel, resetScroll, checkPath)
     for i = 1, count do
         local row = panel.rows[i]
         if focus == row or focus == row.favorite then
-            EnterRow(panel, row, focus, checkPath)
+            EnterRow(panel, row, focus)
             return
         end
     end
@@ -517,7 +494,7 @@ local function FavoritePosition(known, favorites, entry, named, locale, oldKey)
         known[position] = point
     end
     if not point then
-        local saved = favorites and favorites[position]
+        local saved = favorites[position]
         if type(saved) == "string" and saved ~= entry.name then return end
         if not (id or saved or oldKey) then return position end
         point = {}
@@ -538,15 +515,16 @@ local function FavoritePosition(known, favorites, entry, named, locale, oldKey)
 end
 
 local function RestoreFlightFavorites(entries, char)
-    local favorites = char.favoriteFlightDestinations
-    char.flightDestinationIDs = char.flightDestinationIDs or {}
-    local known = char.flightDestinationIDs
+    local favorites = char.favoriteFlightDestinations or {}
+    local hasFavorites = next(favorites) ~= nil
+    if not hasFavorites and not char.flightDestinationIDs then return end
+    local known = char.flightDestinationIDs or {}
     local locale = GetLocale()
     -- Old name-only records did not store the language. Import them in one
     -- language only; a saved translation takes precedence over that guess.
-    known.legacyLocale = known.legacyLocale or locale
+    local legacyLocale = known.legacyLocale or locale
     local oldByPosition = {}
-    for key, value in pairs(favorites or {}) do
+    for key, value in pairs(favorites) do
         -- Previous versions stored a classic locator inside a numbered favorite.
         -- Import it on either map, before a click can remove the favorite.
         if type(key) == "number" and type(value) == "string" then
@@ -568,14 +546,29 @@ local function RestoreFlightFavorites(entries, char)
             RememberUnique(oldByPosition, key:match("^(%d+:[%d%.%-]+:[%d%.%-]+):"), key)
         end
     end
-    for _, entry in ipairs(entries) do
-        if not entry.oldFavoriteKey then return end -- Modern rows already have their native ID.
+    local function RestoreEntry(entry)
         local position = entry.positionKey
         local oldNamed = "named:" .. entry.oldFavoriteKey
         local named = "named:" .. locale .. ":" .. entry.oldFavoriteKey
         local point = known[position]
         local oldID = known[oldNamed]
-        local useOldName = (entry.nodeID and entry.nodeID == oldID) or locale == known.legacyLocale and
+        local positionID = type(point) == "table" and point.id or point
+        -- Use previously witnessed collisions even when choosing the first star.
+        if not entry.nodeID and not entry.ambiguousPoint then
+            if known[named] ~= nil then
+                entry.favoriteKey = known[named] or nil
+            elseif point == false or type(point) == "number"
+                or (type(point) == "table" and (point.shared or (point[locale] and point[locale] ~= entry.name))) then
+                entry.favoriteKey = named
+            end
+        end
+        -- Only a starred point needs its aliases persisted across flight masters and locales.
+        if not hasFavorites or not (favorites[entry.nodeID] or favorites[position] or oldByPosition[position]
+            or favorites[named] or favorites[oldNamed] or favorites[entry.oldFavoriteKey]
+            or favorites[known[named]] or favorites[oldID] or favorites[positionID]) then
+            return
+        end
+        local useOldName = (entry.nodeID and entry.nodeID == oldID) or locale == legacyLocale and
             (type(point) ~= "table" or point[locale] == entry.name)
         if useOldName and not entry.nodeID and known[named] == nil and oldID
             and (type(point) ~= "table" or not point.id or point.id == oldID) then
@@ -588,24 +581,29 @@ local function RestoreFlightFavorites(entries, char)
         if known[named] ~= false then
             local key = entry.nodeID or known[named] or positionKey or named
             entry.favoriteKey = key
-            if favorites then
-                if useOldName then
-                    MigrateFavorite(favorites, entry.oldFavoriteKey, key)
-                    MigrateFavorite(favorites, oldNamed, key)
-                end
-                MigrateFavorite(favorites, named, key)
-                if positionKey and locale == known.legacyLocale then MigrateFavorite(favorites, oldByPosition[position], key) end
-                if positionKey or (useOldName and position and favorites[position] == entry.name) then
-                    MigrateFavorite(favorites, position, key)
-                end
-                -- A positional fallback can become shared after discovering another point.
-                if type(key) == "string" and favorites[key] then favorites[key] = entry.name end
+            if useOldName then
+                MigrateFavorite(favorites, entry.oldFavoriteKey, key)
+                MigrateFavorite(favorites, oldNamed, key)
             end
+            MigrateFavorite(favorites, named, key)
+            if positionKey and locale == legacyLocale then MigrateFavorite(favorites, oldByPosition[position], key) end
+            if positionKey or (useOldName and position and favorites[position] == entry.name) then
+                MigrateFavorite(favorites, position, key)
+            end
+            -- A positional fallback can become shared after discovering another point.
+            if type(key) == "string" and favorites[key] then favorites[key] = entry.name end
         end
+    end
+    for _, entry in ipairs(entries) do
+        if entry.oldFavoriteKey then RestoreEntry(entry) end
+    end
+    if hasFavorites and next(known) then
+        known.legacyLocale = legacyLocale
+        char.flightDestinationIDs = known
     end
 end
 
-SortAndFilter = function(panel, resetScroll, checkPath)
+SortAndFilter = function(panel, resetScroll)
     local char = ns.CharDB()
     local favorites = char.favoriteFlightDestinations
     RestoreFlightFavorites(panel.entries, char)
@@ -619,84 +617,7 @@ SortAndFilter = function(panel, resetScroll, checkPath)
         if order == 0 then return a.slot < b.slot end
         return order < 0
     end)
-    FilterRows(panel, resetScroll, checkPath)
-end
-
--- Only the flight-path provider owns the taxi pins and their slot index.
-local function NativeFlightPins(map, nodes, justDrawn)
-    if not map.dataProviders then return end
-    for provider in pairs(map.dataProviders) do
-        if provider.AddFlightNode and provider.slotIndexToPin then
-            if not justDrawn then
-                local count = 0
-                local changed = false
-                for _, node in ipairs(nodes) do
-                    if provider.isMapLayerTransition or not node.isMapLayerTransition then
-                        count = count + 1
-                        local pin = provider.slotIndexToPin[node.slotIndex]
-                        local shown = pin and pin.taxiNodeData
-                        if not shown or shown.nodeID ~= node.nodeID or shown.state ~= node.state
-                            or shown.name ~= node.name or shown.isMapLayerTransition ~= node.isMapLayerTransition
-                            or shown.specialIconCostString ~= node.specialIconCostString or shown.useSpecialIcon ~= node.useSpecialIcon
-                            or (IsFlightTarget(node) and not pin:IsShown()) then
-                            changed = true
-                            break
-                        end
-                    end
-                end
-                if changed or count ~= map:GetNumActivePinsByTemplate("FlightMap_FlightPointPinTemplate") then
-                    local focus = GetMouseFoci()[1]
-                    local focusedNode = focus and focus.taxiNodeData
-                    local hadTooltip = focusedNode and provider.slotIndexToPin[focusedNode.slotIndex] == focus and GameTooltip:IsOwned(focus)
-                    if hadTooltip then GameTooltip:Hide() end
-                    provider:RefreshAllData()
-                    if hadTooltip then
-                        -- The pool can assign a different pin to the node under the cursor.
-                        local pin = GetMouseFoci()[1]
-                        local data = pin and pin.taxiNodeData
-                        if data and provider.slotIndexToPin[data.slotIndex] == pin and pin:IsShown() and pin:IsMouseOver() then
-                            pin:OnMouseEnter()
-                        end
-                    end
-                    return provider.slotIndexToPin, true
-                end
-            end
-            return provider.slotIndexToPin
-        end
-    end
-end
-
-local function RefreshHoveredFare(panel)
-    local pin = GetMouseFoci()[1]
-    if not pin or not GameTooltip:IsOwned(pin) then return end
-    for _, previous in ipairs(panel.entries) do
-        local slot = previous.slot
-        local button = panel.legacyLayout and _G["TaxiButton" .. slot] or panel.routePins and panel.routePins[slot]
-        if button == pin then
-            if previous.cost ~= TaxiNodeCost(slot) then
-                if panel.legacyLayout then
-                    TaxiNodeOnButtonEnter(pin)
-                else
-                    pin.owner:RemoveRouteToPin(pin)
-                    pin:OnMouseEnter()
-                end
-            end
-            return
-        end
-    end
-end
-
-local function RedrawClassicMap(map)
-    -- Forever only rebuilds its private route coordinates in OnShow, which also plays the opening sound.
-    local sfx = GetCVar("Sound_EnableSFX")
-    if sfx ~= "1" then
-        TaxiFrame_OnShow(map)
-        return
-    end
-    SetCVar("Sound_EnableSFX", "0")
-    local ok, err = pcall(TaxiFrame_OnShow, map)
-    SetCVar("Sound_EnableSFX", sfx)
-    if not ok then error(err, 0) end
+    FilterRows(panel, resetScroll)
 end
 
 RefreshEntries = function(panel, resetScroll, nativeMapJustDrawn)
@@ -705,54 +626,14 @@ RefreshEntries = function(panel, resetScroll, nativeMapJustDrawn)
         resetScroll = resetScroll or panel.mapID ~= mapID
         panel.mapID = mapID
     end
-    local layout = panel.legacyLayout
-    local entries, originSlot, modernNodes = Destinations.GetDestinations(panel.map, layout)
-    local pinsRedrawn
-    if modernNodes then panel.routePins, pinsRedrawn = NativeFlightPins(panel.map, modernNodes, nativeMapJustDrawn) end
-    if layout and layout.changed and not nativeMapJustDrawn then
-        -- Only Blizzard's renderer updates both the TaxiButtons and their private route coordinates.
-        if hoveredEntry and hoveredEntry.frame == panel.map then Destinations.Leave(true) end
-        RedrawClassicMap(panel.map)
-        if not panel.map:IsShown() then return end -- Blizzard closes a map that has lost all paths.
-        local focus = GetMouseFoci()[1]
-        if focus then
-            for slot = 1, layout.count do
-                if focus == _G["TaxiButton" .. slot] and focus:IsShown() and focus:IsMouseOver() then
-                    TaxiNodeOnButtonEnter(focus)
-                    break
-                end
-            end
-        end
-    elseif not nativeMapJustDrawn and not pinsRedrawn then
-        RefreshHoveredFare(panel)
-    end
-    local flight = ns.ResourceBars and ns.ResourceBars.Flight
-    local originName = flight and originSlot and TaxiNodeName(originSlot)
-    local mapID = layout and layout.mapID or panel.mapID
-    local times = panel.timeCache
-    -- TimeTo looks up the current master for each call. Reuse its answers while this map stays open.
-    if not times or times.mapID ~= mapID or times.originSlot ~= originSlot or times.originName ~= originName or times.flight ~= flight then
-        times = { mapID = mapID, originSlot = originSlot, originName = originName, flight = flight }
-        panel.timeCache = times
-    end
+    local entries = Destinations.GetDestinations(panel.map, nativeMapJustDrawn)
     for _, entry in ipairs(entries) do
         entry.searchText = entry.name
         if entry.zone and entry.name == entry.place then entry.searchText = entry.name .. " " .. entry.zone end
         entry.fare = entry.priceText or (entry.cost and GetMoneyString(entry.cost, true)) or ""
-        entry.time = ""
-        if originName then
-            local slot = entry.slot
-            local name, cached = TaxiNodeName(slot), times[slot]
-            if not cached or cached.name ~= name then
-                local seconds = flight.TimeTo(slot)
-                cached = { name = name, text = seconds and flight.Clock(seconds) or "" }
-                times[slot] = cached
-            end
-            entry.time = cached.text
-        end
     end
     panel.entries = entries
-    SortAndFilter(panel, resetScroll, true)
+    SortAndFilter(panel, resetScroll)
 end
 
 -- A docked list shares one divider with the map. A floating list keeps all four sides.
@@ -950,7 +831,7 @@ local function HideList(map)
     panel:Hide()
     panel.search:ClearFocus()
     panel.search:SetText("")
-    panel.entries, panel.routePins, panel.timeCache = {}, nil, nil
+    panel.entries = {}
     for _, row in ipairs(panel.rows) do row.entry = nil end
 end
 
@@ -960,7 +841,9 @@ local function UpdateMap(map, nativeMapJustDrawn)
         local panel = panels[map]
         if panel and panel.toggle:IsShown() then return end
         panel = panel or NewPanel(map)
-        if map == _G.TaxiFrame then panel.legacyLayout = {} end
+        if map == _G.TaxiFrame and nativeMapJustDrawn and not expanded then
+            Destinations.GetDestinations(map, true)
+        end
         panel.toggle:Show()
         Display(panel, true, nativeMapJustDrawn)
     else
@@ -971,7 +854,10 @@ end
 local function AttachMap(map)
     if not map then return end
     map:HookScript("OnShow", function(self) UpdateMap(self, true) end)
-    map:HookScript("OnHide", HideList)
+    map:HookScript("OnHide", function(self)
+        if self == _G.TaxiFrame then classicLayout, classicPinsCurrent = nil, false end
+        HideList(self)
+    end)
     local function SizeChanged()
         local panel = panels[map]
         if panel and panel.toggle:IsVisible() then Position(panel) end

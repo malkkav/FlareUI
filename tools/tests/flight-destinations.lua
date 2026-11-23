@@ -29,8 +29,6 @@ local modernNodes = {
     { name = "Закрыт", nodeID = 93, slotIndex = 4, state = state.Unreachable },
 }
 local departures = {}
-local routeLegs = {}
-local sfx = { value = "1", writes = 0 }
 local function fold(text)
     -- Client double for the native case-insensitive UTF-8 comparator, for the letters in our queries.
     return (text:lower():gsub("Ш", "ш"):gsub("Т", "т"):gsub("О", "о"):gsub("Р", "р")
@@ -39,28 +37,13 @@ local function fold(text)
 end
 local env = setmetatable({
     CreateFrame = frame, EventUtil = { ContinueOnAddOnLoaded = noOp },
-    GetCVar = function(name)
-        assert(name == "Sound_EnableSFX")
-        return sfx.value
-    end,
-    SetCVar = function(name, value)
-        assert(name == "Sound_EnableSFX")
-        sfx.value, sfx.writes = tostring(value), sfx.writes + 1
-    end,
+    SetCVar = function() error("the flight list changed a game setting") end,
     GetLocale = function() return "enUS" end,
     NumTaxiNodes = function() return #nodes end,
     TaxiNodeName = function(slot) return nodes[slot].name end,
     TaxiNodeGetType = function(slot) return nodes[slot].kind end,
     TaxiNodeCost = function(slot) return nodes[slot].cost end,
     TaxiNodePosition = function(slot) return nodes[slot].x, nodes[slot].y end,
-    GetNumRoutes = function(slot) return routeLegs[slot] and #routeLegs[slot] or 1 end,
-    TaxiGetNodeSlot = function(slot, leg, source)
-        if routeLegs[slot] then return routeLegs[slot][leg][source and 1 or 2] end
-        if not source then return slot end
-        for i, node in ipairs(nodes) do
-            if node.kind == "CURRENT" then return i end
-        end
-    end,
     TakeTaxiNode = function(slot) departures[#departures + 1] = slot end,
     Enum = { FlightPathState = state, UIMapType = { Continent = 2, Zone = 3, Dungeon = 4, Micro = 5 } },
     GetTaxiMapID = function() return mapID end,
@@ -100,7 +83,7 @@ local classic, modern = frame(), frame()
 env.TaxiFrame, env.FlightMapFrame = classic, modern
 modern.GetMapID = function() return mapID end
 classic.shown = true
-local entries = D.GetDestinations(classic)
+local entries = D.GetDestinations(classic, true)
 assert(#entries == 2, "legacy list includes only reachable destinations")
 local city = entries[1].slot == 2 and entries[1] or entries[2]
 assert(city.name == nodes[2].name and city.cost == 540, "legacy destination keeps its native price and name")
@@ -116,8 +99,7 @@ env.TaxiButton2 = classicPin
 local highlighted, cleared
 env.TaxiNodeOnButtonEnter = function(button) highlighted = button end
 env.DrawOneHopLines = function() cleared = true end
-local classicRebuilds = 0
-env.TaxiFrame_OnShow = function() classicRebuilds = classicRebuilds + 1 end
+env.TaxiFrame_OnShow = function() error("the flight list forced the native map to open") end
 env.GameTooltip = { IsOwned = function(_, owner) return owner == classicPin end, Hide = noOp }
 assert(D.Hover(classic, city) and highlighted == classicPin and classicPin.lit and #departures == 0)
 D.Leave()
@@ -307,18 +289,8 @@ env.GameTooltip_AddColoredLine = function(tip, text, color, wrap)
 end
 env.EventUtil.ContinueOnAddOnLoaded = function(_, callback) callback() end
 ns.SettingsPanel = { AttachScrollLine = function(scroll, _, step) scroll.lineStep = step end }
--- Read a measurement already saved by FlareUI's flight timer, through its normal API.
-ns.db.global = { flightTimes = { ["Стальгорн > Штормград, Элвинн"] = 75 } }
-ns.ResourceBars = {}
-local timerCode = H.section(H.read("Modules/ResourceBars.lua"), "local Flight = {}", "local function ShortName")
-local loadTimer = assert(loadstring("local ns, RB, math_max, math_floor = ...\n" .. timerCode))
--- Count scans done by the list independently of the timer's own lookup of the departure node.
-local timerReads = 0
-local timerEnv = setmetatable({ TaxiNodeGetType = function(slot)
-    timerReads = timerReads + 1
-    return nodes[slot].kind
-end }, { __index = env })
-setfenv(loadTimer, timerEnv)(ns, ns.ResourceBars, math.max, math.floor)
+-- Looking up a fare or drawing a row must never depend on the flight timer.
+ns.ResourceBars = setmetatable({}, { __index = function() error("the flight list accessed the flight timer") end })
 local routeLookups = 0
 env.TaxiNodeGetType = function(slot)
     routeLookups = routeLookups + 1
@@ -421,15 +393,15 @@ tweaks.flightDestinations = true
 assert(D:ShouldLoad(), "explicitly enabling the flight list opts into the panel")
 D:Refresh()
 assert(panel:IsVisible() and panel.body:IsVisible() and #panel.entries == 2)
-assert(classicRebuilds == 1, "enabling on an already open map synchronizes its native pins")
+map:Hide()
+map:Show()
 checkOpenExtension(panel, map)
 assert(map:GetHeight() == 580 and map:GetWidth() == 590 and next(map.points) == nil, "laying out the list preserves the map")
 assert(panel.rows[1].entry.place == "Каранос" and panel.rows[2].entry.place == "Штормград",
     "destinations are sorted by their localized place names")
-assert(panel.rows[2].fare:GetText() == "540" and panel.rows[2].time:GetText() == "1:15",
-    "the list shows the original flight timer's saved duration alongside the fare")
-assert(panel.rows[1].time:GetText() == "" and panel.rows[1].fare:GetText() ~= "" and D.CanFly(map, panel.rows[1].entry),
-    "a destination with no saved time still shows its fare and can be selected")
+assert(panel.rows[2].fare:GetText() == "540" and panel.rows[2].time == nil and panel.rows[2].entry.time == nil,
+    "destination rows show the fare without a flight duration")
+assert(panel.rows[1].fare:GetText() ~= "" and D.CanFly(map, panel.rows[1].entry))
 
 local function checkDrawerBounds(expectedTop, expectedBottom)
     panel.toggle:Fire("OnUpdate", 0.2)
@@ -487,6 +459,8 @@ tweaks.flightDestinations = true
 D:Refresh()
 assert(not panel:IsVisible() and panel.toggle:IsVisible(), "re-enabling a collapsed drawer restores only its tab")
 panel.toggle:Fire("OnLeave")
+map:Hide()
+map:Show()
 map.width, map.right = 1280, 1280
 panel.toggle:Fire("OnUpdate", 0.2)
 local rightAnchor = panel.toggle.points.LEFT
@@ -502,6 +476,9 @@ checkTab(panel.toggle, map, "LEFT", false)
 panel.toggle:Fire("OnClick")
 checkOpenExtension(panel, map, true)
 assert(panel.body:IsVisible() and panel.search.focused, "reopening the tab focuses search")
+panel.rows[2]:Fire("OnEnter")
+assert(classicPin.lit, "opening the map with the list collapsed still captures the native draw")
+panel.rows[2]:Fire("OnLeave")
 panel.scroll:SetHeight(35)
 panel.scroll:SetVerticalScroll(12)
 D:Refresh()
@@ -524,7 +501,7 @@ nodes[5].kind = "REACHABLE"
 eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
 panel.search:SetText("элви шторм")
 assert(panel.scroll:GetVerticalScroll() == 0, "a new search starts at the top")
-assert(row:IsVisible() and row.place:GetText() == "Штормград" and row.time:GetText() == "1:15")
+assert(row:IsVisible() and row.place:GetText() == "Штормград" and row.fare:GetText() == "540")
 assert(not panel.rows[2]:IsVisible() and not panel.empty:IsVisible(), "query searches zone and place together")
 row:Fire("OnEnter")
 assert(classicPin.lit and #departures == 2, "pointing at a row highlights without flying")
@@ -555,6 +532,11 @@ tweaks.flightDestinations = true
 D:Refresh()
 assert(panel:IsVisible() and panel.toggle:IsVisible() and #panel.entries == 2 and panel.search:GetText() == "",
     "live enabling on an open map restores the searchable list")
+panel.rows[2]:Fire("OnEnter")
+assert(not classicPin.lit, "live enabling cannot assume that the classic map's current pins match live data")
+panel.rows[2]:Fire("OnLeave")
+map:Hide()
+map:Show()
 row.zone.truncated = false
 panel.search:SetText("нет такого места")
 assert(panel.empty:IsVisible() and not row:IsVisible() and not classicPin.lit and not tooltip.shown,
@@ -573,13 +555,7 @@ map:Hide()
 assert(not panel:IsVisible() and panel.search:GetText() == "" and not panel.search.focused)
 map:Show()
 assert(panel.rows[2]:IsVisible() and not panel.empty:IsVisible(), "a fresh visit starts with the full list")
-assert(ns.ResourceBars.Flight.TimeTo(2) == 75, "the standalone flight tooltip lookup still finds a learned time")
-do
-    local times = ns.db.global.flightTimes
-    local key, seconds = next(times)
-    assert(key == "Стальгорн > Штормград, Элвинн" and seconds == 75 and next(times, key) == nil,
-        "opening, filtering and clicking the list leaves the timer's stored measurements unchanged")
-end
+assert(next(characters[activeGUID]) == nil, "browsing, filtering and flying do not create favorites data")
 mouseTarget = nil
 local originalNodes = nodes
 nodes = {}
@@ -587,28 +563,19 @@ for i = 1, 50 do
     nodes[i] = { name = ("Stop %02d, Zone"):format(i), kind = "REACHABLE", cost = 1 }
 end
 nodes[51] = { name = "Origin, Zone", kind = "CURRENT", cost = 0 }
-ns.db.global.flightTimes["Origin, Zone > Stop 01, Zone"] = 90
 map:Hide()
 routeLookups = 0
 map:Show()
 assert(routeLookups == #nodes, "opening the list reads each taxi slot's type once")
 routeLookups = 0
-local readsOnOpen = timerReads
 eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-assert(#panel.entries == 50 and panel.rows[1].time:GetText() == "1:30")
-assert(routeLookups == #nodes, "the list enumerates all 50 destinations in one pass")
-assert(timerReads == readsOnOpen, "refreshing the same destinations reuses their displayed times")
+assert(#panel.entries == 50 and routeLookups == #nodes, "the list enumerates all 50 destinations in one pass")
 print(("PASS: the list refreshed 50 destinations with %d slot checks"):format(routeLookups))
-map:Hide()
-ns.db.global.flightTimes["Origin, Zone > Stop 01, Zone"] = 91
-map:Show()
-assert(panel.rows[1].time:GetText() == "1:31", "a later visit reads the timer's updated duration")
 do
     local firstPin = frame()
     firstPin.shown = true
     firstPin.LockHighlight, firstPin.UnlockHighlight = classicPin.LockHighlight, classicPin.UnlockHighlight
     env.TaxiButton1 = firstPin
-    routeLegs[1] = { {51, 3}, {3, 1} }
     mouseTarget = panel.rows[1]
     mouseTarget:Fire("OnEnter")
     assert(firstPin.lit)
@@ -659,10 +626,6 @@ do
     panel.toggle:Fire("OnUpdate", 0)
     assert(firstPin.lit and not highlighted and not cleared and not tooltip:IsOwned(row.favorite),
         "returning to the row preserves its route even when the star's leave fires last")
-    routeLegs[1] = { {51, 4}, {4, 1} }
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(highlighted == firstPin and firstPin.lit, "a changed stopover redraws the route to the same destination")
-    highlighted = nil
     panel.search:SetText("Stop 02")
     assert(mouseTarget.entry.slot == 2 and not firstPin.lit and highlighted == classicPin and classicPin.lit,
         "filtering to a different destination under the pointer transfers the native highlight")
@@ -690,23 +653,13 @@ do
     local marked = panel.rows[1].favorite
     marked:Fire("OnMouseDown", "LeftButton")
     marked:Fire("OnClick", "LeftButton")
-    routeLegs[1], env.TaxiButton1 = nil, nil
+    env.TaxiButton1 = nil
 end
-local resourceBars = ns.ResourceBars
-ns.ResourceBars = nil
-eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-assert(#panel.entries == 50 and panel.rows[1].time:GetText() == "", "the destination list works without the optional flight timer")
-ns.ResourceBars = resourceBars
-nodes[51].kind = "NONE"
-routeLookups = 0
-eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-assert(routeLookups == #nodes and panel.rows[1].time:GetText() == "", "a legacy map with no current slot has no measured time")
 nodes = originalNodes
 map:Hide()
 modernMap:Show()
 checkOpenExtension(panel, modernMap)
-assert(panel.rows[1].entry.name == pin.name and panel.rows[1].time:GetText() == "1:15",
-    "the modern list shows the existing timer's duration for the native taxi slot")
+assert(panel.rows[1].entry.name == pin.name and panel.rows[1].fare:GetText() == "540")
 do
     local oldPin = modernPin
     modernMap.EnumeratePinsByTemplate = modern.EnumeratePinsByTemplate
@@ -755,161 +708,42 @@ do
 end
 do
     local provider, slot = modernPin.owner, pin.slotIndex
-    local before, after = widget(), widget()
-    before.taxiNodeData = {slotIndex = 3, state = state.Unreachable}
-    after.taxiNodeData = {slotIndex = 4, state = state.Unreachable}
-    before:Hide()
-    after:Hide()
-    local originalSlots, highlight, remove = provider.slotIndexToPin, provider.HighlightRouteToPin, provider.RemoveRouteToPin
-    provider.slotIndexToPin = {[slot] = modernPin, [3] = before, [4] = after}
-    local draws, clears = 0, 0
-    -- Like Blizzard, both handlers read the live legs, even when clearing an older preview.
-    function provider:HighlightRouteToPin()
-        draws = draws + 1
-        self.slotIndexToPin[env.TaxiGetNodeSlot(slot, 1, false)]:Show()
-    end
-    function provider:RemoveRouteToPin()
-        clears = clears + 1
-        self.slotIndexToPin[env.TaxiGetNodeSlot(slot, 1, false)]:Hide()
-    end
-    routeLegs[slot] = {{1, 3}, {3, slot}}
-    local row = panel.rows[1]
-    mouseTarget = row
-    row:Fire("OnEnter")
-    assert(before:IsShown() and not after:IsShown())
-    routeLegs[slot] = {{1, 4}, {4, slot}}
+    local originalSlots = provider.slotIndexToPin
+    provider.AddFlightNode = noOp
+    provider.RefreshAllData = function() error("the list rebuilt Blizzard's pins") end
+    modernMap.dataProviders = {[provider] = true}
+    modernMap.GetNumActivePinsByTemplate = function() return 0 end
+    provider.slotIndexToPin = {}
+    highlighted, mouseTarget = nil, panel.rows[1]
     eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(not before:IsShown() and after:IsShown(), "rerouting a preview hides its obsolete transfer")
-
+    assert(mouseTarget.entry.name == pin.name and not highlighted, "a destination remains listed until its native pin appears")
     panel.search:SetText(pin.name)
     local extra = {name = pin.name .. " Annex", slotIndex = 5, nodeID = 1634, state = state.Reachable}
     modernMap.redrawFlightPins = function()
-        -- Real refreshes replace this index and recycle pins, even on the same map ID.
-        provider.slotIndexToPin = {[slot] = modernPin, [3] = before, [4] = after}
-        after:Hide()
+        provider.slotIndexToPin = {[slot] = modernPin}
         modernNodes[#modernNodes + 1] = extra
     end
     modernMap:RefreshAllDataProviders()
-    assert(panel.search:GetText() == pin.name and panel.rows[2].entry.name == extra.name,
-        "a native same-layer redraw refreshes the filtered list without clearing its search")
-    assert(draws == 3 and clears == 1 and after:IsShown(),
-        "after a redraw the list highlights the recycled pin without clearing its new owner's lines")
-    mouseTarget = nil
-    row:Fire("OnLeave")
-    assert(not before:IsShown() and not after:IsShown(), "leaving releases both successive route previews")
+    assert(panel.search:GetText() == pin.name and panel.rows[2].entry.name == extra.name and highlighted == modernPin,
+        "Blizzard's own redraw refreshes the filtered list and supplies a highlightable pin")
     modernMap.redrawFlightPins = nil
-    local nativeClears = clears
+    mouseTarget:Fire("OnLeave")
     mouseTarget = modernPin
-    modernMap:RefreshAllDataProviders()
-    assert(clears == nativeClears, "a redraw while pointing at the map preserves its native hover")
+    tooltip:SetOwner(modernPin)
+    tooltip:SetText("Native quote")
+    local price = nodes[slot].cost
+    nodes[slot].cost = 250
+    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
+    assert(panel.rows[1].fare:GetText() == "250" and tooltip:IsOwned(modernPin) and tooltip.lines[1] == "Native quote",
+        "a price update refreshes the row and leaves the native tooltip to Blizzard")
+    tooltip:Hide()
     mouseTarget = nil
-    modernNodes[#modernNodes] = nil
-    routeLegs[slot] = nil
-    provider.slotIndexToPin, provider.HighlightRouteToPin, provider.RemoveRouteToPin = originalSlots, highlight, remove
+    modernNodes[#modernNodes], nodes[slot].cost = nil, price
+    provider.slotIndexToPin, provider.AddFlightNode, provider.RefreshAllData = originalSlots, nil, nil
+    modernMap.dataProviders = nil
     modernMap:RefreshAllDataProviders()
     panel.search:SetText("")
 end
--- On another layer the departure point may be absent; a transition marker is not the flight master.
-do
-    local provider, slot = modernPin.owner, pin.slotIndex
-    local originalSlots = provider.slotIndexToPin
-    local function paint()
-        provider.slotIndexToPin = {}
-        for _, node in ipairs(modernNodes) do
-            if not node.isMapLayerTransition then
-                local nativePin = node == pin and modernPin or widget()
-                local snapshot = {}
-                for k, v in pairs(node) do snapshot[k] = v end
-                nativePin.taxiNodeData, nativePin.owner = snapshot, provider
-                nativePin.shown = node.state ~= state.Unreachable
-                provider.slotIndexToPin[node.slotIndex] = nativePin
-            end
-        end
-    end
-    local redraws = 0
-    provider.AddFlightNode = noOp
-    provider.RefreshAllData = function() redraws = redraws + 1; paint() end
-    modernMap.dataProviders = {[provider] = true}
-    modernMap.GetNumActivePinsByTemplate = function()
-        local count = 0
-        for _ in pairs(provider.slotIndexToPin) do count = count + 1 end
-        return count
-    end
-    pin.state = state.Unreachable
-    paint()
-    pin.state = state.Reachable
-    mouseTarget = panel.rows[1]
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(redraws == 1 and provider.slotIndexToPin[slot]:IsShown() and highlighted == modernPin,
-        "an isolated availability event reveals the newly reachable native pin and previews the hovered row")
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(redraws == 1, "an unchanged status event leaves the native flight pins intact")
-    mouseTarget = nil
-    panel.rows[1]:Fire("OnLeave")
-
-    local oldCost = nodes[slot].cost
-    nodes[slot].cost = 0
-    pin.specialIconCostString, pin.useSpecialIcon = "One token", true
-    paint()
-    local nativeEnters = 0
-    function modernPin:OnMouseEnter()
-        nativeEnters = nativeEnters + 1
-        tooltip:SetOwner(self)
-        local cost = env.TaxiNodeCost(self.taxiNodeData.slotIndex)
-        if cost > 0 then
-            tooltip:AddLine(cost)
-        elseif self.taxiNodeData.specialIconCostString then
-            tooltip:AddLine(self.taxiNodeData.specialIconCostString)
-        end
-        tooltip.specialColor = self.taxiNodeData.useSpecialIcon and env.HIGHLIGHT_FONT_COLOR or env.RED_FONT_COLOR
-        tooltip:Show()
-    end
-    local originalPin, refresh = modernPin, provider.RefreshAllData
-    modernPin.IsMouseOver = Widget.IsMouseOver
-    mouseTarget = modernPin
-    modernPin:OnMouseEnter()
-    -- A redraw can assign a different button to the destination under the stationary cursor.
-    provider.RefreshAllData = function(self)
-        modernPin = setmetatable({}, { __index = originalPin })
-        mouseTarget = modernPin
-        refresh(self)
-        self.RefreshAllData = refresh
-    end
-    pin.specialIconCostString = "Two tokens"
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    local row = panel.rows[1]
-    assert(row.fare:GetText() == "Two tokens" and tooltip:IsOwned(modernPin) and tooltip.lines[1] == "Two tokens",
-        "a changed special fare reaches both the row and the open native tooltip on its replacement pin")
-    pin.useSpecialIcon = false
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(row.entry.priceColor == env.RED_FONT_COLOR and tooltip.specialColor == env.RED_FONT_COLOR,
-        "when only eligibility changes the row and the native tooltip both show the warning")
-    pin.specialIconCostString = nil
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(row.entry.priceText == nil and tooltip:IsOwned(modernPin) and #tooltip.lines == 0,
-        "a withdrawn special fare is cleared from both the row and the native tooltip")
-    local previousDraws, previousEnters = redraws, nativeEnters
-    for _, cost in ipairs({250, 100}) do
-        nodes[slot].cost = cost
-        eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-        assert(row.fare:GetText() == tostring(cost) and tooltip:IsOwned(modernPin) and tooltip.lines[1] == cost,
-            "the stationary native pin and the list quote the same money price")
-    end
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(redraws == previousDraws and nativeEnters == previousEnters + 2,
-        "money changes update only the open tooltip, once per new price")
-    tooltip:Hide()
-    modernPin, mouseTarget = originalPin, nil
-    modernPin.OnMouseEnter, modernPin.IsMouseOver = nil, nil
-    nodes[slot].cost, pin.useSpecialIcon = oldCost, nil
-    modernMap.dataProviders, provider.AddFlightNode, provider.RefreshAllData = nil, nil, nil
-    provider.slotIndexToPin, modernPin.taxiNodeData, modernPin.shown = originalSlots, pin, true
-end
-modernNodes[2].state, modernNodes[3].state, modernNodes[4].state = state.Unreachable, state.Current, state.Reachable
-eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-assert(#panel.entries == 2 and panel.rows[1].time:GetText() == "1:15",
-    "the existing timer's duration is available when the departure point is off-layer")
-modernNodes[2].state, modernNodes[3].state, modernNodes[4].state = state.Current, state.Reachable, state.Unreachable
 panel.scroll:SetHeight(10)
 panel.scroll:SetVerticalScroll(12)
 modernMap:SetMapID(mapID)
@@ -1052,6 +886,41 @@ do
     local function open(owner)
         owner:Show()
         panel = assert(owner.destinationPanel)
+    end
+    do
+        local previousGUID = activeGUID
+        activeGUID = "Player-Browsing"
+        local char = {}
+        characters[activeGUID] = char
+        open(map)
+        assert(next(char) == nil, "visiting a classic master with native IDs does not record unstarred stops")
+        press(panel.rows[4].favorite)
+        assert(char.favoriteFlightDestinations[delta.nodeID], "the first star is saved on this character")
+
+        -- Count saved fields, including nested coordinate and locale records.
+        local function savedFields(data)
+            local count = 0
+            for _, value in pairs(data) do
+                count = count + 1
+                if type(value) == "table" then count = count + savedFields(value) end
+            end
+            return count
+        end
+        local function browseAnother(slot)
+            local count = savedFields(char)
+            local name = "New stop " .. slot
+            nodes[slot] = {name = name, kind = "REACHABLE", cost = 5, x = slot / 10, y = 0.8}
+            modernNodes[#modernNodes + 1] = {name = name, nodeID = 990 + slot, slotIndex = slot, state = state.Reachable}
+            eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
+            assert(savedFields(char) == count, "browsing unrelated stops leaves saved favorites data alone")
+        end
+        browseAnother(6)
+        press(panel.rows[1].favorite)
+        assert(not next(char.favoriteFlightDestinations or {}))
+        browseAnother(7)
+        nodes[7], nodes[6], modernNodes[3], modernNodes[2] = nil, nil, nil, nil
+        map:Hide()
+        activeGUID = previousGUID
     end
     open(map)
     local deltaStar = panel.rows[4].favorite
@@ -1196,8 +1065,7 @@ do
 end
 print("PASS: independent same-name flights, locale-stable favorites and migration of saved marks")
 
--- Blizzard builds its private slot/position cache in TaxiFrame_OnShow. Native
--- hover and leave handlers must only receive slots from that rendered map.
+-- Node data can change while Blizzard still displays the pins from the last map opening.
 do
     local owner = env.TaxiFrame
     owner:Hide()
@@ -1207,92 +1075,47 @@ do
         {name = "Alpha, Coast", kind = "REACHABLE", cost = 10, x = 0.2, y = 0.3},
         {name = "Beta, Coast", kind = "REACHABLE", cost = 20, x = 0.7, y = 0.8},
     }
-    local previousPaint, previousEnter, previousLines = env.TaxiFrame_OnShow, env.TaxiNodeOnButtonEnter, env.DrawOneHopLines
-    local painted, highlightedX, repaints, nativeEnters = {}, nil, 0, 0
-    local openSounds, writesBeforeOpen = 0, sfx.writes
-    env.TaxiFrame_OnShow = function(self)
-        repaints = repaints + 1
-        if sfx.value == "1" then openSounds = openSounds + 1 end
-        for i, node in ipairs(nodes) do
-            local pin = widget("Button")
-            pin.LockHighlight, pin.UnlockHighlight = classicPin.LockHighlight, classicPin.UnlockHighlight
-            pin.slot = i
-            pin.GetID = function(self) return self.slot end
-            env["TaxiButton" .. i] = pin
-            painted[i] = node.x
-        end
-        if #nodes == 1 then self:Hide() end
+    for i = 2, 3 do
+        local native = widget("Button")
+        native.LockHighlight, native.UnlockHighlight = classicPin.LockHighlight, classicPin.UnlockHighlight
+        env["TaxiButton" .. i] = native
     end
-    env.TaxiNodeOnButtonEnter = function(pin)
-        highlightedX = painted[pin.slot]
-        nativeEnters = nativeEnters + 1
-        tooltip:SetOwner(pin)
-        tooltip:AddLine(env.TaxiNodeCost(pin:GetID()))
-        tooltip:Show()
-    end
-    env.DrawOneHopLines = function()
-        for i, node in ipairs(nodes) do
-            assert(painted[i] == node.x, "never draw routes with Blizzard's stale positions or a missing pin")
-        end
-    end
-    env.TaxiFrame_OnShow(owner)
     owner:Show()
     local list = owner.destinationPanel
-    assert(repaints == 1 and openSounds == 1 and sfx.writes == writesBeforeOpen,
-        "opening the map normally plays its sound once and leaves the sound setting alone")
     mouseTarget = list.rows[2]
     mouseTarget:Fire("OnEnter")
-    assert(highlightedX == 0.7)
-    nodes[2], nodes[3] = nodes[3], nodes[2]
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(highlightedX == 0.7 and env.TaxiButton2.lit and repaints == 2,
-        "a stationary row follows its destination to the freshly drawn pin after slots swap")
-    assert(openSounds == 1 and sfx.value == "1", "a redraw is silent and immediately restores sound")
-    mouseTarget = env.TaxiButton2
+    assert(env.TaxiButton3.lit)
+    -- The hovered destination is unchanged, but another slot has moved before Blizzard sends its status event.
+    nodes[2].x = 0.25
+    highlighted, cleared, mouseTarget = nil, nil, nil
     list.rows[2]:Fire("OnLeave")
-    env.TaxiNodeOnButtonEnter(mouseTarget)
-    local previousEnters, previousWrites = nativeEnters, sfx.writes
+    assert(not cleared and not env.TaxiButton3.lit, "leaving a stale classic route cannot draw native lines")
+    mouseTarget = list.rows[2]
+    mouseTarget:Fire("OnEnter")
+    assert(not highlighted and not env.TaxiButton3.lit, "entering before the status event cannot draw from stale geometry")
+    nodes[2], nodes[3] = nodes[3], nodes[2]
+    highlighted = nil
+    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
+    assert(list.rows[2].entry.slot == 2 and not env.TaxiButton2.lit and not highlighted,
+        "a changed classic slot updates the list without highlighting a stale pin")
+    mouseTarget:Fire("OnLeave")
+    mouseTarget = env.TaxiButton2
+    tooltip:SetOwner(mouseTarget)
+    tooltip:SetText("Native quote")
     nodes[2].cost = 50
     eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(tooltip:IsOwned(mouseTarget) and tooltip.lines[1] == 50 and list.rows[2].fare:GetText() == "50",
-        "the open classic pin tooltip and its row update their money price together")
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(repaints == 2 and sfx.writes == previousWrites and nativeEnters == previousEnters + 1,
-        "price-only changes refresh the classic tooltip just once without repainting or changing sound settings")
+    assert(list.rows[2].fare:GetText() == "50" and tooltip:IsOwned(mouseTarget) and tooltip.lines[1] == "Native quote")
     tooltip:Hide()
-    nodes[4] = {name = "Transfer", kind = "DISTANT", cost = 0, x = 0.4, y = 0.5}
     mouseTarget = nil
-    sfx.value = "0"
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(painted[4] == 0.4 and repaints == 3, "new intermediate pins exist before route cleanup")
-    assert(openSounds == 1 and sfx.value == "0" and sfx.writes == previousWrites,
-        "leave the player's disabled sound effects untouched during a redraw")
-    sfx.value = "1"
-    list.toggle:Fire("OnClick")
     owner:Hide()
-    env.TaxiFrame_OnShow(owner)
     owner:Show()
-    nodes[2].x = 0.6
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    list.toggle:Fire("OnClick")
-    assert(painted[2] == 0.6 and repaints == 5 and openSounds == 2,
-        "opening the map again plays its sound, while expanding after a change redraws silently")
-    local paint, soundDuringError = env.TaxiFrame_OnShow
-    env.TaxiFrame_OnShow = function()
-        soundDuringError = sfx.value
-        error("simulated map redraw failure")
-    end
-    nodes[2].x = 0.65
-    pcall(eventFrames.TAXI_NODE_STATUS_CHANGED.Fire, eventFrames.TAXI_NODE_STATUS_CHANGED, "OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(soundDuringError == "0" and sfx.value == "1", "even a failed native redraw restores the previous sound setting")
-    env.TaxiFrame_OnShow = paint
-    nodes = {nodes[1]}
-    eventFrames.TAXI_NODE_STATUS_CHANGED:Fire("OnEvent", "TAXI_NODE_STATUS_CHANGED")
-    assert(not owner:IsShown() and not list.toggle:IsShown() and #list.entries == 0,
-        "respect a native map close during reconstruction")
-    env.TaxiFrame_OnShow, env.TaxiNodeOnButtonEnter, env.DrawOneHopLines = previousPaint, previousEnter, previousLines
+    mouseTarget = list.rows[2]
+    mouseTarget:Fire("OnEnter")
+    assert(env.TaxiButton2.lit, "the next native map opening makes the refreshed pin available")
+    mouseTarget:Fire("OnLeave")
+    mouseTarget = nil
 end
-print("PASS: native classic map pins stay in sync with live route geometry")
+print("PASS: classic list updates preserve Blizzard's rendered map and tooltip")
 
 do
     env.TaxiFrame:Hide()
@@ -1403,6 +1226,15 @@ do
             "unmarking the peer at another master preserves the original favorite, even without IDs")
     end
     local pos = "402:0.400000:0.500000"
+    char.favoriteFlightDestinations = nil
+    char.flightDestinationIDs = {
+        [pos] = {id = 7302, enUS = "North", shared = true}, ["named:" .. pos .. ":North"] = 7302,
+    }
+    toggle(open("South"))
+    assert(open("South").entry.isFavorite and not open("North").entry.isFavorite,
+        "a new star at previously shared coordinates cannot inherit an old point's identity")
+    toggle(open("South"))
+    assert(not open("North").entry.isFavorite and not open("South").entry.isFavorite)
     char.flightDestinationIDs = {[pos] = 7302, ["named:" .. pos .. ":North"] = 7302}
     char.favoriteFlightDestinations = {[7302] = true}
     assert(not open("South").entry.isFavorite and open("North").entry.isFavorite,
