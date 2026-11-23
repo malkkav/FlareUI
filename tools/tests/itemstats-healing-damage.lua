@@ -1,8 +1,4 @@
 -- Simplified Item Stats > Healing & Damage: "healing by up to X and damage by up to Y" lines.
-local f = assert(io.open("Modules/ItemStats.lua", "rb"))
-local src = f:read("*a")
-f:close()
-
 local hook
 _G.TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) hook = fn end }
 _G.Enum = { TooltipDataType = { Item = 0 } }
@@ -23,7 +19,7 @@ _G.TOOLTIP_ITEM_STAT_SPELL_HEALING_INCREASE_DAMAGE_DECREASE = "Equip: Damage dow
 
 local db = { enabled = true, shortItemStats = true, healingDamage = "off" }
 local ns = { db = { profile = { tooltips = db } } }
-assert(loadstring(src, "ItemStats.lua"))("FlareUI", ns)
+assert(loadfile("Modules/ItemStats.lua"))("FlareUI", ns)
 assert(hook, "no tooltip hook")
 
 local function shorten(text)
