@@ -1,0 +1,7 @@
+return {
+    -- Include first-party addon Lua, even files no test loads.
+    include = { "^[^/]+$", "^Modules/", "^Settings/", "^Locales/Locale$" },
+    -- Leave generated settings copy and release notes out of the totals.
+    exclude = { "^Settings/Copy$", "^Settings/WhatsNew$" },
+    includeuntestedfiles = true,
+}

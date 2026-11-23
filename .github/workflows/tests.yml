@@ -2,6 +2,7 @@ name: Tests
 
 # Runs every Lua test in tools/tests with LuaJIT (Lua 5.1, like WoW): on pull requests, on pushes
 # to main, and before each release (release.yml calls it; a failing test stops the upload).
+# Pull requests and main pushes also get a LuaCov report.
 on:
   pull_request:
   push:
@@ -16,6 +17,9 @@ jobs:
     name: Lua tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      COVERAGE_ENABLED: ${{ github.ref_type != 'tag' && 'true' || 'false' }}
+      LUACOV_CONFIG: tools/.luacov
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -27,16 +31,30 @@ jobs:
         with:
           luaVersion: "luajit-2.1"
 
+      - name: Install LuaRocks
+        if: env.COVERAGE_ENABLED == 'true'
+        uses: leafo/gh-actions-luarocks@v6
+
+      - name: Install LuaCov
+        if: env.COVERAGE_ENABLED == 'true'
+        run: |
+          luarocks install luacov 0.17.0-1
+          luarocks install luafilesystem 1.8.0-1
+
       - name: Run tests
         shell: bash
         run: |
+          lua_args=()
+          if [[ "$COVERAGE_ENABLED" == true ]]; then
+            lua_args=(-joff -lluacov)
+          fi
           failed=()
           for test in tools/tests/*.lua; do
             if [[ "$test" == tools/tests/perf-helpers.lua ]]; then
               continue
             fi
             printf '\nRunning %s\n' "$test"
-            luajit "$test" || failed+=("$test")
+            luajit "${lua_args[@]}" "$test" || failed+=("$test")
           done
           if (( ${#failed[@]} > 0 )); then
             printf '\nFailed tests:\n'
@@ -44,3 +62,22 @@ jobs:
             printf '::error title=Lua test failed::%s\n' "${failed[@]}"
             exit 1
           fi
+
+      - name: Generate Lua coverage report
+        if: env.COVERAGE_ENABLED == 'true'
+        shell: bash
+        run: |
+          test -s luacov.stats.out
+          luacov
+          read -r _ covered missed percent < <(grep '^Total ' luacov.report.out)
+          printf '### Lua line coverage\n\n**%s** (%s of %s executable lines)\n\n' \
+            "$percent" "$covered" "$((covered + missed))" | tee -a "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' 'Some tests load snippets without a source filename, so coverage can be undercounted.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Lua coverage report
+        if: env.COVERAGE_ENABLED == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lua-coverage
+          path: luacov.report.out
+          if-no-files-found: error
