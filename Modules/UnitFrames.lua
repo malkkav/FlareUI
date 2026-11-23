@@ -4247,7 +4247,7 @@ end
 
 -- After each health update. unit: the bar's unit (nil: a sample, never dead unless dead is given);
 -- changed: a change on the unit already shown (the glow's bump).
-function UF.BarLookUpdate(bar, unit, changed, dead)
+function UF.BarLookUpdate(bar, unit, changed, dead, lostAlpha)
     local look = bar and bar.fuiLook
     if not (look and look.edgeClip:IsShown()) then return end
     if unit then dead = UF.IsDead(unit) end
@@ -4255,7 +4255,9 @@ function UF.BarLookUpdate(bar, unit, changed, dead)
     -- none at full health: the bar has no front to show then. The same step curve as
     -- Health Lost (1 below full, 0 at full), so a secret health works too
     if unit and not dead then
-        look.edge:SetAlpha(UnitHealthPercent(unit, true, UF.LostCurve()))
+        -- Nameplates can already have sampled this curve for their health text.
+        if type(lostAlpha) == "nil" then lostAlpha = UnitHealthPercent(unit, true, UF.LostCurve()) end
+        look.edge:SetAlpha(lostAlpha)
     else
         look.edge:SetAlpha(dead and 0 or 1)
     end

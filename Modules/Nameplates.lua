@@ -51,8 +51,20 @@ local K = UF and UF.Kit
 local BT = ns.BarText
 local LSM = LibStub("LibSharedMedia-3.0")
 
+-- When several state handlers can change the same widget in a flush, apply that
+-- operation once, after the plate has its final state. Direct updates still apply it now.
+local paint = {}
+local function ApplyVisual(p, method)
+    if paint.plate == p then
+        paint[method] = true
+    else
+        NP[method](p, paint.draining and paint or nil)
+    end
+end
+
 -- every tunable number in one table (the main chunk keeps few locals)
 local C = {
+    SHARED_VISUALS = { "ApplyScale", "PaintBorder", "PaintGlow", "UpdateFade" },
     POOL = 40,                -- Blizzard keeps 40 plates at most
     SYNC = 2,                 -- seconds between sync passes
     NAME_GAP = 2,             -- name above the bar
@@ -827,7 +839,7 @@ function NP.Build(parent, sample)
         cast.kickClip:Hide()
         -- a casting plate stays at full opacity (Non-Target Opacity)
         if not sample then
-            local function Fade() NP.UpdateFade(p) NP.PlaceBelow(p) end
+            local function Fade() ApplyVisual(p, "UpdateFade") NP.PlaceBelow(p) end
             cast:HookScript("OnShow", Fade)
             cast:HookScript("OnHide", Fade)
         end
@@ -975,6 +987,7 @@ function NP.LayoutThreat(p, db)
     fs:ClearAllPoints()
     box:ClearAllPoints()
     box:Hide()
+    p.threatBoxShown = false
     p.threatInLevel = false
     p.threatBoxOn = db.threatPercent and not p.nameOnly and not p.hiddenPlate or false
     p.threatSide = (p.levelAnchor and p.levelSide == "right") and "left" or "right"
@@ -1044,9 +1057,9 @@ end
 --   progress outside it; crowd control on the right and defensives on the left, the same distance
 --   out, past the quest mark on its side; the raid marker on the left, past the defensives.
 -- Target Highlight arrows sit right against the plate; everything here draws above them.
-function NP.PlaceSides(p)
+function NP.PlaceSides(p, iconOn, textOn)
     -- (the threat box sits on the side away from the level: NP.LayoutThreat)
-    local threatShown = p.threatBoxOn and p.threatBox:IsShown()
+    local threatShown = p.threatBoxShown
     local leftOf = (p.levelAnchor and p.levelSide ~= "right") and p.levelAnchor
         or (threatShown and p.threatSide == "left" and p.threatBox) or p.box
     p.rightOf = (p.levelAnchor and p.levelSide == "right") and p.levelAnchor
@@ -1060,7 +1073,7 @@ function NP.PlaceSides(p)
     local outer = { left = leftOf, right = p.rightOf }
     -- (placed even while hidden: whatever shows them later finds them in place)
     -- (the progress beside the icon, or in its place with Objective Icon off)
-    local iconOn = p.quest:IsShown()
+    if iconOn == nil then iconOn, textOn = p.quest:IsShown(), p.questText:IsShown() end
     if questRight then
         p.quest:SetPoint("LEFT", p.rightOf, "RIGHT", gap, 0)
         if iconOn then p.questText:SetPoint("LEFT", p.quest, "RIGHT", 1, 0) else p.questText:SetPoint("LEFT", p.rightOf, "RIGHT", gap + 1, 0) end
@@ -1069,7 +1082,7 @@ function NP.PlaceSides(p)
         if iconOn then p.questText:SetPoint("RIGHT", p.quest, "LEFT", -1, 0) else p.questText:SetPoint("RIGHT", leftOf, "LEFT", -gap - 1, 0) end
     end
     p.questText:SetJustifyH(questRight and "LEFT" or "RIGHT")
-    if p.questText:IsShown() then outer[p.questSide] = p.questText
+    if textOn then outer[p.questSide] = p.questText
     elseif iconOn then outer[p.questSide] = p.quest end
     -- (the quest art is mostly empty round its mark: what sits past it comes in by that much)
     local pad = { left = 0, right = 0 }
@@ -1119,6 +1132,15 @@ function NP.PlaceSides(p)
     end
 end
 
+local function RequestSideLayout(p, iconOn, textOn)
+    if paint.plate ~= p then
+        NP.PlaceSides(p, iconOn, textOn)
+        return
+    end
+    paint.PlaceSides = true
+    if iconOn ~= nil then paint.questIcon, paint.questText = iconOn, textOn end
+end
+
 -- Your target stands out: its border in the target colour (Border), a tint over its bar (Bar Colour),
 -- a soft glow round it (Outer Glow) and the arrows. Everything else draws as it was.
 -- MOUSEOVER HIGHLIGHT (11-23, Malkkav / vyf; Targeting, shared): which parts light up on the plate under
@@ -1143,14 +1165,13 @@ function NP.UpdateTargetLook(p)
     -- (the level box or disc glows with it: they and the bar read as one plate)
     p.levelGlow:SetShown(glow and p.levelFrame:IsShown() and true or false)
     p.discGlow:SetShown(glow and p.levelAnchor == p.levelArt and p.levelArt:IsShown() and true or false)
-    if glow then NP.PaintGlow(p) end
+    if glow then ApplyVisual(p, "PaintGlow") end
     local art = C.ARROWS[db.targetArrows or "off"]
     local where = db.targetArrowSide or "both"
     local want = { left = where == "both" or where == "left", right = where == "both" or where == "right", top = where == "top" }
-    local changed = false
+    -- Layout positions even the hidden arrows. Selecting a target only toggles them.
     for side, a in pairs(p.arrows) do
         local show = (on or (p.sample and p.sampleTarget)) and art and want[side] or false
-        if show ~= a:IsShown() then changed = true end
         a:SetShown(show and true or false)
         if show then
             if not a.bounce:IsPlaying() then a.bounce:Play() end
@@ -1158,7 +1179,6 @@ function NP.UpdateTargetLook(p)
             a.bounce:Stop()
         end
     end
-    if changed then NP.PlaceSides(p) end
 end
 
 -- The soft glow's eight pieces round a frame (to), gw x gh in size: four rounded corners, four
@@ -1778,7 +1798,7 @@ function NP.UpdateGroup()
     state.inGroup = IsInGroup()
     wipe(state.tanks)
     local prefix, count = nil, 0
-    if IsInRaid() then prefix, count = "raid", GetNumGroupMembers() elseif IsInGroup() then prefix, count = "party", 4 end
+    if IsInRaid() then prefix, count = "raid", GetNumGroupMembers() elseif state.inGroup then prefix, count = "party", 4 end
     for i = 1, count do
         local unit = prefix .. i
         if UnitExists(unit) and not UnitIsUnit(unit, "player") then
@@ -1845,17 +1865,29 @@ end
 -- Threat Scale (tanks): a mob you lost grows, one someone is taking grows a little, one you hold
 -- shrinks a little; another tank's stays as it is. One size per state, never animated.
 C.THREAT_SCALE = { lost = 1.15, losing = 1.07, holding = 0.92 }
-function NP.ApplyScale(p)
+
+-- A target can exist without a visible plate. Share that lookup across a queued pass,
+-- and skip it when both settings give the same result.
+local function OtherPlateValue(targetState, withTarget, noTarget)
+    withTarget, noTarget = withTarget or 1, noTarget or 1
+    if withTarget == noTarget then return withTarget end
+    local hasTarget = targetState and targetState.hasTarget
+    if hasTarget == nil then
+        hasTarget = not not UnitExists("target")
+        if targetState then targetState.hasTarget = hasTarget end
+    end
+    return hasTarget and withTarget or noTarget
+end
+
+function NP.ApplyScale(p, targetState)
     local db = PDB(p)
-    -- Targeting: your target, the others while you have one, or every plate with no target
-    local k
-    if p.targetShown then k = db.targetScale or 1
-    elseif not p.sample and UnitExists("target") then k = db.notTargetScale or 1
-    else k = db.noTargetScale or 1 end
-    if db.threatScale and state.role == "tank" and p.threatKey then k = k * (C.THREAT_SCALE[p.threatKey] or 1) end
-    -- (the settings preview keeps one size: the window fits it to its box, and a hover changing the
-    -- state would make it jump)
-    if p.sample then k = 1 end
+    -- The settings preview stays at the size of its box.
+    local k = 1
+    if not p.sample then
+        if p.targetShown then k = db.targetScale or 1
+        else k = OtherPlateValue(targetState, db.notTargetScale, db.noTargetScale) end
+        if db.threatScale and state.role == "tank" and p.threatKey then k = k * (C.THREAT_SCALE[p.threatKey] or 1) end
+    end
     if p.scaleNow ~= k then
         p.scaleNow = k
         p.root:SetScale(k)
@@ -1871,7 +1903,7 @@ function NP.BarColor(p, r, g, b)
     p.health:SetStatusBarColor(r, g, b)
     p.barDirty = false
     p.barR, p.barG, p.barB = r, g, b
-    if p.targetGlow:IsShown() then NP.PaintGlow(p) end
+    if p.targetGlow:IsShown() then ApplyVisual(p, "PaintGlow") end
 end
 
 function NP.PaintGlow(p)
@@ -1895,11 +1927,12 @@ function NP.UpdateThreatText(p, db)
         if p.threatInLevel then p.level:SetShown(not shown and p.levelShown or false) end
         if p.threatBox then
             local boxShown = shown and p.threatBoxOn or false
-            if p.threatBox:IsShown() ~= boxShown then
+            if p.threatBoxShown ~= boxShown then
                 p.threatBox:SetShown(boxShown)
+                p.threatBoxShown = boxShown
                 -- (11-22, Malkkav) the pieces on the right make room only while the box shows: out of a
                 -- fight they sit right beside the plate
-                NP.PlaceSides(p)
+                RequestSideLayout(p)
             end
         end
         fs:SetShown(shown and (p.threatInLevel or p.threatBoxOn) or false)
@@ -1946,7 +1979,7 @@ function NP.UpdateColor(p)
     if threatKey ~= p.threatKey then
         local before = p.threatKey
         p.threatKey = threatKey
-        NP.ApplyScale(p)
+        ApplyVisual(p, "ApplyScale")
         -- Aggro Flash: it turned on you (damage / healer) or away from you (tank)
         if db.aggroFlash and before and (threatKey == "aggro" or threatKey == "lost") then p.flashAnim:Stop() p.flashAnim:Play() end
     end
@@ -1959,7 +1992,7 @@ function NP.UpdateColor(p)
         p.threatRGB = nil
     end
     NP.UpdateThreatText(p, db)
-    NP.PaintBorder(p)
+    ApplyVisual(p, "PaintBorder")
     if r then NP.BarColor(p, r, g, b) return end
     -- your focus (Focus Colour), then the mob type colours
     if db.colorFocus and p.gamePlate and p.gamePlate == C_NamePlate.GetNamePlateForUnit("focus") then
@@ -2005,15 +2038,17 @@ function NP.UpdateHealth(p, glide, mask)
         if UF and UF.SetDamageTrail and (p.damageTrail or not mask) then
             UF.SetDamageTrail(p.trail, unit, glide, p.damageTrail, values)
         end
-        if p.healthEdge and UF and UF.BarLookUpdate then UF.BarLookUpdate(p.health, unit, glide) end
+        local lostAlpha
         if p.textOn then
             K.HealthSource(unit, p.slots, values)
+            lostAlpha = values.lostAlpha
             for _, slot in ipairs(p.healthTextSlots) do BT.Fill(p.texts[slot], p.slots[slot], values) end
             if p.hideHealthTextAtFull then
-                if values.showLost then p.textHolder:SetAlpha(values.lostAlpha)
-                else p.textHolder:SetAlpha(UnitHealthPercent(unit, true, UF.LostCurve())) end
+                if not values.showLost then lostAlpha = UnitHealthPercent(unit, true, UF.LostCurve()) end
+                p.textHolder:SetAlpha(lostAlpha)
             end
         end
+        if p.healthEdge and UF and UF.BarLookUpdate then UF.BarLookUpdate(p.health, unit, glide, nil, lostAlpha) end
         if p.execAt then NP.UpdateExecute(p) end
     end
     values.cur, values.max, values.percent, values.lost, values.lostAlpha = nil, nil, nil, nil, nil
@@ -2231,16 +2266,19 @@ end
 
 function NP.UpdateLevel(p)
     local db, unit = PDB(p), p.unit
-    local level = ns.UnitShownLevel(unit)
-    local classification = Readable(UnitClassification(unit))
+    local showRarity = not p.nameOnly and db.rarityIcon ~= false
+    local classification
+    if showRarity or (p.levelShown and not p.levelFollow) then classification = Readable(UnitClassification(unit)) end
     -- elite gold, rare silver
     local atlas
-    if classification == "elite" or classification == "worldboss" then atlas = C.ELITE_GOLD
-    elseif classification == "rare" or classification == "rareelite" then atlas = C.ELITE_SILVER end
+    if showRarity then
+        if classification == "elite" or classification == "worldboss" then atlas = C.ELITE_GOLD
+        elseif classification == "rare" or classification == "rareelite" then atlas = C.ELITE_SILVER end
+    end
     if atlas and C_Texture.GetAtlasInfo(atlas) then p.elite:SetAtlas(atlas) p.elite:Show() else p.elite:Hide() end
-    if p.nameOnly or db.rarityIcon == false then p.elite:Hide() end
     if p.levelFollow then NP.UpdateName(p) return end
     if not p.levelShown then return end
+    local level = ns.UnitShownLevel(unit)
     if not canaccessvalue(level) then p.level:SetText("") return end
     if type(level) == "number" and level < 0 or classification == "worldboss" then
         ns.SetHighLevelText(p.level)
@@ -2268,11 +2306,11 @@ function NP.UpdateTarget(p, targetPlate)
     if p.sample then isTarget = p.sampleTarget or false end
     if p.targetShown == isTarget then return end
     p.targetShown = isTarget
-    NP.PaintBorder(p)
+    ApplyVisual(p, "PaintBorder")
     p.outline:SetShown(isTarget and not p.edgeFile and db.targetBorder ~= false)
     NP.UpdateTargetLook(p)
-    NP.ApplyScale(p)
-    NP.UpdateFade(p)
+    ApplyVisual(p, "ApplyScale")
+    ApplyVisual(p, "UpdateFade")
 end
 
 -- The border: your target's colour, else the threat colour (Threat Glow), else bronze
@@ -2685,13 +2723,21 @@ end
 
 function NP.UpdateQuest(p)
     local icon, showProgress = NP.QuestParts(p)
-    if not (icon or showProgress) then p.quest:Hide() p.questText:Hide() NP.PlaceSides(p) return end
-    local progress = NP.QuestProgress(p.unit)
-    if progress == false then return end   -- unreadable now: kept as it was
-    p.quest:SetShown(icon and progress ~= nil)
-    p.questText:SetText(progress or "")
-    p.questText:SetShown(showProgress and progress ~= nil and progress ~= "")
-    NP.PlaceSides(p)
+    local progress
+    if icon or showProgress then
+        progress = NP.QuestProgress(p.unit)
+        if progress == false then return end   -- unreadable now: kept as it was
+        p.questText:SetText(progress or "")
+    end
+    local showIcon = icon and progress ~= nil or false
+    local showText = showProgress and progress ~= nil and progress ~= "" or false
+    local iconChanged = p.quest:IsShown() ~= showIcon
+    local textChanged = p.questText:IsShown() ~= showText
+    if iconChanged then p.quest:SetShown(showIcon) end
+    if textChanged then p.questText:SetShown(showText) end
+    if iconChanged or textChanged or (paint.plate == p and paint.PlaceSides) then
+        RequestSideLayout(p, showIcon, showText)
+    end
 end
 
 -- Follow Name: the level, coloured, and a space, to go in front of the name (nil when unreadable)
@@ -2705,15 +2751,14 @@ function NP.LevelPrefix(unit)
 end
 
 -- Non-Target Opacity: with a target, other plates dim; your target and casting units stay full
-function NP.UpdateFade(p)
+function NP.UpdateFade(p, targetState)
     local db = PDB(p)
     if not (db and p.unit) then return end
     -- Targeting: your target's opacity, the others' while you have one, or every plate's with no
     -- target; the plate under the mouse and a casting one stay clear
     local alpha
     if p.targetShown then alpha = db.targetAlpha or 1
-    elseif UnitExists("target") then alpha = db.nonTargetAlpha or 1
-    else alpha = db.noTargetAlpha or 1 end
+    else alpha = OtherPlateValue(targetState, db.nonTargetAlpha, db.noTargetAlpha) end
     if alpha < 1 and not p.targetShown and (state.mouseover == p or (p.cast and p.cast:IsShown())) then alpha = 1 end
     p.root:SetAlpha(alpha)
 end
@@ -3376,25 +3421,41 @@ local function FlushTarget(p, targetPlate)
         NP.UpdateTarget(p, targetPlate)
     else
         -- Other plates' scale and opacity also depend on whether you have a target.
-        NP.ApplyScale(p)
-        NP.UpdateFade(p)
+        ApplyVisual(p, "ApplyScale")
+        ApplyVisual(p, "UpdateFade")
     end
 end
 
 local function FlushPlate(p, mask, targetPlate)
     -- An error in one widget must not discard other pending work for this plate.
+    local color = band(mask, D.COLOR) ~= 0 or (p.healthTint and band(mask, healthBits) ~= 0)
+    local cast, quest = band(mask, D.CAST) ~= 0, band(mask, D.QUEST) ~= 0
+    local target, fade = band(mask, D.TARGET) ~= 0, band(mask, D.FADE) ~= 0
+    local shared = (color and (quest or target)) or (cast and (target or fade))
+    if shared then paint.plate = p end
     if band(mask, healthOrHealBits) ~= 0 then ns.SafeCall("Nameplates Health", FlushHealth, p, mask) end
-    if band(mask, D.COLOR) ~= 0 or (p.healthTint and band(mask, healthBits) ~= 0) then
-        ns.SafeCall("Nameplates Color", NP.UpdateColor, p)
-    end
+    if color then ns.SafeCall("Nameplates Color", NP.UpdateColor, p) end
     if band(mask, nameOrLevelBits) ~= 0 then ns.SafeCall("Nameplates Name and Level", FlushNameAndLevel, p, mask) end
-    if band(mask, D.CAST) ~= 0 then ns.SafeCall("Nameplates Cast", NP.FlushCast, p) end
+    if cast then ns.SafeCall("Nameplates Cast", NP.FlushCast, p) end
     if band(mask, D.RAID) ~= 0 then ns.SafeCall("Nameplates Raid Marker", NP.UpdateRaid, p) end
-    if band(mask, D.QUEST) ~= 0 then ns.SafeCall("Nameplates Quest", NP.UpdateQuest, p) end
-    if band(mask, D.TARGET) ~= 0 then
+    if quest then ns.SafeCall("Nameplates Quest", NP.UpdateQuest, p) end
+    if target then
         ns.SafeCall("Nameplates Target", FlushTarget, p, targetPlate)
-    elseif band(mask, D.FADE) ~= 0 then
-        ns.SafeCall("Nameplates Opacity", NP.UpdateFade, p)
+    elseif fade then
+        if shared then paint.UpdateFade = true else ns.SafeCall("Nameplates Opacity", NP.UpdateFade, p, paint) end
+    end
+    if shared then
+        paint.plate = nil
+        if paint.PlaceSides then
+            ns.SafeCall("Nameplates Side Layout", NP.PlaceSides, p, paint.questIcon, paint.questText)
+            paint.PlaceSides, paint.questIcon, paint.questText = nil, nil, nil
+        end
+        for _, method in ipairs(C.SHARED_VISUALS) do
+            if paint[method] then
+                paint[method] = nil
+                ns.SafeCall("Nameplates " .. method, NP[method], p, paint)
+            end
+        end
     end
 end
 
@@ -3428,12 +3489,14 @@ queue.driver:SetScript("OnUpdate", function(self)
     end
     local targetPlate
     if band(all, D.TARGET) ~= 0 then targetPlate = C_NamePlate.GetNamePlateForUnit("target") end
+    paint.draining, paint.hasTarget = true, targetPlate and true or nil
     -- Work requested by a widget callback during this pass belongs to the following frame.
     queue.plates, queue.processing = queue.processing, pending
     for p, mask in pairs(pending) do
         pending[p] = nil
         if p.unit then FlushPlate(p, mask, targetPlate) end
     end
+    paint.draining, paint.hasTarget = nil, nil
     if queue.world == 0 and not next(queue.plates) then
         queue.scheduled = false
         self:Hide()
