@@ -956,6 +956,14 @@ function Settings:LinkEditMode()
             LEM:AddFrameSettingsButton(frame, {
                 text = backText,
                 click = function()
+                    -- (11-24) closing Edit Mode from here never asks, and Blizzard then throws away every
+                    -- change not saved yet. Its own question isn't opened from here: its Save would run
+                    -- as FlareUI's.
+                    local manager = EditModeManagerFrame
+                    if manager and manager:IsShown() and manager.HasActiveChanges and manager:HasActiveChanges() then
+                        if UIErrorsFrame then UIErrorsFrame:AddMessage(L["Save or revert your Edit Mode changes first."], 1, 0.1, 0.1) end
+                        return
+                    end
                     self.editModeReturn = nil
                     if EditModeManagerFrame and EditModeManagerFrame:IsShown() then HideUIPanel(EditModeManagerFrame) end
                     if ns.SettingsPanel then ns.SettingsPanel:Open(key) end

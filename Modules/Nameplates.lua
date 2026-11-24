@@ -712,6 +712,9 @@ function NP.Build(parent, sample)
         a:SetFrameLevel(box:GetFrameLevel() + 7)
         a.tex = a:CreateTexture(nil, "OVERLAY")
         a.tex:SetAllPoints()
+        -- (it moves 3 px: snapped to whole pixels it went in steps)
+        a.tex:SetSnapToPixelGrid(false)
+        a.tex:SetTexelSnappingBias(0)
         -- a small bounce towards the plate
         a.bounce = a:CreateAnimationGroup()
         a.bounce:SetLooping("BOUNCE")
@@ -1288,9 +1291,13 @@ end
 -- Aura Timer and Timer Colour, the unit frames' four, saved on the nameplates' own (auraStyle,
 -- auraSwipe, auraTimer, auraTimerColor). Defaults are the look the plates had: square, both, none.
 local function AuraLook(size, isDebuff, db)
-    return ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, db.auraStyle or "square", nil,
+    local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, db.auraStyle or "square", nil,
         db.auraTimer or "none", "target", { swipe = db.auraSwipe or "both", timerColor = db.auraTimerColor ~= false })
+    -- (11-24, ekci) the debuff's type icon is for what you could dispel: not on an enemy's plate
+    if look and not C.FRIENDLY[db.kind] then look.noTypeIcon = true end
+    return look
 end
+NP.AuraLook = AuraLook
 -- the higher of two stacked rows (NP.AuraStack) sits this far further up: the lower row's line
 function NP.AuraLift(db, place)
     local stack = NP.AuraStack(db)
@@ -1998,16 +2005,19 @@ end
 -- (11-22, perf pass) the bar, border and level art are painted only when their colour changed; a
 -- layout or a claim paints them again (p.barDirty, p.borderDirty). A colour Lua can't read is always written.
 function NP.BarColor(p, r, g, b)
-    if not p.barDirty and p.barR == r and p.barG == g and p.barB == b and canaccessvalue(r)
-        and canaccessvalue(g) and canaccessvalue(b) then return end
+    -- (11-24) a hidden colour is never compared, the new one nor the last one painted: that is an error
+    local known = canaccessvalue(r) and canaccessvalue(g) and canaccessvalue(b)
+    if known and p.barKnown and not p.barDirty and p.barR == r and p.barG == g and p.barB == b then return end
     p.health:SetStatusBarColor(r, g, b)
     p.barDirty = false
     p.barR, p.barG, p.barB = r, g, b
+    p.barKnown, p.barSet = known, true
     if p.targetGlow:IsShown() then ApplyVisual(p, "PaintGlow") end
 end
 
 function NP.PaintGlow(p)
-    local r, g, b = p.barR or 1, p.barG or 1, p.barB or 1
+    local r, g, b = 1, 1, 1
+    if p.barSet then r, g, b = p.barR, p.barG, p.barB end
     for _, t in ipairs(p.targetGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
     for _, t in ipairs(p.levelGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
     for _, t in ipairs(p.discGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
@@ -2080,7 +2090,19 @@ function NP.UpdateColor(p)
     local db, unit = PDB(p), p.unit
     if not (db and unit) then return end
     local tapped = Readable(UnitIsTapDenied(unit))
-    if tapped then local c = NP.Color("tapped") NP.BarColor(p, c[1], c[2], c[3]) return end
+    if tapped then
+        -- no threat look: not one it had before the tap, nor the last unit's on this plate
+        p.threatRGB = nil
+        if p.threatKey then
+            p.threatKey = nil
+            ApplyVisual(p, "ApplyScale")
+        end
+        NP.UpdateThreatText(p, db)
+        ApplyVisual(p, "PaintBorder")
+        local c = NP.Color("tapped")
+        NP.BarColor(p, c[1], c[2], c[3])
+        return
+    end
     local r, g, b, threatKey = ThreatRGB(unit, db)
     if threatKey ~= p.threatKey then
         local before = p.threatKey
@@ -2121,13 +2143,25 @@ function NP.UpdateColor(p)
     else
         r, g, b = ReactionRGB(unit)              -- everyone else in the plates' reaction colours
     end
-    if r == nil then r, g, b = ReactionRGB(unit) end
-    if r == nil then local c = NP.Color("hostile") r, g, b = c[1], c[2], c[3] end
+    -- (type: a hidden colour isn't compared)
+    if type(r) == "nil" then r, g, b = ReactionRGB(unit) end
+    if type(r) == "nil" then local c = NP.Color("hostile") r, g, b = c[1], c[2], c[3] end
     NP.BarColor(p, r, g, b)
+end
+
+-- (11-24, Archy) a dead mob's plate goes at once: the game takes it away a while later on Forever. A
+-- player's stays (a friend to resurrect).
+function NP.UpdateDead(p)
+    local dead = UnitIsDead(p.unit)
+    dead = canaccessvalue(dead) and dead and Readable(UnitIsPlayer(p.unit)) == false or false
+    if (p.deadHidden or false) == dead then return end
+    p.deadHidden = dead
+    p.root:SetShown(not (p.hiddenPlate or p.unitHidden or dead))
 end
 
 function NP.UpdateHealth(p, glide, mask)
     local unit, values = p.unit, p.healthValues
+    if not p.sample and unit then NP.UpdateDead(p) end
     local shown = not (p.nameOnly or p.hiddenPlate or p.unitHidden)
     if not mask or band(mask, D.MAXHEALTH) ~= 0 then
         values.max = UnitHealthMax(unit)
@@ -2500,12 +2534,20 @@ function NP.PaintBorder(p)
     p.levelBorder:SetBackdropBorderColor(r, g, bl, a)
 end
 
+-- whether this plate's casts are an enemy's, which you could interrupt (Kick Ready and its mark)
+function NP.Kickable(p)
+    if C.FRIENDLY[p.kind] or not p.unit then return false end
+    local can = UnitCanAttack("player", p.unit)
+    if not canaccessvalue(can) then return true end
+    return can and true or false
+end
+
 -- Kick Ready Mark: while your interrupt is cooling down, a spark where on this cast it will be ready
 -- (none on a cast you can't interrupt; gone once it's ready, when Kick Ready colours the bar)
 function NP.UpdateKickMark(p, db, duration, channeling, notInterruptible)
     local cast = p.cast
     local KICK = UF and UF.KICK
-    local spellID = db.castKickMark and KICK and KICK.Active and KICK.Active()
+    local spellID = db.castKickMark and KICK and KICK.Active and NP.Kickable(p) and KICK.Active()
     local wait = spellID and C_Spell.GetSpellCooldownDuration and C_Spell.GetSpellCooldownDuration(spellID, true)
     if not (spellID and wait and duration) or KICK.IsReady() then cast.kickClip:Hide() return end
     local ok = pcall(function()
@@ -2676,7 +2718,7 @@ function NP.UpdateCast(p, pending)
     cast.Icon:SetTexture(texture)
     local base = NP.Color(channeling and "channel" or "cast")
     -- Kick Ready: an enemy cast you could interrupt, while your interrupt is ready
-    if db.kickReady and UF.KICK and UF.KICK.IsReady() then base = NP.Color("kickReady") end
+    if db.kickReady and UF.KICK and NP.Kickable(p) and UF.KICK.IsReady() then base = NP.Color("kickReady") end
     if canaccessvalue(notInterruptible) then
         local color = notInterruptible and NP.Color("castNoInterrupt") or base
         cast:SetStatusBarColor(color[1], color[2], color[3])
@@ -3432,7 +3474,8 @@ function NP.Claim(unit)
         RegisterUnit(p, unit)
         p.targetShown = nil
         p.root:SetScale(1)
-        p.scaleNow, p.threatKey = 1, nil
+        p.scaleNow, p.threatKey, p.threatRGB = 1, nil, nil
+        p.deadHidden = false
         p.root:SetShown(not (p.hiddenPlate or p.unitHidden))
         NP.UpdateAll(p)
         -- Plus discovers health-named fields on the game plate and rechecks cached bar ancestry.
@@ -4395,9 +4438,11 @@ function NP:Refresh()
 end
 
 -- The game's own plate zoom (distance, target, larger plates) is set to 1 while the module is on, so
--- Target Scale is the only zoom. Each setting is backed up first and put back when the module is off
+-- Target Scale is the only zoom, and (11-24, Archy) its fades with distance and for plates that aren't your
+-- target are off, so Out of Range, Out of Sight and the target options are the only ones. Each setting is backed up first and put back when the module is off
 -- (at the next login: ShouldLoad runs either way) or stands down.
-C.ZOOM_CVARS = { "nameplateSelectedScale", "nameplateMinScale", "nameplateMaxScale", "nameplateLargerScale" }
+C.ZOOM_CVARS = { "nameplateSelectedScale", "nameplateMinScale", "nameplateMaxScale", "nameplateLargerScale",
+    "nameplateMinAlpha", "nameplateMaxAlpha", "nameplateSelectedAlpha", "nameplateNotSelectedAlpha" }
 -- Keep Target on Screen: the game's own setting (its name differs between game versions)
 C.CLAMP_CVARS = { "nameplateTargetRadialPosition", "clampTargetNameplateToScreen" }
 function NP.ClampCVar()

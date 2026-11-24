@@ -151,7 +151,6 @@ local function OnDragStart(handle)
     frame:SetMovable(true)
     frame:StartMoving()
     frame.moveDragging = true
-    handle.bagDragged = true   -- a bag's portrait: this was a drag, not a click for its menu
 end
 
 -- The client only reports a drag after the cursor has gone several pixels, which felt like a dead zone:
@@ -190,17 +189,6 @@ local function OnMouseWheel(handle, delta)
     SetFrameScale(frame, frame:GetScale() + SCALE_STEP * delta)
 end
 
--- A bag window's portrait menu (Assign To, Ignore This Bag, sorting): opens, or closes when open
-local function ToggleBagMenu(frame)
-    local dropdown = frame.PortraitButton
-    if not (dropdown and dropdown.OpenMenu) then return end
-    if dropdown.IsMenuOpen and dropdown:IsMenuOpen() then
-        pcall(dropdown.CloseMenu, dropdown)
-    else
-        pcall(dropdown.OpenMenu, dropdown)
-    end
-end
-
 local function OnMouseUp(handle, button)
     if button == "LeftButton" then OnDragStop(handle) end
     if button ~= "RightButton" then return end
@@ -213,8 +201,6 @@ local function OnMouseUp(handle, button)
         -- a window that was never moved stays where Blizzard's panel layout puts it
         if store and store.point then SavePosition(frame) end
     end
-    -- a plain right-click anywhere on a bag window opens its sorting menu
-    if not IsShiftKeyDown() and not IsControlKeyDown() then ToggleBagMenu(frame) end
 end
 
 -- Only the header drags: a mouse-enabled window would swallow every click inside it
@@ -389,53 +375,20 @@ local function ScanUIPanels()
     SetupLFGPages()
 end
 
--- A bag's portrait router covers the title bar and opens the menu on mouse down, which would
--- swallow the drag; it becomes the drag handle instead, opening the menu on a click without a drag.
-local function BagRouterMouseDown(router)
-    router.bagDragged = nil
-end
-
-local function BagRouterDragStart(router)
-    router.bagDragged = true
-    local dropdown = router.moveTarget and router.moveTarget.PortraitButton
-    if dropdown and dropdown.IsMenuOpen and dropdown:IsMenuOpen() then pcall(dropdown.CloseMenu, dropdown) end
-end
-
-local function BagRouterMouseUp(router, button)
-    if button ~= "LeftButton" or router.bagDragged then return end
-    if router:IsMouseOver() then ToggleBagMenu(router.moveTarget) end
-end
-
--- Right-click on the portrait opens the menu too, as it does on the title
-local function BagPortraitMouseUp(portrait, button)
-    if button == "RightButton" and portrait:IsMouseOver() then ToggleBagMenu(portrait:GetParent()) end
-end
-
+-- A bag's title only drags (11-24, Malkkav): Blizzard's button over it opens the bag's menu on the press, so
+-- every drag would open it too. It takes no mouse; the title bar under it is the drag handle. The bag's icon
+-- keeps that menu (left-click), all Blizzard's: never opened or closed from here, as whatever is picked in
+-- a menu FlareUI opened counts as FlareUI's, and item clicks are then blocked after a bank visit.
 local function SetupBagTitle(frame)
-    if frame.bagRouterFixed or frame.bagRouterChecked then return end
-    frame.bagRouterChecked = true   -- the router comes with the frame: a frame without one never gets one
+    if frame.bagRouterChecked then return end
+    frame.bagRouterChecked = true   -- the button comes with the frame: a frame without one never gets one
     for _, child in ipairs({ frame:GetChildren() }) do
-        if child.routeToSibling == "PortraitButton" and child.SetScript then
-            child:SetScript("OnMouseDown", BagRouterMouseDown)
-            SetupHandle(frame, child)
-            child:HookScript("OnDragStart", BagRouterDragStart)
-            child:HookScript("OnMouseUp", BagRouterMouseUp)
-            frame.bagRouterFixed = true
-        end
-    end
-    if not frame.bagRouterFixed then return end
-    -- the title strip Move Any Frame set up lies over the router, which is the handle instead
-    local title = frame.TitleContainer
-    if title and title.EnableMouse then title:EnableMouse(false) end
-    local portrait = frame.PortraitButton
-    if portrait and portrait.HookScript and not portrait.FlareUI_RightHooked then
-        portrait.FlareUI_RightHooked = true
-        portrait:HookScript("OnMouseUp", BagPortraitMouseUp)
+        if child.routeToSibling == "PortraitButton" and child.EnableMouse then child:EnableMouse(false) end
     end
 end
 
 -- The bag header's "Backpack / <click for bag settings>" tooltip, from the portrait (the title's
--- router shows it too): always hidden
+-- button shows it too): always hidden
 local function HideBagTooltip(region)
     local portrait = region.routeToSibling and region:GetParent()[region.routeToSibling] or region
     if GameTooltip:IsOwned(portrait) then GameTooltip:Hide() end
@@ -2124,6 +2077,7 @@ local function NoteCharacter()
     me.realm = GetRealmName()
     me.faction = UnitFactionGroup("player")
     me.class = select(2, UnitClass("player"))
+    me.mailHidden = nil   -- (taken off the address book: back once you log in on it)
 end
 
 -- Mail Address Book: a button beside Send Mail's "To:" box lists the account's other characters on
@@ -2140,7 +2094,7 @@ local function MailMenu(owner)
         end
         local list = {}
         for _, char in pairs(ns.db.global.characters or {}) do
-            if char ~= me and char.mailName and char.realm == me.realm and char.faction == me.faction then
+            if char ~= me and char.mailName and not char.mailHidden and char.realm == me.realm and char.faction == me.faction then
                 list[#list + 1] = char
             end
         end
@@ -2152,8 +2106,23 @@ local function MailMenu(owner)
             local text = color and color:WrapTextInColorCode(char.mailName) or char.mailName
             root:CreateButton(text, Pick(char.mailName))
         end
+        -- (11-24) a deleted character, or an old last recipient
+        if #list == 0 and not me.lastMailTo then return end
+        root:CreateDivider()
+        local remove = root:CreateButton(L["Remove from the List"])
+        local inList = {}
+        for _, char in ipairs(list) do
+            inList[char.mailName] = true
+            remove:CreateButton(char.mailName, function()
+                char.mailHidden = true
+                if me.lastMailTo == char.mailName then me.lastMailTo = nil end
+            end)
+        end
+        if me.lastMailTo and not inList[me.lastMailTo] then remove:CreateButton(me.lastMailTo, function() me.lastMailTo = nil end) end
     end)
 end
+
+Tweaks.MailMenu = MailMenu
 
 local function InitMailBook()
     EventUtil.ContinueOnAddOnLoaded("Blizzard_MailFrame", function()
@@ -2684,7 +2653,10 @@ function Tweaks:Refresh()
     UpdateTrainAll()
     ApplyMailBook()
     UpdatePetFood()
-    if MerchantFrame and MerchantFrame:IsShown() and MerchantFrame_UpdateMerchantInfo then MerchantFrame_UpdateMerchantInfo() end
+    -- (not on the Buyback tab: its buttons would get the vendor's numbers, and a click buy back another item)
+    if MerchantFrame and MerchantFrame:IsShown() and (MerchantFrame.selectedTab or 1) == 1 and MerchantFrame_UpdateMerchantInfo then
+        MerchantFrame_UpdateMerchantInfo()
+    end
     -- Blizzard's merchant update above shows the button again when Sell Junk goes off
     if MerchantSellAllJunkButton and MerchantSellAllJunkButton:IsShown() then
         local db = GetDb()
@@ -2739,7 +2711,8 @@ end
 -- Accept Summons: a summon is taken 10 seconds after it comes, unless you cancel. A
 -- small window says where to and counts for you: Go Now takes it at once, Cancel leaves Blizzard's own
 -- pop-up to answer. Never in a fight or where you can't teleport (Blizzard greys Accept then too): it
--- waits for that to end. Answering Blizzard's pop-up, or the summon running out, closes the window.
+-- waits for that to end. Answering Blizzard's pop-up, or the summon running out, closes the window and
+-- ends the wait; a new summon counts its own 10 seconds (11-24).
 Tweaks.SUMMON_SECONDS = 10
 function Tweaks.InitAcceptSummon()
     local S = { listener = CreateFrame("Frame") }
@@ -2748,18 +2721,15 @@ function Tweaks.InitAcceptSummon()
     local function Stop()
         S.pending = nil
         if S.ticker then S.ticker:Cancel(); S.ticker = nil end
-        S.listener:UnregisterEvent("PLAYER_REGEN_ENABLED")
         S.closing = true
         ns.CancelDialog("FLAREUI_ACCEPT_SUMMON")
         S.closing = nil
     end
     local function Take()
         if not (S.pending and Pending()) then Stop() return end
-        if UnitAffectingCombat("player") or (PlayerCanTeleport and not PlayerCanTeleport()) then
-            -- a fight (or a place you can't leave): once it's over
-            S.listener:RegisterEvent("PLAYER_REGEN_ENABLED")
-            return
-        end
+        -- a fight (or a place you can't leave): the ticker asks again every second until it's over
+        S.wanted = true
+        if UnitAffectingCombat("player") or (PlayerCanTeleport and not PlayerCanTeleport()) then return end
         C_SummonInfo.ConfirmSummon()
         if not ns.IsGamepadUI() then StaticPopup_Hide("CONFIRM_SUMMON") end   -- (it would break the pad's focus)
         Stop()
@@ -2771,15 +2741,13 @@ function Tweaks.InitAcceptSummon()
         OnCancel = function() if not S.closing then Stop() end end,
     }
     S.listener:RegisterEvent("CONFIRM_SUMMON")
+    pcall(S.listener.RegisterEvent, S.listener, "CANCEL_SUMMON")
     S.listener:SetScript("OnEvent", function(_, event)
-        if event == "PLAYER_REGEN_ENABLED" then
-            -- (a beat later: the client clears the fight first)
-            C_Timer.After(0.5, Take)
-            return
-        end
+        if event == "CANCEL_SUMMON" then Stop() return end
         local db = GetDb()
-        if not (db and db.acceptSummon) or not C_SummonInfo or S.pending then return end
-        S.pending = true
+        if not (db and db.acceptSummon) or not C_SummonInfo then return end
+        Stop()
+        S.pending, S.wanted = true, nil
         local area = C_SummonInfo.GetSummonConfirmAreaName and C_SummonInfo.GetSummonConfirmAreaName()
         if not (canaccessvalue(area) and type(area) == "string" and area ~= "") then area = L["your summoner"] end
         ns.ShowDialog("FLAREUI_ACCEPT_SUMMON", L["Taking the summon to %s in 10 seconds."]:format(area))
@@ -2788,10 +2756,7 @@ function Tweaks.InitAcceptSummon()
             -- answered on Blizzard's pop-up, or run out: nothing left to wait for
             if not Pending() then Stop() return end
             left = left - 1
-            if left <= 0 and S.ticker then
-                S.ticker:Cancel(); S.ticker = nil
-                Take()
-            end
+            if left <= 0 or S.wanted then Take() end
         end)
     end)
 end

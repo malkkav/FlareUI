@@ -30,6 +30,16 @@ function Widget:IsProtected() return self.protected == true end
 local book = env.CreateFrame("Frame", "SpellBookFrame", env.UIParent)
 book.TitleContainer = env.CreateFrame("Frame", nil, book)
 book.protected = true
+-- a bag window: Blizzard's button over the title opens the menu of the bag's icon on the press
+local bagWindow = env.CreateFrame("Frame", "ContainerFrame1", env.UIParent)
+bagWindow.TitleContainer = env.CreateFrame("Frame", nil, bagWindow)
+local bagIcon, bagMenus, bagPress = env.CreateFrame("Button", nil, bagWindow), 0, function() end
+bagWindow.PortraitButton = bagIcon
+bagIcon.OpenMenu = function() bagMenus = bagMenus + 1 end
+bagIcon.CloseMenu, bagIcon.IsMenuOpen = bagIcon.OpenMenu, function() return true end
+local bagRouter = env.CreateFrame("Button", nil, bagWindow)
+bagRouter.routeToSibling = "PortraitButton"
+bagRouter:SetScript("OnMouseDown", bagPress)
 env.UIPanelWindows = { SpellBookFrame = {} }
 env.UpdateUIPanelPositions = function()
     book:ClearAllPoints()
@@ -181,4 +191,20 @@ ui:emit("MERCHANT_CLOSED")
 assert(#buys == 4 and progress:GetText() == "Purchase stopped: 0 of 12 bought.")
 split:Hide()
 assert(not stack:IsShown() and not max:IsShown())
+-- (11-24) a bag's title only drags; its menu is never opened or closed from here, and Blizzard's button and icon keep
+-- their own scripts
+local bagTitle = bagWindow.TitleContainer
+assert(not bagRouter:IsMouseEnabled() and bagTitle:IsMouseEnabled() and bagRouter:GetScript("OnMouseDown") == bagPress)
+bagWindow:Show()
+ui.leftDown = true
+bagTitle:RunScript("OnMouseDown", "LeftButton")
+bagTitle:RunScript("OnDragStart", "LeftButton")
+assert(bagWindow.moving)
+ui.leftDown = false
+bagTitle:RunScript("OnMouseUp", "LeftButton")
+assert(not bagWindow.moving)
+bagTitle:RunScript("OnMouseUp", "RightButton")
+bagIcon.mouseOver = true
+bagIcon:RunScript("OnMouseUp", "RightButton")
+assert(bagMenus == 0)
 print("PASS: window drag and scale, map pins, zone levels, and merchant batch buying")

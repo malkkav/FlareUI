@@ -1053,6 +1053,9 @@ local function UpdateAll(f)
     end
     HidePreviewExtras(f)
     if not UnitExists(f.fuiUnit) then return end
+    -- (who is drawn: the raid frames' roster pass checks it)
+    local guid = UnitGUID(f.fuiUnit)
+    f.paintedGUID = canaccessvalue(guid) and guid or nil
     RefreshAurasOnNewUnit(f)
     UpdateName(f)
     UpdateLevel(f)
@@ -1390,6 +1393,9 @@ function PF.PlaceStackedAuras(f)
     if not near or st[near] == st[far] or not f.AuraPos then return end
     local inner, outer = f.AuraPos[st[near]], f.AuraPos[st[far]]
     if not (inner and outer) then return end
+    -- (past the nearer place's second container when that has a line of its own)
+    local innerExtra = f.AuraPos[st[near] .. "+"]
+    if innerExtra and innerExtra.lineOwn then inner = innerExtra end
     local point, rel, _, x, _, _, growV = AuraAnchor(f, st[far])
     local up = growV == AnchorUtil.FlowDirection.Up
     local side = (point:find("LEFT") and "LEFT") or (point:find("RIGHT") and "RIGHT") or "LEFT"
@@ -1472,9 +1478,44 @@ local function ConfigureDispelSlots(f, pos, entry, container, lanes, size, perRo
     return true
 end
 
-local function ConfigurePosition(f, pos, lanes)
-    local entry = f.AuraPos and f.AuraPos[pos]
+-- A place's second container (ns.AuraPolicy.SplitPlace), made when first needed: kept in f.AuraPos beside the
+-- places, so whatever walks them all reaches it
+PF.Extra = {}
+function PF.Extra.Key(pos) return pos .. "+" end
+function PF.Extra.Entry(f, pos)
+    local key = PF.Extra.Key(pos)
+    local entry = f.AuraPos[key]
+    if entry then return entry end
+    local ok, container = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
+    if not (ok and container) then return nil end
+    pcall(container.SetUnit, container, f.fuiUnit or "none")
+    container:Hide()
+    entry = { container = container }
+    f.AuraPos[key] = entry
+    return entry
+end
+
+-- The second container past the first: on along its row, or on a line of its own (nothing measured: the
+-- first one's size can be secret)
+function PF.Extra.Place(f, pos, first, container, beside)
+    local point, _, _, _, _, growH, growV = AuraAnchor(f, pos)
+    local up = growV == AnchorUtil.FlowDirection.Up
+    local left = growH == AnchorUtil.FlowDirection.Left
+    if point == "LEFT" or point == "RIGHT" then up = false end
+    local v, h = up and "BOTTOM" or "TOP", left and "RIGHT" or "LEFT"
+    container:ClearAllPoints()
+    if beside then
+        container:SetPoint(v .. h, first, v .. (left and "LEFT" or "RIGHT"), left and -AURA_SPACING or AURA_SPACING, 0)
+    else
+        container:SetPoint(v .. h, first, (up and "TOP" or "BOTTOM") .. h, 0, up and AURA_SPACING or -AURA_SPACING)
+    end
+end
+
+-- extra: { entry = the second container's, after = the first container, beside = on its row }
+local function ConfigurePosition(f, pos, lanes, extra)
+    local entry = extra and extra.entry or f.AuraPos and f.AuraPos[pos]
     if not entry then return end
+    entry.lineOwn = (extra and #lanes > 0 and not extra.beside) or nil
     local container = entry.container
     -- groups are reused per lane and look (ns.AuraGroups); the lanes left out turn off
     ns.AuraGroups.Begin(entry)
@@ -1537,6 +1578,7 @@ local function ConfigurePosition(f, pos, lanes)
     end
     ns.AuraGroups.Finish(container, entry)
     PlaceAuraContainer(f, pos, container, size, perRow)
+    if extra then PF.Extra.Place(f, pos, extra.after, container, extra.beside) end
     -- (FlareUI Style lifts them over the ring's elite art: f.auraLift, UnitFramesRing.lua Ring.Layout)
     container:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6))
     -- the portrait's grid: over it and under the ready check (the ring's icons: +11)
@@ -1599,19 +1641,37 @@ local function ConfigureAuras(f)
         for _, lane in ipairs(first) do list[#list + 1] = lane end
         for _, lane in ipairs(after) do list[#list + 1] = lane end
     end
-    -- the processing policy is per container: set before its groups are built
+    -- a place that mixes Blizzard's raid rules and plain ones shows the second kind in a container of its own
+    local rest, beside = {}, {}
     for _, pos in ipairs(AURA_POSITIONS) do
-        local rec, placeLanes = f.AuraPos[pos], perPos[pos]
-        if rec and #placeLanes > 0 then
-            local policy = ns.AuraPolicy.PlacePolicy(placeLanes)
-            if rec.policy ~= policy then
-                rec.policy = policy
-                ns.AuraPolicy.ApplyPolicy(rec.container, policy)
-            end
+        if f.AuraPos[pos] and #perPos[pos] > 1 and not IsEditing() then
+            perPos[pos], rest[pos], beside[pos] = ns.AuraPolicy.SplitPlace(perPos[pos])
+            -- (a place of several lines, or one the other kind of auras is stacked past: a line of its own)
+            local max, perRow = AuraFit(st, pos, f)
+            if max > perRow or (near and st.buffs ~= st.debuffs and st[near] == pos) then beside[pos] = false end
         end
     end
+    -- the processing policy is per container: set before its groups are built
+    local function SetPolicy(rec, placeLanes)
+        if not (rec and placeLanes and #placeLanes > 0) then return end
+        local policy = ns.AuraPolicy.PlacePolicy(placeLanes)
+        if rec.policy ~= policy then
+            rec.policy = policy
+            ns.AuraPolicy.ApplyPolicy(rec.container, policy)
+        end
+    end
+    for _, pos in ipairs(AURA_POSITIONS) do
+        SetPolicy(f.AuraPos[pos], perPos[pos])
+        if rest[pos] then SetPolicy(PF.Extra.Entry(f, pos), rest[pos]) end
+    end
     ns.AuraPolicy.Begin(f)
-    for _, pos in ipairs(AURA_POSITIONS) do ConfigurePosition(f, pos, perPos[pos]) end
+    for _, pos in ipairs(AURA_POSITIONS) do
+        ConfigurePosition(f, pos, perPos[pos])
+        local entry = f.AuraPos[PF.Extra.Key(pos)]
+        if entry then
+            ConfigurePosition(f, pos, rest[pos] or {}, { entry = entry, after = f.AuraPos[pos].container, beside = beside[pos] })
+        end
+    end
     PF.PlaceStackedAuras(f)
     -- the groups were just given their filters: reach applies on top (enemy tiles: never)
     if not hostile then ns.AuraPolicy.Done(f, f.fuiUnit) end
@@ -3308,6 +3368,7 @@ end
 local function SetTileUnit(f, unit)
     if f.fuiUnit == unit then return end
     f.fuiUnit = unit
+    f.lastReady = nil         -- (the last unit's ready check answer)
     f.unitSetAt = GetTime()   -- drawn in full now (or on its OnShow): the roster pass can skip it
     for _, event in ipairs(MEMBER_UNIT_EVENTS) do pcall(f.UnregisterEvent, f, event) end
     if unit then
@@ -3405,7 +3466,10 @@ end
 -- 11. BLIZZARD'S PARTY FRAMES (hidden with HardHide)
 --------------------------------------------------
 local function HideBlizzardParty()
-    if _G.PartyFrame then K.HardHide("PartyFrame") end
+    if _G.PartyFrame then
+        K.HardHide("PartyFrame")
+        ns.UnitFrames.GroupQuiet.Park("PartyFrame")
+    end
 end
 
 --------------------------------------------------
@@ -3994,6 +4058,7 @@ function PF:OnGlobalEvent(event, ...)
         end)
     elseif event == "READY_CHECK" then
         if readyCheckHold then readyCheckHold:Cancel(); readyCheckHold = nil end
+        for i = 0, MAX_MEMBERS do if members[i] then members[i].lastReady = nil end end   -- (the last check's answers)
     end
     local own = targets[0]
     if event == "PLAYER_TARGET_CHANGED" and own and own:IsShown() then UpdatePartyTarget(own) end

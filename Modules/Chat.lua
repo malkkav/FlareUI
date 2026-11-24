@@ -3792,7 +3792,6 @@ function Chat:ApplyMessageFont(chatFrame, db)
     ApplyLineSpacing(chatFrame, db)
 end
 
-Chat.MAX_LINES = 500
 function Chat:StyleChatFrame(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     -- the main window is Edit Mode's chat system: its box goes on the skin and keeps it on screen
@@ -3812,11 +3811,9 @@ function Chat:StyleChatFrame(chatFrame, db)
 
     Chat.LineFadeOn(chatFrame, db)   -- Blizzard's line fading off, or Fade Old Lines
 
-    -- more lines to scroll back through than Blizzard's 128 (the Combat Log keeps its own number). Blizzard's
-    -- own call, which keeps the lines already there and runs as the game's (11-24)
-    if chatFrame ~= _G.ChatFrame2 and chatFrame.SetMaxLines and (chatFrame:GetMaxLines() or 0) < Chat.MAX_LINES then
-        chatFrame:SetMaxLines(Chat.MAX_LINES)
-    end
+    -- (never SetMaxLines, 7.0.12 only: it copies the lines other addons printed into a new history table,
+    -- which is theirs from then on. Every line Blizzard adds ran as that addon's: errors every frame in
+    -- battlegrounds, whose join and leave list holds hidden names; highbrowtripod 11-24)
 
     -- Blizzard's own alpha changes are overruled by FlareUI's target alpha
     if not chatFrame.FlareUI_AlphaHooked then

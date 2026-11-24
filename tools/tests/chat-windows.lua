@@ -257,7 +257,7 @@ chat:Init()
 ui:flushTimers()
 ui:flushTimers()
 assert(listeners.PLAYER_LEAVING_WORLD == "SaveHistory" and listeners.PLAYER_ENTERING_WORLD == "UpdateInstanceBubbles")
-assert(general.maxLines == 500 and trade.maxLines == 500 and combat.maxLines == 128, "longer scrollback, not for the Combat Log")
+assert(general.maxLines == 128 and trade.maxLines == 128 and combat.maxLines == 128, "Blizzard's history is never made anew (11-24)")
 local skin, bar = general.FlareUI_Skin, general.FlareUI_TabBar
 assert(skin and bar and #bar.buttons == 3 and bar.buttons[1].Text:GetText() == "General")
 assert(bar.buttons[1].isSelected and not bar.buttons[2].isSelected)

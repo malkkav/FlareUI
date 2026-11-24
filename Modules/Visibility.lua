@@ -305,6 +305,29 @@ local function ApplyElementAlpha(frame, key, alpha)
     if key == "uf_totems" and ns.Totems.SetFaded then ns.Totems.SetFaded(alpha <= 0.01) end
 end
 
+-- NO CLICKS ON A BAR NOBODY SEES (11-24, Malkkav): an action, pet or stance bar faded to nothing that the
+-- pointer doesn't bring back takes no clicks, drags or tooltips; its keys still work. Buttons are secure, so
+-- only out of a fight: as one starts every such bar gets its mouse back for the fight (a condition can show
+-- it there), except one on Never. A bar whose buttons another addon moved is left to that addon.
+Visibility.mouseOff = {}   -- key -> the bar frame whose buttons have no mouse now
+function Visibility.TakesClickRule(key)
+    return key == "pet" or key == "stance" or key:match("^bar[1-8]$") ~= nil
+end
+function Visibility.SetBarMouse(key, frame, on)
+    local off = Visibility.mouseOff
+    if (off[key] == nil) == on or InCombatLockdown() then return end
+    if not on and not (frame and frame.actionButtons and frame.actionButtons[1] and not ButtonsTaken(frame)) then return end
+    frame = on and off[key] or frame
+    off[key] = not on and frame or nil
+    for _, button in ipairs(frame.actionButtons or {}) do button:EnableMouse(on) end
+end
+-- every bar not kept in the table gets its mouse back
+function Visibility.RestoreBarMouse(kept)
+    for _, e in ipairs(ELEMENTS) do
+        if Visibility.mouseOff[e.key] and not (kept and kept[e.key]) then Visibility.SetBarMouse(e.key, nil, true) end
+    end
+end
+
 -- "endcaps" is the two gryphon frames
 local function ForEachFrameOfKey(key, func, ...)
     if key == "endcaps" then
@@ -982,6 +1005,7 @@ Fader.UpdateScript = function(self, elapsed)
             for _, data in ipairs(members) do
                 local frame = data.frame
                 local targetAlpha = effectiveShow and 1 or data.minAlpha
+                if data.clickRule and effectiveShow then Visibility.SetBarMouse(data.key, frame, true) end
                 if data.external then
                     -- the meter fades itself: told only when its group's answer changes
                     if data.told ~= effectiveShow then
@@ -1013,6 +1037,11 @@ Fader.UpdateScript = function(self, elapsed)
                     else
                         -- at its alpha: the next Slower fade starts its stages afresh
                         data.stageHold = nil
+                        if data.clickRule and not effectiveShow then
+                            local fcmState = ns.ActionBars and ns.ActionBars.fcm
+                            Visibility.SetBarMouse(data.key, frame,
+                                Visibility.inFight or (fcmState and fcmState.wasDragging) or false)
+                        end
                         if data.apply and repair then data.apply(currentAlpha) end
                     end
                 end
@@ -1636,6 +1665,7 @@ function Visibility:Refresh()
     end
 
     if not self:ShouldLoad() then
+        Visibility.RestoreBarMouse()
         Fader:SetScript("OnUpdate", nil)
         Fader.updateEnabled = false
         return
@@ -1658,6 +1688,7 @@ function Visibility:Refresh()
     Fader.fading = false
     healthMembers = {}
     local watchMana = false
+    local clickRules = {}   -- the bars whose mouse this pass decides (Visibility.SetBarMouse)
 
     local fcm = ns.db.profile.fcm
     Visibility.MigrateCapsBar1(db)
@@ -1697,6 +1728,9 @@ function Visibility:Refresh()
             if fcmBar and fcmBar.enabled then
                 -- Fake CM bars: their own rule, one group; the pointer only with Mouseover ticked
                 local fcmShow = fcm.show or "combat"
+                -- (Fake CM sets its bars' mouse itself)
+                clickRules[key] = true
+                Visibility.mouseOff[key] = nil
                 local mouseOK = Conditions.Has(fcmShow, "mouseover", SHOW_SPEC)
                 AddMember("fcm", { key = key, frame = frame, isBar = true, fcm = true, show = fcmShow, mouseOK = mouseOK,
                                    fadeIn = ns.FadeTime(self:GetFadeIn(key)), fadeOut = ns.FadeTime(self:GetFadeOut(key)),
@@ -1726,6 +1760,10 @@ function Visibility:Refresh()
                     -- out for good; Edit Mode still shows it, to be found and set back
                     local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
                     ApplyElementAlpha(frame, key, editing and 1 or 0)
+                    if Visibility.TakesClickRule(key) and not editing then
+                        clickRules[key] = true
+                        Visibility.SetBarMouse(key, frame, false)
+                    end
                     if e.keepAlpha then e.faded = true end
                     if e.own then unitValues[key] = editing and 1 or 0 end
                 elseif show == "always" or show == "inuse" then
@@ -1759,6 +1797,10 @@ function Visibility:Refresh()
                                    delay = e.delay and not e.chat and self:GetFadeDelay(settingsKey) or nil }
                     -- the pointer shows it only with Mouseover ticked
                     data.mouseOK = Conditions.Has(show, "mouseover", SpecOf(settingsKey))
+                    if Visibility.TakesClickRule(key) and not data.mouseOK and data.minAlpha <= 0 then
+                        data.clickRule = true
+                        clickRules[key] = true
+                    end
                     if e.chat then
                         -- every chat window at one alpha (Chat.lua FadeApply); the chat's own reasons,
                         -- the pointer among them, in its hold (Chat.lua FadeHold)
@@ -1791,6 +1833,7 @@ function Visibility:Refresh()
         end
     end
 
+    Visibility.RestoreBarMouse(clickRules)
     WatchHealth(#healthMembers > 0, watchMana)
     MarkAllDirty()
 end

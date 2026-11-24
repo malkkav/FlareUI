@@ -26,6 +26,7 @@ function Stub:CreateTexture() return setmetatable({}, Stub) end
 function Stub:CreateFontString() return setmetatable({}, Stub) end
 
 local tweaks = {}
+env_master = false   -- (global: read by ns.IsMasterLooter below)
 local errors = {}
 local ns = {
     L = setmetatable({}, { __index = function(_, k) return k end }),
@@ -36,6 +37,7 @@ local ns = {
     GetFontPath = function() return 'font' end, BorderEdgeSize = function() return 8 end,
     GLOBAL_FONT = 'font',
     IsGamepadUI = function() return false end,
+    IsMasterLooter = function() return env_master end,
     LogError = function(_, err) errors[#errors + 1] = err end,
     EditSection = function() return {} end,
     LayoutHome = function(t, name) t[name] = t[name] or {}; return t[name] end,
@@ -133,5 +135,31 @@ assert(row3.name.text == 'Item 3 |cff999999(5)|r', 'owned count follows the bags
 assert(rowOf(1) == row1 and select(2, rowOf(1)) == y1, 'row 1 keeps its place')
 assert(rowOf(3) == row3 and select(2, rowOf(3)) == y3, 'row 3 keeps its place')
 assert(row2.shown == false and row2.data == nil and rowOf(2) == nil, 'the gap stays')
+
+fire('LOOT_CLOSED')
+runTimers()
+
+-- (11-24) the Master Looter's loot goes to Blizzard's window, which has the assign menu: never in the middle
+-- of a loot
+local blizzard = {}
+env.LootFrame.RegisterEvent = function(_, event) blizzard[event] = true end
+env.LootFrame.UnregisterEvent = function(_, event) blizzard[event] = nil end
+slots = { item(1, 'link:1') }
+fire('LOOT_OPENED', false, false)
+env_master = true
+fire('PARTY_LOOT_METHOD_CHANGED')
+assert(not blizzard.LOOT_OPENED and win:IsShown(), 'the open loot stays')
+fire('LOOT_CLOSED')
+runTimers()
+assert(blizzard.LOOT_OPENED and blizzard.LOOT_CLOSED)
+fire('LOOT_OPENED', false, false)
+assert(not win:IsShown(), "Blizzard's window has it")
+fire('LOOT_CLOSED')
+runTimers()
+env_master = false
+fire('GROUP_ROSTER_UPDATE')
+assert(not blizzard.LOOT_OPENED)
+fire('LOOT_OPENED', false, false)
+assert(win:IsShown())
 
 print('PASS: loot window events')

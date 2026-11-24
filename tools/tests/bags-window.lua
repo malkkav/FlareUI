@@ -209,6 +209,19 @@ end
 local weapon, junk, empty = overlay(1), overlay(2), overlay(5)
 assert(weapon.ilvl:GetText() == "39" and weapon.ilvl:IsShown() and weapon.eye:IsShown() and weapon.boe:IsShown())
 assert(junk.junk:IsShown() and not junk.ilvl:IsShown() and empty.plain:IsShown())
+-- (11-24) ... and a locked slot keeps its padlock
+do
+    local secured, extended = env.IsAccountSecured, items[5].IsExtended
+    items[5].IsExtended = function() return true end
+    env.IsAccountSecured = function() return false end
+    bags:Refresh()
+    assert(not empty.plain:IsShown())
+    env.IsAccountSecured = function() return true end
+    bags:Refresh()
+    assert(empty.plain:IsShown())
+    env.IsAccountSecured, items[5].IsExtended = secured, extended
+    bags:Refresh()
+end
 assert(items[1].IconBorder:GetAlpha() == 0 and weapon.border:GetBackdrop().edgeSize == 8)
 assert(items[1].Count:GetFont() == "Fonts/Test")
 assert(combined.MoneyFrame.GoldButton.Text:GetFont() == "Fonts/Test")
@@ -351,6 +364,30 @@ assert(env.GameTooltip:IsShown() and env.GameTooltip.lines[1] == "Gold on This R
 assert(env.GameTooltip.lines[3] == "<Guild>=100c" and env.GameTooltip.lines[4]:find("Two", 1, true))
 gold:RunScript("OnLeave")
 assert(not env.GameTooltip:IsShown())
+-- (11-24) Combine Empty Slots: a special bag's free slots are counted apart, locked slots aren't free at all
+do
+    local container, secured = env.C_Container, env.IsAccountSecured
+    local family = { [0] = 0, [1] = 4, [2] = 0 }
+    env.C_Container = setmetatable({
+        GetContainerItemInfo = function(bag, slot) if bag == 0 and slot == 1 then return { itemID = 1 } end end,
+        GetContainerNumFreeSlots = function(bag) return 9, family[bag] end,
+    }, { __index = container })
+    env.IsAccountSecured = function() return false end
+    local function slot(bag, id, locked)
+        local b = env.CreateFrame("Button", nil, combined)
+        b.GetBagID, b.GetID, b.IsExtended = function() return bag end, function() return id end, function() return locked end
+        b.IsProtected = function() return false end
+        return b
+    end
+    local soul1, filled, free1, locked, soul2, free2 = slot(1, 1), slot(0, 1), slot(0, 2), slot(0, 17, true), slot(1, 2), slot(2, 1)
+    local kept = bags.CombineEmpty({ soul1, filled, free1, locked, soul2, free2 }, true)
+    assert(#kept == 3 and kept[1] == filled and kept[2] == soul1 and kept[3] == free1, "the item, the soul bag's slot, the ordinary one")
+    assert(tostring(soul1.fuiFreeCount:GetText()) == "2" and tostring(free1.fuiFreeCount:GetText()) == "2")
+    assert(not locked:IsShown() and not soul2:IsShown() and not free2:IsShown())
+    bags.CombineEmpty({}, false)
+    assert(locked:IsShown() and soul2:IsShown() and free2:IsShown())
+    env.C_Container, env.IsAccountSecured = container, secured
+end
 bags.otherAddon, ui.bagAddon = nil, "Bagnon"
 assert(not bags:ShouldLoad())
 print("PASS: bag filters and overlays, bank layout, safe sorting and opening, item levels and previews")

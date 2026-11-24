@@ -331,6 +331,34 @@ do
     switch.set(nil, false)
     assert(tweaks.lootRollFade == nil and opacity.hidden())
 end
+-- (11-24) a roll past its time stays while the game still lists it, with no nonsense time, and goes once it doesn't
+do
+    local active, open = env.GetActiveLootRollIDs, true
+    env.GetActiveLootRollIDs = function() return open and { 41 } or {} end
+    ui:emit("START_LOOT_ROLL", 41, 10000)
+    local card = assert(visible(41, true))
+    timeLeft = 69812000
+    card:RunScript("OnUpdate", 0.02)
+    assert(tonumber(card.timeText:GetText()) <= 10, "our own clock")
+    advance(21)
+    assert(card.session and card.session.status == "rolling" and card.session.choice == nil)
+    card:RunScript("OnUpdate", 0.02)
+    assert(card.timeText:GetText() == 0 or card.timeText:GetText() == "0")
+    open = false
+    local session = card.session
+    advance(5.1)
+    assert(session.status ~= "rolling")
+    -- one the game never drops from its list is let go in the end
+    open = true
+    env.GetActiveLootRollIDs = function() return { 42 } end
+    ui:emit("START_LOOT_ROLL", 42, 10000)
+    local stuck = assert(visible(42, true)).session
+    for _ = 1, 30 do advance(10) end
+    assert(stuck.status == "rolling")
+    advance(20)
+    assert(stuck.status ~= "rolling")
+    env.GetActiveLootRollIDs, timeLeft = active, 30000
+end
 tweaks.lootRollFont.size = 17
 lr:ApplyFont()
 assert(select(2, first.name:GetFont()) == 17)

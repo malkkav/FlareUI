@@ -3675,6 +3675,9 @@ local function CreateFrames()
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) OT.ScrollBy(delta) end)
     scroll:SetScript("OnVerticalScroll", function()
+        -- (11-24) the secure click lies on the screen where its quest was: without this a wheel step and a
+        -- click opened the quest that had been under the mouse. The line there now gets its own OnEnter.
+        OT.HideSecureClick()
         OT:UpdateScrollBar()
         OT:UpdateItemButtons()
     end)

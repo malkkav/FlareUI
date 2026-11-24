@@ -39,7 +39,8 @@ function Widget:GetChildren() return unpack(self.children) end
 function Widget:GetRegions() return unpack(self.regions) end
 function Widget:GetName() return self.name end
 
-function Widget:SetScript(key, callback) self.scripts[key] = callback end
+-- (as the client: a new script throws away what was hooked onto the old one)
+function Widget:SetScript(key, callback) self.scripts[key], self.hooks[key] = callback, nil end
 function Widget:GetScript(key) return self.scripts[key] end
 function Widget:HookScript(key, callback)
     self.hooks[key] = self.hooks[key] or {}
@@ -92,6 +93,7 @@ function Widget:SetFrameStrata(value) self.strata = value end
 function Widget:GetFrameStrata() return self.strata or "MEDIUM" end
 function Widget:SetAlpha(value) self.alpha = value end
 function Widget:GetAlpha() return self.alpha or 1 end
+function Widget:GetEffectiveAlpha() return self:GetAlpha() * (self.parent and self.parent:GetEffectiveAlpha() or 1) end
 function Widget:IsForbidden() return false end
 function Widget:EnableMouse(value) self.mouseEnabled = value end
 function Widget:IsMouseEnabled() return self.mouseEnabled ~= false end

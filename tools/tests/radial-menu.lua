@@ -232,6 +232,32 @@ local kind, id, icon = rm.MacroAction({ name = "Blink Macro" })
 assert(kind == "spell" and id == 201 and icon == 1234)
 assert(rm:ResolveEntry({ kind = "macro", name = "Blink Macro" }).attributes.macro == "Blink Macro")
 assert(rm:ResolveEntry({ kind = "macro", name = "Absent", text = "/wave" }).attributes.macrotext == "/wave")
+-- (11-24) macros that share a name: the one with the saved text, by its number; kept until macros change
+do
+    local byName, info, number, spell = env.GetMacroIndexByName, env.GetMacroInfo, env.GetNumMacros, env.GetMacroSpell
+    local macros = { { " ", 11, "/cast Blink" }, { "Solo", 12, "/dance" }, [121] = { " ", 13, "/cast Frostbolt" }, [122] = { "7", 14, "/wave" } }
+    env.GetMacroIndexByName = function(name) return name == " " and 1 or name == "Solo" and 2 or name == "7" and 122 or 0 end
+    local reads = 0
+    env.GetMacroInfo = function(i) reads = reads + 1; if macros[i] then return unpack(macros[i]) end end
+    env.GetNumMacros = function() return 2, 2 end
+    env.GetMacroSpell = function(i) if i == 121 then return 102 end end
+    rm.macroFound = nil
+    local entry = { kind = "macro", name = " ", text = "/cast Frostbolt" }
+    local slice = rm:ResolveEntry(entry)
+    assert(slice.attributes.macro == 121, "the second one of that name")
+    local kind, id = rm.MacroAction(entry)
+    assert(kind == "spell" and id == 102)
+    assert(rm:ResolveEntry({ kind = "macro", name = " ", text = "/cast Blink" }).attributes.macro == 1)
+    assert(rm:ResolveEntry({ kind = "macro", name = " ", text = "/gone" }).attributes.macro == 1, "neither: the first")
+    assert(rm:ResolveEntry({ kind = "macro", name = "Solo", text = "/dance" }).attributes.macro == "Solo")
+    assert(rm:ResolveEntry({ kind = "macro", name = "7", text = "/wave" }).attributes.macro == 122, "a name of digits")
+    reads = 0
+    assert(rm.MacroIndex(entry) == 121 and reads == 0, "found ones are kept")
+    ui:emit("UPDATE_MACROS")
+    assert(rm.MacroIndex(entry) == 121 and reads > 0)
+    env.GetMacroIndexByName, env.GetMacroInfo, env.GetNumMacros, env.GetMacroSpell = byName, info, number, spell
+    rm.macroFound = nil
+end
 assert(rm:ResolveEntry({ kind = "micromenu", panel = "character" }).attributes.macrotext == "/click CharacterMicroButton")
 assert(rm:ResolveEntry({ kind = "targetmarker", marker = -1 }).attributes.action == "clear-all")
 assert(rm:ResolveEntry({ kind = "targetmarker", marker = 0 }).attributes.action == "clear")
@@ -668,4 +694,33 @@ assert(radial:IsShown() and radial:GetFrameStrata() == "FULLSCREEN" and radial:G
 rm:HidePreview()
 assert(not radial:IsShown() and radial:GetFrameStrata() == "DIALOG" and radial:GetScale() == 1)
 assert(#secureWrites > 0, "resolved state is sent to the secure host")
+-- (11-24) what changed since the last open is written as a fight starts: once, and never after the lockdown
+do
+    local function written() return #secureWrites end
+    rm.MarkDirty()
+    local before = written()
+    listeners.PLAYER_REGEN_DISABLED(rm)
+    assert(written() > before)
+    before = written()
+    listeners.PLAYER_REGEN_DISABLED(rm)
+    assert(written() == before, "nothing changed: nothing to do")
+    rm.MarkDirty()
+    ui.combat = true
+    listeners.PLAYER_REGEN_DISABLED(rm)
+    header.OnSecureWarm()
+    ui.combat = false
+    assert(written() == before)
+    header.OnSecureWarm()
+    assert(written() > before, "and before an empty radial refuses to open")
+    local body = header:GetAttribute("flare-openclick")
+    local count, warmed, shown = 0, 0, 0
+    local frame = { Show = function() shown = shown + 1 end }
+    local chunk = setfenv(assert(loadstring(body)), { newtable = function() return {} end })
+    local self = { GetAttribute = function(_, key) return key == "r9-count" and count or nil end,
+        CallMethod = function(_, method) if method == "OnSecureWarm" then warmed = warmed + 1; count = 2 end end,
+        RunAttribute = function() end, GetFrameRef = function() return frame end, SetBindingClick = function() end }
+    getfenv(chunk).self = self
+    local ok = chunk("r9")
+    assert(ok ~= false and warmed == 1 and shown > 0, "a radial filled since the last sync opens")
+end
 print("PASS: radial migration, action resolution, group and key precedence, gamepad bindings and previews")

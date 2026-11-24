@@ -128,6 +128,7 @@ local function CreateTile(i)
     f:SetScript("OnLeave", Tile.OnLeave)
     _G.ClickCastFrames = _G.ClickCastFrames or {}
     _G.ClickCastFrames[f] = true
+    f.noAuras = true   -- (their auras are always off: FIXED)
     Tile.Build(f, unit)
     tiles[i] = f
     return f

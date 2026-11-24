@@ -218,11 +218,33 @@ assert(br.CustomValue() == "c1,c2")
 br.SetCustom("c2")
 bag[124] = 3
 br.Update()
-local custom = assert(iconFor("custom1"))
+local custom = assert(iconFor("custom2"), "what is remembered about one follows it, not its place in the list")
 assert(custom:GetAttribute("item") == "item:124" and custom.count:GetText() == "3")
 custom:RunScript("OnMouseUp", "RightButton")
 menus["Remove This Reminder"]()
 assert(br.CustomCount() == 0)
+-- (11-24) Never Remind Me stays with its own reminder when another is removed, and goes with it
+br.AddCustom("Alpha Buff")
+br.AddCustom("Beta Buff")
+br.AddCustom("Gamma Buff")
+assert(iconFor("custom1") and iconFor("custom2") and iconFor("custom3"))
+iconFor("custom2"):RunScript("OnMouseUp", "RightButton")
+menus["Never Remind Me"]()
+assert(not iconFor("custom2") and db.hidden["PRIEST:custom2"])
+br.SetCustom("c2,c3")
+assert(br.CustomCount() == 2 and not iconFor("custom2") and iconFor("custom3"))
+br.AddCustom("Delta Buff")
+assert(iconFor("custom4") and not iconFor("custom2"))
+br.SetCustom("c2,c3")
+assert(db.hidden["PRIEST:custom2"] == nil, "removed: no longer remembered as hidden")
+br.ClearCustom()
+assert(br.CustomCount() == 0)
+-- saved before the ids: each gets its place
+db.custom.PRIEST = { { spells = { "Old One" } }, { spells = { "Old Two" } } }
+br.Resolve()
+br.Update()
+assert(iconFor("custom1") and iconFor("custom2") and db.custom.PRIEST[2].id == 2)
+br.ClearCustom()
 
 bag[123], bag[125], bag[126] = 3, 5, 2
 names[432] = "Drink"
@@ -318,6 +340,16 @@ ui:emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 688)
 br.Update()
 assert(iconFor("pet"):GetAttribute("spell") == "Summon Imp")
 assert(iconFor("healthstone"):GetAttribute("spell") == "Create Healthstone")
+-- Demonic Sacrifice: only with Demonic Pact known too (a click on it costs the pet otherwise)
+pet, known[18788] = true, true
+br.Resolve()
+br.Update()
+assert(not iconFor("sacrifice"))
+known[425464] = true
+br.Resolve()
+br.Update()
+assert(iconFor("sacrifice"))
+pet, known[18788], known[425464] = false, nil, nil
 
 class = "ROGUE"
 gear[16], gear[17], bag[8928], bag[8985], known = 100, 200, 2, 3, { [2842] = true }

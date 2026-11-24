@@ -415,6 +415,11 @@ assert(not rewards:find("Moonbrook Banner", 1, true))
 rewardReady = true
 ui:flushTimers()
 assert(table.concat(env.GameTooltip.lines, "\n"):find("Moonbrook Banner x2", 1, true))
+-- (11-24) the list scrolls under the mouse: the click must not stay with the quest that was there
+scroll:RunScript("OnVerticalScroll", 10)
+assert(not ot.secureClick:IsShown())
+patrol:RunScript("OnEnter")
+assert(ot.secureClick:IsShown())
 ot.secureClick:RunScript("OnLeave")
 ui:flushTimers()
 assert(not env.GameTooltip:IsShown() and not ot.secureClick:IsShown())

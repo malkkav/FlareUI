@@ -249,4 +249,35 @@ assert(row("rm.names"):Get() == "off" and not setting("radialmenu.showNames"))
 ui.otherController = "ConsolePort"
 assert(row("rm.pad"):IsDisabled())
 
+-- (11-24) Blizzard's Cooldown Manager switch: refused in a fight, kept from a character, or not kept by the game
+do
+    local errors, logged, access = {}, {}, nil
+    E.UIErrorsFrame, E.ERR_NOT_IN_COMBAT = { AddMessage = function(_, text) errors[#errors + 1] = text end }, "Not in combat"
+    E.C_CooldownViewer = { IsCooldownViewerAvailable = function() return access == nil, access end }
+    local log, cm = ns.LogError, ns.CooldownManager
+    ns.LogError = function(where, err) logged[#logged + 1] = where .. ": " .. err end
+    ns.CooldownManager = { BlizzardOn = function() return getBool("cooldownViewerEnabled") end }
+    cvars.cooldownViewerEnabled = "0"
+    ui.combat = true
+    set("cdm.blizzard", true)
+    ui:flushTimers()
+    assert(cvars.cooldownViewerEnabled == "0" and errors[1] == "Not in combat" and #logged == 0)
+    ui.combat = false
+    set("cdm.blizzard", true)
+    ui:flushTimers()
+    assert(row("cdm.blizzard"):Get() == true and #errors == 1 and #logged == 0)
+    set("cdm.blizzard", false)
+    access = "Available at level 10"
+    set("cdm.blizzard", true)
+    ui:flushTimers()
+    assert(errors[2] == "Available at level 10" and #logged == 0)
+    access = nil
+    cvars.cooldownViewerEnabled = "0"
+    E.SetCVar = function() end
+    set("cdm.blizzard", true)
+    ui:flushTimers()
+    assert(#logged == 1 and logged[1] == "Cooldown Manager switch: stayed off")
+    E.SetCVar, ns.LogError, ns.CooldownManager = setCVar, log, cm
+end
+
 print("PASS: settings pages preserve saved values, dependencies and live callbacks")

@@ -465,6 +465,10 @@ local function EnsureHeaders()
             if not headers[k] then
                 local h = NewHeader("FlareUI_RaidGroup" .. k, holder, raidCtx, GROUP_SIZE)
                 h:SetAttribute("groupFilter", tostring(k))
+                -- one column of five, as the group is: without a limit Precreate in a raid (a reload there)
+                -- made five tiles and one more per member
+                h:SetAttribute("unitsPerColumn", GROUP_SIZE)
+                h:SetAttribute("maxColumns", 1)
                 headers[k] = h
                 AddGroupLabel(h, k)
                 Precreate(h)
@@ -1159,7 +1163,11 @@ function RF:OnGlobalEvent(event, ...)
                 rosterPending = false
                 if IsEditing() then return end
                 ForTiles(function(f)
-                    if not (f.unitSetAt and f.unitSetAt >= burstStart) then Tile.UpdateAll(f) end
+                    -- (11-24) ... and still for the same player: somebody else can have moved behind the
+                    -- same unit since
+                    local drawn = f.unitSetAt and f.unitSetAt >= burstStart and f.paintedGUID
+                    local guid = drawn and UnitGUID(f.fuiUnit)
+                    if not (drawn and canaccessvalue(guid) and guid == drawn) then Tile.UpdateAll(f) end
                 end)
             end)
         end
@@ -1173,6 +1181,7 @@ function RF:OnGlobalEvent(event, ...)
         end)
     elseif event == "READY_CHECK" then
         if readyHold then readyHold:Cancel(); readyHold = nil end
+        for _, f in ipairs(tiles) do f.lastReady = nil end   -- (the last check's answers)
     end
     local update
     if event == "PLAYER_TARGET_CHANGED" then
@@ -1221,9 +1230,11 @@ local function StartRangeTicker()
     end)
 end
 
--- Edit Mode: the party and raid frames overlap, so each gets its own strata (party on top) and their
--- tiles never interleave. Children keep the strata they were created with, hence the recursion.
-local GROUP_LAYERS = { FlareUI_Party = "MEDIUM", FlareUI_Raid = "LOW", FlareUI_RaidTanks = "LOW" }
+-- Edit Mode: the party and raid frames overlap, so the party goes a strata above (everything else here
+-- is LOW already) and their tiles never interleave. Children keep the strata they were created with,
+-- hence the recursion.
+local GROUP_LAYERS = { FlareUI_Party = "MEDIUM" }
+local layerNow = {}   -- frame name -> the strata it was last given
 -- (frames and their siblings as varargs: no table per frame over thousands of tile parts)
 -- An aura container's buttons are locked while auras are secret (addon restrictions, instances): they
 -- are skipped, and keep the strata of the container they live in.
@@ -1239,13 +1250,20 @@ local function StackGroupFrames()
     local editing = IsEditing()
     for name, strata in pairs(GROUP_LAYERS) do
         local frame = _G[name]
-        if frame then SetLayer(editing and strata or "LOW", frame) end
+        local wanted = editing and strata or "LOW"
+        if frame and layerNow[name] ~= wanted then
+            layerNow[name] = wanted
+            SetLayer(wanted, frame)
+        end
     end
 end
 
 -- hide Blizzard's raid frames (the raid manager stays)
 local function HideBlizzardRaid()
-    if _G.CompactRaidFrameContainer then K.HardHide("CompactRaidFrameContainer") end
+    if _G.CompactRaidFrameContainer then
+        K.HardHide("CompactRaidFrameContainer")
+        ns.UnitFrames.GroupQuiet.Park("CompactRaidFrameContainer")
+    end
 end
 
 --------------------------------------------------

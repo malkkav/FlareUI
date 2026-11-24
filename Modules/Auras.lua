@@ -391,7 +391,7 @@ ns.OnEditFight(function() for button in pairs(styledButtons) do ApplyPreviewTime
 -- The dispel type icon on debuffs of 18 px and up (smaller ones would be all icon)
 AU.DISPEL_ICON_MIN = 18
 function AU.DispelIconWanted(look)
-    return look.isDebuff and (look.size or 0) >= AU.DISPEL_ICON_MIN
+    return look.isDebuff and not look.noTypeIcon and (look.size or 0) >= AU.DISPEL_ICON_MIN or false
 end
 
 -- Makes (or hides) the corner icon; shown by Blizzard's button, or by the samples (AU.SampleDispelIcon)

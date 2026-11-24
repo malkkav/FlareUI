@@ -77,7 +77,9 @@ assert(cooldown:GetWidth() == 22 and select(2, cooldown:GetPoint()) == all[1] an
 assert(duration:GetPoint() == "CENTER")
 db.totems.timer, db.totems.swipe = "none", "none"
 ns.Totems.ApplyLayout()
-assert(duration:GetAlpha() == 0 and not cooldown.drawSwipe)
+-- (the layer is hidden: Blizzard colours the text every frame, which shows the text itself again)
+duration:SetAlpha(1)
+assert(duration:GetEffectiveAlpha() == 0 and not cooldown.drawSwipe)
 assert(not holder.preview:IsShown())
 ns.Totems.SetFaded(true)
 assert(not all[1]:IsMouseEnabled())

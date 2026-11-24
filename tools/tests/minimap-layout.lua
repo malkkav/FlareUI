@@ -11,6 +11,10 @@ local function setup(style, edgeIcons)
     function Widget:SetMaskTexture(mask) self.mask = mask end
     function Widget:SetIconScale(scale) self.iconScale = scale end
     function Widget:EnableMouseWheel(value) self.wheelEnabled = value end
+    -- (as the client: EnableMouse is both channels)
+    function Widget:EnableMouse(value) self.mouseEnabled, self.clickEnabled, self.motionEnabled = value, value, value end
+    function Widget:SetMouseClickEnabled(value) self.clickEnabled = value end
+    function Widget:SetMouseMotionEnabled(value) self.motionEnabled = value end
 
     local cluster = env.CreateFrame("Frame", "MinimapCluster", env.UIParent)
     local container = env.CreateFrame("Frame", nil, cluster)
@@ -37,6 +41,7 @@ local function setup(style, edgeIcons)
     env.SetCVar = function(key, value) assert(key == "rotateMinimap"); rotating = value ~= "0" end
     cluster.SetRotateMinimap = function(_, enabled) rotating = enabled end
     cluster.SetEditModeScale, cluster.SetHeaderUnderneath = noop, noop
+    cluster.SetIconScale = function(_, scale) env.Minimap:SetIconScale(scale) end
     cluster.HasSetting = function() return true end
     cluster.GetSettingValue = function() return 125 end
 
@@ -302,7 +307,17 @@ minimap:SetIconsFaded(true)
 assert(map.iconScale == 0)
 minimap:SetIconsFaded(false)
 assert(map.iconScale == 1)
+-- (11-24) Edit Mode's Icon Size comes back, and a layout applied while faded draws nothing
+env.Enum.EditModeMinimapSetting.IconScale = 9
+minimap:SetIconsFaded(true)
+cluster:SetIconScale(1.5)
+assert(map.iconScale == 0)
+minimap:SetIconsFaded(false)
+assert(map.iconScale == 1.25)
+env.Enum.EditModeMinimapSetting.IconScale = nil
 
+-- (11-24) it takes clicks, never the hover: the pointer's focus stays the map's
+assert(surface.clickEnabled == true and surface.motionEnabled == false, "clicks without hover")
 assert(surface.wheelEnabled and #surface.passThrough == 2)
 surface:RunScript("OnMouseWheel", 1)
 assert(map:GetZoom() == 1)

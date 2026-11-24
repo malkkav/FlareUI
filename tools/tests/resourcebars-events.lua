@@ -1,6 +1,6 @@
 local H = dofile("tools/tests/perf-helpers.lua")
 local config = {
-    enabled = true, palette = "custom", customBase = "blizzard", customColors = { queued = { 0.9, 0.2, 0.1 } },
+    enabled = true, palette = "custom", customBase = "blizzard", customColors = { queued = { 0.9, 0.2, 0.1 }, queueMaul = { 0.9, 0.2, 0.1 } },
     layouts = {}, font = { face = "Test Face", size = 10 },
     bars = {
         health = { enabled = true, lowHealth = true, show = "combat", font = {}, smoothBars = true },
@@ -53,8 +53,9 @@ env.GetComboPoints = function() return state.points end
 env.UnitCastingInfo = function() return state.cast end
 env.C_Spell = {
     GetSpellPowerCost = function(id) return id == 10 and { { type = 0, cost = 5 } } or {} end,
-    GetSpellName = function(id) return id == 78 and "Heroic Strike" or nil end,
-    IsCurrentSpell = function(name) return name == "Heroic Strike" and state.queued end,
+    GetSpellName = function(id) return id == 6807 and "Maul" or id == 78 and "Heroic Strike" or nil end,
+    IsCurrentSpell = function(name) return name == "Maul" and state.queued or name == 6603 and state.attacking end,
+    IsAutoRepeatSpell = function(id) return id == 75 and state.shooting end,
     GetSpellCooldown = function() return state.gcd end,
 }
 local ranges = {}
@@ -170,6 +171,21 @@ assert(not ranged.outOfRange)
 send("PLAYER_DEAD")
 ranged:RunScript("OnUpdate", 1)
 assert(not ranged.swingEnd and not ranged.StandStill:IsShown())
+-- (11-24) the auto attack state: read as the world loads (a reload in the middle of it), gone with your death
+state.attacking, state.shooting = true, true
+send("PLAYER_ENTERING_WORLD")
+assert(rb.auto.melee and rb.auto.ranged)
+send("PLAYER_DEAD")
+assert(not rb.auto.melee and not rb.auto.ranged)
+state.attacking, state.shooting = false, false
+send("PLAYER_ENTERING_WORLD")
+assert(not rb.auto.melee and not rb.auto.ranged)
+-- queued attacks: only the classes that have one ask
+local wasClass = playerClass
+assert(rb.HasQueued())
+playerClass = "ROGUE"
+assert(not rb.HasQueued())
+playerClass = wasClass
 
 ui:emit("MIRROR_TIMER_START", "BREATH", 29000, 60000, -1, 0, "Breath")
 assert(timer:IsShown() and not timer.Bar:IsShown() and rb.Timer.parts[1].Time:GetText() == "29")

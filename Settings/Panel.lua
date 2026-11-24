@@ -2196,6 +2196,21 @@ local function UpdateHeader(module)
     if RowWidth(pad) > room and #shown > 0 then
         pad = math.max(TAB_PAD_MIN, TAB_PAD - (RowWidth(TAB_PAD) - room) / #shown)
     end
+    -- (11-24, Archy: Russian) still too wide: the longest names are cut, so the tabs never overlap
+    local over = RowWidth(pad) - room
+    if over > 0 and #shown > 0 then
+        local byWidth = {}
+        for n, i in ipairs(shown) do byWidth[n] = i end
+        table.sort(byWidth, function(a, b) return textW[a] > textW[b] end)
+        local cut = textW[byWidth[1]]
+        for n = 1, #byWidth do
+            local nextW = byWidth[n + 1] and textW[byWidth[n + 1]] or 0
+            local step = math.min((cut - nextW), over / n)
+            cut, over = cut - step, over - step * n
+            if over <= 0.01 then break end
+        end
+        for _, i in ipairs(shown) do textW[i] = math.max(8, math.min(textW[i], cut)) end
+    end
     for _, i in ipairs(shown) do
         local b = page.tabButtons[i]
         local new = isNew[i]

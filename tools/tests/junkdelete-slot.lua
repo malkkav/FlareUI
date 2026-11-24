@@ -10,6 +10,9 @@ local env = setmetatable({
     print = noop,
     InCombatLockdown = function() return false end,
     IsModifiedClick = function() return false end,
+    SpellIsTargeting = function() return false end,
+    GetTime = function() return 10 end,
+    GetLootSlotInfo = function() end,
     GetCursorInfo = function()
         if cursorItem then return 'item', cursorItem end
         return false

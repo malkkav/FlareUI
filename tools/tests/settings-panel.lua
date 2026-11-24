@@ -57,6 +57,23 @@ ui:flushTimers()
 assert(ui:find(function(w) return w:GetText() == "No settings match." and w:IsVisible() end), "empty search results explain the state")
 P:Select("ch")
 assert(frame.search:GetText() == "", "selecting a page clears the search")
+-- (11-24) tab names too long for the row (Russian): the longest are cut, the rest keep theirs
+do
+    local tabs = {}
+    for i = 1, 7 do tabs[i] = { key = "t" .. i, label = i == 3 and string.rep("W", 60) or ("Name " .. i) } end
+    S:Module{ key = "wide", group = "top", tabs = tabs }
+    P:Open("wide")
+    local widths, total, room = {}, 0, nil
+    for i = 1, 7 do
+        local b = assert(ui:find(function(w) return w.tabKey == "t" .. i and w:IsVisible() end))
+        widths[i] = b:GetWidth()
+        total = total + widths[i]
+        room = b:GetParent():GetWidth()
+    end
+    assert(total <= room and widths[3] < 60 * 6, "they fit: " .. total .. " in " .. room)
+    assert(widths[1] == widths[2] and widths[1] >= 6 * 6 + 12 and widths[3] > widths[1])
+    P:Select("ch")
+end
 
 local scale = frame:GetScale()
 P.ScaleStep(1)

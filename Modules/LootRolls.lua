@@ -263,19 +263,33 @@ local function ReadItem(s)
     Refresh()
 end
 
+-- whether the game still lists the roll as open
+local OPEN_LATE = 300   -- seconds past its time after which a listed roll is let go anyway
+local function StillOpen(rollID)
+    for _, id in ipairs(GetActiveLootRollIDs and GetActiveLootRollIDs() or {}) do
+        if id == rollID then return true end
+    end
+    return false
+end
+
 local function StartRoll(rollID, rollTimeMs)
     if sessions[rollID] then return end
     rollTimeMs = rollTimeMs or (C_Loot and C_Loot.GetLootRollDuration and C_Loot.GetLootRollDuration(rollID))
     local s = NewSession(rollID, (rollTimeMs or 60000) / 1000)
     local since = C_LootHistory.GetLootHistoryTime and Safe(C_LootHistory.GetLootHistoryTime())
     s.since = type(since) == "number" and since or nil
-    -- the roll's end event can be missed (a loading screen): close it after its time anyway
-    C_Timer.After(s.duration + 5, function()
-        if sessions[rollID] == s and s.status == "rolling" then
-            Close(s)
-            Refresh()
+    -- the roll's end event can be missed (a loading screen): closed after its time anyway. Not while the
+    -- game still lists it (11-24): the server can keep a roll open past its time, and it can be answered.
+    local function CloseLate()
+        if sessions[rollID] ~= s or s.status ~= "rolling" then return end
+        if StillOpen(rollID) and GetTime() < s.t0 + s.duration + OPEN_LATE then
+            C_Timer.After(5, CloseLate)
+            return
         end
-    end)
+        Close(s)
+        Refresh()
+    end
+    C_Timer.After(s.duration + 5, CloseLate)
     ReadItem(s)
     Refresh()
 end
@@ -284,7 +298,10 @@ local function TimeLeft(s)
     if s.status ~= "rolling" then return nil end
     if s.sample then return s.duration * 0.6 end
     local left = GetLootRollTimeLeft(s.rollID)
-    return left and left / 1000 or nil
+    left = left and left / 1000
+    -- no time, or one that can't be (the game has answered far more than the roll's length): our own clock
+    if not left or left < 0 or left > s.duration + 1 then left = math_max(0, s.t0 + s.duration - GetTime()) end
+    return left
 end
 
 local function Roll(s, rollType)

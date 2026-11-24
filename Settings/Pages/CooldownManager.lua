@@ -24,15 +24,30 @@ S:Module{
 
 -- COOLDOWN MANAGER: Blizzard's own switch (Options > Advanced, the cooldownViewerEnabled CVar), as
 -- Combined Backpack is Blizzard's bag option. Blizzard turns its viewers on and off live; the rows
--- below follow (CooldownManager.lua watches CVAR_UPDATE and refreshes the panel). Not in a fight.
+-- below follow (CooldownManager.lua watches CVAR_UPDATE and refreshes the panel). Not in a fight, and the
+-- game can keep the manager from a character: both say so (11-24), as Blizzard's own switch's tooltip does.
+local wantedNow
+local function Say(text)
+    if type(text) == "string" and text ~= "" and UIErrorsFrame then UIErrorsFrame:AddMessage(text, 1, 0.1, 0.1) end
+end
 S:Row{ key = "cdm.blizzard", section = "cdm.manager",
     get = function() return CM() and CM().BlizzardOn() or false end,
     set = function(on)
-        if InCombatLockdown() then return end
+        if InCombatLockdown() then Say(ERR_NOT_IN_COMBAT) return end
         SetCVar("cooldownViewerEnabled", on and 1 or 0)
+        if on and C_CooldownViewer and C_CooldownViewer.IsCooldownViewerAvailable then
+            local available, reason = C_CooldownViewer.IsCooldownViewerAvailable()
+            if not available then Say(reason) end
+        end
     end,
-    apply = function()
+    apply = function(on)
+        if InCombatLockdown() then on = nil end
+        wantedNow = on
         C_Timer.After(0, function()
+            -- a setting the game didn't keep goes in /fui errors (the last click of the frame counts)
+            if on ~= nil and on == wantedNow and C_CooldownViewer and GetCVarBool("cooldownViewerEnabled") ~= (on and true or false) then
+                ns.LogError("Cooldown Manager switch", on and "stayed off" or "stayed on")
+            end
             if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end
         end)
     end }

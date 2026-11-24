@@ -13,6 +13,28 @@ unit.raid1 = { name = "Ari", class = "WARRIOR", level = 60, health = 90, power =
 unit.raid2 = { name = "Yana", class = "PRIEST", level = 60, health = 80, power = 60, role = "HEALER" }
 unit.raid1target = { name = "Sentinel", level = 60, health = 44, power = 0, hostile = true }
 E.CompactRaidFrameContainer = E.CreateFrame("Frame", "CompactRaidFrameContainer", E.UIParent)
+-- Blizzard's frames inside the holder, a main tank's target, another holder's, and a nameplate's
+local function compact(name, parent)
+    local frame = E.CreateFrame("Button", name, parent)
+    frame.IsForbidden = function() return false end
+    frame:RegisterEvent("UNIT_AURA")
+    return frame
+end
+local nativeGroup = compact("CompactRaidGroup1", E.CompactRaidFrameContainer)
+local nativeMember = compact("CompactRaidGroup1Member1", nativeGroup)
+local nativeTarget = compact("CompactRaidFrame1", E.CompactRaidFrameContainer)
+nativeTarget.onUpdateFrame = E.CreateFrame("Frame")
+nativeTarget.onUpdateFrame:SetScript("OnUpdate", function() end)
+E.PartyFrame = E.CreateFrame("Frame", "PartyFrame", E.UIParent)
+local partyHolder = E.CreateFrame("Frame", nil, E.PartyFrame)
+local partyMember = compact("CompactPartyFrameMember1", partyHolder)
+local plateFrame = compact(nil, E.CreateFrame("Frame", nil, E.UIParent))
+local forbidden = { IsForbidden = function() return true end, UnregisterAllEvents = function() error("forbidden") end }
+E.CompactUnitFrame_UpdateUnitEvents = function(frame) if frame.RegisterEvent then frame:RegisterEvent("UNIT_AURA") end end
+E.CompactUnitFrame_SetUpdateAllOnUpdate = function(frame, on)
+    frame.onUpdateFrame:SetScript("OnUpdate", on and function() end or nil)
+end
+E.CompactRaidGroup_InitializeForGroup = function(frame) frame:RegisterEvent("GROUP_ROSTER_UPDATE") end
 ui:load("Modules/RaidFrames.lua", ns)
 local rf = ns.RaidFrames
 local function option(holder, label)
@@ -27,6 +49,32 @@ ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(rf.initialized and E.CompactRaidFrameContainer.FlareUI_Hidden and not E.CompactRaidFrameContainer:IsShown())
 
+-- (11-24) they hear nothing more, whenever Blizzard registers them again; nobody else's frames are touched
+assert(not nativeGroup:IsEventRegistered("UNIT_AURA") and not nativeMember:IsEventRegistered("UNIT_AURA"))
+assert(not nativeTarget.onUpdateFrame:GetScript("OnUpdate"))
+E.CompactUnitFrame_UpdateUnitEvents(nativeMember)
+E.CompactUnitFrame_SetUpdateAllOnUpdate(nativeTarget, true)
+E.CompactUnitFrame_UpdateUnitEvents(nativeTarget)
+assert(not nativeMember:IsEventRegistered("UNIT_AURA") and not nativeTarget:IsEventRegistered("UNIT_AURA")
+    and not nativeTarget.onUpdateFrame:GetScript("OnUpdate"))
+local lateGroup = compact("CompactRaidGroup2", E.CompactRaidFrameContainer)
+E.CompactRaidGroup_InitializeForGroup(lateGroup)
+assert(not lateGroup:IsEventRegistered("GROUP_ROSTER_UPDATE"))
+E.CompactUnitFrame_UpdateUnitEvents(partyMember)
+E.CompactUnitFrame_UpdateUnitEvents(plateFrame)
+E.CompactUnitFrame_UpdateUnitEvents(forbidden)
+assert(partyMember:IsEventRegistered("UNIT_AURA") and plateFrame:IsEventRegistered("UNIT_AURA"), "Blizzard's party frames still in use, and nameplates")
+-- the party's holder parked later: its frames too, the classic ones with their bars
+E.CompactPartyFrame = partyHolder
+partyHolder.memberUnitFrames, partyHolder.petUnitFrames = { partyMember }, {}
+local classic = compact(nil, E.PartyFrame)
+classic.ManaBar = compact(nil, classic)
+E.PartyFrame.PartyMemberFramePool = { EnumerateActive = function() return pairs({ [classic] = true }) end }
+ns.UnitFrames.GroupQuiet.Park("PartyFrame")
+assert(not partyMember:IsEventRegistered("UNIT_AURA") and not classic:IsEventRegistered("UNIT_AURA") and not classic.ManaBar:IsEventRegistered("UNIT_AURA"))
+E.CompactUnitFrame_UpdateUnitEvents(partyMember)
+E.CompactUnitFrame_UpdateUnitEvents(plateFrame)
+assert(not partyMember:IsEventRegistered("UNIT_AURA") and plateFrame:IsEventRegistered("UNIT_AURA"))
 local holder, tanks = E.FlareUI_Raid, E.FlareUI_RaidTanks
 local group1, group2 = E.FlareUI_RaidGroup1, E.FlareUI_RaidGroup2
 assert(#group1 == 5 and #E.FlareUI_RaidGroup8 == 5 and #E.FlareUI_RaidTanksHeader == 4, "maximum raid and tank tiles are precreated")
@@ -40,6 +88,29 @@ assert(group1[1].Name:GetText() == "Ari" and group2[1].Health:GetValue() == 80)
 assert(E.ClickCastFrames[group1[1]] and group1[1]:GetAttribute("*type2") == "togglemenu")
 assert(select(5, group1:GetPoint()) > select(5, group2:GetPoint()), "occupied groups stack in order")
 assert(group1.Label:GetText() == "Group 1" and group1.Label:IsShown())
+-- (11-24) one column of five: a reload in a raid makes no tile more
+assert(group1:GetAttribute("unitsPerColumn") == 5 and group1:GetAttribute("maxColumns") == 1)
+-- somebody else behind the same unit, inside one burst of roster changes: drawn again
+unit.raid3 = { name = "Pell", class = "MAGE", level = 60, health = 70, power = 10 }
+ui:emit("GROUP_ROSTER_UPDATE")
+group1[2]:SetAttribute("unit", "raid3")
+group1[2]:Show()
+assert(group1[2].Name:GetText() == "Pell" and group1[2].paintedGUID == "GUID-raid3")
+unit.raid3.name, unit.raid3.guid = "Quill", "GUID-other"
+ui:flushTimers()
+assert(group1[2].Name:GetText() == "Quill")
+-- a ready check's answer goes with its unit, and with the next check
+unit.raid3.ready = "ready"
+ui:emit("READY_CHECK")
+assert(group1[2].lastReady == "ready")
+unit.raid3.ready = nil
+ui:emit("READY_CHECK")
+assert(group1[2].lastReady == nil)
+group1[2].lastReady = "ready"
+group1[2]:SetAttribute("unit", nil)
+assert(group1[2].lastReady == nil)
+group1[2]:Hide()
+unit.raid3 = nil
 local tank = E.FlareUI_RaidTanksHeader[1]
 tank:SetAttribute("unit", "raid1")
 tank:Show()
@@ -74,8 +145,15 @@ edit.callbacks.layout("Modern")
 assert(select(4, holder:GetPoint()) == 20 and select(5, holder:GetPoint()) == -101)
 assert(select(4, tanks:GetPoint()) == 20 and select(5, tanks:GetPoint()) == -10)
 
+-- (Edit Mode: only the party goes a strata up, and only when that changes)
+local partyFrame, stacks = E.CreateFrame("Frame", "FlareUI_Party", E.UIParent), 0
+local setStrata = partyFrame.SetFrameStrata
+function partyFrame:SetFrameStrata(value) stacks = stacks + 1; setStrata(self, value) end
 ui.editing = true
 edit.callbacks.enter()
+assert(partyFrame:GetFrameStrata() == "MEDIUM" and stacks == 1)
+edit.callbacks.enter()
+assert(stacks == 1 and holder:GetFrameStrata() == "LOW")
 assert(not group1:IsShown() and holder.sampleLabels[1]:IsShown() and not holder.sampleLabels[6]:IsShown())
 option(holder, "Sample Raid").set("Modern", "small")
 assert(holder.sampleLabels[2]:IsShown() and not holder.sampleLabels[3]:IsShown())
@@ -84,6 +162,7 @@ local sampleTarget = ui:find(function(frame) return frame:GetParent() == tanks a
 assert(sampleTarget and sampleTarget.SampleTarget:IsShown() and sampleTarget.SampleTarget.Name:GetText() == "Target")
 ui.editing = false
 edit.callbacks.exit()
+assert(partyFrame:GetFrameStrata() == "LOW")
 assert(group1:IsShown() and not holder.sampleLabels[1]:IsShown() and not sampleTarget:IsShown())
 
 ui.combat = true

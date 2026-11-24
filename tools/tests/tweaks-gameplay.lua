@@ -136,6 +136,28 @@ assert(env.CameraZoomIn(1) == 4 and env.CameraZoomOut(0.5) == 0.5)
 assert(cv.mapFade == "1" and cv.ActionButtonUseKeyDown == "1" and cv.showTutorials == "0")
 assert(ns.CharDB().forcedCVars.keyDown == "0" and ns.db.global.forcedCVars.keyDown == nil)
 assert(ns.CharDB().mailName == "Marin Reed")
+-- (11-24) the Mail Address Book: a character or an old recipient can be taken off; the character's saved data stays
+do
+    local entries, menuUtil, guidDb = {}, env.MenuUtil, ns.CharDB()
+    local function node(prefix)
+        return { CreateTitle = function() end, CreateDivider = function() end,
+            CreateButton = function(_, text, pick) entries[prefix .. text] = pick or true; return node(prefix .. text .. "/") end }
+    end
+    env.MenuUtil = { CreateContextMenu = function(owner, build) entries = {}; build(owner, node("")) end }
+    env.SendMailNameEditBox = env.CreateFrame("EditBox", "SendMailNameEditBox", env.UIParent)
+    ns.db.global.characters = ns.db.global.characters or {}
+    local old = { mailName = "Old Alt", realm = guidDb.realm, faction = guidDb.faction, other = 1 }
+    ns.db.global.characters.Old = old
+    guidDb.lastMailTo = "Stranger"
+    tweaks.MailMenu(env.UIParent)
+    assert(entries["Old Alt"] and entries["Stranger"] and entries["Remove from the List/Stranger"])
+    entries["Remove from the List/Old Alt"]()
+    entries["Remove from the List/Stranger"]()
+    tweaks.MailMenu(env.UIParent)
+    assert(not entries["Old Alt"] and not entries["Stranger"] and not entries["Remove from the List"])
+    assert(old.mailHidden and old.other == 1 and guidDb.lastMailTo == nil)
+    ns.db.global.characters.Old, env.MenuUtil = nil, menuUtil
+end
 -- Quality of Life never touches which nameplates show (11-23): that is the Nameplates module's
 ui:emit("PLAYER_REGEN_DISABLED")
 ui:emit("PLAYER_REGEN_ENABLED")
@@ -221,15 +243,41 @@ ui:emit("CONFIRM_SUMMON")
 assert(opened[#opened][2]:find("Westfall", 1, true))
 local countdown = tweaks.summon.ticker
 combatUnits.player = true
-for _ = 1, 10 do countdown.callback() end
-assert(countdown.cancelled and summoned == 0)
+for _ = 1, 12 do countdown.callback() end
+assert(not countdown.cancelled and summoned == 0, "a fight: it asks again every second")
 combatUnits.player = false
-ui:emit("PLAYER_REGEN_ENABLED")
-ui:flushTimers()
-assert(summoned == 1 and hidden[#hidden] == "CONFIRM_SUMMON" and not tweaks.summon.pending)
+countdown.callback()
+assert(countdown.cancelled and summoned == 1 and hidden[#hidden] == "CONFIRM_SUMMON" and not tweaks.summon.pending)
 ui:emit("CONFIRM_SUMMON")
 ns.CancelDialog("FLAREUI_ACCEPT_SUMMON")
 assert(not tweaks.summon.pending and summoned == 1)
+-- (11-24) declined on Blizzard's pop-up while it waits for a fight: the wait ends, and a later summon counts anew
+ui:emit("CONFIRM_SUMMON")
+combatUnits.player = true
+for _ = 1, 11 do tweaks.summon.ticker.callback() end
+ui:emit("CANCEL_SUMMON")
+assert(not tweaks.summon.pending and not tweaks.summon.ticker)
+combatUnits.player = false
+ui:emit("CONFIRM_SUMMON")
+local first = tweaks.summon.ticker
+for _ = 1, 5 do first.callback() end
+ui:emit("CONFIRM_SUMMON")
+assert(first.cancelled and tweaks.summon.ticker ~= first, "a second summon starts its own 10 seconds")
+for _ = 1, 9 do tweaks.summon.ticker.callback() end
+assert(summoned == 1)
+tweaks.summon.ticker.callback()
+assert(summoned == 2 and not tweaks.summon.pending)
+-- a settings change on the Buyback tab leaves the vendor's buttons alone
+local updates, updateInfo = 0, env.MerchantFrame_UpdateMerchantInfo
+env.MerchantFrame_UpdateMerchantInfo = function() updates = updates + 1 end
+env.MerchantFrame:Show()
+env.MerchantFrame.selectedTab = 2
+tweaks:Refresh()
+assert(updates == 0)
+env.MerchantFrame.selectedTab = 1
+tweaks:Refresh()
+assert(updates == 1)
+env.MerchantFrame_UpdateMerchantInfo = updateInfo
 
 bag:UpdateItems()
 assert(food.FlareUI_PetFood:IsShown())

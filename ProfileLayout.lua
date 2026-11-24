@@ -71,43 +71,57 @@ local function FullestOther(layouts, name)
     return best
 end
 
--- A layout's store (layouts[name], made if missing), reading the home layout's for what it lacks.
--- The home layout itself reads the previous home's spots (or, when no previous home was kept, the
--- fullest other layout's): moving one frame in a second layout makes it the home, and every frame
--- never moved there would otherwise sit at its default. Reads go one level only (rawget), so two
--- layouts reading each other never loop.
-local fallbackMeta = setmetatable({}, { __mode = "k" })   -- source store -> its metatable
+-- A layout's store (layouts[name], made if missing). What it lacks is read from the first of these that has
+-- it: the home layout, the homes before it (newest first), the fullest other layout. Moving one frame in
+-- a second layout makes it the home, so with the home alone every other frame of a third layout jumped to
+-- its default (11-24). Each is read with rawget, so layouts reading each other never loop. Scales
+-- ("values") stay a layout's own.
+local function Spot(p, layouts, name, key)
+    local function From(other)
+        local store = type(other) == "string" and other ~= name and rawget(layouts, other)
+        if type(store) == "table" then return rawget(store, key) end
+    end
+    local value = From(p.homeLayout)
+    if value ~= nil then return value end
+    for _, past in ipairs(type(p.homeLayoutPast) == "table" and p.homeLayoutPast or {}) do
+        value = From(past)
+        if value ~= nil then return value end
+    end
+    value = From(p.homeLayoutPrev)   -- (saved before the list was)
+    if value ~= nil then return value end
+    local fullest = FullestOther(layouts, name)
+    return fullest and rawget(fullest, key)
+end
+
 function ns.LayoutHome(layouts, name)
     layouts[name] = layouts[name] or {}
     local store = layouts[name]
-    local home = ns.HomeLayout()
-    local from = home and home ~= name and rawget(layouts, home)
-    if type(from) ~= "table" then
-        local p = ns.db and ns.db.profile
-        local prev = p and p.homeLayoutPrev
-        from = type(prev) == "string" and prev ~= name and rawget(layouts, prev)
-        if type(from) ~= "table" then from = FullestOther(layouts, name) end
-    end
-    if type(from) == "table" then
-        local meta = fallbackMeta[from]
-        if not meta then
-            local source = from
-            meta = { __index = function(_, key) return rawget(source, key) end }
-            fallbackMeta[from] = meta
-        end
-        setmetatable(store, meta)
-    else
-        setmetatable(store, nil)
+    ns.HomeLayout()   -- (guessed for a profile saved before homes were kept)
+    local p = ns.db and ns.db.profile
+    local meta = getmetatable(store)
+    if not (type(meta) == "table" and meta.flareLayouts == layouts and meta.flareProfile == p) then
+        setmetatable(store, p and { flareLayouts = layouts, flareProfile = p, __index = function(_, key)
+            if key ~= "values" then return Spot(p, layouts, name, key) end
+        end } or nil)
     end
     return store
 end
 
 -- every FlareUI frame moved in Edit Mode: that layout is the profile's home
+local PAST_HOMES = 10
 LEM.onAnyMove = function(layoutName)
     local p = ns.db and ns.db.profile
     if not (p and type(layoutName) == "string") then return end
     local old = ns.HomeLayout()
-    if old and old ~= layoutName then p.homeLayoutPrev = old end
+    if old and old ~= layoutName then
+        -- every home there was, newest first
+        local past = { old }
+        local before = type(p.homeLayoutPast) == "table" and p.homeLayoutPast or { p.homeLayoutPrev }
+        for _, name in ipairs(before) do
+            if name ~= old and name ~= layoutName and #past < PAST_HOMES then past[#past + 1] = name end
+        end
+        p.homeLayoutPast, p.homeLayoutPrev = past, old
+    end
     p.homeLayout = layoutName
 end
 

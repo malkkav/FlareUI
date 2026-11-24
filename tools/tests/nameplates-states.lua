@@ -213,7 +213,7 @@ env.C_NamePlate = {
     SetNamePlateSize = function(...) size = { ... } end,
 }
 env.C_NamePlateManager = { SetNamePlateSimplified = function(unit, on) simplified[unit] = on end }
-local cvars = { nameplateSelectedScale = "1.3", nameplateTargetRadialPosition = "0" }
+local cvars = { nameplateSelectedScale = "1.3", nameplateTargetRadialPosition = "0", nameplateMinAlpha = "0.6", nameplateNotSelectedAlpha = "0.5" }
 env.C_CVar.GetCVar = function(name) return cvars[name] end
 env.SetCVar = function(name, value) cvars[name] = tostring(value) end
 env.C_AddOns.DoesAddOnExist = function() return false end
@@ -228,6 +228,7 @@ local function counted(key, get)
         return get(...)
     end
 end
+env.UnitIsDead = function(unit) return units[unit] and units[unit].dead or false end
 env.UnitIsTapDenied = counted("color", function(unit) return units[unit] and units[unit].tapped end)
 testMob.max, testMob.incoming, testMob.absorb = 100, 8, 12
 env.UnitHealth = counted("health", function(unit) return units[unit].health end)
@@ -310,6 +311,7 @@ local live = assert(plates.PartsFor(gamePlate))
 assert(live.unit == token and live ~= p and not live.sample and gamePlate.FlareUIHealthBar == live.health)
 assert(gamePlate.UnitFrame:GetAlpha() == 0 and not gamePlate.UnitFrame:IsEventRegistered("UNIT_HEALTH"))
 assert(gamePlate.UnitFrame.WidgetContainer:GetParent() == gamePlate and gamePlate.clickEnabled)
+assert(cvars.nameplateMinAlpha == "1" and cvars.nameplateNotSelectedAlpha == "1", "the game's own fades are off (11-24)")
 assert(simplified[token] == false and cvars.nameplateSelectedScale == "1" and cvars.nameplateTargetRadialPosition == "1")
 assert(live.threatKey == "gaining" and live.threatText:GetText() == "80%")
 -- (11-23, #145) Threat Percentage in its own box, on the side away from the level, never in its place
@@ -1428,7 +1430,81 @@ do
     env.Questie, env._G.Questie = nil, nil
     gamePlate.GetChildren = children
 end
+-- (11-24) a hidden bar colour is never compared: always painted, and told apart from a readable one
+do
+    local mt = { __eq = function() error("compared a secret") end }
+    local function Hidden() return setmetatable({}, mt) end
+    local access, painted, glow = env.canaccessvalue, {}, {}
+    env.canaccessvalue = function(v) return not (type(v) == "table" and getmetatable(v) == mt) end
+    local q = { health = { SetStatusBarColor = function(_, r) painted[#painted + 1] = r end }, targetGlow = { parts = {}, IsShown = function() return false end },
+        levelGlow = { parts = {} }, discGlow = { parts = {} } }
+    q.targetGlow.parts[1] = { SetVertexColor = function(_, r) glow[#glow + 1] = r end }
+    plates.PaintGlow(q)
+    assert(glow[1] == 1, "no colour yet: white")
+    plates.BarColor(q, 0.1, 0.2, 0.3)
+    plates.BarColor(q, 0.1, 0.2, 0.3)
+    assert(#painted == 1)
+    local a, b = Hidden(), Hidden()
+    plates.BarColor(q, a, a, a)
+    plates.BarColor(q, b, b, b)
+    plates.BarColor(q, b, b, b)
+    assert(#painted == 4)
+    plates.PaintGlow(q)
+    assert(rawequal(glow[2], b))
+    plates.BarColor(q, 0.1, 0.2, 0.3)
+    assert(#painted == 5)
+    env.canaccessvalue = access
+end
+-- a tapped mob shows no threat look, nor the last unit's on the same plate
+do
+    testMob.tapped, testMob.threat = false, 3
+    live.threatRGB, live.threatKey = { 1, 0, 0 }, "aggro"
+    testMob.tapped = true
+    plates.UpdateColor(live)
+    assert(live.threatRGB == nil and live.threatKey == nil)
+end
+-- a dead mob's plate goes at once; a dead player's, or one whose state can't be read, stays
+do
+    local dead, player, isDead, isPlayer = false, false, env.UnitIsDead, env.UnitIsPlayer
+    env.UnitIsDead = function() return dead end
+    env.UnitIsPlayer = function() return player end
+    plates.UpdateDead(live)
+    assert(live.root:IsShown())
+    dead = true
+    plates.UpdateHealth(live)
+    assert(not live.root:IsShown() and live.deadHidden)
+    dead = false
+    plates.UpdateHealth(live)
+    assert(live.root:IsShown(), "alive again")
+    dead, player = true, true
+    plates.UpdateHealth(live)
+    assert(live.root:IsShown())
+    dead, player = secret, false
+    plates.UpdateHealth(live)
+    assert(live.root:IsShown())
+    env.UnitIsDead, env.UnitIsPlayer = isDead, isPlayer
+end
+-- the debuff type icon (what you could dispel): not on an enemy's plate
+do
+    local look = ns.AuraLook
+    ns.AuraLook = { ForUnit = function() return {} end }
+    assert(plates.AuraLook(24, true, { kind = "enemyNpc" }).noTypeIcon and plates.AuraLook(24, true, { kind = "minor" }).noTypeIcon)
+    assert(not plates.AuraLook(24, true, { kind = "friendlyPlayer" }).noTypeIcon)
+    ns.AuraLook = look
+end
+-- Kick Ready: only on an enemy's cast
+do
+    local attack = env.UnitCanAttack
+    assert(plates.Kickable(live))
+    assert(not plates.Kickable({ kind = "friendlyPlayer", unit = token }))
+    env.UnitCanAttack = function() return false end
+    assert(not plates.Kickable({ kind = "minor", unit = token }), "a friend's pet")
+    env.UnitCanAttack = function() return secret end
+    assert(plates.Kickable({ kind = "minor", unit = token }), "not readable: as before")
+    env.UnitCanAttack = attack
+end
 plates.StandDown()
 assert(not plates.PartsFor(gamePlate) and not next(callbacks) and size[1] == 110 and size[2] == 17)
 assert(cvars.nameplateSelectedScale == "1.3" and cvars.nameplateTargetRadialPosition == "0")
+assert(cvars.nameplateMinAlpha == "0.6" and cvars.nameplateNotSelectedAlpha == "0.5", "and back as they were")
 print("PASS: nameplates migrate presets, draw preview states and claim, update and release live plates")

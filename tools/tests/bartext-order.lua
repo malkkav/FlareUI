@@ -65,6 +65,22 @@ NA.SetSample(above, { nameAbove = "right:firstname" }, "Onyxia", nil, -1)
 assert(above.NameAboveText.t == "SKULL Onyxia")
 NA.SetSample(above, { nameAbove = "right:firstname" }, "Onyxia", nil, -1, { highSkull = { shown = false } })
 assert(above.NameAboveText.t == "|cffff1a1a??|r Onyxia", "High Level Skull off: ??")
+-- (11-24) a live name that is hidden is handed to the text unread, never tested
+do
+    local secret = setmetatable({}, { __eq = function() error("compared") end })
+    local exists, access, display = _G.UnitExists, _G.canaccessvalue, ns.UnitDisplayName
+    _G.UnitExists = function(unit) return unit == "target" end
+    _G.canaccessvalue = function(v) return not rawequal(v, secret) end
+    ns.UnitDisplayName = function() return secret end
+    NA.SetName(above, { nameAbove = "left:firstname" }, "target")
+    assert(rawequal(above.NameAboveText.t, secret))
+    NA.SetName(above, { nameAbove = "left:firstname" }, "focus")
+    assert(above.NameAboveText.t == "", "nobody there")
+    ns.UnitDisplayName = function() return nil end
+    NA.SetName(above, { nameAbove = "left:firstname" }, "target")
+    assert(above.NameAboveText.t == "")
+    _G.UnitExists, _G.canaccessvalue, ns.UnitDisplayName = exists, access, display
+end
 -- Show Name (the raid tiles): Off and which name
 _G.LibStub = function() return { SettingType = { Dropdown = 1 } } end
 local frame, changes, first = { showName = false }, 0, false

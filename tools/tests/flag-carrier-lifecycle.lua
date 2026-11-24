@@ -63,4 +63,5 @@ unit.arena2.name, unit.arena2.guid = "New Runner", "Player-9"
 ui:flushTimers()
 assert(b.Name:GetText() == "New Runner", "the periodic check detects changes to a carrier GUID")
 
+assert(not a.AuraPos and not b.AuraPos, "their auras are always off: no containers")
 print("PASS: flag carriers follow unit slots, park Blizzard frames and respect combat")

@@ -18,6 +18,7 @@ local function run(code)
 end
 run("local AP = {} ns.AuraPolicy = AP\n"
     .. H.section(core, "    function AP.ApplyHidden(lanes, place, editing)", "    -- Party, raid, main tank and boss tiles."))
+run("local AP = ns.AuraPolicy\n" .. H.section(core, "    function AP.SplitPlace(lanes)", "    -- A lane's filter for its unit right now"))
 run(H.section(core, "ns.HiddenAuras = { stamp = 0 }", "-- \"Show Speed\" / \"Hide Speed\" choices"))
 local HA, AP = ns.HiddenAuras, ns.AuraPolicy
 HA.Refresh = nil
@@ -72,6 +73,20 @@ HA.SetList(1126, "shown")
 check(profile.auras.shown[1126] == "target,party" and not profile.auras.hidden[1126], "to Show: " .. tostring(profile.auras.shown[1126]))
 HA.SetList(1126, "hidden")
 check(profile.auras.hidden[1126] == "auras,target,party" and not profile.auras.shown[1126], "back to Hide: " .. tostring(profile.auras.hidden[1126]))
+
+-- (11-24) a place that mixes Blizzard's raid rules and plain ones splits in two
+do
+    local function names(list) return list and keys(list) or "none" end
+    local function lane(key, policy, joins) return { key = key, policy = policy, joinPrevious = joins } end
+    local first, rest, beside = AP.SplitPlace({ lane("buffs", "process"), lane("alwaysBuffs", "none", true) })
+    check(names(first) == "buffs" and names(rest) == "alwaysBuffs" and beside == true, "an always row goes on beside")
+    first, rest, beside = AP.SplitPlace({ lane("debuffs", "processDispellable"), lane("alwaysDebuffs", "none", true), lane("buffs", "none") })
+    check(names(first) == "debuffs" and names(rest) == "alwaysDebuffs,buffs" and beside == false, "everyone's buffs: a line of their own")
+    first, rest = AP.SplitPlace({ lane("buffs", "none"), lane("alwaysBuffs", "none", true) })
+    check(names(first) == "buffs,alwaysBuffs" and rest == nil, "all plain: one container")
+    first, rest = AP.SplitPlace({ lane("debuffs", "process"), lane("buffs", "process") })
+    check(names(first) == "debuffs,buffs" and rest == nil, "all on Blizzard's rules: one container")
+end
 
 if fails > 0 then print(fails .. " failed") os.exit(1) end
 print("PASS aura-show-list")

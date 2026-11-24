@@ -1451,13 +1451,11 @@ local function WatchThreat()
     threatDriver:SetShown(any)
 end
 
--- Whether the list can be seen: shown, and the meter (the session windows' parent) not faded to
--- nothing (Show on Mouseover, the end of a fade out)
+-- Whether the list can be seen: shown, and nothing it hangs from faded to nothing (Show on Mouseover, the
+-- end of a fade out). Asked of the list itself: the separate window can hang from the screen, not the meter.
 local function ViewSeen(view)
     if not view.frame:IsVisible() then return false end
-    local meter = _G.DamageMeter
-    if not meter then return true end
-    local alpha = meter:GetAlpha()
+    local alpha = view.frame:GetEffectiveAlpha()
     return not (canaccessvalue(alpha) and alpha <= 0)
 end
 
@@ -3415,15 +3413,48 @@ function DamageMeter.Report.Fit(text)
     return text
 end
 
+-- Deaths: one row per death, its value the time of death (none on Overall, where the game has no time),
+-- in the order they died. A time that can't be read keeps the client's order.
+function DamageMeter.Report.Deaths(sources)
+    local rows, timed = {}, true
+    for _, source in ipairs(sources) do
+        local name = DamageMeter.Report.Text(source.name)
+        if name then
+            local at = Dock.Num(source.deathTimeSeconds)
+            if not at or at < 0 then at, timed = nil, false end
+            rows[#rows + 1] = { name = name, at = at, i = #rows }
+        end
+    end
+    if timed then
+        table.sort(rows, function(a, b)
+            if a.at ~= b.at then return a.at < b.at end
+            return a.i < b.i
+        end)
+    end
+    local lines = {}
+    for i = 1, math.min(#rows, DamageMeter.Report.Lines()) do
+        local row = rows[i]
+        local line = ("%d. %s"):format(i, row.name)
+        if row.at then
+            local seconds = math.floor(row.at + 0.5)
+            line = line .. ("  %d:%02d"):format(math.floor(seconds / 60), seconds % 60)
+        end
+        lines[i] = DamageMeter.Report.Fit(line)
+    end
+    return lines
+end
+
 -- the header and up to 10 rows (11 lines at most), or nil when nothing can be read
 function DamageMeter.Report.Build(window)
     local session = DamageMeter.Report.Session(window)
     local sources = session and session.combatSources
     if type(sources) ~= "table" then return nil end
-    local noRate = DamageMeter.Report.NO_RATE[DamageMeter.Report.TypeKey(window:GetDamageMeterType()) or ""]
-    local rows, rank = {}, 0
+    local typeKey = DamageMeter.Report.TypeKey(window:GetDamageMeterType()) or ""
+    local noRate = DamageMeter.Report.NO_RATE[typeKey]
+    local deaths = typeKey == "Deaths"
+    local rows, rank = deaths and DamageMeter.Report.Deaths(sources) or {}, 0
     local want = DamageMeter.Report.Lines()
-    for _, source in ipairs(sources) do
+    for _, source in ipairs(deaths and {} or sources) do
         if rank >= want then break end
         local name = DamageMeter.Report.Text(source.name)
         local amount = Dock.Num(source.totalAmount)

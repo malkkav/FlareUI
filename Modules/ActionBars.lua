@@ -2153,7 +2153,9 @@ function ActionBars:Refresh(event)
         local fcm = ns.db.profile.fcm
         for i = 1, 8 do
             local bar = fcm.bars and fcm.bars["bar" .. i]
-            if not (bar and bar.enabled) then ApplyClickthroughToBar("bar" .. i, false) end
+            -- (a bar faded to nothing keeps its mouse off: Visibility.SetBarMouse)
+            local off = ns.Visibility and ns.Visibility.mouseOff and ns.Visibility.mouseOff["bar" .. i]
+            if not (bar and bar.enabled) and not off then ApplyClickthroughToBar("bar" .. i, false) end
         end
         if not ns.FCMActive() then self.fcm.unlockMode = false end
         self:ApplyClickthrough(not self.fcm.unlockMode)

@@ -586,7 +586,8 @@ local function UpdateFlare(target)
     local db = GetDb()
     local left, right
     local gained = false
-    if flare.fuiSample or (LEM and LEM:IsInEditMode()) then
+    -- (a fight in Edit Mode shows the live bar, as the other frames)
+    if flare.fuiSample or ns.EditPreviewing() then
         left, right = SampleSections()
     else
         if GameRulesUtil.CanShowExperienceBar() then gained = TrackXP() end
@@ -805,6 +806,7 @@ local function BuildFlare()
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)
     LEM:RegisterCallback("enter", UpdateFlare)
     LEM:RegisterCallback("exit", UpdateFlare)
+    ns.OnEditFight(UpdateFlare)
 
     PlaceFlare()
     LayoutFlare()

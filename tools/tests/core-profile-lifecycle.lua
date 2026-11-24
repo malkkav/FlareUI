@@ -151,6 +151,57 @@ do
     assert(ns.BlockedLog.Insecure() == "")
     env.issecurevariable, env.ContainerFrameSettingsManager, env.ContainerFrameCombinedBags = secure, nil, nil
 end
+-- (11-24) the bank's type, the bags' own flags and the bag menu too
+do
+    local secure = env.issecurevariable
+    local flags, portrait, panel = { [1] = 2 }, {}, {}
+    env.ContainerFrameSettingsManager = { filterFlags = flags }
+    env.ContainerFrameCombinedBags = { PortraitButton = portrait }
+    env.BankFrame = { BankPanel = panel }
+    env.issecurevariable = function(t, key)
+        if t == flags or t == portrait and key == "menu" or t == panel and key == "bankType" then return false, "FlareUI" end
+        return true
+    end
+    local text = ns.BlockedLog.Insecure()
+    for _, name in ipairs({ "bankType", "filterFlags", "ContainerFrameCombinedBags menu" }) do
+        assert(text:find(name .. " by FlareUI", 1, true), text)
+    end
+    env.issecurevariable, env.ContainerFrameSettingsManager, env.ContainerFrameCombinedBags, env.BankFrame = secure, nil, nil, nil
+end
+-- an error that comes again raises its own line's count, and pushes nothing out
+do
+    ns.db.global.errors = nil
+    for _ = 1, 30 do ns.LogError("Painter", "same thing") end
+    ns.LogError("Painter", "other thing")
+    local list = ns.db.global.errors
+    assert(#list == 2 and list[1]:find("same thing | 30 times", 1, true) and list[2]:find("other thing", 1, true))
+    ns.ErrorsCommand("clear")
+    ns.LogError("Painter", "same thing")
+    assert(#ns.db.global.errors == 1, "written again after a clear")
+    ns.db.global.errors = nil
+end
+-- you as the group's Master Looter: party index 0, or your own raid index
+do
+    local method, partyID, raidID, grouped, raid = 2, 0, nil, true, false
+    local party, inGroup, inRaid, isUnit = env.C_PartyInfo, env.IsInGroup, env.IsInRaid, env.UnitIsUnit
+    local enum = env.Enum
+    env.Enum = { LootMethod = { Masterlooter = 2 } }
+    env.C_PartyInfo = { GetLootMethod = function() return method, partyID, raidID end }
+    env.IsInGroup, env.IsInRaid = function() return grouped end, function() return raid end
+    env.UnitIsUnit = function(unit) return unit == "raid7" end
+    assert(ns.IsMasterLooter())
+    partyID = 2
+    assert(not ns.IsMasterLooter(), "somebody else")
+    partyID, raidID, raid = nil, 7, true
+    assert(ns.IsMasterLooter())
+    raidID = 8
+    assert(not ns.IsMasterLooter())
+    method, raidID = 3, 7
+    assert(not ns.IsMasterLooter(), "Group Loot")
+    method, grouped = 2, false
+    assert(not ns.IsMasterLooter())
+    env.C_PartyInfo, env.IsInGroup, env.IsInRaid, env.UnitIsUnit, env.Enum = party, inGroup, inRaid, isUnit, enum
+end
 env.debugstack = nil
 ui:emit("ADDON_ACTION_FORBIDDEN", "FlareUI", "UseAction()")
 assert(#ns.db.global.errors == 1, "written again after a clear")
@@ -169,8 +220,25 @@ elsewhere.target = { x = 40 }
 env.LibStub("FlareEditMode").onAnyMove("Elsewhere")
 assert(ns.HomeLayout() == "Elsewhere" and ns.db.profile.homeLayoutPrev == "Home")
 assert(ns.LayoutHome(stores, "Elsewhere").player.x == 10, "A moved frame should keep other frames' old spots")
-assert(ns.LayoutHome(stores, "Blank").target.x == 40 and ns.LayoutHome(stores, "Blank").player == nil,
-    "Fallback only reads the source store's own positions")
+-- (11-24) a third layout keeps every spot the home or an earlier home has, the newest first
+local blank = ns.LayoutHome(stores, "Blank")
+assert(blank.target.x == 40 and blank.player.x == 10 and blank.nothing == nil and blank.values == nil and next(blank) == nil)
+blank.focus = { x = 70 }
+elsewhere.focus = { x = 80 }
+local move = env.LibStub("FlareEditMode").onAnyMove
+move("Blank")
+assert(ns.LayoutHome(stores, "Fourth").focus.x == 70 and ns.LayoutHome(stores, "Fourth").target.x == 40
+    and ns.LayoutHome(stores, "Fourth").player.x == 10)
+assert(ns.LayoutHome(stores, "Blank").target.x == 40 and ns.LayoutHome(stores, "Blank").player.x == 10, "the home itself")
+assert(table.concat(ns.db.profile.homeLayoutPast, ",") == "Elsewhere,Home" and ns.db.profile.homeLayoutPrev == "Elsewhere")
+move("Elsewhere")
+assert(table.concat(ns.db.profile.homeLayoutPast, ",") == "Blank,Home", "each home once")
+assert(ns.LayoutHome(stores, "Fourth").focus.x == 80)
+elsewhere.focus, stores.Blank, stores.Fourth = nil, nil, nil
+-- saved before the list: the one earlier home it kept
+ns.db.profile.homeLayoutPast, ns.db.profile.homeLayoutPrev = nil, "Home"
+assert(ns.LayoutHome(stores, "Fifth").player.x == 10 and ns.LayoutHome(stores, "Fifth").target.x == 40)
+stores.Fifth = nil
 ns.UFRing = { ApplyPlateScale = function(settings, value) settings.plateScale = value end }
 local plate = { plateScale = 0.9 }
 ns.SetLayoutPlateScale(stores, "Elsewhere", "target", plate, 1.4)
@@ -216,10 +284,13 @@ assert(dialogs[#dialogs].key == "FLAREUI_RELOAD")
 ns.CharDB().forcedCVars = { autoLootDefault = "0" }
 ns.db.global.hiddenBubbles = true
 ns.db.global.unrelated = true
+ns.db.global.nameplateZoomBackup, ns.db.global.uiScaleBack, ns.db.global.padStickKeysRestore = { a = 1 }, { use = "1" }, "1"
 ns.reloading = true
 ns.Dialogs.FLAREUI_RESET.OnAccept()
 assert(ns.db.sv.imported == "1.x" and ns.db.global.hiddenBubbles and ns.db.global.unrelated == nil)
 assert(ns.CharDB().forcedCVars.autoLootDefault == "0")
+assert(ns.db.global.nameplateZoomBackup.a == 1 and ns.db.global.uiScaleBack.use == "1" and ns.db.global.padStickKeysRestore == "1",
+    "what undoes FlareUI's own changes outlives the reset")
 guid = "hidden-guid"
 assert(ns.PlayerGUID() == nil and ns.CharDB() ~= ns.CharDB())
 

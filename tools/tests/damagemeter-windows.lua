@@ -268,6 +268,25 @@ local solo = assert(env.FlareUI_ThreatMeter)
 assert(solo:IsShown() and solo:GetWidth() == 320 and solo:GetPoint() == "BOTTOMLEFT")
 meterUI.AttachThreatWindow(false)
 assert(solo:GetParent():GetParent() == env.UIParent)
+-- (11-24) on its own it is drawn whatever the meter's alpha, and held back only by its own
+do
+    local driver = assert(ui:find(function(f) return f:IsEventRegistered("UNIT_THREAT_LIST_UPDATE") and f:GetScript("OnUpdate") end))
+    local function redraw()
+        driver.stale = true
+        driver:RunScript("OnUpdate", 1)
+        for _, event in ipairs({ "PLAYER_TARGET_CHANGED" }) do driver:RunScript("OnEvent", event) end
+        driver:RunScript("OnUpdate", 1)
+        return not driver.stale
+    end
+    local alpha = meter:GetAlpha()
+    meter:SetAlpha(0)
+    assert(redraw(), "the meter faded out: still drawn")
+    solo:SetAlpha(0)
+    assert(not redraw(), "faded out itself: only marked")
+    solo:SetAlpha(1)
+    assert(redraw())
+    meter:SetAlpha(alpha)
+end
 env.FlareUI_ToggleThreatMeter()
 assert(not solo:IsShown())
 env.FlareUI_ToggleThreatMeter()

@@ -560,9 +560,11 @@ function NA.SetName(f, udb, unit, levels, ranked)
     local slot, kind = NA.Get(udb)
     if not (fs and slot) then return end
     local there = unit and UnitExists(unit)
-    local name = there and ns.UnitDisplayName(unit, nil, BT.FullOf(kind)) or nil
+    -- (a hidden name is never tested, only handed on)
+    local name
+    if there then name = ns.UnitDisplayName(unit, nil, BT.FullOf(kind)) end
     if canaccessvalue(name) and not name then name = "" end
-    if not (there and levels and levels.showLevel) then fs:SetText(name or "") return end
+    if not (there and levels and levels.showLevel) then fs:SetText(name) return end
     local level = ns.UnitShownLevel(unit)
     if not canaccessvalue(level) then fs:SetFormattedText("%s %s", level, name) return end
     if type(level) ~= "number" then fs:SetText(name) return end

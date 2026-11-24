@@ -166,7 +166,8 @@ local function StyleTotem(button, cd, text, ring)
         else
             text:SetPoint("TOP", button, "BOTTOM", 0, 5)
         end
-        text:SetAlpha(timer == "none" and 0 or 1)
+        -- (its layer, not the text: Blizzard colours the text every frame, which shows it again)
+        layer:SetAlpha(timer == "none" and 0 or 1)
         -- the Unit Frames' Aura Timers font: its face, outline and shadow; Auto keeps Blizzard's size
         -- (the player frame's: totems are the player's)
         local font = ns.UnitFrames and ns.UnitFrames.Font and ns.UnitFrames.Font("player", "auras")

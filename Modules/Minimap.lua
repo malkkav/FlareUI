@@ -1494,6 +1494,17 @@ local function EditModeSize()
     return value / 100
 end
 
+-- Edit Mode's Icon Size as a scale, the same way
+function MM.EditModeIconSize()
+    local setting = Enum.EditModeMinimapSetting.IconScale
+    if not (setting and Cluster.HasSetting and Cluster.GetSettingValue) then return 1 end
+    local ok, has = pcall(Cluster.HasSetting, Cluster, setting)
+    if not (ok and has) then return 1 end
+    local ok2, value = pcall(Cluster.GetSettingValue, Cluster, setting)
+    if not (ok2 and type(value) == "number" and value > 0) then return 1 end
+    return value / 100
+end
+
 function MM:UpdateLayout()
     if not self.initialized or MM.MapAway() then return end   -- (a HUD has the map: WatchMapHome)
     -- (the minimap and its cluster are not protected on Forever: this runs in a fight too)
@@ -1758,7 +1769,8 @@ local function InBattleground()
     return inInstance and kind == "pvp" or false
 end
 
--- (EnableMouse on FlareUI's own plain frame: allowed in a fight too)
+-- (the mouse of FlareUI's own plain frame: allowed in a fight too. Its clicks only: EnableMouse would turn
+-- the hover on with them, and the pointer's focus over the map would be this surface)
 -- The surface sits well above the map (at the map's own level the map takes the clicks first) and
 -- lets through, to Blizzard's untouched map, every button it doesn't use:
 -- * the middle button is the menu's while it's on (in a battleground too: no ping is involved);
@@ -1770,7 +1782,8 @@ function MM.UpdateMapMouse()
     local db = GetDb()
     local menuOn = db and db.microMenu and true or false
     local ownPings = squareStyle and not InBattleground()
-    surface:EnableMouse(menuOn or ownPings)
+    if surface.SetMouseClickEnabled then surface:SetMouseClickEnabled(menuOn or ownPings)
+    else surface:EnableMouse(menuOn or ownPings) end
     if surface.SetPassThroughButtons and not InCombatLockdown() then
         local through = { "Button4", "Button5" }
         if not ownPings then through[#through + 1] = "LeftButton"; through[#through + 1] = "RightButton" end
@@ -1890,8 +1903,8 @@ Scan.OnAway = function() if not Scan.hidden then HideMapDirect() end end
 -- it saw set, which can be stale)
 -- The game draws the blips (player arrow, quest marks, party dots, gathering nodes) at
 -- full strength whatever the map's alpha. While the map is faded at all they are scaled to nothing
--- (Minimap:SetIconScale, as the node scanners do; nothing of Blizzard's sets it, so 1 is its own size),
--- and full size again once it shows fully. Through the frame's own method, and again after a scan (the
+-- (Minimap:SetIconScale, as the node scanners do), and Edit Mode's Icon Size again once it shows fully
+-- (a layout applied while faded sets it too: they go again then). Through the frame's own method, and again after a scan (the
 -- scanners put their own scale back at the end).
 -- 0, so nothing is left: at 0.001 the player arrow still draws a one-pixel dot in the middle. If the
 -- client refuses 0, the smallest size it takes.
@@ -1900,7 +1913,7 @@ local function SetIcons()
     local meta = getmetatable(MinimapFrame)
     local set = meta and meta.__index and meta.__index.SetIconScale or MinimapFrame.SetIconScale
     if not set then return end
-    if not MM.iconsFaded then pcall(set, MinimapFrame, 1) return end
+    if not MM.iconsFaded then pcall(set, MinimapFrame, MM.EditModeIconSize()) return end
     for _, scale in ipairs(MM.ICONS_FADED) do
         if pcall(set, MinimapFrame, scale) then return end
     end
@@ -1957,6 +1970,8 @@ end
 local function InstallSquareHooks()
     hooksecurefunc(Cluster, "SetSize", SizeCluster)
     hooksecurefunc(Cluster, "SetHeaderUnderneath", function() MM:UpdateLayout() end)
+    -- a layout applied while the map is faded draws the icons again: gone until it shows
+    if Cluster.SetIconScale then hooksecurefunc(Cluster, "SetIconScale", function() if MM.iconsFaded then SetIcons() end end) end
     -- Forever's config pass (rotateMinimap, layout) drops the zone button to its own frame level
     -- (ForeverFarmHUD: putting rotateMinimap back runs it as the HUD lets go); it also sizes the
     -- map's container to the round art and sets the round mask: the whole square layout goes back on,

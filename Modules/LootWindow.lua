@@ -589,7 +589,8 @@ end
 --------------------------------------------------
 -- OPENING, CLOSING AND THE SPOT
 -- Blizzard's LootFrame only loses its LOOT_OPENED and LOOT_CLOSED; it is never hidden (its OnHide
--- closes the loot) and none of its fields are written. The Gamepad UI gives it the two back.
+-- closes the loot) and none of its fields are written. The Gamepad UI gives it the two back, and so does
+-- being the Master Looter: Blizzard's assign menu and window belong to its own loot window (11-24).
 --------------------------------------------------
 local LEM = LibStub("FlareEditMode")
 local MOVER_KEY = "lootWindow"   -- tweaks.moverLayouts[layout].lootWindow
@@ -720,8 +721,8 @@ local function OpenSound(fromItem)
     if sound then PlaySound(sound) end
 end
 
--- into or out of the Gamepad UI, where Blizzard's window takes the loot. Never in the middle of a
--- loot: the window that opened it also closes it.
+-- into or out of the Gamepad UI or the Master Looter's place, where Blizzard's window takes the loot
+-- (LW.gamepad: either). Never in the middle of a loot: the window that opened it also closes it.
 local function ApplyInputStyle()
     if LW.looting then
         LW.styleDue = true
@@ -729,7 +730,7 @@ local function ApplyInputStyle()
     end
     LW.styleDue = nil
     if LW.blizzard then return end
-    local gamepad = ns.IsGamepadUI()
+    local gamepad = ns.IsGamepadUI() or ns.IsMasterLooter()
     if gamepad == LW.gamepad then return end
     LW.gamepad = gamepad
     if gamepad then
@@ -782,6 +783,8 @@ local function OnEvent(_, event, a, b)
         StaticPopup_Hide("LOOT_BIND")
         -- next frame: Blizzard's window gets this LOOT_CLOSED before it may lose the event
         if LW.styleDue then C_Timer.After(0, ApplyInputStyle) end
+    elseif event == "PARTY_LOOT_METHOD_CHANGED" or event == "GROUP_ROSTER_UPDATE" then
+        ApplyInputStyle()
     elseif event == "INPUT_DEVICE_INTERFACE_TRANSITION" then
         -- (once the style is set, as LootRolls.lua)
         C_Timer.After(0, ApplyInputStyle)
@@ -816,7 +819,8 @@ function LW:Init()
         events:RegisterEvent("BAG_UPDATE_DELAYED")
     end)
     events = CreateFrame("Frame")
-    for _, event in ipairs({ "LOOT_OPENED", "LOOT_SLOT_CLEARED", "LOOT_SLOT_CHANGED", "LOOT_CLOSED" }) do
+    for _, event in ipairs({ "LOOT_OPENED", "LOOT_SLOT_CLEARED", "LOOT_SLOT_CHANGED", "LOOT_CLOSED",
+                             "PARTY_LOOT_METHOD_CHANGED", "GROUP_ROSTER_UPDATE" }) do
         events:RegisterEvent(event)
     end
     pcall(events.RegisterEvent, events, "INPUT_DEVICE_INTERFACE_TRANSITION")
@@ -826,4 +830,5 @@ function LW:Init()
     LW.gamepad = false
     LootFrame:UnregisterEvent("LOOT_OPENED")
     LootFrame:UnregisterEvent("LOOT_CLOSED")
+    ApplyInputStyle()   -- (a reload as the group's Master Looter)
 end

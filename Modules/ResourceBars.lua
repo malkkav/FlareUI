@@ -344,6 +344,18 @@ end
 -- Auto attack state, for the swing bars' Waiting State: melee from PLAYER_ENTER/LEAVE_COMBAT,
 -- Auto Shot and wands from START/STOP_AUTOREPEAT_SPELL
 RB.auto = { melee = false, ranged = false }
+-- read once as the world loads: a reload, or a loading screen that ended the attack, tells no event
+function RB.SeedAuto()
+    local current = C_Spell.IsCurrentSpell
+    if current then
+        local on = current(6603)   -- Auto Attack
+        if canaccessvalue(on) then RB.auto.melee = on and true or false end
+    end
+    local repeating = C_Spell.IsAutoRepeatSpell
+    local shot, wand
+    if repeating then shot, wand = repeating(75), repeating(5019) end   -- Auto Shot, Shoot
+    RB.auto.ranged = (canaccessvalue(shot) and shot or canaccessvalue(wand) and wand) and true or false
+end
 local function AutoAttacking(key)
     if key == "swingRanged" then return RB.auto.ranged end
     return RB.auto.melee
@@ -1514,20 +1526,30 @@ local AUTO_SHOT = 75
 -- ACTIONBAR_UPDATE_STATE and when a main-hand swing starts, never per frame; asked by name, so
 -- every rank counts.
 RB.QUEUED_SPELLS = {
-    { 78,   "queueHeroic", "Heroic Strike" },
-    { 845,  "queueCleave", "Cleave" },
-    { 6807, "queueMaul",   "Maul" },
-    { 2973, "queueRaptor", "Raptor Strike" },
+    { 78,   "queueHeroic", "Heroic Strike", class = "WARRIOR" },
+    { 845,  "queueCleave", "Cleave",        class = "WARRIOR" },
+    { 6807, "queueMaul",   "Maul",          class = "DRUID" },
+    { 2973, "queueRaptor", "Raptor Strike", class = "HUNTER" },
 }
+RB.QUEUE_EVENTS = { CURRENT_SPELL_CAST_CHANGED = true, ACTIONBAR_UPDATE_STATE = true }
+-- whether your class has such an attack (the others' events aren't asked for)
+function RB.HasQueued()
+    local class = ClassFile()
+    for _, s in ipairs(RB.QUEUED_SPELLS) do
+        if s.class == class then return true end
+    end
+    return false
+end
 function RB.UpdateQueued()
     local holder = bars.swingMain
     if not holder then return end
     local isCurrent = C_Spell.IsCurrentSpell or IsCurrentSpell
     local names = RB.queuedNames
     if not names then
-        -- names looked up once (a spell this client lacks is left out)
+        -- names looked up once (your class's; a spell this client lacks is left out)
         names = {}
-        for i, s in ipairs(RB.QUEUED_SPELLS) do names[i] = C_Spell.GetSpellName(s[1]) or false end
+        local class = ClassFile()
+        for i, s in ipairs(RB.QUEUED_SPELLS) do names[i] = s.class == class and C_Spell.GetSpellName(s[1]) or false end
         RB.queuedNames = names
     end
     local key
@@ -1584,6 +1606,10 @@ function RB:OnEvent(event, arg1, arg2, arg3)
         RB.auto.melee = event == "PLAYER_ENTER_COMBAT"
     elseif event == "START_AUTOREPEAT_SPELL" or event == "STOP_AUTOREPEAT_SPELL" then
         RB.auto.ranged = event == "START_AUTOREPEAT_SPELL"
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        RB.SeedAuto()
+    elseif event == "PLAYER_DEAD" then
+        RB.auto.melee, RB.auto.ranged = false, false
     end
     if IsEditing() then return end
     if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
@@ -1969,7 +1995,7 @@ function Seal.PlaceIcon(owner, bar, cfg, PADDING, spellID)
         icon:SetPoint("TOPLEFT", owner, "TOPLEFT", PADDING, -PADDING)
         icon:SetTexture(C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(spellID) or nil)
         icon:Show()
-        bar:SetPoint("TOPLEFT", icon, "TOPRIGHT", 1, 0)
+        bar:SetPoint("TOPLEFT", icon, "TOPRIGHT", 0, 0)
     else
         if icon then icon:Hide() end
         bar:SetPoint("TOPLEFT", owner, "TOPLEFT", PADDING, -PADDING)
@@ -2560,7 +2586,10 @@ function RB:Init()
     local events = CreateFrame("Frame")
     events:SetScript("OnEvent", function(_, event, ...) RB:OnEvent(event, ...) end)
     for _, event in ipairs(UNIT_EVENTS) do pcall(events.RegisterUnitEvent, events, event, "player") end
-    for _, event in ipairs(EVENTS) do pcall(events.RegisterEvent, events, event) end
+    local queued = RB.HasQueued()
+    for _, event in ipairs(EVENTS) do
+        if queued or not RB.QUEUE_EVENTS[event] then pcall(events.RegisterEvent, events, event) end
+    end
     self.events = events
 
     LEM:RegisterCallback("layout", function(layoutName)

@@ -414,15 +414,48 @@ ACTIONS.item = function(entry)
     return name or L["Item"], { texture = icon }, { type = "item", item = "item:" .. entry.id }
 end
 
+-- The number of the player's macro an entry stands for, or nil. Several can share a name (a single space
+-- is a common one): the one whose text is the saved copy's, else the first of that name. Found ones are
+-- kept until the macros change. Second answer: the name alone isn't enough to run it (shared, or a name
+-- of digits, which would be taken for a number).
+function RM.MacroIndex(entry)
+    local name = entry and entry.name
+    if type(name) ~= "string" or name == "" then return nil end
+    local cache = RM.macroFound
+    if not cache then
+        cache = {}
+        RM.macroFound = cache
+    end
+    local text = type(entry.text) == "string" and entry.text or ""
+    local key = name .. "\0" .. text
+    local found = cache[key]
+    if found then return found.index, found.byNumber end
+    local first = GetMacroIndexByName(name)
+    if not (canaccessvalue(first) and first and first > 0) then return nil end
+    local index, same = first, 0
+    local account, character = 0, 0
+    if GetNumMacros then account, character = GetNumMacros() end
+    local start = _G.MAX_ACCOUNT_MACROS or 120
+    local function Look(i)
+        local other, _, body = GetMacroInfo(i)
+        if not (canaccessvalue(other) and canaccessvalue(body)) or other ~= name then return end
+        same = same + 1
+        if index == first and i ~= first and body == text and select(3, GetMacroInfo(first)) ~= text then index = i end
+    end
+    for i = 1, account or 0 do Look(i) end
+    for i = start + 1, start + (character or 0) do Look(i) end
+    found = { index = index, byNumber = same > 1 or tonumber(name) ~= nil }
+    cache[key] = found
+    return found.index, found.byNumber
+end
+
 -- What a saved macro casts right now, read from the player's macro of that name: the game works out
 -- #showtooltip and conditions such as [mod] or [@focus], as it does for action bars. The slice still
 -- runs that macro (ACTIONS.macro); this lends it the cooldown, the editor's tooltip and the icon.
 -- Answers "spell", id or "item", id, then the macro's current icon; nothing when no macro has the name.
 function RM.MacroAction(entry)
-    local name = entry and entry.name
-    if type(name) ~= "string" or name == "" then return nil end
-    local index = GetMacroIndexByName(name)
-    if not (canaccessvalue(index) and index and index > 0) then return nil end
+    local index = RM.MacroIndex(entry)
+    if not index then return nil end
     local _, icon = GetMacroInfo(index)
     if not canaccessvalue(icon) then icon = nil end
     local spellID = GetMacroSpell(index)
@@ -438,13 +471,11 @@ end
 -- character's own version); the copy taken when it was added runs only where no macro has the name
 ACTIONS.macro = function(entry)
     local name = entry.name
-    if type(name) == "string" and name ~= "" then
-        local index = GetMacroIndexByName(name)
-        if canaccessvalue(index) and index and index > 0 then
-            local _, icon = GetMacroInfo(index)
-            if not canaccessvalue(icon) then icon = nil end
-            return name, { texture = icon or entry.icon or 134400 }, { type = "macro", macro = name }
-        end
+    local index, byNumber = RM.MacroIndex(entry)
+    if index then
+        local _, icon = GetMacroInfo(index)
+        if not canaccessvalue(icon) then icon = nil end
+        return name, { texture = icon or entry.icon or 134400 }, { type = "macro", macro = byNumber and index or name }
     end
     return name or L["Macro"], { texture = entry.icon or 134400 },
         { type = "macro", macrotext = entry.text or "" }
@@ -2095,6 +2126,8 @@ local OPEN_CLICK_SNIPPET = [[
     local id = ...
     -- no radial assigned (Toggle with every radial deleted)
     if not id then return false end
+    -- empty at the last sync: what changed since is read before it refuses (out of a fight)
+    if (self:GetAttribute(id .. "-count") or 0) == 0 then self:CallMethod("OnSecureWarm") end
     if (self:GetAttribute(id .. "-count") or 0) == 0 then return false end
     if self:GetAttribute("flare-subreset") then CHILD = newtable() end
     ACTIVE, MODE, ROOT, DEPTH = id, "click", id, 0
@@ -2202,6 +2235,7 @@ local PAD_SNIPPET = [[
     else
         id = control:GetAttribute("tag-" .. strlower(button)) or button
     end
+    if id and (control:GetAttribute(id .. "-count") or 0) == 0 then control:CallMethod("OnSecureWarm") end
     if id and (control:GetAttribute(id .. "-count") or 0) == 0 then id = nil end
     -- pressed again while its radial is open: with nothing aimed and Press again to repeat on, the
     -- last button; otherwise it closes. Another radial's button switches to that radial.
@@ -2575,6 +2609,9 @@ local function CreateSecureLayer()
     header.OnSecureHoldCancel = function() if openMode == "hold" then CloseRadial() end end
     header.OnSecureChild = function(_, index, child) SetButtonChild(index, child) end
     header.OnSecureOpen = function(_, radialID) OpenRadial(radialID, "click") end
+    header.OnSecureWarm = function()
+        if syncDirty and not isOpen and not InCombatLockdown() then RM:LayoutRadial() end
+    end
     -- a stick bound only with a trigger held stays bound while its radial is open: L3 closes it
     header.OnSecurePadOpen = function(_, radialID)
         OpenRadial(radialID, "pad")
@@ -3758,6 +3795,14 @@ local function MigrateKeys()
     store.key, store.lastSetup = nil, nil
 end
 
+-- (11-24) the last moment the secure copy can be rewritten (the event comes before the lockdown): what
+-- changed since the last open would be missing on the first open of the fight, and for all of it. Never
+-- under the hand: an open radial keeps its buttons.
+function RM:PLAYER_REGEN_DISABLED()
+    if not syncDirty or isOpen or self.securePending or InCombatLockdown() then return end
+    if previewID then self:RefreshPreview() else self:LayoutRadial() end
+end
+
 function RM:PLAYER_REGEN_ENABLED()
     if self.securePending then
         self.securePending = nil
@@ -3849,6 +3894,7 @@ function RM:Init()
 
     ApplyBinding()
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self:RegisterEvent("PLAYER_REGEN_DISABLED")
     -- the spellbook changed: each spell's best rank is read again
     self:RegisterEvent("SPELLS_CHANGED", RM.ForgetRanks)
     -- a loading screen during a hold: the key's release never comes
@@ -3889,7 +3935,10 @@ for _, event in ipairs({ "SPELLS_CHANGED", "UPDATE_MACROS", "BAG_UPDATE_DELAYED"
                          "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_WATCH_LIST_CHANGED", "GROUP_ROSTER_UPDATE" }) do
     pcall(dirtyEvents.RegisterEvent, dirtyEvents, event)
 end
-dirtyEvents:SetScript("OnEvent", RM.MarkDirty)
+dirtyEvents:SetScript("OnEvent", function(_, event)
+    if event == "UPDATE_MACROS" then RM.macroFound = nil end
+    RM.MarkDirty()
+end)
 
 function RM:RadialChanged(radialID)
     syncDirty = true

@@ -67,8 +67,16 @@ edit.callbacks.exit()
 assert(#opened == 0)
 ui:flushTimers()
 assert(opened[1] == "sample" and panelShown, "leaving Edit Mode reopens the originating page")
+-- (11-24) with Edit Mode changes not saved yet it says so and closes nothing
+local unsaved, notices = true, {}
+manager.HasActiveChanges = function() return unsaved end
+local errorsFrame = E.UIErrorsFrame
+E.UIErrorsFrame = { AddMessage = function(_, text) notices[#notices + 1] = text end }
 back.click()
-assert(not manager:IsShown() and opened[2] == "sample")
+assert(manager:IsShown() and #opened == 1 and notices[1]:find("Save or revert", 1, true))
+unsaved, E.UIErrorsFrame = false, errorsFrame
+back.click()
+assert(not manager:IsShown() and opened[2] == "sample" and #notices == 1)
 canEnter = false
 assert(not S:OpenEditMode("sample"))
 canEnter = true

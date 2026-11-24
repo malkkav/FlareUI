@@ -60,6 +60,37 @@ assert(not buffLane.groups[buffKey].candidates.maxDuration)
 unit.party1.far = false
 a:RunScript("OnEvent", "UNIT_IN_RANGE_UPDATE", "party1")
 assert(buffLane.groups[buffKey].candidates.maxDuration == 30)
+-- (11-24) Always Show: its row needs plain rules, so it has a container of its own, on past the buffs
+do
+    local oldAuras = ns.db.profile.auras
+    ns.db.profile.auras = ns.db.profile.auras or {}
+    local HA = ns.HiddenAuras
+    assert(not a.AuraPos["RIGHT+"], "none made until it is needed")
+    HA.Add(1243, "shown")
+    pf:Refresh()
+    local extra = a.AuraPos["RIGHT+"].container
+    local _, always = next(extra.groups)
+    assert(extra:IsShown() and always.filter == "HELPFUL" and always.candidates.includeSpellIDs[1243])
+    assert(extra.auraPolicy == 0 and a.AuraPos.RIGHT.container.auraPolicy == 1, "plain rules beside Blizzard's")
+    assert(extra.unit[1] == "party1")
+    local _, over = extra:GetPoint()
+    assert(over == a.AuraPos.RIGHT.container)
+    for key, group in pairs(a.AuraPos.RIGHT.container.groups) do
+        assert(not key:find("always") or not group.enabled, "not in the first one too")
+    end
+    -- stacked past the buffs, the other kind clears the second container's own line
+    local buffs, debuffs, outer = party.classic.buffs, party.classic.debuffs, party.classic.auraOuter
+    party.classic.buffs, party.classic.debuffs, party.classic.auraOuter = "ABOVE_WIDE", "ABOVE", "debuffs"
+    pf:Refresh()
+    assert(a.AuraPos["ABOVE_WIDE+"].lineOwn)
+    local _, under = a.AuraStackStrip:GetPoint(3)
+    assert(under == a.AuraPos["ABOVE_WIDE+"].container)
+    party.classic.buffs, party.classic.debuffs, party.classic.auraOuter = buffs, debuffs, outer
+    HA.Remove(1243, "shown")
+    pf:Refresh()
+    assert(not extra:IsShown() and not always.enabled)
+    ns.db.profile.auras = oldAuras
+end
 party.classic.buffs, party.classic.debuffs, party.classic.auraOuter = "ABOVE_WIDE", "ABOVE", "buffs"
 pf:Refresh()
 assert(a.AuraPos.ABOVE_WIDE.container:IsShown() and not buffLane:IsShown() and a.AuraStackStrip)

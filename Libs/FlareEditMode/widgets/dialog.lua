@@ -393,6 +393,15 @@ function internal:CreateDialog()
 	end)
 	dialog:SetScript('OnKeyDown', dialog.OnKeyDown)
 
+	-- FlareUI (11-24): in a fight OnKeyDown can't say whether a key goes on to the game, so whatever was
+	-- set last holds. A nudge (or nothing yet) would swallow every key of the fight: keys go on from
+	-- the moment it starts (the event comes before the lockdown).
+	if not InCombatLockdown() then dialog:SetPropagateKeyboardInput(true) end -- protected
+	dialog:RegisterEvent('PLAYER_REGEN_DISABLED')
+	dialog:SetScript('OnEvent', function(self)
+		if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end -- protected
+	end)
+
 	local dialogTitle = dialog:CreateFontString(nil, nil, 'GameFontHighlightLarge')
 	dialogTitle:SetPoint('TOP', 0, -15)
 	dialog.Title = dialogTitle
@@ -404,7 +413,9 @@ function internal:CreateDialog()
 	local dialogClose = CreateFrame('Button', nil, dialog, 'UIPanelCloseButton')
 	dialogClose:SetPoint('TOPRIGHT')
 	dialogClose.ignoreInLayout = true
-	dialogClose:HookScript('OnClick', function()
+	-- FlareUI (11-24): not the template's own click, which the game refuses an addon's window in a fight
+	dialogClose:SetScript('OnClick', function()
+		dialog:Hide()
 		dialog:Reset()
 	end)
 	dialog.Close = dialogClose

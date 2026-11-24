@@ -24,7 +24,7 @@ function env.UnitAffectingCombat(unit) assert(unit == "player"); return ui.fight
 function env.print(line) messages[#messages + 1] = line end
 
 env.Enum = {
-    DamageMeterType = { DamageDone = 1, Interrupts = 2 },
+    DamageMeterType = { DamageDone = 1, Interrupts = 2, Deaths = 3 },
     DamageMeterSessionType = { Overall = 1, Current = 2 },
 }
 env.DAMAGE_METER_TYPE_INTERRUPTS = "Interrupts"
@@ -85,6 +85,25 @@ rows = report.Build(window)
 assert(selected[1] == env.Enum.DamageMeterSessionType.Overall and selected[2] == kind)
 assert(rows[1] == "FlareUI: Interrupts – Overall (2:01)" and #rows == 6)
 assert(rows[2] == "1. Ash  233" and rows[3] == "2. Lime  120", "counts do not require a per-second rate")
+
+-- (11-24) Deaths: one line per death, at its time, in order; no time (Overall): the client's order, names only
+do
+    local sources = active.combatSources
+    kind, title, db.reportLines = 3, "Deaths", "3"
+    active.combatSources = {
+        { name = "Ash", totalAmount = 1, deathTimeSeconds = 202 },
+        { name = "Lime", totalAmount = 1, deathTimeSeconds = 65.4 },
+        { name = unreadable, totalAmount = 1, deathTimeSeconds = 10 },
+        { name = "Ash", totalAmount = 1, deathTimeSeconds = 65.4 },
+        { name = "Fern", totalAmount = 1, deathTimeSeconds = 300 },
+    }
+    rows = report.Build(window)
+    assert(#rows == 4 and rows[2] == "1. Lime  1:05" and rows[3] == "2. Ash  1:05" and rows[4] == "3. Ash  3:22")
+    active.combatSources[1].deathTimeSeconds = -1
+    rows = report.Build(window)
+    assert(rows[2] == "1. Ash" and rows[3] == "2. Lime  1:05")
+    active.combatSources, kind, title, db.reportLines = sources, 2, unreadable, 4
+end
 
 ui.combat = true
 report.Send(window, "PARTY")

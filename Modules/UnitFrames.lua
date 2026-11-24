@@ -981,6 +981,89 @@ local function HardHide(name)
     hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then ns.RawHide(f) end end)
 end
 
+-- BLIZZARD'S GROUP FRAMES, SILENCED (11-24): parking their holder left the frames inside listening to every
+-- health, power, aura and threat event of the group, hidden or not (up to 40 after a reload in a raid).
+-- Events off, and off again each time Blizzard registers them (a new unit); no field of theirs is
+-- written. A main tank's target frame would even draw itself every frame, on purpose also while hidden.
+-- root: PartyFrame or CompactRaidFrameContainer, once parked.
+UF.GroupQuiet = { roots = {}, rootOf = setmetatable({}, { __mode = "k" }) }
+do
+    local Q = UF.GroupQuiet
+    -- which of the two holders a frame sits under, or false (a nameplate: one lookup from then on)
+    local function RootOf(frame)
+        local root = Q.rootOf[frame]
+        if root ~= nil then return root end
+        root = false
+        if not frame:IsForbidden() then
+            local parent = frame:GetParent()
+            for _ = 1, 5 do
+                if not parent or parent:IsForbidden() then break end
+                if parent == _G.PartyFrame or parent == _G.CompactRaidFrameContainer then root = parent break end
+                parent = parent:GetParent()
+            end
+        end
+        Q.rootOf[frame] = root
+        return root
+    end
+    function Q.Quiet(frame)
+        if type(frame) ~= "table" or not frame.UnregisterAllEvents then return end
+        local root = RootOf(frame)
+        if root and Q.roots[root] then frame:UnregisterAllEvents() end
+    end
+    local function QuietUpdates(frame)
+        local root = RootOf(frame)
+        if root and Q.roots[root] and frame.onUpdateFrame then frame.onUpdateFrame:SetScript("OnUpdate", nil) end
+    end
+    -- the frames there are now
+    local function QuietAll()
+        local party = _G.CompactPartyFrame
+        if party then
+            Q.Quiet(party)
+            for _, list in ipairs({ party.memberUnitFrames or {}, party.petUnitFrames or {} }) do
+                for _, frame in ipairs(list) do Q.Quiet(frame) end
+            end
+        end
+        for group = 1, 8 do
+            Q.Quiet(_G["CompactRaidGroup" .. group])
+            for i = 1, 5 do Q.Quiet(_G["CompactRaidGroup" .. group .. "Member" .. i]) end
+        end
+        for i = 1, 200 do
+            local frame = _G["CompactRaidFrame" .. i]
+            if not frame then break end
+            Q.Quiet(frame)
+            QuietUpdates(frame)
+        end
+        -- the classic party frames, their bars and their pets'
+        local pool = _G.PartyFrame and _G.PartyFrame.PartyMemberFramePool
+        if pool and pool.EnumerateActive then
+            for member in pool:EnumerateActive() do
+                local pet = member.PetFrame
+                for _, frame in ipairs({ member, pet or false, member.ManaBar or false, pet and pet.ManaBar or false,
+                    member.HealthBarContainer and member.HealthBarContainer.HealthBar or false,
+                    pet and pet.HealthBarContainer and pet.HealthBarContainer.HealthBar or false }) do
+                    if frame then Q.Quiet(frame) end
+                end
+            end
+        end
+    end
+    function Q.Park(name)
+        local root = _G[name]
+        if not root or Q.roots[root] then return end
+        Q.roots[root] = true
+        if not Q.hooked then
+            Q.hooked = true
+            if _G.CompactUnitFrame_UpdateUnitEvents then hooksecurefunc("CompactUnitFrame_UpdateUnitEvents", Q.Quiet) end
+            if _G.CompactUnitFrame_SetUpdateAllOnUpdate then hooksecurefunc("CompactUnitFrame_SetUpdateAllOnUpdate", QuietUpdates) end
+            if _G.CompactRaidGroup_InitializeForGroup then hooksecurefunc("CompactRaidGroup_InitializeForGroup", Q.Quiet) end
+            -- (Blizzard's party frames set themselves up around the login too)
+            local events = CreateFrame("Frame")
+            events:RegisterEvent("PLAYER_ENTERING_WORLD")
+            events:SetScript("OnEvent", function() C_Timer.After(1, QuietAll) end)
+        end
+        QuietAll()
+    end
+end
+
 -- Gamepad UI: the target menu opens on TargetFrame and closes if it is hidden, so TargetFrame stays
 -- shown, silent, invisible and mouse-deaf, pinned over this target frame. Out of combat only.
 local function KeepAsMenuOwner(name, over)
@@ -1518,12 +1601,14 @@ local sampleCastTicker
 local castBars = {}          -- every cast bar object, for previews
 
 -- Interrupt ready: an interruptible enemy cast is green while the player's interrupt is ready, and
--- its normal colour while it cools down. All ranks share one cooldown, so rank 1 stands for them all.
+-- its normal colour while it cools down. All ranks share one cooldown: the best one known stands for
+-- them all (a rank-1 ID stops counting as known once a higher rank is learned, see BookByName).
 -- isActive and isOnGCD are never secret; a hidden Cooldown frame tells when a cooldown ends.
 local KICK = {
     spells = { 1766, 6552, 72, 2139, 8042, 15487 },   -- Kick, Pummel, Shield Bash, Counterspell, Earth Shock, Silence
     READY = { 0.30, 0.72, 0.36 },
-    known = {},       -- spellID -> true while ready, false while cooling
+    best = {},        -- a spell of the list -> its best known rank
+    known = {},       -- spellID (best rank) -> true while ready, false while cooling
     timers = {},      -- spellID -> Cooldown frame
 }
 
@@ -2140,6 +2225,7 @@ end
 -- alphas follow them (a texture's boolean alpha draws nothing on this client).
 function KICK.Active()
     for _, spellID in ipairs(KICK.spells) do
+        spellID = KICK.best[spellID] or spellID
         if KICK.known[spellID] ~= nil then return spellID end
     end
 end
@@ -2418,8 +2504,16 @@ end
 
 function KICK.Learn()
     wipe(KICK.known)
+    wipe(KICK.best)
+    local book = UF.BookByName()
     for _, spellID in ipairs(KICK.spells) do
-        if C_SpellBook.IsSpellKnown(spellID, Enum.SpellBookSpellBank.Player) then KICK.known[spellID] = true end
+        local name = C_Spell.GetSpellName(spellID)
+        local best = name and book[name]
+        if not best and C_SpellBook.IsSpellKnown(spellID, Enum.SpellBookSpellBank.Player) then best = spellID end
+        if best then
+            KICK.best[spellID] = best
+            KICK.known[best] = true
+        end
     end
     KICK.Refresh(false)
     KICK.UpdateBars()
@@ -5513,7 +5607,23 @@ function UF:GetUnitButton(unit) return frames[unit] end
 function UF:IsMouseOverUnit(unit)
     local f = frames[unit]
     if not (f and f:IsVisible()) then return false end
-    return f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f)) or false
+    if f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f)) then return true end
+    -- (11-24, GitHub #180) its buffs and debuffs too: faded they still took the pointer and showed their
+    -- tooltips, but didn't bring the frame back. Asked of what the pointer is on, nothing measured.
+    return f.Auras and UF.PointerUnder(f) or false
+end
+
+-- whether what the pointer is on belongs to frame
+function UF.PointerUnder(frame)
+    for _, focus in ipairs(GetMouseFoci and GetMouseFoci() or {}) do
+        for _ = 1, 5 do
+            if not focus or focus:IsForbidden() then break end
+            if focus == frame then return true end
+            local ok, parent = pcall(focus.GetParent, focus)
+            focus = ok and parent or nil
+        end
+    end
+    return false
 end
 
 -- The old Fade Player and Pet setting (combat, target, missing health and the mouse showed both
@@ -5580,6 +5690,7 @@ function BookByName()
     end
     return best
 end
+UF.BookByName = BookByName   -- (KICK.Learn, above)
 end
 
 -- the known spells of one list (best rank), rebuilt when the spellbook changes (UF.rangeKnown = nil)

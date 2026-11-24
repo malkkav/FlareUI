@@ -479,7 +479,7 @@ local function Resolve()
         for _, id in ipairs(def.cast or {}) do
             if Known(id) then castID = id break end
         end
-        local usable = castID
+        local usable = castID and not (def.needSpell and not Known(def.needSpell))
         local entry
         if def.weapon then
             -- one reminder per hand, once something can go on (a rogue: once Poisons is known)
@@ -792,6 +792,7 @@ function BR.AddCustom(text)
     if #spells == 0 and #items == 0 then return end
     local list = CustomList(true)
     list[#list + 1] = { spells = spells, items = items }
+    BR.CustomIds(list)
     BR.Resolve()
     BR.Update()
 end
@@ -822,8 +823,9 @@ function BR.SetCustom(value)
     local list = CustomList()
     if not list then return end
     local ticked = ns.Conditions.Set(value or "")
+    BR.CustomIds(list)
     for i = #list, 1, -1 do
-        if not ticked["c" .. i] then table.remove(list, i) end
+        if not ticked["c" .. i] then BR.ForgetCustom(table.remove(list, i)) end
     end
     BR.Resolve()
     BR.Update()
@@ -831,6 +833,7 @@ end
 function BR.ClearCustom()
     local db = GetDb()
     local _, class = UnitClass("player")
+    for _, c in ipairs(BR.CustomIds(CustomList())) do BR.ForgetCustom(c) end
     if db and db.custom then db.custom[class] = nil end
     BR.Resolve()
     BR.Update()
@@ -839,14 +842,36 @@ local function RemoveCustom(def)
     local list = CustomList()
     if not list then return end
     for i, c in ipairs(list) do
-        if c == def.stored then table.remove(list, i) break end
+        if c == def.stored then BR.ForgetCustom(table.remove(list, i)) break end
     end
     BR.Resolve()
     BR.Update()
 end
+-- (11-24) Never Remind Me, Hide Until Reload and Snooze remember a custom reminder by its id, not its place
+-- in the list: removing one moved them onto the next. Older ones get their place as their id.
+function BR.CustomIds(list)
+    list = list or {}
+    local last = 0
+    for _, c in ipairs(list) do last = math.max(last, tonumber(c.id) or 0) end
+    for i, c in ipairs(list) do
+        if not c.id then
+            c.id = math.max(i, last + 1)
+            last = c.id
+        end
+    end
+    return list
+end
+-- removed: what was kept about it goes too (its id may be given again)
+function BR.ForgetCustom(c)
+    local _, class = UnitClass("player")
+    local key = (class or "") .. ":custom" .. tostring(c and c.id)
+    local db = GetDb()
+    if db and db.hidden then db.hidden[key] = nil end
+    dismissed[key], snoozed[key] = nil, nil
+end
 function BR.CustomEntries(out)
-    for i, c in ipairs(CustomList() or {}) do
-        local def = { key = "custom" .. i, custom = true, stored = c, items = c.items or {} }
+    for _, c in ipairs(BR.CustomIds(CustomList())) do
+        local def = { key = "custom" .. c.id, custom = true, stored = c, items = c.items or {} }
         local names, castID, icon = {}, nil, nil
         for _, s in ipairs(c.spells or {}) do
             local id = type(s) == "number" and s or nil
@@ -1843,11 +1868,8 @@ local function Icon(i)
     if b then return b end
     b = CreateFrame("Button", "FlareUI_BuffReminder" .. i, row, "SecureActionButtonTemplate")
     b:RegisterForClicks("AnyUp", "AnyDown")
-    -- On Mouseover: pointing at any icon shows the hidden ones (BR.ApplyHover)
     BR.iconList = BR.iconList or {}
     BR.iconList[#BR.iconList + 1] = b
-    b:HookScript("OnEnter", function() BR.HoverEnter() end)
-    b:HookScript("OnLeave", function() BR.HoverLeave() end)
     BR.BuildIcon(b)
     -- right-click: no cast (an empty macro), the hide menu instead
     b:SetAttribute("type2", "macro")
@@ -1865,6 +1887,10 @@ local function Icon(i)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", GameTooltip_Hide)
+    -- On Mouseover: pointing at any icon shows the hidden ones (BR.ApplyHover). After the two SetScripts:
+    -- they throw away whatever was hooked before them.
+    b:HookScript("OnEnter", function() BR.HoverEnter() end)
+    b:HookScript("OnLeave", function() BR.HoverLeave() end)
     icons[i] = b
     return b
 end

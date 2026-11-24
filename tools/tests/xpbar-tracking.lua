@@ -124,6 +124,11 @@ assert(not frame:IsShown())
 ui.editing = true
 edit.callbacks.enter()
 assert(frame:IsShown() and left:GetValue() == 0.6 and right:GetValue() == 0.4)
+-- (11-24) a fight in Edit Mode shows the live bar, and the sample again after it
+ui:emit("PLAYER_REGEN_DISABLED")
+assert(not frame:IsShown())
+ui:emit("PLAYER_REGEN_ENABLED")
+assert(frame:IsShown())
 frame.moved(frame, "Custom", "BOTTOM", 18.2, 23.7)
 edit.callbacks.layout("Custom")
 local point, _, _, x, y = frame:GetPoint()

@@ -1125,27 +1125,53 @@ function Bags.CombineEmpty(items, combine)
         for button in pairs(Bags.combinedEmpty) do SetFreeCount(button, nil) end
         return items
     end
-    local kept, spare, free = {}, nil, 0
+    -- (11-24, aiurjordan) one slot per kind of bag: a soul, herb or other special bag's free slots take only
+    -- its own items, so they are counted apart (with them in one count, the slot shown could be one nothing
+    -- else fits in). The padlocked slots of an account without an authenticator are no free slots.
+    local kept, spares, families = {}, {}, {}
+    local secured = not IsAccountSecured or IsAccountSecured()
+    local function FamilyOf(bag)
+        local family = families[bag]
+        if family == nil then
+            family = C_Container.GetContainerNumFreeSlots and select(2, C_Container.GetContainerNumFreeSlots(bag)) or 0
+            families[bag] = family
+        end
+        return family
+    end
+    local order = {}
     for _, button in ipairs(items) do
-        local info = C_Container.GetContainerItemInfo(button:GetBagID(), button:GetID())
+        local bag = button:GetBagID()
+        local info = C_Container.GetContainerItemInfo(bag, button:GetID())
         if info then
             kept[#kept + 1] = button
             SetSlotShown(button, true)
             SetFreeCount(button, nil)
+        elseif not secured and button.IsExtended and button:IsExtended() then
+            SetSlotShown(button, false)
+            SetFreeCount(button, nil)
         else
-            free = free + 1
+            local family = FamilyOf(bag)
+            local spare = spares[family]
             if spare then
+                spare.free = spare.free + 1
                 SetSlotShown(button, false)
                 SetFreeCount(button, nil)
             else
-                spare = button
+                spares[family] = { button = button, free = 1 }
+                order[#order + 1] = family
             end
         end
     end
-    if spare then
-        kept[#kept + 1] = spare
-        SetSlotShown(spare, true)
-        SetFreeCount(spare, free)
+    -- the special bags' first, the ordinary free slots last, where they always were
+    table_sort(order, function(a, b)
+        if (a == 0) ~= (b == 0) then return b == 0 end
+        return a < b
+    end)
+    for _, family in ipairs(order) do
+        local spare = spares[family]
+        kept[#kept + 1] = spare.button
+        SetSlotShown(spare.button, true)
+        SetFreeCount(spare.button, spare.free)
     end
     return kept
 end
@@ -1760,7 +1786,9 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.ilvl:Hide()
     ov.eye:Hide()
     ov.boe:Hide()
-    ov.plain:SetShown(db.bagPlainEmpty and not info or false)
+    -- (the padlock of an account without an authenticator stays: Archy 11-24)
+    local locked = not info and button.IsExtended and button:IsExtended() and IsAccountSecured and not IsAccountSecured()
+    ov.plain:SetShown(db.bagPlainEmpty and not info and not locked or false)
 
     if not button.fuiSample then UpdateItemFilter(button, ov, bagID, slotID, info) end
     local quality = info and info.quality

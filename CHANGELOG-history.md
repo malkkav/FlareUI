@@ -1,6 +1,19 @@
 # FlareUI changelog history
 
-Versions 7.0.7 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.8 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.8
+
+A small fix for errors in group content, with two more fixes from your reports.
+
+## Fixed
+- **Unit Frames:** **Values on Mouseover** spammed errors in dungeons and raids.
+- **Nameplates:** with **Names Above Plate**, names could show the colour of another player or enemy.
+- **Minimap:** an error in the addon drawer with addons that put thousands of pins on the minimap.
+
+---
+
+Older versions (7.0.7 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
 
 # FlareUI 7.0.7
 

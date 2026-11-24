@@ -280,4 +280,54 @@ vis:SetGroup("bar2", 0)
 vis:SetShow("bar2", "mouseover")
 assert(vis.Toggled("bar2", "combat") == "mouseover,combat")
 
+-- A bar faded to nothing that the pointer doesn't bring back takes no clicks (11-24): not during its fade, not
+-- while a fight or a drag could need it, and never on a bar with Mouseover or a Faded Opacity
+vis:SetShow("bar2", "ingroup")
+vis:SetElementFade("bar2", "fadeOut", "instant")
+vis:SetFadeDelay("bar2", 0)
+db.elements.bar2.minAlpha = 0
+vis:Refresh()
+run(0.5)
+assert(b:GetAlpha() == 0 and not bButton:IsMouseEnabled() and vis.mouseOff.bar2 == b)
+assert(aButton:IsMouseEnabled(), "Faded Opacity above 0: still there to click")
+state.group = true
+vis:Wake()
+tick(0.1)
+assert(bButton:IsMouseEnabled() and not vis.mouseOff.bar2, "shown: clickable from the first frame of its fade")
+state.group = false
+run(0.5)
+assert(not bButton:IsMouseEnabled())
+vis[moduleEvents.PLAYER_REGEN_DISABLED](vis, "PLAYER_REGEN_DISABLED")
+assert(bButton:IsMouseEnabled(), "its mouse back as a fight starts")
+run(0.5)
+assert(bButton:IsMouseEnabled() and b:GetAlpha() == 0, "... and for all of it")
+ui.combat = true
+run(0.5)
+vis[moduleEvents.PLAYER_REGEN_ENABLED](vis, "PLAYER_REGEN_ENABLED")
+assert(bButton:IsMouseEnabled(), "not touched in combat lockdown")
+ui.combat = false
+run(1.2)
+vis:Wake()
+run(0.2)
+assert(not bButton:IsMouseEnabled())
+ns.ActionBars = { fcm = { wasDragging = true } }
+vis:Wake()
+run(0.3)
+assert(bButton:IsMouseEnabled(), "a drag shows the bars and gives the mouse back")
+ns.ActionBars.fcm.wasDragging = false
+run(0.5)
+assert(not bButton:IsMouseEnabled())
+vis:SetShow("bar2", "mouseover")
+run(0.5)
+assert(bButton:IsMouseEnabled(), "Mouseover needs the pointer")
+vis:SetShow("bar2", "never")
+assert(not bButton:IsMouseEnabled())
+env.EditModeManagerFrame:Show()
+assert(bButton:IsMouseEnabled(), "Edit Mode shows it")
+env.EditModeManagerFrame:Hide()
+assert(not bButton:IsMouseEnabled())
+vis:SetShow("bar2", "always")
+assert(bButton:IsMouseEnabled())
+ns.ActionBars = nil
+
 print("PASS: visibility migrates fades, groups bars, handles mouse and combat, and restores native opacity")

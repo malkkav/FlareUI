@@ -1174,16 +1174,34 @@ local defaults = {
 -- (Libs/FlareEditMode/widgets/extension.lua PlaceSaved; global.editDialogPos)
 LibStub("FlareEditMode").GetDialogStore = function() return ns.db and ns.db.global end
 
+-- (11-24) the same error again in a session raises the count on its line, so one broken part can't push
+-- every other entry out (ns.errorSeen: place and text -> its line)
 ns.ERRORS_KEPT = 20
+ns.errorSeen = {}
 function ns.LogError(where, err)
     local global = ns.db and ns.db.global
     if not global or err == nil then return end
     global.errors = global.errors or {}
     local list = global.errors
+    local text = tostring(err):gsub("[\r\n]+", " ")
+    local key = tostring(where) .. "\0" .. text
+    local seen = ns.errorSeen[key]
+    if seen then
+        seen.count = seen.count + 1
+        for i = #list, 1, -1 do
+            if list[i] == seen.line then
+                seen.line = seen.base .. " | " .. seen.count .. " times"
+                list[i] = seen.line
+                return
+            end
+        end
+        -- (cleared or pushed out since: written again)
+    end
     local version = C_AddOns.GetAddOnMetadata("FlareUI", "Version") or "?"
     local build = select(2, GetBuildInfo()) or "?"
-    local text = tostring(err):gsub("[\r\n]+", " ")
-    list[#list + 1] = ("%s | %s | %s | %s | %s"):format(date("%Y-%m-%d %H:%M"), version, build, where, text)
+    local line = ("%s | %s | %s | %s | %s"):format(date("%Y-%m-%d %H:%M"), version, build, where, text)
+    ns.errorSeen[key] = { base = line, line = line, count = 1 }
+    list[#list + 1] = line
     while #list > ns.ERRORS_KEPT do table.remove(list, 1) end
 end
 
@@ -1194,6 +1212,17 @@ local function LoggedResult(where, ok, ...)
 end
 function ns.SafeCall(where, fn, ...)
     return LoggedResult(where, pcall(fn, ...))
+end
+
+-- you hand out the loot (the group's Master Looter, and it is you)
+function ns.IsMasterLooter()
+    local get = C_PartyInfo and C_PartyInfo.GetLootMethod
+    if not (get and IsInGroup()) then return false end
+    local ok, method, party, raid = pcall(get)
+    if not (ok and canaccessvalue(method)) or method ~= (Enum.LootMethod and Enum.LootMethod.Masterlooter or 2) then return false end
+    if party == 0 then return true end
+    local same = type(raid) == "number" and IsInRaid() and UnitIsUnit("raid" .. raid, "player")
+    return canaccessvalue(same) and same and true or false
 end
 
 -- /fui errors: the log in a window to copy from; /fui errors clear empties it
@@ -1233,6 +1262,22 @@ function ns.BlockedLog.Insecure()
         Look("bagSetupDirty", ContainerFrameSettingsManager, "bagSetupDirty")
         Look("isUsingCombinedBags", ContainerFrameSettingsManager, "isUsingCombinedBags")
     end
+    -- (11-24) the bank's type goes with every item use; the bag menu's own fields travel the same way
+    local panel = _G.BankPanel or (_G.BankFrame and _G.BankFrame.BankPanel)
+    if type(panel) == "table" then Look("bankType", panel, "bankType") end
+    pcall(function()
+        local flags = ContainerFrameSettingsManager and ContainerFrameSettingsManager.filterFlags
+        for bag in pairs(type(flags) == "table" and flags or {}) do
+            if not issecurevariable(flags, bag) then
+                Look("filterFlags", flags, bag)
+                break
+            end
+        end
+        for _, name in ipairs({ "ContainerFrameCombinedBags", "ContainerFrame1" }) do
+            local portrait = _G[name] and _G[name].PortraitButton
+            if portrait then Look(name .. " menu", portrait, "menu") end
+        end
+    end)
     if C_Container then Look("UseContainerItem", C_Container, "UseContainerItem") end
     Look("UseAction", "UseAction")
     Look("bag click", "ContainerFrameItemButton_OnClick")
@@ -2152,7 +2197,8 @@ do
     end
 
     -- The policy for a container holding these lanes. It is per container: a place holding any
-    -- "process" lane keeps Blizzard's rules (processedAuraType candidates need them).
+    -- "process" lane keeps Blizzard's rules (processedAuraType candidates need them). The tiles split a
+    -- place that mixes both (AP.SplitPlace).
     function AP.PlacePolicy(lanes)
         local policy = "none"
         for _, lane in ipairs(lanes) do
@@ -2160,6 +2206,27 @@ do
             if lane.policy == "process" then policy = "process" end
         end
         return policy
+    end
+
+    -- A place whose lanes need both kinds of rules (11-24): Blizzard's raid rules drop, for the whole
+    -- container, every aura they don't count, before a row's own filters (Always Show, everyone's
+    -- buffs beside the debuffs). So the lanes are split: the first lane's kind, then the other kind in a
+    -- container of its own. The second answer is nil when one container will do; the third: whether
+    -- those lanes only continue a row (they go on beside it), else they start below.
+    function AP.SplitPlace(lanes)
+        local first, rest = {}, nil
+        local plain = lanes[1] and (lanes[1].policy or "none") == "none"
+        local continues = true
+        for _, lane in ipairs(lanes) do
+            if ((lane.policy or "none") == "none") == plain then
+                first[#first + 1] = lane
+            else
+                rest = rest or {}
+                rest[#rest + 1] = lane
+                if not lane.joinPrevious then continues = false end
+            end
+        end
+        return first, rest, rest and continues or false
     end
 
     -- A lane's filter for its unit right now
@@ -3384,7 +3451,7 @@ ns.Dialogs["FLAREUI_RESET"] = {
     OnAccept = function()
         local global, kept = ns.db.global, {}
         for _, key in ipairs({ "forcedCVars", "hiddenBubbles", "chatStyleBeforeGamepad", "padCameraRestore", "fishingSounds",
-                             "editModeSwitchesSet" }) do
+                             "editModeSwitchesSet", "nameplateZoomBackup", "uiScaleBack", "padStickKeysRestore" }) do
             kept[key] = global[key]
         end
         -- CVars saved per character keep their memory per character

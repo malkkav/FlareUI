@@ -393,4 +393,59 @@ do
     UF.SetValueLayersAlpha(frame, 0)
     assert(sets == 2 and layer.alpha == 0)
 end
+-- (11-24, #180) pointing at a frame's auras counts as pointing at the frame
+do
+    local foci = env.GetMouseFoci
+    local f = UF:GetUnitButton("player")
+    local over = f.mouseOver
+    f.mouseOver = false
+    local container = env.CreateFrame("Frame", nil, f)
+    local aura = env.CreateFrame("Button", nil, container)
+    local on = {}
+    env.GetMouseFoci = function() return on end
+    assert(not UF:IsMouseOverUnit("player"))
+    on = { aura }
+    assert(UF:IsMouseOverUnit("player"))
+    on = { env.CreateFrame("Frame", nil, env.UIParent) }
+    assert(not UF:IsMouseOverUnit("player"))
+    on = { { IsForbidden = function() return true end } }
+    assert(not UF:IsMouseOverUnit("player"))
+    env.GetMouseFoci, f.mouseOver = foci, over
+end
+-- (11-24) Kick Ready: the interrupt by its best known rank (its rank 1 no longer counts as known)
+do
+    local KICK = UF.KICK
+    local book, spell, player, enum = env.C_SpellBook, env.C_Spell, ns.IsPlayerSpell, env.Enum.SpellBookSpellBank
+    local names = { [1766] = "Kick", [1767] = "Kick", [2139] = "Counterspell" }
+    local ranks = { [1766] = "Rank 1", [1767] = "Rank 2" }
+    local items, cooling = { 1766, 1767 }, false
+    env.Enum.SpellBookSpellBank = { Player = 0 }
+    env.C_SpellBook = {
+        GetNumSpellBookSkillLines = function() return 1 end,
+        GetSpellBookSkillLineInfo = function() return { itemIndexOffset = 0, numSpellBookItems = #items } end,
+        GetSpellBookItemInfo = function(i) return { spellID = items[i] } end,
+        IsSpellKnown = function(id) return id == 1767 end,
+    }
+    ns.IsPlayerSpell = function() return true end
+    env.C_Spell = setmetatable({
+        GetSpellName = function(id) return names[id] end,
+        GetSpellSubtext = function(id) return ranks[id] end,
+        GetSpellCooldown = function(id) return { isActive = cooling and id == 1767, isOnGCD = false } end,
+        GetSpellCooldownDuration = function() end,
+    }, { __index = spell })
+    KICK.Learn()
+    assert(KICK.Active() == 1767 and KICK.IsReady() == true and KICK.known[1766] == nil)
+    cooling = true
+    KICK.Refresh(true)
+    assert(KICK.Active() == 1767 and KICK.IsReady() == false)
+    -- no book entry: known by its own ID, as before
+    cooling, items = false, {}
+    env.C_SpellBook.IsSpellKnown = function(id) return id == 2139 end
+    KICK.Learn()
+    assert(KICK.Active() == 2139 and KICK.IsReady() == true)
+    env.C_SpellBook.IsSpellKnown = function() return false end
+    KICK.Learn()
+    assert(KICK.Active() == nil and KICK.IsReady() == nil)
+    env.C_SpellBook, env.C_Spell, ns.IsPlayerSpell, env.Enum.SpellBookSpellBank = book, spell, player, enum
+end
 print("PASS: unit frame startup, resource events, combat deferral and cast changes")
