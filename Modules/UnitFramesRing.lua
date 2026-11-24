@@ -2254,6 +2254,33 @@ function Ring.SetStyle(style)
     db.plateStyle = style == "forever"
 end
 
+-- The Frame Style picked in the settings waits for the reload (or the logout): the setups are swapped
+-- as the profile is saved (AceDB's OnDatabaseShutdown, before it takes the defaults out), so no
+-- refresh before the reload draws the new style, and picking the style in use back changes nothing.
+-- Ring.choice: { style, db }, the pick and the profile it was made on
+function Ring.ChosenStyle()
+    local choice = Ring.choice
+    if choice and choice.db == GetDb() then return choice.style end
+    return Ring.Style()
+end
+
+function Ring.ChooseStyle(style)
+    local db = GetDb()
+    if not db or not STYLE_SLOT[style] then return end
+    -- (no AceDB callbacks: switched at once, as before)
+    if not (ns.db and ns.db.RegisterCallback) then Ring.SetStyle(style) return end
+    Ring.choice = style ~= Ring.Style() and { style = style, db = db } or nil
+    if not Ring.choiceHooked then
+        Ring.choiceHooked = true
+        ns.db.RegisterCallback(Ring, "OnDatabaseShutdown", function()
+            local choice = Ring.choice
+            Ring.choice = nil
+            -- (a pick made on another profile stays with it)
+            if choice and choice.db == GetDb() then Ring.SetStyle(choice.style) end
+        end)
+    end
+end
+
 -- A style's setup for a unit, for a settings preview's sample. Never written to the profile:
 -- writes land on the returned table. The setup in use for the style in use; else the style's stored
 -- setup, or the preset a first switch would apply, over the defaults.
