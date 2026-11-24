@@ -2229,6 +2229,27 @@ function Ring.SetStyle(style)
     end
     if not back then ResetPetSetup(db) end
     RestoreSwitches(db, switches)
+    -- a stored setup holds only its changes: the defaults it left out go back in now, as AceDB puts
+    -- them in at load (AceDB's copyDefaults), so the frames keep their size before any reload. A
+    -- table's "**" defaults apply to each of its tables; "*" / "**" lookups stay with the tables
+    -- that kept them (Clear)
+    local function Defaults(dst, src)
+        for k, v in pairs(src) do
+            if k ~= "*" and k ~= "**" then
+                if type(v) == "table" then
+                    if rawget(dst, k) == nil then dst[k] = {} end
+                    if type(dst[k]) == "table" then
+                        Defaults(dst[k], v)
+                        if src["**"] then Defaults(dst[k], src["**"]) end
+                    end
+                elseif rawget(dst, k) == nil then
+                    dst[k] = v
+                end
+            end
+        end
+    end
+    local defaults = ns.defaults and ns.defaults.profile and ns.defaults.profile.unitframes
+    if defaults then Defaults(db, defaults) end
     db.foreverStyle = style ~= "addon"
     db.plateStyle = style == "forever"
 end
