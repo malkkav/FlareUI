@@ -852,6 +852,18 @@ ns.Copy = {
             label = L["Show Free Bag Slots"],
             section = "bl.lootWindowSection",
         },
+        ["bl.lootWindowGrowth"] = {
+            choices = { L["Down"], L["Up"] },
+            desc = L["Which way the loot window grows from its spot:\n* Down: its top edge stays put\n* Up: its bottom edge stays put"],
+            label = L["Growth"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowOrder"] = {
+            choices = { L["Top to Bottom"], L["Bottom to Top"] },
+            desc = L["Where the loot starts:\n* Top to Bottom: the first item at the top, the next below it\n* Bottom to Top: the first item at the bottom, the next above it"],
+            label = L["Row Order"],
+            section = "bl.lootWindowSection",
+        },
         ["bl.petFood"] = {
             desc = L["A paw marks the food your hunter pet eats."],
             label = L["Pet Food Marker"],

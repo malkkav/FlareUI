@@ -1138,6 +1138,8 @@ local defaults = {
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
             lootWindow = false,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
             lootWindowFreeSlots = false, -- Show Free Bag Slots at the loot window's foot
+            lootWindowGrowth = "down",  -- Growth: "down" (the top edge at the Edit Mode spot) or "up" (the bottom edge)
+            lootWindowOrder = "top",    -- Row Order: the first item in the "top" or the "bottom" row
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...

@@ -6,7 +6,7 @@ local L = ns.L
 -- FlareUI's loot window in place of Blizzard's corpse and chest loot window. (11-23, Malkkav) built
 -- like the loot roll window: its border and rock at full strength, its font; the item marks follow the
 -- Bags options (Item Level, Junk, BoE, Uncollected, Skin Item Slots), the owned count always shows, and
--- the only option of its own is Show Free Bag Slots. Items stay in the order they dropped.
+-- its own options are Show Free Bag Slots, Growth and Row Order. Items stay in the order they dropped.
 --------------------------------------------------
 local LW = {}
 ns.LootWindow = LW
@@ -21,7 +21,7 @@ local W, PAD, TOP = 260, 8, 34
 local ROW_H, ROW_GAP, ICON, BOX_PAD = 48, 4, 36, 6
 local ROW_W = W - 2 * PAD
 local FOOT = 26             -- the footer: a 22 px line and a gap above it
-local MORE = 15             -- the "+N more" line under rows that scroll (LootRolls.lua's ROW)
+local MORE = 15             -- the "+N more" line at the far end of rows that scroll (LootRolls.lua's ROW)
 local BAG_ICON = "Interface\\Buttons\\Button-Backpack-Up"
 
 local win, current          -- the window; the rows it shows, in shown order
@@ -184,7 +184,6 @@ end
 local function NewRow(i)
     local row = CreateFrame("Button", nil, win, "BackdropTemplate")
     row:SetSize(ROW_W, ROW_H)
-    row:SetPoint("TOPLEFT", PAD, -(TOP + (i - 1) * (ROW_H + ROW_GAP)))
     row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     -- the loot roll window's row box
     row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = LSM:Fetch("border", "FlareUI Thin"), edgeSize = 8,
@@ -330,6 +329,12 @@ local function FootH()
     return db and db.lootWindowFreeSlots and FOOT or 0
 end
 
+-- Row Order Bottom to Top: the first row at the bottom, the next above it
+local function FromBottom()
+    local db = GetDb()
+    return db and db.lootWindowOrder == "bottom" or false
+end
+
 local function PaintFreeSlots()
     local footer = win and win.footer
     if not footer then return end
@@ -362,7 +367,7 @@ local function LayoutFooter()
 end
 
 -- How many of total rows show in space px (at least one), and whether they scroll: rows that don't
--- all fit leave room under them for the "+N more" line.
+-- all fit leave room at their far end for the "+N more" line.
 function LW.FitRows(space, total)
     local function Fit(room) return math.max(1, math.floor((room + ROW_GAP) / (ROW_H + ROW_GAP))) end
     if total <= Fit(space) then return total, false end
@@ -382,14 +387,15 @@ local function ShownRows(total)
 end
 
 -- the loot roll window's scroll marks: a 2 px bronze thumb right of the rows, the rows still below
--- in a small grey line under them
-local function PaintScroll(total, n, scrolls, area)
+-- in a small grey line under them (Bottom to Top: the rows still above, in a line over them)
+local function PaintScroll(total, n, scrolls, area, rowsTop, fromBottom)
     win.thumb:SetShown(scrolls)
     local extra = 0
     if scrolls then
-        local top, h = LW.ScrollThumb(total, n, offset, area)
+        -- (Bottom to Top: the rows scrolled past are below, so the thumb counts from the bottom)
+        local top, h = LW.ScrollThumb(total, n, fromBottom and total - n - offset or offset, area)
         win.thumb:ClearAllPoints()
-        win.thumb:SetPoint("TOPRIGHT", -5, -(TOP + top))
+        win.thumb:SetPoint("TOPRIGHT", -5, -(rowsTop + top))
         win.thumb:SetHeight(h)
         -- (looted gaps below don't count)
         for i = offset + n + 1, total do
@@ -399,7 +405,12 @@ local function PaintScroll(total, n, scrolls, area)
     win.more:SetShown(extra > 0)
     if extra > 0 then
         win.more:ClearAllPoints()
-        win.more:SetPoint("TOPLEFT", PAD + BOX_PAD, -(TOP + area + ROW_GAP + 2))
+        -- (by its top in both, so a larger font grows into its band, not up into the header line)
+        if fromBottom then
+            win.more:SetPoint("TOPLEFT", PAD + BOX_PAD, -(rowsTop - MORE))
+        else
+            win.more:SetPoint("TOPLEFT", PAD + BOX_PAD, -(rowsTop + area + ROW_GAP + 2))
+        end
         win.more:SetText(L["+%d more"]:format(extra))
     end
 end
@@ -415,9 +426,19 @@ local function Render()
         if GameTooltip:IsOwned(row) then GameTooltip:Hide() end
         row:Hide()
     end
+    -- pool[i] is the i-th place from the top; Bottom to Top fills them from the bottom up, under
+    -- the "+N more" line
+    local fromBottom = FromBottom()
+    local rowsTop = TOP + (fromBottom and scrolls and MORE or 0)
     for i = 1, n do
         local row = pool[i] or NewRow(i)
-        local data = current[offset + i]
+        local y = rowsTop + (i - 1) * (ROW_H + ROW_GAP)
+        if row.y ~= y then
+            row.y = y
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", PAD, -y)
+        end
+        local data = current[offset + (fromBottom and n - i + 1 or i)]
         if data.looted then
             -- a looted row stays a gap, as Blizzard's: the rows below keep their place
             Empty(row)
@@ -430,7 +451,7 @@ local function Render()
     end
     for i = n + 1, #pool do Empty(pool[i]) end
     local area = n * ROW_H + math.max(0, n - 1) * ROW_GAP
-    PaintScroll(total, n, scrolls, area)
+    PaintScroll(total, n, scrolls, area, rowsTop, fromBottom)
     LayoutFooter()
     win:SetHeight(TOP + area + (scrolls and MORE or 0) + FootH() + PAD)
 end
@@ -523,10 +544,11 @@ function LW:Show(rows)
     win:Show()
 end
 
--- the mouse wheel: delta 1 is up, toward the first row
+-- the mouse wheel: delta 1 is up, toward the first row (Bottom to Top: away from it, to the rows above)
 function LW:Scroll(delta)
     local total = current and #current or 0
-    local new = math.max(0, math.min(offset - delta, total - ShownRows(total)))
+    local step = FromBottom() and delta or -delta
+    local new = math.max(0, math.min(offset + step, total - ShownRows(total)))
     if new == offset then return end
     offset = new
     Render()
@@ -572,7 +594,7 @@ function LW:RefreshItemData()
     Render()
 end
 
--- the settings changed (Show Free Bag Slots, the Bags marks): the shown rows again
+-- the settings changed (Show Free Bag Slots, Row Order, the Bags marks): the shown rows again
 function LW:Refresh()
     if not win then return end
     StyleTitle()
@@ -616,7 +638,7 @@ local function GetLayoutStore(layoutName)
     return store[MOVER_KEY]
 end
 
--- the window hangs from the holder's top left and grows down
+-- the window hangs from the holder's top left and grows down (Growth Up: stands on its bottom left, Place)
 local function ApplyPosition(layoutName)
     local store = GetLayoutStore(layoutName)
     local pos = (store and store.point) and store or DEFAULTS
@@ -650,17 +672,50 @@ local function ScaleSetting()
         end }
 end
 
+-- Growth Up: the window stands on the bottom edge of its spot and grows up
+local function GrowsUp()
+    local db = GetDb()
+    return db and db.lootWindowGrowth == "up" or false
+end
+
 -- Loot Under Mouse opens it at the cursor, as Blizzard's (LootFrame.lua Open: the offsets in the
--- window's own scale); otherwise it hangs from the Edit Mode spot
+-- window's own scale); otherwise it hangs from the Edit Mode spot. Growth Up mirrors both: the
+-- holder's bottom edge, or the cursor as far above the window's bottom with room above to grow.
 local function Place()
     win:ClearAllPoints()
+    local up = GrowsUp()
     if GetCVarBool("lootUnderMouse") then
         local scale = win:GetEffectiveScale()
         local x, y = GetCursorPosition()
-        win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale - 30, math.max(y / scale + 50, 350))
+        if up then
+            local screen = UIParent:GetHeight() * UIParent:GetEffectiveScale() / scale
+            win:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale - 30, math.min(y / scale - 50, screen - 350))
+        else
+            win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale - 30, math.max(y / scale + 50, 350))
+        end
+    elseif up then
+        win:SetPoint("BOTTOMLEFT", holder, "BOTTOMLEFT")
     else
         win:SetPoint("TOPLEFT", holder, "TOPLEFT")
     end
+end
+
+-- the window held where it is now by the edge it grows from
+local function Pin()
+    local left, top, bottom = win:GetLeft(), win:GetTop(), win:GetBottom()
+    if not (left and top and bottom) then return end
+    win:ClearAllPoints()
+    if GrowsUp() then
+        win:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, bottom)
+    else
+        win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
+end
+
+-- Growth changed: an open window takes its new edge (at the cursor it stays where it is)
+function LW:Replace()
+    if not (win and holder and win:IsShown()) then return end
+    if GetCVarBool("lootUnderMouse") then Pin() else Place() end
 end
 
 -- The holder's anchor offsets (point to the same point of UIParent) that put the holder's top left at
@@ -674,17 +729,24 @@ function LW.HolderOffset(point, left, top, w, h, parentW, parentH)
 end
 
 -- A drag of the header ends: the new spot is the saved one (what Edit Mode writes), unless Loot Under
--- Mouse puts the window at the cursor each time, when it only moves for this loot.
+-- Mouse puts the window at the cursor each time, when it only moves for this loot (Growth Up: held by
+-- its bottom edge, so it still grows up).
 local function OnDragStop()
     win:StopMovingOrSizing()
-    if GetCVarBool("lootUnderMouse") then return end
-    local left, top = win:GetLeft(), win:GetTop()
+    if GetCVarBool("lootUnderMouse") then
+        if GrowsUp() then Pin() end
+        return
+    end
+    local left, top, bottom = win:GetLeft(), win:GetTop(), win:GetBottom()
     local store = GetLayoutStore()
-    if not (left and top and store) then return Place() end
+    if not (left and top and bottom and store) then return Place() end
     local point = store.point or DEFAULTS.point
     local k = win:GetEffectiveScale() / UIParent:GetEffectiveScale()
     local scale = Scale()
-    local x, y = LW.HolderOffset(point, left * k, top * k, W * scale, HOLDER_H * scale, UIParent:GetWidth(), UIParent:GetHeight())
+    local holderH = HOLDER_H * scale
+    -- (Growth Up: the window's bottom edge is the holder's, its top a holder's height above)
+    top = GrowsUp() and bottom * k + holderH or top * k
+    local x, y = LW.HolderOffset(point, left * k, top, W * scale, holderH, UIParent:GetWidth(), UIParent:GetHeight())
     OnMoved(nil, nil, point, x, y)
     ApplyPosition()
     Place()

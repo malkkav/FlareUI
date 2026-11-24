@@ -127,10 +127,18 @@ S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload 
 -- (11-23, Malkkav: no Background Opacity: the window reads badly see-through)
 -- Loot Window (PR #146 by Xentinus; 11-23 Malkkav: built like the loot roll window, no look options of
 -- its own): FlareUI's loot window in place of Blizzard's (LootWindow.lua). Its item marks follow the
--- Bags options; Show Free Bag Slots is its one extra. On and off take a reload.
+-- Bags options; Show Free Bag Slots, Growth and Row Order are its extras. On and off take a reload.
 S:Row{ key = "bl.lootWindow", half = true, tab = "looting", path = "tweaks.lootWindow", reload = true }
 S:Row{ key = "bl.lootWindowFreeSlots", half = true, tab = "looting", path = "tweaks.lootWindowFreeSlots",
     disabled = function() return not S:GetPath("tweaks.lootWindow") end,
+    apply = function() if ns.LootWindow and ns.LootWindow.Refresh then ns.LootWindow:Refresh() end end }
+-- Growth (which edge stays at the Edit Mode spot) and Row Order (where the first item goes): a half
+-- pair under the two switches (rank 3: a choice row would sort above them), live
+S:Row{ key = "bl.lootWindowGrowth", kind = "choice", half = true, rank = 3, tab = "looting", path = "tweaks.lootWindowGrowth",
+    choices = { "down", "up" }, disabled = function() return not S:GetPath("tweaks.lootWindow") end,
+    apply = function() if ns.LootWindow and ns.LootWindow.Replace then ns.LootWindow:Replace() end end }
+S:Row{ key = "bl.lootWindowOrder", kind = "choice", half = true, rank = 3, tab = "looting", path = "tweaks.lootWindowOrder",
+    choices = { "top", "bottom" }, disabled = function() return not S:GetPath("tweaks.lootWindow") end,
     apply = function() if ns.LootWindow and ns.LootWindow.Refresh then ns.LootWindow:Refresh() end end }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
 -- Loot Feed (11-20, was a switch): Off, Square Icons or Round Icons. Saved as before: tweaks.lootFeed,

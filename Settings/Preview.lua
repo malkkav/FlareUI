@@ -34,7 +34,7 @@ Route('bags', 'bl', 'bagColumns bagGaps bagButtons bagView bagSkinSlots bagJunkI
 Route('reminders', 'br', 'group before consumables upkeepPick')
 Route('lootFeed', 'bl', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')
 Route('lootRolls', 'bl', 'lootRolls')
-Route('lootWindow', 'bl', 'lootWindow lootWindowFreeSlots')
+Route('lootWindow', 'bl', 'lootWindow lootWindowFreeSlots lootWindowGrowth lootWindowOrder')
 Route('radial', 'rm', 'scale names spellRank')
 
 -- How tall the drawn picture is, from the canvas's top to the lowest thing shown (the panel sizes
