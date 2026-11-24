@@ -1,3 +1,20 @@
+# FlareUI 7.0.10
+
+A hotfix for quest clicks that only opened the quest log, plus Smooth Animated Bars on nameplates.
+
+**We need your help testing:**
+- **Quest Tracker:** clicking quests from other zones, and Craftsman's Writs.
+- **Nameplates** with **Smooth Animated Bars**: please tell us how it looks and runs.
+
+## New
+- **Nameplates:** support for **Smooth Animated Bars**. Its own nameplate switches turn the liquid on.
+  - With its DoTs on Nameplates on, your DoTs show on your target's plate.
+  - With its **Your Colours on Their Bars** on, nameplates keep FlareUI's fill.
+
+## Fixed
+- **Quest Tracker:** clicking a quest from another zone, or one with no location like a Craftsman's Writ, often opened only the quest log.
+- **Quest Tracker:** with the map open full size, or with its quest list closed, some quests didn't open.
+
 # FlareUI 7.0.9
 
 A bug-fixing update: we went through the open reports and fixed as many as we could. It also adds sharper outlines for every font.
@@ -221,62 +238,3 @@ Some things look or work differently even if you change nothing:
 - **Unit Frames:** **Values on Mouseover** with a druid's **Mana on Shapeshift** hid all the numbers in caster form.
 - **Buff Reminders:** the food reminder remembered a drink as your food. By GregDuhamel.
 - **Loot Window:** the gap above the first row now matches the sides.
-
-# FlareUI 7.0.5
-
-Two new windows from the community: a FlareUI loot window and a searchable flight list. Pet threat on nameplates, the same Health Text picker on raid frames, and a stack of fixes.
-
-**Restart the game fully after updating** (not just /reload): this version adds new files.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Loot Roll Window:** **Background Opacity** is gone. The window always shows at full strength, since it was hard to read see-through.
-- **Quality of Life:** **Coordinates on the World Map** is gone from Map & Mail. It only switched Blizzard's own map coordinates, which are still in Blizzard's options (Interface).
-- **Nameplates:** **Threat Percentage** no longer takes the level's place. It has its own small box beside the plate.
-
-## Highlights
-- **Loot Window:** FlareUI's own window for corpses and chests.
-- **Flight Destination List:** search the flight map by stop or zone.
-- **Nameplates:** your pet's threat counts.
-
-## New
-
-### Bags & Looting
-- **Loot Window** (off) on the Looting tab: FlareUI's loot window replaces Blizzard's for corpses and chests. By Xentinus.
-  - Shows how many of each item you already carry.
-  - Item marks follow your Bags options: item level, junk coin, BoE, uncollected appearances, thin or thick borders and rarity colours.
-  - A looted item leaves a gap, so nothing moves under your mouse.
-  - Placed and scaled in Edit Mode as "FlareUI Loot Window".
-- **Show Free Bag Slots** (off): your free bag slots at the bottom of the loot window, red when the bags are full.
-
-### Quality of Life
-- **Flight Destination List** (off) in Map & Mail: a list beside the flight map. By parchinskiy.
-  - Search for a stop by name or zone.
-  - See each fare.
-  - Star the stops you use most to keep them at the top, for each character.
-
-### Nameplates
-- **Pet threat:** a mob your pet holds takes the **Another Tank Has It** colour, for tanks and damage dealers alike.
-- **DoesItDie** and **DoesItDiePlus** show their marker on FlareUI's nameplates. DoesItDiePlus works on the target and focus frames too (by BillChirico).
-
-## Changed
-- **Nameplates:** **Threat Percentage** sits in its own small box, on the side away from the level, or on the right with no level.
-- **Party Frames:** in Raid Style, **Health Text** and **Power Text** use the same picker as the other frames, with the Centre slot only. Your old choice carries over.
-- **Raid Frames:** **Health Text** and **Power Text** use the same Centre-only picker. Your old choice carries over.
-- **Quest Tracker:** the header buttons are bronze icons instead of boxes, by GregDuhamel. They follow your **Colour Scheme**: bronze with FlareUI's, gold with Blizzard's.
-- **Meters:** if Blizzard's own meter Visibility is set to In a Group or Hidden, a window at login explains why the meter hides in a fight and opens Edit Mode to fix it. Blizzard's Visibility row now stays in the meter's Edit Mode dialog while it is wrong.
-- **Settings:** new previews in the info panel:
-  - the loot window
-  - the Quest Tracker's Colour Scheme, header buttons, complete tag and scroll bar
-  - the chat's Frame Style, edit box, icons, header buttons and tab glow
-  - the bags' item level, BoE, uncollected and empty slots
-  - the minimap's Info Bar
-
-## Fixed
-- **Chat:** chat tabs couldn't be switched during a fight.
-- **Party Frames:** after switching from Classic to Raid Style, the old health text showed beside the new one.
-- **Bags:** using a reagent from the crafting bag in the backpack (an armor kit, filling a crate) could be blocked. By parchinskiy.
-- **Resource Bars:** a /reload during a flight broke the Resource Bars until the next reload. By GregDuhamel.
-- **Settings:** a section's Reset skipped six options: Button Scale, XP Bubbles, Gryphons, Food and Flask, Hide for My Role and Auto Minimize. By GregDuhamel.
-- **Settings:** Buff Reminders showed no previews.
-- **Profiles:** importing a profile now checks every option's value type. By GregDuhamel.

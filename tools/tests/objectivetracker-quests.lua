@@ -425,7 +425,8 @@ env.QuestLogMicroButton = env.CreateFrame("Button", nil, env.UIParent)
 env.QuestLogQuests_GetQuestButton = function(id) if id == 11 then return questButton end end
 env.WorldMapFrame = env.CreateFrame("Frame", nil, env.UIParent)
 env.WorldMapFrame:Hide()
-env.QuestMapFrame = { DetailsFrame = env.CreateFrame("Frame", nil, env.WorldMapFrame) }
+env.QuestMapFrame = env.CreateFrame("Frame", nil, env.WorldMapFrame)
+env.QuestMapFrame.DetailsFrame = env.CreateFrame("Frame", nil, env.QuestMapFrame)
 env.QuestMapFrame.DetailsFrame:Hide()
 local back = env.CreateFrame("Button", nil, env.QuestMapFrame.DetailsFrame)
 env.QuestMapFrame.DetailsFrame.BackFrame = { BackButton = back }
@@ -436,8 +437,12 @@ assert(secure:GetAttribute("type1") == "macro" and not secure:GetAttribute("clic
 secure:RunScript("PreClick", "LeftButton")
 assert(secure:GetAttribute("macrotext1"):find("^/click QuestLogMicroButton"))
 env.WorldMapFrame:Show()
+env.QuestMapFrame:Hide()
 secure:RunScript("PreClick", "LeftButton")
-assert(secure:GetAttribute("macrotext1") == "/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
+assert(secure:GetAttribute("macrotext1"):find("^/click QuestLogMicroButton"), "the map open without its log")
+env.QuestMapFrame:Show()
+secure:RunScript("PreClick", "LeftButton")
+assert(secure:GetAttribute("macrotext1") == "/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
 picker:RunScript("PreClick")
 assert(picker:GetAttribute("useOnKeyDown") == false, "the macro's /click is a release")
 assert(picker:GetAttribute("clickbutton") == questButton)
@@ -458,10 +463,28 @@ do
     assert(picker:GetAttribute("clickbutton") == heading)
     folded = false
     picker:RunScript("PreClick")
-    assert(picker:GetAttribute("clickbutton") == nil, "never folds it again")
+    assert(picker:GetAttribute("clickbutton") == back, "Back draws the list at once; Blizzard's own comes a frame later")
+    picker:RunScript("PreClick")
+    assert(picker:GetAttribute("clickbutton") == nil, "once, and never folds it again")
     questButton:Show()
     picker:RunScript("PreClick")
     assert(picker:GetAttribute("clickbutton") == questButton)
+    -- a quest with no place on the map (a writ), from another quest's open details: every step, in order
+    local details = env.QuestMapFrame.DetailsFrame
+    local drawn, steps = false, {}
+    folded = true
+    details.questID = 21
+    details:Show()
+    for i = 1, 4 do
+        if drawn and not folded then questButton:Show() else questButton:Hide() end
+        picker:RunScript("PreClick")
+        local step = picker:GetAttribute("clickbutton")
+        steps[i] = step == back and "back" or step == heading and "heading" or step == questButton and "quest" or "none"
+        if step == back then details:Hide() drawn = not folded end
+        if step == heading then folded = false end
+    end
+    assert(table.concat(steps, " ") == "back heading back quest", table.concat(steps, " "))
+    details.questID = nil
     env.C_QuestLog.GetInfo, env.C_QuestLog.GetHeaderIndexForQuest, env.QuestScrollFrame = info, headerOf, nil
 end
 env.QuestMapFrame.DetailsFrame.questID = 21
@@ -505,9 +528,9 @@ block.poiButton = env.CreateFrame("Button", nil, block)
 assert(ot.Pad.QuestIcon(21) == block.poiButton)
 env.WorldMapFrame:Hide()
 assert(ot.Pad.AimDetails(padded, 11) and padded:GetAttribute("type") == "macro" and picker.questID == 11)
-assert(padded:GetAttribute("macrotext") == "/click QuestLogMicroButton\n/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
+assert(padded:GetAttribute("macrotext") == "/click QuestLogMicroButton\n/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
 env.WorldMapFrame:Show()
-assert(ot.Pad.AimDetails(padded, 11) and padded:GetAttribute("macrotext") == "/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
+assert(ot.Pad.AimDetails(padded, 11) and padded:GetAttribute("macrotext") == "/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick\n/click FlareUIQuestPick")
 assert(not ot.Pad.AimDetails(padded, 999), "no such quest in the log")
 local wasPinned = ot.Pad.IsPinned(11)
 ot.Pad.TogglePinned(11)

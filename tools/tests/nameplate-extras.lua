@@ -128,4 +128,108 @@ assert(row:IsShown())
 NP.standDown = true
 NP.ApplyCombo()
 assert(not row:IsShown(), "another nameplate addon")
+
+-- SMOOTH ANIMATED BARS: its own Nameplates switches decide, its API takes the bars
+do
+    local S = NP.Sab
+    local bars, on, declined, told = {}, true, false, {}
+    ns.SAB = { owned = {}, MIN_HEIGHT = 6, TrailChanged = function(trail, owned) told[trail] = owned end }
+    local looked = 0
+    ns.UnitFrames = ns.UnitFrames or {}
+    ns.UnitFrames.BarLookOwnerChanged = function() looked = looked + 1 end
+    local held = {}
+    NP.HeldPlates = function() return held end
+    local function Plate(attack, unitName)
+        local p = { unit = unitName, tdb = { height = 12 }, plateW = 130, boxH = 18, trail = {} }
+        p.root = env.CreateFrame("Frame", nil, env.UIParent)
+        p.health = env.CreateFrame("StatusBar", nil, p.root)
+        p.health:SetSize(124, 12)
+        for _, key in ipairs({ "execTint", "targetTint", "highlight", "execMark" }) do p[key] = p.health:CreateTexture() end
+        p.attack = attack
+        held[p] = p
+        return p
+    end
+    env.UnitCanAttack = function(_, token)
+        for _, p in pairs(held) do if p.unit == token then return p.attack end end
+    end
+    local enemy, friend = Plate(true, "nameplate5"), Plate(false, "nameplate6")
+    S.Apply(enemy)
+    assert(not enemy.sab, "without the addon nothing happens")
+    local callback
+    env.SmoothAnimatedBars = {
+        IsEnabled = function() return on end,
+        RegisterCallback = function(fn) callback = fn end,
+        AddBar = function(bar, token, kind, options)
+            assert(not token:find("^nameplate") and kind == "health" and options.name == "FlareUI")
+            if declined then return false end
+            bars[bar] = token
+            return true
+        end,
+        RemoveBar = function(bar) bars[bar] = nil return true end,
+    }
+    local root = { global = { plateHealth = false }, ownSettings = {}, profiles = {} }
+    env.SmoothAnimatedBarsDB = root
+    S.ApplyAll()
+    assert(callback and next(bars) == nil, "its nameplates are off by default")
+    root.global.plateHealth = true
+    S.ApplyAll()
+    assert(bars[enemy.health] == "none" and not bars[friend.health], "enemy plates only")
+    assert(ns.SAB.owned[enemy.health] and told[enemy.trail] == true and looked == 1, "our trail and Edge Glow step aside")
+    assert(enemy.execTint:GetParent() == enemy.sabTop and enemy.highlight:GetParent() == enemy.sabTop, "our tints over the liquid")
+    root.global.plateFriendly = true
+    S.ApplyAll()
+    assert(bars[friend.health] == "none")
+    -- your target's plate gets the DoT marker with its DoTs on Nameplates on
+    enemy.targetShown = true
+    S.Apply(enemy)
+    assert(bars[enemy.health] == "none")
+    root.global.plateDots = true
+    S.Apply(enemy)
+    assert(bars[enemy.health] == "target")
+    enemy.targetShown = false
+    S.Apply(enemy)
+    assert(bars[enemy.health] == "none")
+    -- no more than it takes itself
+    S.MAX.enemy = 1
+    local second = Plate(true, "nameplate7")
+    S.Apply(second)
+    assert(not second.sab and enemy.sab)
+    S.MAX.enemy = 15
+    S.Prepare(second, "nameplate7")
+    assert(bars[second.health] == "none" and second.sabMade and second.root:GetNumPoints() == 0, "added off the plate")
+    -- a size that can't be read: only as it was known
+    local measure = second.health.GetWidth
+    second.health.GetWidth = function() return 0 end
+    S.Apply(second)
+    assert(second.sab, "the size it was added with")
+    second.plateW = 180
+    S.Apply(second)
+    assert(not second.sab and not bars[second.health] and not ns.SAB.owned[second.health], "another size: our own fill")
+    assert(second.execTint:GetParent() == second.health)
+    second.health.GetWidth = measure
+    -- Your Colours on Their Bars, a name-only plate, a thin bar, a refusal, its own off switch
+    root.global.externalColors = true
+    S.ApplyAll()
+    assert(next(bars) == nil)
+    root.global.externalColors = nil
+    enemy.nameOnly, friend.tdb.height = true, 4
+    S.ApplyAll()
+    assert(not bars[enemy.health] and not bars[friend.health] and bars[second.health])
+    enemy.nameOnly, declined = false, true
+    S.Apply(enemy)
+    assert(not enemy.sab)
+    declined, on = false, false
+    callback("enabled")
+    assert(next(bars) == nil, "switched off there")
+    on = true
+    callback("enabled")
+    assert(bars[enemy.health])
+    -- this character's own settings in it
+    local name, surname = env.UnitName("player")
+    local key = name .. ((surname and surname ~= "") and (" " .. surname) or "") .. " - Realm"
+    root.ownSettings[key], root.profiles[key] = true, { plateHealth = false }
+    S.ApplyAll()
+    assert(next(bars) == nil)
+end
+
 print("PASS: nameplate extras hold In Combat plates and draw combo points without Quality of Life")

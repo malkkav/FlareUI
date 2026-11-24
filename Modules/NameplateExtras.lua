@@ -214,7 +214,137 @@ function NP.ComboPlateChanged()
 end
 
 --------------------------------------------------
--- 3. MODULE
+-- 3. SMOOTH ANIMATED BARS (11-24, Malkkav; exillix3)
+-- Its liquid on our plates' health, as on the unit frames (UnitFrames.lua ns.SAB). No option of ours: its own
+-- Nameplates switches decide (enemy and friendly plates, off by default there), with its Other Addons' Bars on and
+-- as many plates as it takes itself. Its settings are only read (it has no function for these two).
+-- Its AddBar takes no nameplate token, so a bar is handed over with no unit ("none": it follows the bar's own
+-- value and colour), or as "target" on your target's plate, which gets its DoT marker there when it is on for
+-- nameplates. With its Your Colours on Their Bars the plates stay ours: that paints every plate the target
+-- frame's colour, so hostile, neutral and threat colours would be lost.
+-- A plate's size can't be read under addon restrictions, and it reads a bar's size when it is first added: so that
+-- happens before the plate goes on the unit (Prepare), and a size it can't know keeps our own fill.
+--------------------------------------------------
+local Sab = { LEVEL = 1, MAX = { enemy = 15, friend = 10 } }
+NP.Sab = Sab
+
+-- the settings it uses now: account-wide, or this character's own
+function Sab.Settings()
+    local root = _G.SmoothAnimatedBarsDB
+    if type(root) ~= "table" then return nil end
+    if type(root.ownSettings) == "table" and type(root.profiles) == "table" then
+        local name, surname = UnitName("player")
+        if type(name) == "string" then
+            local start = name .. ((type(surname) == "string" and surname ~= "") and (" " .. surname) or "") .. " - "
+            for key, own in pairs(root.ownSettings) do
+                if own == true and type(key) == "string" and key:sub(1, #start) == start and type(root.profiles[key]) == "table" then
+                    return root.profiles[key]
+                end
+            end
+        end
+    end
+    return type(root.global) == "table" and root.global or nil
+end
+
+-- "enemy" or "friend" (which of its switches the plate is under), or nil: not wanted
+function Sab.Side(p, unit)
+    local api = _G.SmoothAnimatedBars
+    if type(api) ~= "table" or not unit or p.nameOnly or p.hiddenPlate or p.unitHidden then return nil end
+    local ok, on = pcall(api.IsEnabled)
+    local s = ok and on and Sab.Settings()
+    if not s or s.externalColors == true or not (s.plateHealth == true or s.plateFriendly == true) then return nil end
+    if p.tdb and (p.tdb.height or 0) < ns.SAB.MIN_HEIGHT then return nil end
+    local okA, attack = pcall(UnitCanAttack, "player", unit)
+    if not okA or not canaccessvalue(attack) then return nil end
+    if attack then return s.plateHealth == true and "enemy" or nil end
+    return s.plateFriendly == true and "friend" or nil
+end
+
+local function SizeKnown(p)
+    local ok, w = pcall(p.health.GetWidth, p.health)
+    return ok and canaccessvalue(w) and type(w) == "number" and w > 1
+end
+
+-- the liquid is drawn over our bar, so our tints on the fill, the mouse's light and the Execute mark move over it
+local function Own(p, on)
+    if (p.sab or false) == on then return end
+    p.sab = on
+    ns.SAB.owned[p.health] = on or nil
+    ns.SAB.TrailChanged(p.trail, on)
+    if ns.UnitFrames and ns.UnitFrames.BarLookOwnerChanged then ns.UnitFrames.BarLookOwnerChanged(p.health) end
+    if on and not p.sabTop then
+        p.sabTop = CreateFrame("Frame", nil, p.health)
+        p.sabTop:SetAllPoints(p.health)
+        p.sabTop:SetFrameLevel(p.health:GetFrameLevel() + Sab.LEVEL + 2)   -- (+1: the liquid over its DoT marker)
+    end
+    local parent = on and p.sabTop or p.health
+    for _, t in ipairs({ p.execTint, p.targetTint, p.highlight, p.execMark }) do t:SetParent(parent) end
+end
+
+-- token: "none" or "target". False: declined.
+local function Add(p, token)
+    local api = _G.SmoothAnimatedBars
+    local ok, taken = pcall(api.AddBar, p.health, token, "health", { name = "FlareUI", level = Sab.LEVEL })
+    if not (ok and taken) then
+        pcall(api.RemoveBar, p.health)
+        p.sabUnit = nil
+        Own(p, false)
+        return false
+    end
+    p.sabUnit, p.sabMade = token, true
+    Own(p, true)
+    return true
+end
+
+-- A plate about to go on a unit for the first time with the liquid: added where its size can be read
+function Sab.Prepare(p, unit)
+    if p.sabMade or not Sab.Side(p, unit) then return end
+    p.root:ClearAllPoints()
+    p.root:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    if SizeKnown(p) and Add(p, "none") then p.sabSize = p.plateW .. "x" .. p.boxH end
+    p.root:ClearAllPoints()
+end
+
+-- A held plate: at the claim, with every target change (NP.UpdateTarget) and in the sync
+function Sab.Apply(p)
+    local side = p.unit and Sab.Side(p, p.unit)
+    local held, size = 0, side and (p.plateW .. "x" .. p.boxH)
+    if side then
+        if SizeKnown(p) then p.sabSize = size elseif p.sabSize ~= size then side = nil end
+    end
+    if side then
+        for _, other in pairs(NP.HeldPlates()) do
+            if other ~= p and other.sab and other.sabSide == side then held = held + 1 end
+        end
+        if held >= Sab.MAX[side] then side = nil end
+    end
+    p.sabSide = side
+    if not side then
+        if p.sab then
+            pcall(_G.SmoothAnimatedBars.RemoveBar, p.health)
+            p.sabUnit = nil
+            Own(p, false)
+        end
+        return
+    end
+    local s = Sab.Settings()
+    local token = (p.targetShown and side == "enemy" and s and s.plateDots == true) and "target" or "none"
+    if p.sab and p.sabUnit == token then return end
+    Add(p, token)
+end
+
+function Sab.ApplyAll()
+    local api = _G.SmoothAnimatedBars
+    if type(api) ~= "table" then return end
+    if not Sab.hooked then
+        Sab.hooked = true
+        pcall(api.RegisterCallback, function(event) if event == "enabled" then Sab.ApplyAll() end end)
+    end
+    for _, p in pairs(NP.HeldPlates()) do pcall(Sab.Apply, p) end
+end
+
+--------------------------------------------------
+-- 4. MODULE
 -- Always started (In Combat plates work with the Nameplates module off); it has no switch of its own.
 --------------------------------------------------
 local Extras = {}

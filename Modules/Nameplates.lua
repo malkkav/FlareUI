@@ -2361,6 +2361,7 @@ function NP.UpdateTarget(p, targetPlate)
     NP.UpdateTargetLook(p)
     ApplyVisual(p, "ApplyScale")
     ApplyVisual(p, "UpdateFade")
+    if not p.sample and NP.Sab then pcall(NP.Sab.Apply, p) end
 end
 
 -- The border: your target's colour, else the threat colour (Threat Glow), else bronze
@@ -3287,6 +3288,7 @@ function NP.Claim(unit)
         local okL, errL = pcall(NP.Layout, p)
         if not okL then ns.LogError("Nameplates Layout", errL) end
     end
+    if NP.Sab then pcall(NP.Sab.Prepare, p, unit) end
     local ok, err = pcall(function()
         p.gamePlate, p.unit = plate, unit
         byPlate[plate] = p
@@ -3418,6 +3420,7 @@ function NP.Sync()
         end
         if p.unit then pcall(NP.FixQuestie, p) end
     end
+    if NP.Sab then NP.Sab.ApplyAll() end
     for _, unit in ipairs(reclaim) do NP.Claim(unit) end
     for _, plate in ipairs(C_NamePlate.GetNamePlates()) do
         local unit = plate.unitToken
@@ -3453,7 +3456,9 @@ function NP.OtherAddon()
     if NP.otherAddon then return true end
 end
 
--- Our parts of a game plate, for the combo points (NameplateExtras.lua)
+-- (NameplateExtras.lua) our plates on the game's, for Smooth Animated Bars
+function NP.HeldPlates() return byPlate end
+-- Our parts of a game plate, for the combo points
 function NP.PartsFor(plate)
     local p = plate and byPlate[plate]
     if p and p.unit then return p end
