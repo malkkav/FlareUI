@@ -5,6 +5,8 @@ issecretvalue = function() return false end
 hooksecurefunc = function() end
 C_CooldownViewer = {}
 GetCVarBool = function() return true end
+-- (the viewers here have no box: Icon Shape's reflow is cooldownmanager-shape.lua's)
+InCombatLockdown = function() return true end
 LibStub = function() return { Fetch = function(_, _, name) return name end } end
 CreateFrame = function(_, _, parent)
     local frame = {}
@@ -35,6 +37,7 @@ local function Item(width)
     function ring:SetAlpha(alpha) self.alpha = alpha end
     local item = { width = width, height = width, ring = ring, Cooldown = {}, Icon = {} }
     function item:GetWidth() return self.width end
+    function item:GetHeight() return self.height end
     function item:GetFrameLevel() return 1 end
     function item:SetSize(w, h) self.width, self.height = w, h end
     function item:GetRegions() return self.Icon, ring end

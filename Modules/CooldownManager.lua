@@ -268,15 +268,16 @@ local function ApplyShape(item, shape)
     if not (icon and icon.SetTexCoord and Readable(width) and width > 0) then return end
     local rect = shape == "rect"
     p.shape = shape
+    local was = item:GetHeight()
     -- Blizzard's icons are square: its width is the height to give back
     item:SetSize(width, width * (rect and RECT_HEIGHT or 1))
     local cut = rect and (1 - RECT_HEIGHT) / 2 or 0
     icon:SetTexCoord(0, 1, cut, 1 - cut)
+    return Readable(was) and was or nil
 end
 
--- The Icon Shape row of a viewer's Edit Mode dialog; key: essential / utility / buffs. In Edit Mode
--- the viewer's box follows a new height only at Blizzard's next layout: asking for one from addon code
--- could taint the viewer, so it is left to Blizzard.
+-- The Icon Shape row of a viewer's Edit Mode dialog; key: essential / utility / buffs. Asking Blizzard
+-- for a layout from addon code could taint the viewer: Reflow (7) gives the box its new height.
 function CM.ShapeSetting(key)
     local LEM = LibStub("FlareEditMode")
     return {
@@ -773,10 +774,41 @@ end
 --------------------------------------------------
 -- 7. APPLYING
 --------------------------------------------------
+-- A new Icon Shape reaches the viewer only at Blizzard's next layout: until then its box kept the old
+-- height, and the icons jumped when the layout came (leaving Edit Mode). So the rows and the box get
+-- here what that layout will give them; was: the icons' height before. Anything unreadable, or a box
+-- that is not whole rows of icons: left to Blizzard, as before.
+local function Reflow(name, was)
+    local viewer = _G[name]
+    if not viewer or InCombatLockdown() then return end
+    local pad, box = Number(viewer.childYPadding), Number(viewer:GetHeight())
+    local now, scale
+    for item in ActiveItems(name) do
+        local height, itemScale = Number(item:GetHeight()), Number(item:GetScale())
+        if not (height and itemScale and itemScale > 0) or (now and math_abs(height - now) > 0.01) then return end
+        now, scale = height, itemScale
+    end
+    if not (now and pad and box) or was + pad <= 0 or math_abs(now - was) < 0.01 then return end
+    local rows = (box / scale + pad) / (was + pad)
+    local whole = math_floor(rows + 0.5)
+    if whole < 1 or math_abs(rows - whole) > 0.05 then return end
+    for item in ActiveItems(name) do
+        -- (a frame Growth has packed: Arrange places it again)
+        if not Pieces(item).moved then
+            local point, relative, relativePoint, x, y = item:GetPoint(1)
+            if Readable(point) and Number(x) and Number(y) then
+                item:ClearAllPoints()
+                item:SetPoint(point, relative, relativePoint, x, math_floor(y / (was + pad) + 0.5) * (now + pad))
+            end
+        end
+    end
+    viewer:SetHeight(box + whole * (now - was) * scale)
+end
+
 local function ApplyItem(name, item)
     local db = GetDb()
     local shapeKey = SHAPE_KEYS[name]
-    if shapeKey then ApplyShape(item, db.shape and db.shape[shapeKey] or "blizzard") end
+    local was = shapeKey and ApplyShape(item, db.shape and db.shape[shapeKey] or "blizzard")
     if db.skin then VIEWERS[name](item) end
     if Grow(name) ~= "blizzard" then HookArrange(name, item) end
     if ABILITY_VIEWERS[name] then
@@ -788,10 +820,13 @@ local function ApplyItem(name, item)
         local push = Pieces(item).push
         if push then push:Hide() end
     end
+    return was
 end
 
 local function ApplyViewer(name)
-    for item in ActiveItems(name) do ApplyItem(name, item) end
+    local was
+    for item in ActiveItems(name) do was = ApplyItem(name, item) or was end
+    if was then Reflow(name, was) end
 end
 
 -- every frame showing now (a settings change, or the viewer was already up)
