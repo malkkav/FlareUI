@@ -98,7 +98,8 @@ end
 --------------------------------------------------
 -- 0. KEYRING AND CRAFTING BAG IN THE BACKPACK (Keyring in Backpack, Crafting Bag in Backpack; off)
 -- Blizzard's combined backpack holds bags 0-4 only; the keyring (-1) and the crafting bag (5) open
--- as their own windows. Both sections borrow Blizzard's item buttons from those windows.
+-- as their own windows. The keyring borrows native buttons; crafting uses local template buttons
+-- when the game has not opened its native window.
 --------------------------------------------------
 local extras = {}   -- bagID -> { holder = frame, buttons = { [slot] = button } }
 local highlightedExtraBag
@@ -107,6 +108,9 @@ local function UpdateExtraBagHighlight(bagID, section)
     local highlighted = bagID == highlightedExtraBag and section.holder:IsShown()
     for _, button in pairs(section.buttons) do
         button.BagIndicator:SetShown(highlighted and button:IsShown())
+    end
+    for _, button in pairs(section.probe or {}) do
+        button.BagIndicator:SetShown(not section.window and highlighted and button:IsShown())
     end
 end
 
@@ -168,7 +172,8 @@ local function WarmExtraSections()
     local frame = Combined()
     if not frame then return end
     for _, bagID in ipairs(ExtraBags()) do
-        Extra(bagID, frame)
+        local e = Extra(bagID, frame)
+        if bagID == ReagentID() then Bags.WarmReagentProbe(e, frame, bagID) end
     end
 end
 
@@ -177,6 +182,39 @@ function Bags.AddSlotArt(b)
     b.flareSlot = b:CreateTexture(nil, "BACKGROUND", nil, -1)
     b.flareSlot:SetAtlas("bags-item-slot64")
     b.flareSlot:SetAllPoints()
+end
+
+-- Fallback slots for the combined backpack; the addon never opens the native reagent window.
+function Bags.WarmReagentProbe(e, frame, bagID)
+    if InCombatLockdown() then return end
+    e.probe = e.probe or {}
+    for slot = 1, ShownSlots(bagID) do
+        if not e.probe[slot] then
+            local b = CreateFrame("ItemButton", "FlareUIReagentProbeSlot" .. slot, e.holder, "ContainerFrameItemButtonTemplate")
+            b:Hide()
+            if not (b.Initialize and b.SetBagID) then return end
+            b:Initialize(frame, bagID, slot)
+            b:Hide()
+            -- The template leaves this overlay shown until the native window's item update.
+            -- These buttons are not in that window's pool. Reset the unused default overlay only.
+            if b.BattlepayItemTexture then b.BattlepayItemTexture:Hide() end
+            Bags.AddSlotArt(b)
+            e.probe[slot] = b
+        end
+    end
+end
+
+function Bags.UpdateReagentProbe(button, bagID, slot)
+    local info = C_Container.GetContainerItemInfo(bagID, slot)
+    if canaccessvalue and not canaccessvalue(info) then return end
+    local texture, count, locked, filtered
+    if info then texture, count, locked, filtered = info.iconFileID, info.stackCount, info.isLocked, info.isFiltered end
+    if canaccessvalue and not (canaccessvalue(texture) and canaccessvalue(count) and canaccessvalue(locked) and canaccessvalue(filtered)) then return end
+    button:SetHasItem(texture ~= nil)
+    SetItemButtonTexture(button, texture)
+    SetItemButtonCount(button, count or 0)
+    SetItemButtonDesaturated(button, locked == true)
+    if button.SetMatchesSearch then button:SetMatchesSearch(not filtered) end
 end
 
 -- a slot's place in the combined backpack: filled from the bottom right, right to left, upwards
@@ -570,7 +608,10 @@ local function SyncBackpackExtras()
                 -- (also one kept off screen whose buttons went back to it: its section stayed empty)
                 ParkExtraWindows()
             end
-        elseif not (folded and folded[id]) then
+        -- Do not open the reagent window here. Opening bag 5 from a deferred addon callback
+        -- can taint the next bank open and block item use after the bank has closed.
+        -- The combined backpack instead uses its own template buttons until Blizzard opens bag 5.
+        elseif id ~= ReagentID() and not (folded and folded[id]) then
             openingForBackpack = id
             OpenBag(id)
             openingForBackpack = nil
@@ -848,13 +889,20 @@ local function Relayout(frame)
         e.shownSlots = shown
         local folded = categorized and collapsedSections[bagID]
         local expanded = not folded
-        if (expanded and not e.window) or (e.window and e.window:GetBagSize() ~= shown) then
+        if e.probe then
+            for slot, b in pairs(e.probe) do
+                if (e.window or not expanded or slot > shown) and b:IsShown()
+                    and not (InCombatLockdown() and b:IsProtected()) then b:Hide() end
+            end
+        end
+        if (expanded and not e.window and bagID ~= ReagentID()) or (e.window and e.window:GetBagSize() ~= shown) then
             QueueBackpackExtraSync()
         end
         if expanded then
             -- The same order as Blizzard's bags: the last slot bottom right.
             for slot = shown, 1, -1 do
-                local b = e.buttons[slot]
+                local b = e.buttons[slot] or (not e.window and e.probe and e.probe[slot])
+                if b and e.probe and e.probe[slot] == b then Bags.UpdateReagentProbe(b, bagID, slot) end
                 if b and InCombatLockdown() and b:IsProtected() then
                     -- (Blizzard's button can't move in a fight: it keeps its place, its slot is counted)
                     col = col + 1
@@ -2310,13 +2358,30 @@ function Bags:Init()
     bagEvents:RegisterEvent("CVAR_UPDATE")
     bagEvents:RegisterEvent("CURSOR_CHANGED")
     bagEvents:RegisterEvent("GAME_PAD_ACTIVE_CHANGED")
+    bagEvents:RegisterEvent("ITEM_LOCK_CHANGED")
+    bagEvents:RegisterEvent("INVENTORY_SEARCH_UPDATE")
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED", "EQUIPMENT_SETS_CHANGED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
     end
-    bagEvents:SetScript("OnEvent", function(self, event)
+    bagEvents:SetScript("OnEvent", function(self, event, bagID, slotID)
         if event == "CURSOR_CHANGED" or event == "GAME_PAD_ACTIVE_CHANGED" or event == "CVAR_UPDATE" then
             RefreshBagClickProxies()
+            return
+        end
+        if event == "ITEM_LOCK_CHANGED" or event == "INVENTORY_SEARCH_UPDATE" then
+            local id = ReagentID()
+            local e = id and extras[id]
+            if e and e.probe and next(e.probe) and not e.window and e.holder:IsVisible() then
+                if event == "INVENTORY_SEARCH_UPDATE" then
+                    for slot, b in pairs(e.probe) do
+                        if b:IsShown() then Bags.UpdateReagentProbe(b, id, slot) end
+                    end
+                elseif (not canaccessvalue or (canaccessvalue(bagID) and canaccessvalue(slotID)))
+                    and bagID == id and slotID and e.probe[slotID] and e.probe[slotID]:IsShown() then
+                    Bags.UpdateReagentProbe(e.probe[slotID], id, slotID)
+                end
+            end
             return
         end
         if event == "QUEST_LOG_UPDATE" then
@@ -2338,6 +2403,15 @@ function Bags:Init()
                 if parked[owner] == nil and Bags.ReturnExtraButtons(owner) and owner:IsShown() then owner:UpdateItemLayout() end
             end
             QueueBackpackExtraSync()
+        end
+        if contentsChanged then
+            local id = ReagentID()
+            local e = id and extras[id]
+            if e and e.probe and next(e.probe) and not e.window and e.holder:IsVisible() then
+                for slot, b in pairs(e.probe) do
+                    if b:IsShown() then Bags.UpdateReagentProbe(b, id, slot) end
+                end
+            end
         end
         if contentsChanged and db and db.bagAutoOpen then C_Timer.After(0.3, Bags.AutoOpen.Next) end
         -- Slot counts can arrive after login or grow when a bag is replaced.
