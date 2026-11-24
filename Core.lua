@@ -162,9 +162,9 @@ function ns.UnitLevelColor(unit, level)
 end
 
 -- A unit's name on the frames. Forever's UnitName returns first name and surname apart; the full name
--- joins them as NameUtil.FormatUnitNameForDisplay does. A unit frame's text slot picks First Name or
--- Full Name (full false: first only); "focus" and "targetof" (the party target tiles) always show the
--- first name only.
+-- joins them as NameUtil.FormatUnitNameForDisplay does. A unit frame's text slot picks First Name, Full
+-- Name or Last Name (full: false, true or "lastname"; the surname alone, or the name of a unit without
+-- one); "focus" and "targetof" (the party target tiles) always show the first name only.
 -- A secret name or surname leaves the first name alone.
 function ns.UnitDisplayName(unit, frameKind, full)
     local name, surname = UnitName(unit)
@@ -176,6 +176,7 @@ function ns.UnitDisplayName(unit, frameKind, full)
     if not full or frameKind == "targetof" or frameKind == "focus" then return name end
     if not (canaccessvalue(name) and canaccessvalue(surname)) then return name end
     if type(name) ~= "string" or type(surname) ~= "string" or surname == "" then return name end
+    if full == "lastname" then return surname end
     local consts = Constants and Constants.CharacterNameSeparatorConsts
     local sep = consts and consts.CHARACTERNAME_SURNAME_SEPARATOR
     return name .. (type(sep) == "string" and sep or " ") .. surname
@@ -590,7 +591,7 @@ local defaults = {
             threatPullLine = true,      -- Threat tab: a line on the bars where you would pull the mob
             threatPullFlash = true,     -- Threat tab: your bar flashes as you near that line
             threatPullSound = false,    -- Pull Warning Sound: once as Pull Warning starts
-            threatTankLead = true,      -- Threat tab: the tank's row shows its lead over second place, "(+25%)"
+            threatTankLead = true,      -- Threat tab: the tank's percent is its threat against second place (125%), not 100%
             threatValueDisplay = "percent", -- Threat tab: "both" / "percent" / "value"
             threatWindow = false,       -- Separate Window: threat in its own window, no Threat tab
             threatVisibility = "meter", -- its Visibility: meter (as the meter) / instance / group / combat
@@ -1060,8 +1061,8 @@ local defaults = {
             -- icon | border | both, Aura Timer none | below | bottom | middle, Timer Colour
             auraStyle = "square", auraSwipe = "both", auraTimer = "none", auraTimerColor = true,
             auraRows = "one",           -- Aura Positions (per type, both rows on): one | buffsTop | debuffsTop
-            -- nameAbove = "<left|middle|right>:<firstname|fullname>" once picked: Names Above Plate (per type)
-            nameOnlyFull = true,        -- Show Full Name (per type): a Name Only plate's player surnames
+            -- nameAbove = "<left|middle|right>:<firstname|fullname|lastname>" once picked: Names Above Plate (per type)
+            nameOnlyFull = true,        -- Show Name (per type): a Name Only plate's player names: true full | false first | "lastname"
             nameFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             nameOnlyFont = { face = "__global", size = 11, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },   -- Name Only plates
             healthFont = { face = "__global", size = 9, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
@@ -1078,8 +1079,6 @@ local defaults = {
             way = false,                -- /way map pins
             syncUI = false,             -- account-wide copy of character-specific Blizzard settings
             sellJunk = false,
-            warnSellSetGear = false,    -- Warn Before Selling Set Gear: confirm manual vendor sales of equipment set items
-            warnSellQuestItems = false, -- Warn Before Selling Quest Items: confirm manual vendor sales of quest-related items
             autoRepair = false,
             maxCameraZoom = false,      -- Better Camera's old switch: on becomes cameraMaxZoom 2.6 (Tweaks.lua ApplyCamera)
             fasterCameraZoom = false,   -- ...and cameraZoomSpeed 50. The two sliders have no default: nil = Blizzard's own
@@ -2458,6 +2457,40 @@ do
         end
         return AbbreviateNumbers(n)
     end
+end
+
+-- YOUR THREAT ON A MOB AS ONE NUMBER, for the unit frames' Threat Text and the nameplates' Threat Percentage
+-- (the meter's tank row follows: DamageMeter.lua). 11-24, a tank's report: plates stuck at 100%.
+--   Not holding it: the scaled percent, 100 is where you pull it.
+--   Holding it: your threat against the next in line, as Blizzard's target frame (and Plater, Platynator,
+--   ClassicUI): 260 is 2.6 times theirs, under 100 it goes. The game's scaled percent is 100 for whoever holds
+--   the mob, however far ahead. With nobody else on the list there is no lead: 100.
+-- Where the game hides threat values (instances) the number is secret: the state (UnitThreatSituation), which
+-- is often readable there, says whether you hold it, and the number is drawn unread (ns.ThreatPercentText).
+-- Returns the percent, the threat state (nil: not readable) and true for a secret percent; nil for no threat.
+ns.THREAT_MAX = 999   -- (a readable number is never longer)
+function ns.ThreatPercent(unit)
+    local ok, tanking, status, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
+    if not ok or (canaccessvalue(scaled) and type(scaled) ~= "number") then return nil end
+    if not (canaccessvalue(tanking) and canaccessvalue(status)) then
+        local okS, state = pcall(UnitThreatSituation, "player", unit)
+        if not okS or not canaccessvalue(state) or type(state) ~= "number" then state = nil end
+        if not canaccessvalue(status) then status = state end
+        if not canaccessvalue(tanking) then tanking = state ~= nil and state >= 2 end
+    end
+    local value = scaled
+    if tanking then
+        local okL, lead = pcall(UnitThreatPercentageOfLead, "player", unit)
+        if okL and (not canaccessvalue(lead) or (type(lead) == "number" and lead > 0)) then value = lead end
+    end
+    if not canaccessvalue(value) then return value, status, true end
+    return math.min(value, ns.THREAT_MAX), status, false
+end
+-- a secret percent as text (secret too), rounded by the client; nil where it can't
+function ns.ThreatPercentText(value)
+    if not (C_StringUtil and C_StringUtil.RoundToNearestString) then return nil end
+    local ok, text = pcall(C_StringUtil.RoundToNearestString, value)
+    return ok and text or nil
 end
 
 -- Edit Mode rows in one order everywhere (12-terminology.md, Ordering): within a section, dropdowns,

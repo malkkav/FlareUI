@@ -12,7 +12,7 @@ local function applyFont(frame, ...) frame:SetFont(...) end
 local ns = {
     Dialogs = {}, ShowDialog = function() end,   -- (the Blizzard Visibility warning, 11-22)
     modules = {}, L = setmetatable({}, { __index = function(_, key) return key end }),
-    db = { profile = { damagemeter = db } }, ShortNumber = tostring,
+    db = { profile = { damagemeter = db } }, ShortNumber = tostring, THREAT_MAX = 999,
     BORDER_COLOR = { r = 0.6, g = 0.5, b = 0.4, a = 1 },
     BorderEdgeSize = function(_, size) return size end,
     BronzeIcon = {
@@ -226,7 +226,12 @@ meterUI.DrawSample(sample, "damage")
 assert(damageRow:GetValue():GetText() == "1920000")
 meterUI.DrawSample(sample, "threat")
 assert(sample.ThreatView.frame:IsShown() and not sample.DamageView.frame:IsShown())
-assert(sample.ThreatView.rows[1]:GetValue():GetText():find("+4%", 1, true))
+assert(sample.ThreatView.rows[1]:GetValue():GetText():find("  104%", 1, true), "the tank's percent is its threat against second place")
+db.threatTankLead = false
+meterUI.DrawSample(sample, "threat")
+assert(sample.ThreatView.rows[1]:GetValue():GetText():find("  100%", 1, true))
+db.threatTankLead = true
+meterUI.DrawSample(sample, "threat")
 assert(sample.ThreatView.rows[2].FlareUI_Flash.anim:IsPlaying() and sample.ThreatView.pullLine:IsShown())
 
 local function tick(dt)

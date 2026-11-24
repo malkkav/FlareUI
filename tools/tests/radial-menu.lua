@@ -75,7 +75,7 @@ env.C_Spell = {
     GetSpellCooldownDuration = function(id) return "duration:" .. id end,
     IsSpellUsable = function() return true, false end,
     IsSpellInRange = function(_, unit) return unit ~= "party1" end,
-    GetSpellCharges = function(id) if id == 201 then return { maxCharges = 2, currentCharges = 1 } end end,
+    GetSpellDisplayCount = function(id) return id == 201 and "17" or "" end,
 }
 env.C_Item = {
     GetItemCount = function(id) return id == 500 and 3 or id == 501 and 1 or 0 end,
@@ -214,6 +214,17 @@ assert(rm:ResolveEntry({ kind = "mount", id = 1 }).attributes.spell == "Summon H
 assert(rm:ResolveEntry({ kind = "spell", id = 101 }).attributes.spell == 101, "deliberate lower rank stays pinned")
 assert(rm:ResolveEntry({ kind = "spell", id = 103 }).attributes.spell == 102, "unknown saved rank uses highest known")
 assert(not rm:ResolveEntry({ kind = "spell", id = 999 }))
+-- a party spell keeps the rank it was added at (11-24); one saved before follows the best rank
+do
+    local picked, before = { kind = "partycast", id = 101 }, { kind = "partycast", id = 101 }
+    rm.MarkRank(picked, true)
+    rm.MarkRank(before)
+    assert(picked.pinned and picked.rankChecked and not before.pinned and not before.rankChecked)
+    rm.MarkRank({ kind = "macro", id = 101 }, true)
+    local best = { kind = "partycast", id = 102 }
+    rm.MarkRank(best, true)
+    assert(not best.pinned)
+end
 spellBook[4], known[103] = 103, true
 listeners.SPELLS_CHANGED()
 assert(rm.BestRank("Frostbolt") == 103)
@@ -233,6 +244,78 @@ local questItems = rm:ResolveEntry({ kind = "questitems" })
 assert(#questItems.children == 2 and questItems.children[1].name == "Beacon" and questItems.children[2].name == "Signal")
 local party = rm:ResolveEntry({ kind = "partycast", id = 201 })
 assert(#party.spread == 2 and party.spread[2].name == "Aria" and party.spread[2].attributes.unit == "party1")
+assert(party.spread[1].attributes.unit == "player", "in a group your own button is you")
+-- alone: the friendly target first, else yourself (11-24)
+do
+    local exists = env.UnitExists
+    env.UnitExists = function(unit) return unit == "player" end
+    local alone = rm:ResolveEntry({ kind = "partycast", id = 201 })
+    assert(#alone.spread == 1 and alone.spread[1].name == "Blink" and alone.spread[1].attributes.unit == rm.HELP)
+    env.UnitExists = exists
+    local answer
+    local oldParse, oldName = env.SecureCmdOptionParse, env.UnitName
+    env.SecureCmdOptionParse = function(text)
+        assert(text == "[@target,help] target; player")
+        return answer
+    end
+    assert(rm.HelpUnit() == "player")
+    answer = "target"
+    assert(rm.HelpUnit() == "target")
+
+    -- every snippet that uses a button takes the unit this way
+    local out
+    local control = { GetAttribute = function(_, key)
+        return ({ ["flare-keys"] = "type unit", ["p-type"] = "spell", ["p-unit"] = rm.HELP, ["q-unit"] = "party1" })[key]
+    end }
+    local function load(prefix)
+        out = {}
+        local chunk = assert(loadstring("local self, control, prefix = ... " .. rm.FIRE_SNIPPET))
+        setfenv(chunk, { gmatch = string.gmatch, SecureCmdOptionParse = env.SecureCmdOptionParse })
+        chunk({ SetAttribute = function(_, key, value) out[key] = value end }, control, prefix)
+    end
+    load("p-")
+    assert(out.type == "spell" and out.unit == "target")
+    answer = "player"
+    load("p-")
+    assert(out.unit == "player")
+    load("q-")
+    assert(out.unit == "party1" and out.type == nil)
+    local source = assert(io.open("Modules/RadialMenu.lua")):read("*a")
+    assert(not source:find("self:SetAttribute(key, control:GetAttribute(prefix .. key))", 1, true))
+
+    -- what the button shows: the target's name, class coloured for a player, and that unit's range
+    local asked
+    local oldRange, oldPlayer = env.C_Spell.IsSpellInRange, env.UnitIsPlayer
+    env.C_Spell.IsSpellInRange = function(_, unit) asked = unit return true end
+    env.UnitName = function(unit) return unit == "target" and "Mira" or oldName(unit) end
+    local isPlayer = true
+    env.UnitIsPlayer = function() return isPlayer end
+    local button = env.CreateFrame("Button")
+    button.Icon, button.Placed = button:CreateTexture(), button:CreateTexture()
+    button.Label, button.Count = button:CreateFontString(), button:CreateFontString()
+    button.Cooldown = { Clear = noop, SetCooldown = noop, SetCooldownFromDurationObject = noop }
+    local info = { name = "Blink", attributes = alone.spread[1].attributes, entry = alone.spread[1].entry }
+    local oldColor = env.C_ClassColor.GetClassColor
+    env.C_ClassColor.GetClassColor = function() return { WrapTextInColorCode = function(_, t) return "|cff" .. t end } end
+    answer = "target"
+    rm.ApplyButtonState(button, info)
+    assert(button.Label:GetText() == "|cffMira" and asked == "target")
+    isPlayer = false
+    button.helpText = nil
+    rm.ApplyButtonState(button, info)
+    assert(button.Label:GetText() == "Mira")
+    -- the uses a spell's reagents leave, as on the action bars; nothing on other spells (11-24)
+    assert(button.Count:IsShown() and button.Count:GetText() == "17")
+    rm.ApplyButtonState(button, rm:ResolveEntry({ kind = "spell", id = 102 }))
+    assert(button.Count:GetText() == "")
+    rm.ApplyButtonState(button, rm:ResolveEntry({ kind = "micromenu", panel = "character" }))
+    assert(not button.Count:IsShown())
+    answer = "player"
+    rm.ApplyButtonState(button, info)
+    assert(button.Label:GetText() == "Blink" and asked == "player", "no friendly target: the spell's own name again")
+    env.C_ClassColor.GetClassColor = oldColor
+    env.C_Spell.IsSpellInRange, env.UnitIsPlayer, env.UnitName, env.SecureCmdOptionParse = oldRange, oldPlayer, oldName, oldParse
+end
 
 local names = rm:GetScopeChoices()
 assert(table.concat(names, ",") == ",faction:Alliance,class:MAGE,char:Player-1")

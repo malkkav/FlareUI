@@ -71,6 +71,7 @@ return function(db)
 
     env.ns = ns
     H.loadSections("Core.lua", {
+        {"ns.THREAT_MAX = 999", "-- Edit Mode rows in one order everywhere"},
         {"function ns.ProfileChanges(", "function ns.PlayerGUID("},
     }, env)
     ui:load("Modules/BarText.lua", ns)

@@ -1143,11 +1143,15 @@ function Refresh()
         win.out:Stop()
         if not win:IsShown() then
             win:Show()
-            win.fade:Play()
+            -- (faded in a fight, it opens faded: the fade-in would flash it at full)
+            if not LR.UpdateFade(true) then win.fade:Play() end
             guard = GetTime() + GUARD
         end
     elseif total == 0 and win:IsShown() then
-        if not win.out:IsPlaying() then win.out:Play() end
+        if not win.out:IsPlaying() then
+            win.outAlpha:SetFromAlpha(win:GetAlpha())
+            win.out:Play()
+        end
     else
         win.out:Stop()
         win:Hide()
@@ -1176,12 +1180,16 @@ local function HideSamples(quiet)
     for i = #order, 1, -1 do
         if order[i].sample then RemoveQuiet(order[i]) end
     end
-    if not quiet then Refresh() end
+    if not quiet then
+        Refresh()
+        LR.UpdateFade()
+    end
 end
 
 local function ShowSamples()
     HideSamples(true)
     LR.previewing = true
+    LR.UpdateFade()
     GameTooltip:Hide()
     local _, class = UnitClass("player")
     local me = UnitName("player")
@@ -1291,6 +1299,89 @@ local function ScaleSetting()
             db.lootScale = value ~= 100 and value / 100 or nil
             ApplyScale()
         end }
+end
+
+--------------------------------------------------
+-- 7b. FADE IN COMBAT (Edit Mode's Fading, off; 11-24, Aethamus). Not a Visibility element: those say when
+-- a frame shows, and this window shows only while something is rolled. Pointing at it brings it back, and
+-- so do the last seconds (URGENT) of a roll you have not chosen on; after the fight it is back at once.
+--------------------------------------------------
+LR.FADE_OPACITY, LR.FADE_TIME, LR.FADE_CHECK = 30, 0.2, 0.1   -- 30: at 0 a roll is easily lost
+function LR.FadedAlpha()
+    local db = GetDb()
+    return math_max(0, math_min(100, db and tonumber(db.lootRollFadeOpacity) or LR.FADE_OPACITY)) / 100
+end
+
+-- faded now?
+function LR.WantsFade()
+    local db = GetDb()
+    if not (db and db.lootRollFade and LR.inCombat) or LR.previewing or win:IsMouseOver() then return false end
+    for _, s in ipairs(order) do
+        if s.status == "rolling" and not (s.choice or s.pending) then
+            local left = TimeLeft(s)
+            if left and left <= URGENT then return false end
+        end
+    end
+    return true
+end
+
+-- sets what the fader goes for; instant: at once. Returns whether the window is to be faded.
+function LR.UpdateFade(instant)
+    local fader = win and win.fader
+    if not fader then return false end
+    local faded = LR.WantsFade()
+    local alpha = win:GetAlpha()
+    if not faded then
+        if alpha < 1 then
+            win:SetAlpha(1)
+            -- it came back under the pointer: not a roll by accident
+            guard = GetTime() + GUARD
+        end
+    elseif instant then
+        win:SetAlpha(LR.FadedAlpha())
+    end
+    local db = GetDb()
+    -- it only runs (while the window shows) in a fight with the option on
+    fader:SetShown(db and db.lootRollFade and LR.inCombat and not LR.previewing and true or false)
+    fader.faded, fader.wait = faded, LR.FADE_CHECK
+    return faded
+end
+
+function LR.FadeTick(fader, elapsed)
+    fader.wait = (fader.wait or 0) - elapsed
+    if fader.wait <= 0 then LR.UpdateFade() end
+    if fader.faded then
+        local alpha, target = win:GetAlpha(), LR.FadedAlpha()
+        if alpha > target then
+            win:SetAlpha(math_max(target, alpha - elapsed * (1 - target) / LR.FADE_TIME))
+        end
+    end
+end
+
+function LR.FadeSettings()
+    return {
+        { name = L["Faded Opacity"], kind = LEM.SettingType.Slider, default = LR.FADE_OPACITY, minValue = 0, maxValue = 100, valueStep = 5,
+          formatter = function(value) return value end,   -- plain, as the other frames'
+          get = function() return math_floor(LR.FadedAlpha() * 100 + 0.5) end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              db.lootRollFadeOpacity = value ~= LR.FADE_OPACITY and value or nil
+              LR.UpdateFade(true)
+          end,
+          hidden = function() local db = GetDb() return not (db and db.lootRollFade) end,
+          desc = L["How see-through it gets when faded. 0% is invisible."] },
+        { name = L["Fade in Combat"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() local db = GetDb() return db and db.lootRollFade or false end,
+          set = function(_, value)
+              local db = GetDb()
+              if not db then return end
+              db.lootRollFade = value and true or nil
+              LR.UpdateFade(true)
+              LEM:RefreshFrameSettings(holder)
+          end,
+          desc = L["It fades while you fight. It comes back when you point at it, and for the last 5 seconds of a roll you haven't decided on."] },
+    }
 end
 
 --------------------------------------------------
@@ -1435,6 +1526,7 @@ function LR:Init()
     end)
     win.out = win:CreateAnimationGroup()
     local out = win.out:CreateAnimation("Alpha")
+    win.outAlpha = out
     out:SetFromAlpha(1)
     out:SetToAlpha(0)
     out:SetDuration(0.25)
@@ -1452,14 +1544,22 @@ function LR:Init()
         selection:SetFrameStrata("HIGH")
         selection:SetFrameLevel(win:GetFrameLevel() + 20)
     end
-    LEM:AddFrameSettings(holder, ns.EditSection("Frame", { ScaleSetting() }))
+    win.fader = CreateFrame("Frame", nil, win)
+    win.fader:SetScript("OnUpdate", LR.FadeTick)
+    LR.inCombat = InCombatLockdown()
+    LR.UpdateFade(true)
+    local Section, settings = ns.EditSections()
+    Section("Frame", { ScaleSetting() })
+    Section("Fading", LR.FadeSettings())
+    LEM:AddFrameSettings(holder, settings)
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
     LEM:RegisterCallback("enter", ShowSamples)
     -- out of Edit Mode: back to the header box on its saved spot
     LEM:RegisterCallback("exit", function() HideSamples(); ApplyPosition() end)
 
     local events = CreateFrame("Frame")
-    for _, event in ipairs({ "START_LOOT_ROLL", "CONFIRM_LOOT_ROLL", "CANCEL_LOOT_ROLL", "CANCEL_ALL_LOOT_ROLLS", "PLAYER_ENTERING_WORLD" }) do
+    for _, event in ipairs({ "START_LOOT_ROLL", "CONFIRM_LOOT_ROLL", "CANCEL_LOOT_ROLL", "CANCEL_ALL_LOOT_ROLLS", "PLAYER_ENTERING_WORLD",
+            "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do
         events:RegisterEvent(event)
     end
     for _, event in ipairs({ "LOOT_HISTORY_UPDATE_DROP", "LOOT_HISTORY_UPDATE_ENCOUNTER", "LOOT_HISTORY_CLEAR_HISTORY",
@@ -1469,6 +1569,9 @@ function LR:Init()
     events:SetScript("OnEvent", function(_, event, a, b)
         if event == "START_LOOT_ROLL" then
             StartRoll(a, b)
+        elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+            LR.inCombat = event == "PLAYER_REGEN_DISABLED"
+            LR.UpdateFade()
         elseif event == "CONFIRM_LOOT_ROLL" then
             local s = sessions[a]
             if s and s.status == "rolling" then WatchConfirm(s) end

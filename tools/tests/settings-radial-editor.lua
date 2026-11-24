@@ -288,4 +288,149 @@ ns.SettingsPanel:Select("rm")
 assert(store.radials[4].name == "Secondary" and not host.undoButton:IsEnabled(),
     "leaving keeps edits and reopening takes a new undo snapshot")
 
+-- a spell with several ranks is one entry with an arrow; its drawer holds every rank (11-24)
+do
+    local C, book = E.C_Spell, E.C_SpellBook
+    local old = { C.GetSpellName, C.GetSpellSubtext, C.IsSpellHelpful, book.GetSpellBookSkillLineInfo, book.GetSpellBookItemInfo }
+    local names = { [103] = "Growl", [104] = "Growl", [400] = "Frost Nova", [401] = "Attack" }
+    for i = 1, 8 do names[200 + i] = "Renew" end
+    C.GetSpellName = function(id) return names[id] or old[1](id) end
+    C.GetSpellSubtext = function(id)
+        if id > 200 and id < 300 then return "Rank " .. id - 200 end
+        return id ~= 401 and "Rank " .. (id % 100 + 1) or nil
+    end
+    C.IsSpellHelpful = function(id) return id > 200 and id < 300 end
+    -- (not in order, with another spell between two of the ranks, and the same rank twice)
+    local ids = { 203, 400, 201, 202, 204, 205, 206, 207, 208, 401, 400 }
+    book.GetSpellBookSkillLineInfo = function(line)
+        return line == 1 and { numSpellBookItems = #ids, itemIndexOffset = 0 } or { offSpecID = 4 }
+    end
+    book.GetSpellBookItemInfo = function(slot, bank)
+        if bank == 1 then return { spellID = 103, itemType = 2 } end
+        return { spellID = ids[slot] }
+    end
+    local marked = {}
+    RM.MarkRank = function(entry, added)
+        marked[#marked + 1] = added
+        entry.pinned = entry.id > 200 and entry.id < 208 or nil
+    end
+    local function reopen(key)
+        ns.SettingsPanel:Select("about")
+        ns.SettingsPanel:Select("rm")
+        category(key)
+    end
+    local saved = E.CopyTable(store.radials[4].buttons)
+    reopen("spells")
+    -- title, two blanks, then Renew, Frost Nova, Attack, Frost Nova again
+    local cell = list:CellFor(4)
+    assert(list:CellFor(1).Text:GetText() == "Spells" and cell.Text:GetText() == "Renew", "one entry, without a rank")
+    assert(cell.item.id == 208 and #cell.item.ranks == 8 and cell.Arrow:IsShown(), "it is the best rank")
+    assert(list:CellFor(5).Text:GetText() == "Frost Nova (Rank 1)" and not list:CellFor(5).Arrow:IsShown())
+    assert(list:CellFor(6).Text:GetText() == "Attack" and list:CellFor(7).item.id == 400, "no rank, and the same rank twice, stay as they are")
+    assert(not list:CellFor(1).Arrow:IsShown())
+
+    -- the arrow opens every rank, lowest first, with its number
+    cell.Arrow:RunScript("OnEnter")
+    cell.Arrow:Click()
+    local drawer = host.rankDrawer
+    assert(drawer:IsShown() and drawer.cell == cell and #drawer.buttons == 8)
+    for i, b in ipairs(drawer.buttons) do assert(b.item.id == 200 + i and b.Text:GetText() == tostring(i) and b:IsShown()) end
+    assert(drawer:GetWidth() == 6 * 36 + 16 and drawer:GetHeight() == 2 * 44 + 16, "six on a row")
+    assert(drawer.events.GLOBAL_MOUSE_DOWN)
+    -- its own arrow closes it, a click inside doesn't, a click elsewhere does
+    drawer.mouseOver = true
+    drawer:RunScript("OnEvent")
+    assert(drawer:IsShown())
+    drawer.mouseOver = nil
+    cell.Arrow.mouseOver = true
+    drawer:RunScript("OnEvent")
+    assert(drawer:IsShown())
+    cell.Arrow.mouseOver = nil
+    cell.Arrow:Click()
+    assert(not drawer:IsShown() and not drawer.events.GLOBAL_MOUSE_DOWN)
+    cell.Arrow:Click()
+    drawer:RunScript("OnEvent")
+    assert(not drawer:IsShown())
+
+    -- a pick adds a copy of that rank and closes the drawer
+    cell.Arrow:Click()
+    local tip
+    function E.GameTooltip:SetSpellByID(id) tip = id end
+    drawer.buttons[2]:RunScript("OnEnter")
+    assert(tip == 202)
+    E.GameTooltip.SetSpellByID = nil
+    drawer.buttons[2]:RunScript("OnLeave")
+    drawer.buttons[2]:Click()
+    local radial = store.radials[4].buttons
+    local added = radial[#radial]
+    assert(added.id == 202 and added.pinned and not drawer:IsShown() and marked[#marked] == true)
+    assert(added ~= cell.item.ranks[2] and added.ranks == nil)
+    list:CellFor(4):Click()
+    added = radial[#radial]
+    assert(added.id == 208 and added.ranks == nil and not added.pinned, "the spell itself adds its best rank")
+    -- dragged from the drawer onto the radial
+    list:CellFor(4).Arrow:Click()
+    drawer.buttons[3]:RunScript("OnDragStart")
+    host.dropZone.mouseOver = true
+    drawer.buttons[3]:RunScript("OnDragStop")
+    host.dropZone.mouseOver = nil
+    assert(radial[#radial].id == 203 and not drawer:IsShown())
+    -- scrolling and leaving close it; a shorter spell leaves no old icons
+    list:CellFor(4).Arrow:Click()
+    list:Update()
+    assert(not drawer:IsShown())
+    list:CellFor(4).Arrow:Click()
+    ns.SettingsPanel:Select("about")
+    assert(not drawer:IsShown())
+
+    -- a search finds every rank
+    reopen("spells")
+    host.search:SetText("rank 3")
+    assert(#list.data == 1 and list:CellFor(1).item.id == 203 and not list:CellFor(1).Arrow:IsShown())
+    host.search:SetText("")
+
+    -- the Party spells, and their rank names
+    ids = { 201, 202 }
+    reopen("party")
+    cell = list:CellFor(1)
+    assert(#list.data == 1 and cell.item.kind == "partycast" and not cell.Text:GetText():find("Rank", 1, true))
+    cell.Arrow:Click()
+    assert(drawer:IsShown() and not drawer.buttons[3]:IsShown() and drawer:GetWidth() == 2 * 36 + 16)
+    drawer.buttons[1]:Click()
+    assert(radial[#radial].kind == "partycast" and radial[#radial].id == 201)
+    local named = host.buttonList
+    assert(named:CellFor(#radial).item.id == 201)
+    host.search:SetText("rank 1")
+    assert(list:CellFor(1).Text:GetText():find("Renew (Rank 1, kept)", 1, true))
+    host.search:SetText("")
+
+    -- near the grid's bottom the drawer opens over its row; on the right it stays inside the grid
+    ids = {}
+    for i = 1, 60 do ids[i] = 500 + i names[500 + i] = "Spell " .. i end
+    ids[61], ids[62], ids[63] = 201, 202, 203
+    C.IsSpellHelpful = function() return false end
+    reopen("spells")
+    cell = list:CellFor(3 + 61)
+    cell.Arrow:Click()
+    assert(drawer:GetPoint() == "BOTTOMLEFT")
+    ids[60], ids[61], ids[62] = 201, 202, 203
+    ids[63] = nil
+    reopen("spells")
+    cell = list:CellFor(3 + 60)
+    cell.Arrow:Click()
+    local _, _, _, x = drawer:GetPoint()
+    assert(x <= 0 and drawer:IsShown())
+
+    -- a controller keeps every rank in the grid
+    ui.gamepad = true
+    ids = { 201, 202, 203 }
+    reopen("spells")
+    assert(catalogCount("spell") == 4 and not list:CellFor(4).item.ranks)
+    ui.gamepad = nil
+
+    C.GetSpellName, C.GetSpellSubtext, C.IsSpellHelpful, book.GetSpellBookSkillLineInfo, book.GetSpellBookItemInfo = unpack(old, 1, 5)
+    RM.MarkRank = nil
+    store.radials[4].buttons = saved
+    reopen("spells")
+end
 print("PASS: radial editor catalog, drag and drop, keys, scope and undo")

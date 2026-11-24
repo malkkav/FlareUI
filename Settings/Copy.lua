@@ -77,8 +77,8 @@ ns.Copy = {
             title = L["Minimap"],
         },
         np = {
-            desc = L["FlareUI's own enemy nameplates."],
-            offCard = L["* Enemy nameplates in the FlareUI style\n* Threat colours for tanks, damage and healers\n* Cast bars, your debuffs and crowd control on each plate\n* Every colour yours to pick"],
+            desc = L["FlareUI's own nameplates, for enemies and friends."],
+            offCard = L["* Nameplates for enemies and friends in the FlareUI style\n* Threat colours for tanks, damage and healers\n* Cast bars, your debuffs and crowd control on each plate\n* Every colour yours to pick"],
             tabs = { L["Plate"], L["Extras"], L["Cast Bar"], L["Auras"], L["Targeting"], L["Visibility"], L["Fonts"] },
             title = L["Nameplates"],
         },
@@ -1416,9 +1416,10 @@ ns.Copy = {
             tip = L["Coming back into the same one keeps it, unless you were away over ten minutes."],
         },
         ["dm.tankLead"] = {
-            desc = L["The tank's row on the Threat tab shows how far it is ahead of second place, after its own numbers, like \"100% (+25%)\"."],
+            desc = L["The tank's percent on the Threat tab is its threat against second place: 200% is twice theirs, and near 100% they're about to take it. Off: the tank always shows 100%."],
             label = L["Tank's Lead"],
             section = "dm.threatBars",
+            tip = L["The same number as the unit frames' Threat Text and the nameplates' Threat Percentage."],
         },
         ["dm.threatMode"] = {
             choices = { L["Off"], L["Separate Window"], L["In the Meter in Combat"] },
@@ -1706,12 +1707,12 @@ ns.Copy = {
             tags = { "smooth", "smooth bars", "animation", "edge glow", "damage trail" },
         },
         ["np.barText"] = {
-            choices = { L["None"], L["First Name"], L["Full Name"], L["Health Percent"], L["Health Value"], L["Health Max"], L["Health Lost"] },
+            choices = { L["None"], L["First Name"], L["Last Name"], L["Full Name"], L["Health Percent"], L["Health Value"], L["Health Max"], L["Health Lost"] },
             desc = L["What the left, middle and right of the bar show. Several numbers show together, split by /, in the order you tick them. A name stands alone."],
             label = L["Health Text"],
             section = "np.health",
             tags = { "health percent", "health value", "bar text", "full name", "surname", "last name" },
-            tip = L["Full Name adds the surname. Name Only plates have their own Show Full Name."],
+            tip = L["Full Name adds the surname, Last Name shows it alone. Name Only plates have their own Show Name."],
         },
         ["np.bgOpacity"] = {
             desc = L["How dark the empty part of the bar is."],
@@ -2011,7 +2012,7 @@ ns.Copy = {
             tags = { "mouseover", "hover", "highlight", "mouse over plate" },
         },
         ["np.nameAbove"] = {
-            choices = { L["Off"], L["Left: First Name"], L["Left: Full Name"], L["Centre: First Name"], L["Centre: Full Name"], L["Right: First Name"], L["Right: Full Name"] },
+            choices = { L["Off"], L["Left: First Name"], L["Left: Last Name"], L["Left: Full Name"], L["Centre: First Name"], L["Centre: Last Name"], L["Centre: Full Name"], L["Right: First Name"], L["Right: Last Name"], L["Right: Full Name"] },
             desc = L["The name above the plate, on its left, centre or right. Buffs and debuffs above the plate move up to make room."],
             label = L["Names Above Plate"],
             section = "np.health",
@@ -2025,8 +2026,9 @@ ns.Copy = {
             tags = { "class colour name", "class color name", "coloured names" },
         },
         ["np.nameOnlyFull"] = {
-            desc = L["Players' surnames show in Name Only Mode. Off, only the first name shows."],
-            label = L["Show Full Name"],
+            choices = { L["First Name"], L["Last Name"], L["Full Name"] },
+            desc = L["Which of a player's names shows in Name Only Mode. Players without a surname show their name."],
+            label = L["Show Name"],
             section = "np.nameOnlySection",
             tags = { "full name", "surname", "last name", "first name" },
         },
@@ -2214,7 +2216,7 @@ ns.Copy = {
             label = L["Threat Percentage"],
             section = "np.threatSection",
             tags = { "threat percent", "threat number", "aggro percent" },
-            tip = L["100% is where you pull it. As a tank holding it, it shows your lead over the next."],
+            tip = L["Not holding it: 100% is where you pull it. Holding it: your threat against the next in line, so 200% is twice theirs, and near 100% you're about to lose it."],
         },
         ["np.threatScale"] = {
             desc = L["As a tank, plate size shows threat too:\n* A mob you lost grows\n* One someone is taking grows a little\n* One you hold shrinks a little"],
@@ -2486,16 +2488,6 @@ ns.Copy = {
             label = L["Custom Scale"],
             reload = true,
             section = "qol.scale",
-        },
-        ["qol.warnSellQuestItems"] = {
-            desc = L["Asks before selling quest items, quest starters, and items needed for quests in your log when you right-click a bag slot or drag an item to a vendor."],
-            label = L["Warn Before Selling Quest Items"],
-            section = "qol.vendor",
-        },
-        ["qol.warnSellSetGear"] = {
-            desc = L["Asks before selling gear from a saved equipment set when you right-click a bag slot or drag it to a vendor. Works with Blizzard's bags and addons that use Blizzard's item buttons."],
-            label = L["Warn Before Selling Set Gear"],
-            section = "qol.vendor",
         },
         ["qol.way"] = {
             desc = L["Type /way and coordinates to pin a spot on the map."],

@@ -34,11 +34,13 @@ local ns = { L = {}, modules = {} }
 local env = setmetatable({
     CreateFrame = createFrame,
     GetTime = function() return 0 end,
+    wipe = function(t) for k in pairs(t) do t[k] = nil end return t end,
     LibStub = function() return { Embed = noop } end,
 }, { __index = _G })
 setfenv(assert(loadfile('Modules/PartyFrames.lua')), env)('FlareUI', ns)
 
-local owner = { IsVisible = function() return true end }
+local asked, visible = 0, true
+local owner = { IsVisible = function() asked = asked + 1 return visible end }
 local first, second = auraPiece(), auraPiece()
 local partyFrames = ns.PartyFrames
 partyFrames.DispelPulse(first, owner)
@@ -65,5 +67,23 @@ lockedPiece = nil
 local updatesBeforeUnlock = second.alphaUpdates
 tick()
 assert(second.alphaUpdates > updatesBeforeUnlock, 'the aura highlight must resume pulsing after it unlocks')
+
+-- the tile is looked up four times a second, once for all its pieces, and a hidden one stands still
+asked = 0
+for _ = 1, 20 do tick() end
+assert(asked >= 3 and asked <= 5, 'a second of beats looks the tile up about four times: ' .. asked)
+visible = false
+for _ = 1, 6 do tick() end
+local still = first.alphaUpdates
+for _ = 1, 6 do tick() end
+assert(first.alphaUpdates == still, 'nothing pulses on a tile that is not on screen')
+visible = true
+for _ = 1, 6 do tick() end
+assert(first.alphaUpdates > still)
+-- a piece that stops is dropped before the next beat
+partyFrames.DispelSteady(first)
+local steady, other = first.alphaUpdates, second.alphaUpdates
+tick()
+assert(first.alphaUpdates == steady and second.alphaUpdates > other)
 
 print('PASS: Dispel Highlight skips a locked aura region and resumes after it unlocks')

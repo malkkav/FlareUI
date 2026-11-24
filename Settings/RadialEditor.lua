@@ -190,13 +190,24 @@ end
 -- the guillemet marking a sub-radial, as bytes so the file stays ASCII
 local CHEVRON = "\194\187 "
 
+-- " (Rank 3)" after a spell's name: the rank it casts for this character (its best, unless the button
+-- is pinned). Not on a Catalog entry that stands for all its ranks.
+local function RankText(entry, info)
+    if entry.ranks or not entry.id then return "" end
+    local cast = info and info.attributes and tonumber(info.attributes.spell) or entry.id
+    local subtext = C_Spell.GetSpellSubtext(cast)
+    if type(subtext) ~= "string" or not subtext:find("%d") then return "" end
+    if entry.pinned then subtext = L["%s, kept"]:format(subtext) end
+    return " (" .. subtext .. ")"
+end
+
 local function EntryDisplay(entry)
     -- a party spell: the spell, then who it spreads over
     if entry and entry.kind == "partycast" then
         local info = RM():ResolveEntry(entry)
         local name = (info and info.name) or (entry.id and C_Spell.GetSpellName(entry.id))
         if name then
-            return name .. " |cff9d8462" .. CHEVRON .. L["party"] .. "|r", { texture = C_Spell.GetSpellTexture(entry.id) or FALLBACK_ICON }
+            return name .. RankText(entry, info) .. " |cff9d8462" .. CHEVRON .. L["party"] .. "|r", { texture = C_Spell.GetSpellTexture(entry.id) or FALLBACK_ICON }
         end
     end
     -- Quest Items keeps its own name and mark, with how many items it holds now
@@ -216,15 +227,7 @@ local function EntryDisplay(entry)
     if info then
         -- the editor names a spell's rank ("Frostbolt (Rank 3)"), so the ranks tell apart and search
         -- finds them; the radial itself keeps the short name
-        if entry.kind == "spell" and entry.id and info.name then
-            -- the rank it casts for this character (its best, unless the button is pinned)
-            local cast = info.attributes and tonumber(info.attributes.spell) or entry.id
-            local subtext = C_Spell.GetSpellSubtext(cast)
-            if type(subtext) == "string" and subtext:find("%d") then
-                if entry.pinned then subtext = L["%s, kept"]:format(subtext) end
-                return info.name .. " (" .. subtext .. ")", info.icon
-            end
-        end
+        if entry.kind == "spell" and info.name then return info.name .. RankText(entry, info), info.icon end
         return info.name, info.icon
     end
     -- an item not in the bags or a mount not owned (left out of the radial): its name, greyed
@@ -260,7 +263,7 @@ local function EntryTooltip(owner, entry, hint)
     ns.OwnGameTooltip(owner, "ANCHOR_RIGHT")
     local macroKind, macroID
     if entry.kind == "macro" and RM() and RM().MacroAction then macroKind, macroID = RM().MacroAction(entry) end
-    if entry.kind == "spell" and entry.id then
+    if (entry.kind == "spell" or entry.kind == "partycast") and entry.id then
         GameTooltip:SetSpellByID(entry.id)
         -- the rank in the top-right corner, as Classic's spell tooltips: Forever's
         -- leaves it out, and a long name's "(Rank 2)" is cut off in the catalog
@@ -406,13 +409,54 @@ local function ForEachBookSpell(callback)
     end
 end
 
+-- RANKS IN A DRAWER (11-24, dutra_; Malkkav's pick "arrow and drawer"): a spell with several ranks is one
+-- entry, its best rank, with ranks = every rank from the lowest up; the arrow on its icon opens them
+-- (RankDrawer). A controller can't reach the arrow, so it keeps every rank in the grid.
+local function RankNumber(entry)
+    local subtext = C_Spell.GetSpellSubtext(entry.id)
+    return type(subtext) == "string" and tonumber(subtext:match("%d+")) or nil
+end
+local function CollapseRanks(entries)
+    -- (a lower rank is named as it would be added)
+    local rm = RM()
+    if rm.MarkRank then
+        for _, entry in ipairs(entries) do rm.MarkRank(entry, true) end
+    end
+    if ns.IsGamepadUI() then return entries end
+    local byName, slots = {}, {}
+    for _, entry in ipairs(entries) do
+        local name, rank = C_Spell.GetSpellName(entry.id), RankNumber(entry)
+        local slot = name and rank and byName[name]
+        if slot and not slot.seen[rank] then
+            slot.seen[rank] = true
+            slot[#slot + 1] = { rank = rank, entry = entry }
+        else
+            slot = { { rank = rank, entry = entry }, seen = { [rank or 0] = true } }
+            if name and rank and not byName[name] then byName[name] = slot end
+            slots[#slots + 1] = slot
+        end
+    end
+    local out = {}
+    for _, slot in ipairs(slots) do
+        local entry = slot[1].entry
+        if #slot > 1 then
+            table.sort(slot, function(a, b) return a.rank < b.rank end)
+            local best = slot[#slot].entry
+            entry = { kind = best.kind, id = best.id, ranks = {} }
+            for i, item in ipairs(slot) do entry.ranks[i] = item.entry end
+        end
+        out[#out + 1] = entry
+    end
+    return out
+end
+
 AddCategory("spells", L["Spells"], function()
     local mine, pet = {}, {}
     ForEachBookSpell(function(spellID, isPet)
         local list = isPet and pet or mine
         list[#list + 1] = { kind = "spell", id = spellID }
     end)
-    return Grouped({ { L["Spells"], mine }, { L["Pet Spells"], pet } })
+    return Grouped({ { L["Spells"], CollapseRanks(mine) }, { L["Pet Spells"], CollapseRanks(pet) } })
 end, nil, L["No spells in your spellbook yet."])
 
 -- Party: your helpful spells, each spread over the group (a button per person, RadialMenu.lua
@@ -422,7 +466,7 @@ AddCategory("party", L["Party"], function()
     ForEachBookSpell(function(spellID)
         if C_Spell.IsSpellHelpful(spellID) then out[#out + 1] = { kind = "partycast", id = spellID } end
     end)
-    return out
+    return CollapseRanks(out)
 end, L["A button for you and each party member: aim at a person to cast on them."], L["No helpful spells to cast on others yet."])
 
 AddCategory("items", L["Items"], function()
@@ -639,8 +683,11 @@ local function InsertEntry(entry, atIndex)
         return
     end
     atIndex = atIndex or (#radial.buttons + 1)
+    -- a copy: the Catalog keeps its own entry, and the radial doesn't save the drawer's ranks
+    entry = CopyTable(entry)
+    entry.ranks = nil
     -- a spell below the best rank known stays on that rank (pinned); otherwise it follows
-    if RM().MarkRank then RM().MarkRank(entry) end
+    if RM().MarkRank then RM().MarkRank(entry, true) end
     table.insert(radial.buttons, atIndex, entry)
     selectedButton = atIndex
     Changed()
@@ -1570,6 +1617,144 @@ local function BuildDetails(host, width)
 end
 
 local BUTTONS_NUDGE = 6
+-- THE RANK DRAWER: every rank of a Catalog spell, its icon with the rank's number under it. Opens from the
+-- arrow on the spell's icon, under its row (over it near the bottom); a pick, a click elsewhere, scrolling
+-- or any refresh closes it.
+local RankDrawer = { PER_ROW = 6, W = 36, H = 44, RIM = 30, PAD = 8, ARROW = 14 }
+local CIRCLE = "Interface\\AddOns\\FlareUI\\Media\\Panel\\Circle.tga"
+
+function RankDrawer.Close()
+    local drawer = editor and editor.rankDrawer
+    if drawer then drawer:Hide() end
+end
+
+function RankDrawer.Button(drawer, i)
+    local b = CreateFrame("Button", nil, drawer)
+    b:SetSize(RankDrawer.W, RankDrawer.H)
+    b:SetPoint("TOPLEFT", RankDrawer.PAD + ((i - 1) % RankDrawer.PER_ROW) * RankDrawer.W,
+        -RankDrawer.PAD - math.floor((i - 1) / RankDrawer.PER_ROW) * RankDrawer.H)
+    b:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
+    ns.SettingsPanel.Rounded(b:GetHighlightTexture(), BRONZE[1], BRONZE[2], BRONZE[3], 0.18)
+    b.Icon = b:CreateTexture(nil, "ARTWORK")
+    b.Icon:SetPoint("CENTER", b, "TOP", 0, -2 - RankDrawer.RIM / 2)
+    b.Icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    MakeRound(b, RankDrawer.RIM)
+    b.Text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.Text:SetPoint("BOTTOM", 0, 1)
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnEnter", function(self) EntryTooltip(self, self.item, L["Click or drag to add it."]) end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnDragStart", function(self) StartDrag({ entry = self.item }) end)
+    b:SetScript("OnDragStop", FinishDrag)
+    b:SetScript("OnClick", function(self)
+        local entry = self.item
+        RankDrawer.Close()
+        InsertEntry(entry)
+    end)
+    return b
+end
+
+function RankDrawer.Build(host)
+    local drawer = CreateFrame("Frame", nil, host, "BackdropTemplate")
+    ns.SettingsPanel.Box(drawer, 0.94)
+    drawer:SetFrameLevel(host.browseList:GetFrameLevel() + 20)
+    drawer:EnableMouse(true)
+    drawer:Hide()
+    drawer.buttons = {}
+    drawer:SetScript("OnEvent", function(self)
+        -- (the arrow closes its own drawer)
+        local arrow = self.cell and self.cell.Arrow
+        if not (self:IsMouseOver() or (arrow and arrow:IsMouseOver())) then self:Hide() end
+    end)
+    drawer:SetScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        self.cell.Arrow.Mark:SetRotation(math.pi)
+    end)
+    drawer:SetScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        if self.cell then self.cell.Arrow.Mark:SetRotation(0) end
+        self.cell = nil
+        GameTooltip:Hide()
+        -- (closed by its page: the page's own hide takes the drag back)
+        self:Hide()
+    end)
+    host.rankDrawer = drawer
+    return drawer
+end
+
+function RankDrawer.Toggle(cell)
+    local drawer = editor.rankDrawer or RankDrawer.Build(editor)
+    local again = drawer.cell == cell and drawer:IsShown()
+    drawer:Hide()
+    local ranks = cell.item and cell.item.ranks
+    if again or not ranks then return end
+    for i, entry in ipairs(ranks) do
+        local b = drawer.buttons[i] or RankDrawer.Button(drawer, i)
+        drawer.buttons[i] = b
+        b.item = entry
+        local _, icon = EntryDisplay(entry)
+        ApplyIcon(b, icon)
+        b.Text:SetText(RankNumber(entry) or "")
+        b:Show()
+    end
+    for i = #ranks + 1, #drawer.buttons do drawer.buttons[i]:Hide() end
+    local list = editor.browseList
+    local w = math.min(#ranks, RankDrawer.PER_ROW) * RankDrawer.W + RankDrawer.PAD * 2
+    local h = math.ceil(#ranks / RankDrawer.PER_ROW) * RankDrawer.H + RankDrawer.PAD * 2
+    drawer:SetSize(w, h)
+    -- inside the grid: its right edge, and over the row when it would pass the grid's bottom
+    local place = (cell.dataIndex - 1) % 3 * cell:GetWidth()
+    local x = math.min(0, list:GetWidth() - place - w)
+    local row = math.floor((cell.dataIndex - 1) / 3) - list.offset
+    drawer:ClearAllPoints()
+    if (row + 1) * GRID_ROW_H + h > list:GetHeight() and row * GRID_ROW_H >= h then
+        drawer:SetPoint("BOTTOMLEFT", cell, "TOPLEFT", x, -1)
+    else
+        drawer:SetPoint("TOPLEFT", cell, "BOTTOMLEFT", x, 1)
+    end
+    drawer.cell = cell
+    drawer:Show()
+end
+
+-- the arrow: a small dark disc with a bronze rim on the icon's lower right, over the cell
+function RankDrawer.Arrow(cell)
+    local arrow = CreateFrame("Button", nil, cell)
+    arrow:SetSize(RankDrawer.ARROW, RankDrawer.ARROW)
+    arrow:SetPoint("CENTER", cell.Icon, "CENTER", 9, -8)
+    arrow:SetHitRectInsets(-3, -3, -3, -2)
+    local rim = arrow:CreateTexture(nil, "BACKGROUND")
+    rim:SetTexture(CIRCLE)
+    rim:SetAllPoints()
+    rim:SetVertexColor(BRONZE[1], BRONZE[2], BRONZE[3])
+    local disc = arrow:CreateTexture(nil, "BORDER")
+    disc:SetTexture(CIRCLE)
+    disc:SetPoint("TOPLEFT", 1, -1)
+    disc:SetPoint("BOTTOMRIGHT", -1, 1)
+    disc:SetVertexColor(0.07, 0.06, 0.05)
+    local mark = arrow:CreateTexture(nil, "ARTWORK")
+    mark:SetTexture("Interface\\AddOns\\FlareUI\\Media\\Panel\\Chevron.tga")
+    mark:SetSize(14, 14)
+    mark:SetPoint("CENTER")
+    mark:SetVertexColor(1, 0.82, 0)
+    arrow.Mark = mark
+    arrow:SetScript("OnEnter", function(self)
+        rim:SetVertexColor(1, 0.82, 0)
+        ns.OwnGameTooltip(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(L["All Ranks"], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    arrow:SetScript("OnLeave", function()
+        rim:SetVertexColor(BRONZE[1], BRONZE[2], BRONZE[3])
+        GameTooltip:Hide()
+    end)
+    arrow:SetScript("OnClick", function()
+        ns.ButtonSound()
+        RankDrawer.Toggle(cell)
+    end)
+    arrow:Hide()
+    cell.Arrow = arrow
+end
+
 local function BuildLower(host, height, width)
     local x, top = DETAIL_X, LOWER_TOP
     -- left to right: the Catalog, the radial's buttons (the preview is in the right column)
@@ -1765,6 +1950,7 @@ local function BuildLower(host, height, width)
             cell.Icon:ClearAllPoints()
             cell.Icon:SetPoint("CENTER", cell, "LEFT", 4 + GRID_RIM / 2, 0)
             cell.Text:SetPoint("LEFT", cell, "LEFT", 4 + GRID_RIM + 6, 0)
+            RankDrawer.Arrow(cell)
             cell:RegisterForDrag("LeftButton")
             cell:SetScript("OnEnter", function(self)
                 if not self.item or self.item.header then return end
@@ -1786,6 +1972,7 @@ local function BuildLower(host, height, width)
             local header = entry.header ~= nil
             cell.Icon:SetShown(not header)
             if cell.Rim then cell.Rim:SetShown(not header) end
+            cell.Arrow:SetShown(entry.ranks ~= nil)
             cell:EnableMouse(not header)
             cell.Text:ClearAllPoints()
             if header then
@@ -1804,6 +1991,12 @@ local function BuildLower(host, height, width)
         end)
     browseList:SetPoint("TOPLEFT", catX, -top - 26)
     host.browseList = browseList
+    -- the cells get other spells (scrolling, another category): the drawer goes with them
+    local update = browseList.Update
+    function browseList:Update()
+        RankDrawer.Close()
+        update(self)
+    end
 
     local search = CreateFrame("EditBox", nil, host, "SearchBoxTemplate")
     -- level with the settings search in the left column
@@ -1845,6 +2038,7 @@ local function BuildEmbedded(host, column)
         dirty, snapshot = false, nil
         if popup then popup:Hide() end
         if RM() then RM():HidePreview() end
+        RankDrawer.Close()
         StopDrag()
     end)
     browseCache = {}
@@ -1877,7 +2071,10 @@ function RefreshBrowse()
     if filter ~= "" then
         local shown = {}
         for _, entry in ipairs(entries) do
-            if not entry.header and EntryDisplay(entry):lower():find(filter, 1, true) then shown[#shown + 1] = entry end
+            -- (a search finds every rank: "rank 3")
+            for _, found in ipairs(entry.ranks or { entry }) do
+                if not found.header and EntryDisplay(found):lower():find(filter, 1, true) then shown[#shown + 1] = found end
+            end
         end
         entries = shown
     end

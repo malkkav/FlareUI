@@ -596,7 +596,7 @@ local function EncodeSlots(all)
 end
 Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health",
     -- (11-22) Full Name too: 7.0.1 drew it but left it out of this list
-    choices = { "none", { divider = true }, "firstname", "fullname", "percent", "value", "max", "lost" },
+    choices = { "none", { divider = true }, "firstname", "lastname", "fullname", "percent", "value", "max", "lost" },
     slots = { { key = "left", text = L["Left"] }, { key = "middle", text = L["Centre"] }, { key = "right", text = L["Right"] } },
     slotTicked = function(slot, value)
         local set = TextSlotsNow()[slot]
@@ -616,7 +616,7 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         local list, n = ns.BarText.Ordered(all[slot])
         local set = {}
         if ns.BarText.NAMES[value] then
-            -- one name at a time: First Name and Full Name replace each other and the numbers
+            -- one name at a time: First, Full and Last Name replace each other and the numbers
             if not all[slot][value] then set = { [value] = 1 } end
         elseif value ~= "none" then
             local k = 0
@@ -653,9 +653,10 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
 Row{ key = "np.nameClassColor", path = "nameClassColor", tab = "style", section = "np.health", half = true }
 Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health", half = true }
 -- NAMES ABOVE PLATE (11-22, Malkkav): as the unit frames' Name Above Frames, per type (Nameplates.lua
--- NP.LayoutNameAbove); saved as "<slot>:<firstname|fullname>", nothing for Off
+-- NP.LayoutNameAbove); saved as "<slot>:<firstname|fullname|lastname>", nothing for Off
 Row{ key = "np.nameAbove", kind = "choice", tab = "style", section = "np.health",
-    choices = { "off", "left:firstname", "left:fullname", "middle:firstname", "middle:fullname", "right:firstname", "right:fullname" },
+    choices = { "off", "left:firstname", "left:lastname", "left:fullname", "middle:firstname", "middle:lastname", "middle:fullname",
+                "right:firstname", "right:lastname", "right:fullname" },
     get = function() local np = NP() return np and np.NameAbovePick(np.TypeDB(PIN.kind)) and TV("nameAbove") or "off" end,
     set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, "nameAbove", v ~= "off" and v or nil) end end,
     resetValue = function() return "off" end,
@@ -671,9 +672,20 @@ Row{ key = "np.nameOnlyMode", tab = "style", section = "np.nameOnlySection", lea
     apply = function() Refresh() if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end end }
 Row{ key = "np.nameOnlySize", kind = "range", path = "nameOnlySize", choices = Steps(50, 200, 10, function(v) return v .. "%" end),
     tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
--- Show Full Name (11-22, Malkkav; per type, on): off, a Name Only plate shows the first name only
+-- Show Name (11-22, Malkkav; per type): a Name Only plate's player names, First, Full or Last (11-24; saved
+-- false, true or "lastname": it was the Show Full Name switch)
 -- (11-23, #164 Nico-Mayer) players only: NPCs have one name, so it would do nothing there
-Row{ key = "np.nameOnlyFull", path = "nameOnlyFull", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
+Row{ key = "np.nameOnlyFull", kind = "choice", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
+    choices = { "firstname", "lastname", "fullname" },
+    get = function()
+        local v = TV("nameOnlyFull")
+        return v == "lastname" and "lastname" or (v == false and "firstname") or "fullname"
+    end,
+    set = function(v)
+        local np = NP()
+        if np then np.TypeSet(PIN.kind, "nameOnlyFull", ns.BarText.FullOf(v)) end
+    end,
+    resetValue = function() return "fullname" end,
     hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
 -- (11-23, Malkkav / WildDaisy2) Colour Guild Members (Friendly Player only, off) and Show Titles (every
 -- type; on for NPC types, off for players and Minor: Nameplates.lua NP.TitlesOn)

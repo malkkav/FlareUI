@@ -306,8 +306,10 @@ end
 
 -- A spell put on a radial at a lower rank than the best one known was picked on purpose: pinned to
 -- that rank. Run when a button is added, and once for buttons saved before ranks were followed.
-function RM.MarkRank(entry)
-    if not (entry and entry.kind == "spell" and entry.id) then return end
+-- A party spell only when it is added (added): before the Catalog's rank drawer (11-24) its ranks
+-- looked all alike, so the one saved wasn't picked on purpose.
+function RM.MarkRank(entry, added)
+    if not (entry and entry.id and (entry.kind == "spell" or (added and entry.kind == "partycast"))) then return end
     local name = C_Spell.GetSpellName(entry.id)
     local best = name and RM.BestRank(name)
     -- the book isn't read yet: asked again later
@@ -892,6 +894,12 @@ ACTIONS.questitems = function(entry)
     return first.name, first.icon, first.attributes, { children = children, childIndex = 1 }
 end
 
+-- the unit of a party spell while alone: the friendly target (a dead one too, for a resurrection), or
+-- yourself. Asked as the button is used (RM.FIRE_SNIPPET) and for what it shows.
+RM.HELP = "friendly"
+RM.HELP_UNIT = "[@target,help] target; player"
+function RM.HelpUnit() return SecureCmdOptionParse(RM.HELP_UNIT) or "player" end
+
 -- Party spell: one helpful spell spread over the group, a button for you and each party member
 -- (party1-4; in a raid, your own group), so you aim at a person and cast on them without changing
 -- your target. Units, not names, sit in the secure attributes; names are only drawn. The buttons
@@ -912,8 +920,12 @@ ACTIONS.partycast = function(entry)
         end
     end
     if #spread == 0 then return nil end
-    -- alone there is no one to aim at: the spell's own name, not yours
-    if #spread == 1 then spread[1].name = name end
+    -- alone there is no one to aim at: the spell's own name, not yours, and it goes to your friendly target
+    -- first (11-24, dutra_). Not in a group: your own button is you, whoever is targeted.
+    if #spread == 1 then
+        spread[1].name = name
+        spread[1].attributes.unit = RM.HELP
+    end
     local first = spread[1]
     return name, first.icon, first.attributes, { spread = spread }
 end
@@ -1158,6 +1170,28 @@ local function SetButtonSelected(button, selected)
     button.Label:SetShown((mode == "always" or (selected and mode == "hover")) and (button.Label:GetText() or "") ~= "")
 end
 
+-- A party spell alone: the unit it goes to now, and its name (class coloured) on the button when that is
+-- your target
+local function HelpUnit(button, info)
+    local unit = RM.HelpUnit()
+    local text = info.name
+    if unit ~= "player" then
+        local who = UnitName(unit)
+        if canaccessvalue(who) and who then
+            text = who
+            local _, class = UnitClass(unit)
+            local isPlayer = UnitIsPlayer(unit)
+            local color = canaccessvalue(isPlayer) and isPlayer and canaccessvalue(class) and class and C_ClassColor.GetClassColor(class)
+            if color then text = color:WrapTextInColorCode(who) end
+        end
+    end
+    if button.helpText ~= text then
+        button.helpText = text
+        SetLabelText(button, text)
+    end
+    return unit
+end
+
 -- Cooldown swipe and usable tint for what a button fires now. Spell cooldowns go through a duration
 -- object (works when secret, GCD left out); anything unreadable looks usable.
 local function Readable(value)
@@ -1170,6 +1204,8 @@ local function ApplyButtonState(button, info)
     local attributes, entry = action.attributes, action.entry
     local cooldown = button.Cooldown
     local usable, noMana = true, false
+    local unit = attributes and attributes.unit
+    if unit == RM.HELP then unit = HelpUnit(button, info) end
 
     -- a macro shows what it would cast now (RM.MacroAction), with that one's icon
     local kind, id
@@ -1213,23 +1249,23 @@ local function ApplyButtonState(button, info)
     local outOfRange = false
     if kind == "spell" then
         -- a party spell measures to its own person
-        local inRange = C_Spell.IsSpellInRange(id, (attributes and attributes.unit) or "target")
+        local inRange = C_Spell.IsSpellInRange(id, unit or "target")
         outOfRange = Readable(inRange) and inRange == false
     elseif kind == "item" and not InCombatLockdown() and C_Item.IsItemInRange then
         local ok, inRange = pcall(C_Item.IsItemInRange, id, "target")
         outOfRange = ok and Readable(inRange) and inRange == false
     end
 
-    -- the count: a stackable item's, or a spell's charges (shown as it comes, never compared)
-    local count
+    -- the count: a stackable item's, or the game's own number for a spell as on the action bars (uses left
+    -- from its reagents, or charges; empty for other spells). Shown as it comes: it can be secret.
+    local count, hasCount
     if kind == "item" then
         local stack = C_Item.GetItemMaxStackSizeByID and C_Item.GetItemMaxStackSizeByID(id)
-        if Readable(stack) and stack and stack > 1 then count = C_Item.GetItemCount(id) end
-    elseif kind == "spell" and C_Spell.GetSpellCharges then
-        local charges = C_Spell.GetSpellCharges(id)
-        if charges and Readable(charges.maxCharges) and charges.maxCharges > 1 then count = charges.currentCharges end
+        if Readable(stack) and stack and stack > 1 then count, hasCount = C_Item.GetItemCount(id), true end
+    elseif kind == "spell" and C_Spell.GetSpellDisplayCount then
+        count, hasCount = C_Spell.GetSpellDisplayCount(id), true
     end
-    if count then
+    if hasCount then
         button.Count:SetText(count)
         button.Count:Show()
     else
@@ -1244,6 +1280,7 @@ local function ApplyButtonState(button, info)
     button.Icon:SetVertexColor(t[1], t[2], t[3])
 end
 
+RM.ApplyButtonState = ApplyButtonState
 local function RefreshButtonStates()
     for i, info in ipairs(resolved) do ApplyButtonState(buttons[i], info) end
 end
@@ -1361,6 +1398,7 @@ function RM.PlaceRadialButtons(frame, list, entries)
                 ApplyButtonShape(button)
                 SetButtonIcon(button, entry.icon)
                 SetLabelText(button, entry.name)
+                button.helpText = nil
                 -- one button alone has no neighbour: the side width
                 PlaceLabel(button, angle, count > 1 and 2 * radius * math_sin(interval / 2) or PING.SIDE_WIDTH)
                 SetPageDots(button, entry.children and #entry.children, entry.childIndex or 1)
@@ -2050,6 +2088,16 @@ local OPEN_PAD_SNIPPET = [[
     self:CallMethod("OnSecurePadOpen", id)
 ]]
 
+-- Part of every snippet that uses a button: its attributes go onto self, prefix the button's. A party spell
+-- alone (RM.HELP) takes its unit now, so it works in a fight too.
+RM.FIRE_SNIPPET = [[
+    for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
+        local value = control:GetAttribute(prefix .. key)
+        if key == "unit" and value == "]] .. RM.HELP .. [[" then value = SecureCmdOptionParse("]] .. RM.HELP_UNIT .. [[") end
+        self:SetAttribute(key, value)
+    end
+]]
+
 -- self is the pad button, control the header. PadL3 / PadR3 (a stick press) open the radial of the
 -- triggers held, or close an open one; MiddleButton (R3, while open) fires the aimed button;
 -- RightButton (B, Escape) closes.
@@ -2084,9 +2132,7 @@ local PAD_SNIPPET = [[
         if not prefix then return false end
         LAST[ACTIVE] = prefix
         control:CallMethod("OnSecureLast", ACTIVE, prefix)
-        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
-            self:SetAttribute(key, control:GetAttribute(prefix .. key))
-        end
+]] .. RM.FIRE_SNIPPET .. [[
         return nil, "fired"
     end
     -- B or Escape
@@ -2118,9 +2164,7 @@ local PAD_SNIPPET = [[
             control:RunAttribute("flare-closepad")
             if not prefix then return false end
             control:CallMethod("OnSecureLast", ACTIVE, prefix)
-            for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
-                self:SetAttribute(key, control:GetAttribute(prefix .. key))
-            end
+]] .. RM.FIRE_SNIPPET .. [[
             return nil, "fired"
         end
         control:RunAttribute("flare-closepad", true)
@@ -2171,9 +2215,7 @@ local AIM_SNIPPET = ([[
     if not prefix then return false end
     LAST[ACTIVE] = prefix
     control:CallMethod("OnSecureLast", ACTIVE, prefix)
-    for key in gmatch(control:GetAttribute("flare-keys"), "%%S+") do
-        self:SetAttribute(key, control:GetAttribute(prefix .. key))
-    end
+]] .. (RM.FIRE_SNIPPET:gsub("%%", "%%%%")) .. [[
     return nil, "fired"
 ]]):format(PAD_AIM_LEN, PAD_DEAD_LEN, RM.RELEASE_IN, RM.RELEASE_OUT)
 
@@ -2239,9 +2281,7 @@ local CLICK_SNIPPET = [[
     if FIRE then
         local prefix = FIRE
         FIRE = nil
-        for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
-            self:SetAttribute(key, control:GetAttribute(prefix .. key))
-        end
+]] .. RM.FIRE_SNIPPET .. [[
         return nil, "fired"
     end
     -- Toggle's release after opening: the radial stays up for its click
@@ -2262,9 +2302,7 @@ local CLICK_SNIPPET = [[
     MODE = nil
     OPENX, OPENY = nil, nil
     if not prefix then return false end
-    for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
-        self:SetAttribute(key, control:GetAttribute(prefix .. key))
-    end
+]] .. RM.FIRE_SNIPPET .. [[
     return nil, "fired"
 ]]
 
@@ -2323,9 +2361,7 @@ local CATCHER_SNIPPET = [[
     local prefix = control:RunAttribute("flare-aimed")
     control:RunAttribute("flare-closeclick")
     if not prefix then return false end
-    for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
-        self:SetAttribute(key, control:GetAttribute(prefix .. key))
-    end
+]] .. RM.FIRE_SNIPPET .. [[
     return nil, "fired"
 ]]
 

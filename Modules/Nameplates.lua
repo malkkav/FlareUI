@@ -496,25 +496,39 @@ function NP.PulseTick(self)
     self:SetAlpha(C.PULSE_LOW + (1 - C.PULSE_LOW) * wave)
 end
 -- (11-22, perf pass) one shared clock for every pulse: the wave is worked out once a frame and set
--- on each playing frame that shows (it was one OnUpdate per frame); the clock stops with none playing
-NP.Pulse = { set = {}, driver = CreateFrame("Frame") }
+-- on each playing frame that shows (it was one OnUpdate per frame); the clock stops with none playing.
+-- (11-24, Perfy) every plate of the pool keeps its important glow playing from its layout, so the clock
+-- rarely stops: which frames show is looked up five times a second, not every frame (a quarter of all
+-- FlareUI's time before, with no plate on screen)
+NP.Pulse = { set = {}, live = {}, wait = 0, EVERY = 0.2, driver = CreateFrame("Frame") }
 NP.Pulse.driver:Hide()
-NP.Pulse.driver:SetScript("OnUpdate", function()
+NP.Pulse.driver:SetScript("OnUpdate", function(_, elapsed)
+    local P = NP.Pulse
+    local live = P.live
+    P.wait = P.wait - (elapsed or 0)
+    if P.wait <= 0 then
+        P.wait = P.EVERY
+        wipe(live)
+        for f in pairs(P.set) do
+            if f:IsVisible() then live[#live + 1] = f end
+        end
+    end
+    if not live[1] then return end
     local wave = 0.5 + 0.5 * math.cos((GetTime() % C.PULSE_PERIOD) / C.PULSE_PERIOD * 2 * math.pi)
     local a = C.PULSE_LOW + (1 - C.PULSE_LOW) * wave
-    for f in pairs(NP.Pulse.set) do
-        if f:IsVisible() then f:SetAlpha(a) end
-    end
+    for i = 1, #live do live[i]:SetAlpha(a) end
 end)
 function NP.ClockPulse(frame)
     local pulse = {}
     function pulse:Play()
         NP.Pulse.set[frame] = true
+        NP.Pulse.wait = 0
         NP.Pulse.driver:Show()
         self.on = true
     end
     function pulse:Stop()
         NP.Pulse.set[frame] = nil
+        NP.Pulse.wait = 0   -- (looked up again before the next alpha)
         frame:SetAlpha(1)
         self.on = false
         if not next(NP.Pulse.set) then NP.Pulse.driver:Hide() end
@@ -1331,6 +1345,59 @@ local function AuraLanes(db)
     return lanes
 end
 
+-- WHOSE AURAS (11-24, Perfy: a new plate cost about a millisecond, so a big pull was one long frame). Giving a
+-- row (an aura container) its unit makes the game read that unit's auras. So only rows the type uses get one,
+-- and when several plates arrive at once their rows follow over the next frames, AURAS_A_FRAME plates each. A
+-- plate is asked for its own unit then, so one let go meanwhile is skipped; a row still on an earlier unit is
+-- cleared before the plate shows.
+C.AURAS_A_FRAME = 2
+NP.AuraQueue = { list = {}, driver = CreateFrame("Frame") }
+NP.AuraQueue.driver:Hide()
+NP.AuraQueue.driver:SetScript("OnUpdate", function(self)
+    local list = NP.AuraQueue.list
+    for _ = 1, C.AURAS_A_FRAME do
+        local p = table.remove(list, 1)
+        if not p then break end
+        p.aurasQueued = nil
+        NP.SetAuraUnits(p)
+    end
+    if not list[1] then self:Hide() end
+end)
+-- every row of a plate on the plate's unit now, or on none
+function NP.SetAuraUnits(p)
+    if not p.auras then return end
+    local unit = not (p.hiddenPlate or p.unitHidden) and p.unit or nil
+    for _, entry in pairs(p.auras) do
+        local want = entry.used and unit or "none"
+        if entry.unit ~= want then
+            entry.unit = want
+            pcall(entry.container.SetUnit, entry.container, want)
+        end
+    end
+end
+-- a plate just claimed: its rows now, or after the plates before it
+function NP.QueueAuras(p)
+    if not p.auras or p.aurasQueued then return end
+    p.aurasQueued = true
+    local queue = NP.AuraQueue
+    queue.list[#queue.list + 1] = p
+    queue.driver:Show()
+end
+function NP.ClearAuras(p)
+    if not p.auras then return end
+    if p.aurasQueued then
+        p.aurasQueued = nil
+        local list = NP.AuraQueue.list
+        for i = #list, 1, -1 do if list[i] == p then table.remove(list, i) end end
+    end
+    for _, entry in pairs(p.auras) do
+        if entry.unit ~= "none" then
+            entry.unit = "none"
+            pcall(entry.container.SetUnit, entry.container, "none")
+        end
+    end
+end
+
 local function LayoutAuras(p, db)
     if not p.auras then return end
     local lanes = AuraLanes(db)
@@ -1368,6 +1435,7 @@ local function LayoutAuras(p, db)
             end
         end
         ns.AuraGroups.Finish(container, entry)
+        entry.used = #list > 0
         -- above the plate, as the unit frames: buffs from the left, debuffs from the right; one alone
         -- centred, as Blizzard's (the container takes its icons' size, so its middle is theirs)
         local row = NP.AuraRowSide(db, place)
@@ -1590,7 +1658,7 @@ function NP.Layout(p)
     p.nameSlot, p.nameFull = nil, false
     for _, slot in ipairs(BT.SLOTS) do
         local pick = BT.NameOf(p.slots[slot])
-        if pick then p.nameSlot, p.nameFull = slot, pick == "fullname" break end
+        if pick then p.nameSlot, p.nameFull = slot, BT.FullOf(pick) break end
     end
     local POINT = { left = "LEFT", middle = "CENTER", right = "RIGHT" }
     local X = { left = 3, middle = 0, right = -3 }
@@ -1722,8 +1790,8 @@ function NP.Layout(p)
         p.level:Hide()
         p.levelShown, p.levelAnchor = false, nil
         p.nameSlot = p.nameSlot or "middle"
-        -- Show Full Name (11-22, Malkkav; per type, on): a player's surname too, or the first name only
-        p.nameFull = db.nameOnlyFull ~= false
+        -- Show Name (11-22, Malkkav; per type): a player's full name (true), first (false) or last ("lastname")
+        p.nameFull = db.nameOnlyFull == "lastname" and "lastname" or db.nameOnlyFull ~= false
         p.name:ClearAllPoints()
         p.name:SetPoint("CENTER", p.box, "CENTER", 0, 0)
         -- its own font (11-23, Malkkav), and Name Only Size (11-20): this type's name alone, scaled
@@ -1753,6 +1821,8 @@ function NP.Layout(p)
     NP.PlaceSides(p)
     p.layKind = db.kind
     p.laid = true
+    -- (a held plate laid out again: a row just switched on or off)
+    if p.unit and not p.sample and not p.aurasQueued then NP.SetAuraUnits(p) end
 end
 
 --------------------------------------------------
@@ -1970,22 +2040,19 @@ function NP.UpdateThreatText(p, db)
         else
             -- (11-21) the numbers are read whenever the game hands them over; before, the text gave up
             -- whenever ShouldUnitThreatStateBeSecret said yes, so it never showed in a fight. A secret
-            -- percent goes into the text unread (C_StringUtil rounds it, SetFormattedText draws it),
-            -- in white: its colour would need comparing it.
-            local ok, tanking, detailed, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
-            if ok and canaccessallvalues(tanking, detailed, scaled) then
-                display, status = scaled, detailed
-                if tanking then
-                    local lead = UnitThreatPercentageOfLead("player", unit)
-                    if canaccessvalue(lead) and lead then display = lead end
-                end
-            elseif ok and not canaccessvalue(scaled) and C_StringUtil and C_StringUtil.RoundToNearestString then
-                local okR, text = pcall(C_StringUtil.RoundToNearestString, scaled)
-                if okR and pcall(fs.SetFormattedText, fs, "%s%%", text) then
+            -- percent goes into the text unread (ns.ThreatPercent, ns.ThreatPercentText).
+            local secret
+            display, status, secret = ns.ThreatPercent(unit)
+            if secret then
+                local text = ns.ThreatPercentText(display)
+                if not (text and pcall(fs.SetFormattedText, fs, "%s%%", text)) then Place(false) return end
+                if status and status >= 1 and GetThreatStatusColor then
+                    fs:SetTextColor(GetThreatStatusColor(status))
+                else
                     fs:SetTextColor(1, 1, 1)
-                    Place(true)
-                    return
                 end
+                Place(true)
+                return
             end
         end
     end
@@ -2121,14 +2188,14 @@ function NP.UpdateHeals(p, mask)
 end
 
 -- NAMES ABOVE PLATE (11-22, Malkkav; per type): the name above the plate, as the unit frames' Name
--- Above Frames: Off, or Left / Centre / Right with First Name or Full Name (nameAbove =
--- "<slot>:<firstname|fullname>"). Debuffs and buffs above the plate move up by its height
+-- Above Frames: Off, or Left / Centre / Right with First, Full or Last Name (nameAbove =
+-- "<slot>:<firstname|fullname|lastname>"). Debuffs and buffs above the plate move up by its height
 -- (p.nameAboveLift). Never on a Name Only or hidden plate: the name is the plate there.
 function NP.NameAbovePick(db)
     local v = db.nameAbove
     if type(v) ~= "string" then return nil end
     local slot, kind = v:match("^(%a+):(%a+)$")
-    if (slot == "left" or slot == "middle" or slot == "right") and (kind == "firstname" or kind == "fullname") then
+    if (slot == "left" or slot == "middle" or slot == "right") and BT.NAMES[kind] then
         return slot, kind
     end
 end
@@ -2163,7 +2230,7 @@ function NP.UpdateNameAbove(p)
     if not (fs and p.aboveKind and fs:IsShown()) then return end
     if p.unit and UnitExists(p.unit) then
         -- (11-23, Tride) Level: Follow Name goes in front of this name too
-        local name = ns.UnitDisplayName(p.unit, nil, p.aboveKind == "fullname")
+        local name = ns.UnitDisplayName(p.unit, nil, BT.FullOf(p.aboveKind))
         local prefix = p.levelFollow and NP.LevelPrefix(p.unit)
         if prefix then fs:SetFormattedText("%s%s", prefix, name) else fs:SetText(name) end
     else
@@ -2186,7 +2253,7 @@ function NP.UpdateBarName(p)
     -- the first name, or the surname too when Bar Text picks Full Name; Follow Name puts the level in
     -- front, in its colour
     if p.nameSlot then
-        local name = ns.UnitDisplayName(unit, nil, p.nameFull and true or false)
+        local name = ns.UnitDisplayName(unit, nil, p.nameFull or false)
         local prefix = p.levelFollow and NP.LevelPrefix(unit)
         if prefix then p.name:SetFormattedText("%s%s", prefix, name) else p.name:SetText(name) end
     end
@@ -3066,7 +3133,10 @@ local function Quiet(p, frame, list)
     for _, event in ipairs(list) do
         local ok, registered, unit1, unit2 = pcall(frame.IsEventRegistered, frame, event)
         if ok and registered then
-            p.quieted[#p.quieted + 1] = { frame, event, unit1, unit2 }
+            -- (the records are used again: a claim made some twenty new tables)
+            local rec = table.remove(p.quietSpare) or {}
+            rec[1], rec[2], rec[3], rec[4] = frame, event, unit1, unit2
+            p.quieted[#p.quieted + 1] = rec
             pcall(frame.UnregisterEvent, frame, event)
         end
     end
@@ -3078,6 +3148,8 @@ local function Unquiet(p, live)
             if unit1 then pcall(frame.RegisterUnitEvent, frame, event, unit1, unit2)
             else pcall(frame.RegisterEvent, frame, event) end
         end
+        rec[1], rec[2], rec[3], rec[4] = nil, nil, nil, nil
+        p.quietSpare[#p.quietSpare + 1] = rec
         p.quieted[i] = nil
     end
 end
@@ -3098,7 +3170,7 @@ local function HideBlizzard(p, unitFrame)
         hooksecurefunc(unitFrame, "SetAlpha", KeepHidden)
     end
     KeepHidden(unitFrame)
-    p.quieted = p.quieted or {}
+    p.quieted, p.quietSpare = p.quieted or {}, p.quietSpare or {}
     Quiet(p, unitFrame, C.QUIET.frame)
     Quiet(p, unitFrame.CastBarsContainer and unitFrame.CastBarsContainer.castBar, C.QUIET.cast)
     p.moved = p.moved or {}
@@ -3280,7 +3352,12 @@ function NP.Claim(unit)
     for i = #spare, 1, -1 do
         if spare[i].layKind == look and spare[i].layFull == full then p = table.remove(spare, i) break end
     end
-    p = p or table.remove(spare)
+    -- (else the one let go longest ago: the last ones are the types in use, and a new layout costs the most)
+    if not p then
+        local at = 1
+        for i = #spare, 1, -1 do if spare[i].layKind == look then at = i break end end
+        p = table.remove(spare, at)
+    end
     if not p then stats.given = stats.given + 1 return end
     p.kind, p.tdb = kind, NP.TypeDB(look, true)
     p.unitHidden = NP.UnitHidden(unit, kind)
@@ -3316,9 +3393,7 @@ function NP.Claim(unit)
         if C_NamePlateManager and C_NamePlateManager.SetNamePlateSimplified then
             pcall(C_NamePlateManager.SetNamePlateSimplified, unit, false)
         end
-        if p.auras then
-            for _, entry in pairs(p.auras) do pcall(entry.container.SetUnit, entry.container, unit) end
-        end
+        NP.QueueAuras(p)
         RegisterUnit(p, unit)
         p.targetShown = nil
         p.root:SetScale(1)
@@ -3354,9 +3429,7 @@ function Release(p)
     queue.plates[p], queue.processing[p] = nil, nil
     NP.ResetPendingCast(p)
     if p.events then p.events:UnregisterAllEvents() end
-    if p.auras then
-        for _, entry in pairs(p.auras) do pcall(entry.container.SetUnit, entry.container, "none") end
-    end
+    NP.ClearAuras(p)
     if p.cast then
         if UF and UF.EndCastFlash then UF.EndCastFlash(p.cast) end
         if UF and UF.SetDamageTrail then UF.SetDamageTrail(p.trail, nil, false, false) end
@@ -3844,11 +3917,11 @@ function NP.DrawSample(f, kind)
         local _, class = UnitClass("player")
         local cc = class and C_ClassColor.GetClassColor(class)
         -- (Full Name in Bar Text, or Show Full Name on a Name Only plate: your surname too)
-        p.name:SetText(ns.UnitDisplayName("player", nil, p.nameFull and true or false))
+        p.name:SetText(ns.UnitDisplayName("player", nil, p.nameFull or false))
         -- (as the real plates: the class colour only on a Name Only plate)
         if cc and p.nameOnly then p.name:SetTextColor(cc:GetRGB()) end
     end
-    p.sampleName = (db.kind == "friendlyPlayer") and ns.UnitDisplayName("player", nil, p.aboveKind == "fullname") or L["Forest Spider"]
+    p.sampleName = (db.kind == "friendlyPlayer") and ns.UnitDisplayName("player", nil, BT.FullOf(p.aboveKind)) or L["Forest Spider"]
     NP.UpdateNameAbove(p)
     local questOn = NP.QuestOn(true) and (st.quest or type(kind) ~= "table")
     local questIcon, questProgress = NP.QuestParts(p)
@@ -4436,8 +4509,12 @@ end
 
 -- the pool, all at once: aura containers made after login never show
 local function BuildPool()
-    for _ = 1, C.POOL do
+    -- (11-24) laid out for the types as they usually come, so the first ones need no layout as they appear
+    local share = { "enemyNpc", "friendlyNpc", "enemyNpc", "friendlyPlayer", "enemyNpc", "minor", "enemyNpc", "enemyPlayer" }
+    for i = 1, C.POOL do
         local p = NP.Build(hidden, false)
+        p.kind = share[(i - 1) % #share + 1]
+        p.tdb = NP.TypeDB(p.kind, true)
         local ok, err = pcall(NP.Layout, p)
         if not ok then ns.LogError("Nameplates Layout", err) end
         pool[#pool + 1] = p

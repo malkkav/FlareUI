@@ -337,6 +337,24 @@ do
     assert(chat.BoxFocused(box))
     env.canaccessvalue, env.ChatFrameUtil = access, util
 end
+-- typing, from the frame with the keyboard: no window is asked unless something has it
+do
+    local focus, util, has = env.GetCurrentKeyBoardFocus, env.ChatFrameUtil, general.editBox.HasFocus
+    local asked, now, active = 0, nil, nil
+    env.GetCurrentKeyBoardFocus = function() return now end
+    env.ChatFrameUtil = { GetActiveWindow = function() return active end }
+    general.editBox.HasFocus = function() asked = asked + 1 return now == general.editBox end
+    assert(not chat.Typing() and asked == 0, "nothing has the keyboard")
+    now = general.editBox
+    assert(chat.Typing() and asked == 1)
+    now = {}
+    assert(not chat.Typing(), "another addon's box")
+    now, active = nil, { HasFocus = function() return true end }
+    assert(chat.Typing(), "Blizzard's active box, when the keyboard's frame is hidden")
+    env.GetCurrentKeyBoardFocus, active = nil, nil
+    assert(not chat.Typing(), "a client without it asks every window")
+    env.GetCurrentKeyBoardFocus, env.ChatFrameUtil, general.editBox.HasFocus = focus, util, has
+end
 -- a whisper wakes the chat for a tab that isn't on screen too; other lines only for a shown window
 do
     local woken = {}

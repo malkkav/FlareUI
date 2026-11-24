@@ -132,7 +132,8 @@ assert(not row:IsShown(), "another nameplate addon")
 -- SMOOTH ANIMATED BARS: its own Nameplates switches decide, its API takes the bars
 do
     local S = NP.Sab
-    local bars, on, declined, told = {}, true, false, {}
+    local bars, on, declined, told, themed, adds = {}, true, false, {}, {}, 0
+    env.tContains = env.tContains or function(list, value) for _, v in ipairs(list) do if v == value then return true end end return false end
     ns.SAB = { owned = {}, MIN_HEIGHT = 6, TrailChanged = function(trail, owned) told[trail] = owned end }
     local looked = 0
     ns.UnitFrames = ns.UnitFrames or {}
@@ -162,7 +163,7 @@ do
         AddBar = function(bar, token, kind, options)
             assert(not token:find("^nameplate") and kind == "health" and options.name == "FlareUI")
             if declined then return false end
-            bars[bar] = token
+            bars[bar], themed[bar], adds = token, options.theme, adds + 1
             return true
         end,
         RemoveBar = function(bar) bars[bar] = nil return true end,
@@ -212,6 +213,59 @@ do
     S.ApplyAll()
     assert(next(bars) == nil)
     root.global.externalColors = nil
+    -- its colours (11-24, linowena): a theme picked for its nameplates; anything else keeps ours
+    do
+        local g = root.global
+        g.plateHealthColor, g.plateFriendlyColor, g.targetHealthColor, g.healthColor = "same", "game", "same", "ocean"
+        S.ApplyAll()
+        assert(bars[enemy.health] and not themed[enemy.health], "Same as Target: ours")
+        env.SmoothAnimatedBars.GetThemes = nil
+        g.plateHealthColor = "ember"
+        S.ApplyAll()
+        assert(not themed[enemy.health], "its theme list can't be read: ours")
+        env.SmoothAnimatedBars.GetThemes = function() return { "class", "ocean", "ember" } end
+        S.ApplyAll()
+        assert(themed[enemy.health] == "ember" and not themed[friend.health] and bars[friend.health])
+        local before = adds
+        S.ApplyAll()
+        assert(adds == before, "only when it changes")
+        g.plateFriendlyColor = "same"
+        S.ApplyAll()
+        assert(themed[friend.health] == "ember", "Same as Enemy Nameplates")
+        for _, choice in ipairs({ "game", "class", "unknown" }) do
+            g.plateHealthColor = choice
+            S.ApplyAll()
+            assert(bars[enemy.health] and not themed[enemy.health] and not themed[friend.health], choice)
+        end
+        -- Your Colours on Their Bars: only with real themes for the plates and the target frame, its own colouring
+        g.externalColors, g.plateHealthColor = true, "same"
+        S.ApplyAll()
+        assert(bars[enemy.health] and not themed[enemy.health] and bars[friend.health])
+        g.plateHealthColor = "game"
+        S.ApplyAll()
+        assert(not bars[enemy.health] and not bars[friend.health], "Game Colour on plates: ours")
+        g.plateHealthColor, g.targetHealthColor = "ember", "game"
+        S.ApplyAll()
+        assert(not bars[enemy.health], "it would paint Game Colour's green")
+        g.targetHealthColor = "class"
+        S.ApplyAll()
+        assert(not bars[enemy.health])
+        g.targetHealthColor = "ocean"
+        enemy.targetShown = true
+        S.ApplyAll()
+        assert(bars[enemy.health] == "target" and not themed[enemy.health], "with the DoT marker on your target")
+        enemy.targetShown = false
+        S.ApplyAll()
+        -- a plate new to the liquid takes its theme as it is added
+        g.externalColors = nil
+        local fourth = Plate(true, "nameplate8")
+        S.Prepare(fourth, "nameplate8")
+        assert(themed[fourth.health] == "ember" and fourth.sabTheme == "ember")
+        env.SmoothAnimatedBars.RemoveBar(fourth.health)
+        held[fourth] = nil
+        g.plateHealthColor, g.plateFriendlyColor, g.targetHealthColor, g.healthColor = nil, nil, nil, nil
+        S.ApplyAll()
+    end
     enemy.nameOnly, friend.tdb.height = true, 4
     S.ApplyAll()
     assert(not bars[enemy.health] and not bars[friend.health] and bars[second.health])

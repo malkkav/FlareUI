@@ -1043,7 +1043,7 @@ end
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
 local function UpdateName(f)
-    -- First Name or Full Name by the frame's pick (UF.ShowsFullName)
+    -- First, Full or Last Name by the frame's pick (UF.ShowsFullName)
     local unit = f.fuiUnit
     local name = ns.UnitDisplayName(unit, nil, UF.ShowsFullName(f))
     if canaccessvalue(name) and not name then name = "" end
@@ -1166,8 +1166,9 @@ function UF.FirstNameOnly(unit)
     if uf and uf.fullNames == false then return true end
     return unit == "focus" or unit == "targettarget" or unit == "focustarget"
 end
--- whether the frame shows the full name: Forever Style everywhere but the focus frame; the others by
--- the health bar's name pick
+-- which name the frame shows, as ns.UnitDisplayName's full (false, true or "lastname"): Forever Style the
+-- full name everywhere but the focus and target-of frames (fixed, Malkkav 11-24: no Last Name there); the
+-- others by the health bar's name pick
 function UF.ShowsFullName(f)
     -- the focus and target-of frames show the first name in every style
     if f.btStyle == "plate" then
@@ -1177,7 +1178,7 @@ function UF.ShowsFullName(f)
     local slots = UF.TextSlots(f, "health")
     for _, slot in ipairs(ns.BarText.SLOTS) do
         local pick = ns.BarText.NameOf(slots[slot])
-        if pick then return pick == "fullname" end
+        if pick then return ns.BarText.FullOf(pick) end
     end
     return false
 end
@@ -4558,7 +4559,7 @@ end
 -- Show Threat (target, focus): your threat on the unit as a percent, in Blizzard's threat colours
 -- (white with none, then yellow, orange, red). Ring styles: a big number above the portrait ring
 -- (the auras keep clear of the ring). Addon Style: after the health value, "75% | 42%". Threat
--- values are readable on Forever; a hidden one shows nothing. Tanking, it shows your lead (over 100%).
+-- values are hidden in some places (instances); the number is drawn all the same (ns.ThreatPercent).
 -- The text is placed once per layout (f.threatLaid, cleared by LayoutFrame), not on every threat event.
 UF.THREAT_PERCENT_UNITS = { target = true, focus = true }
 UF.THREAT_RING_SIZE = 8   -- added to the frame font's size above the ring
@@ -4617,32 +4618,27 @@ function UF.UpdateThreatPercent(f)
         end
     end
     text:Show()
-    local display, status
+    local display, status, secret
     -- Edit Mode shows a sample whatever is targeted
     if ns.EditPreviewing() then
         display, status = 75, 1
     else
-        -- the scaled percent: 100% is where you pull the mob
-        local ok, tanking, detailed, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
-        if ok and canaccessallvalues(tanking, detailed, scaled) then
-            display, status = scaled, detailed
-            if tanking then
-                local lead = UnitThreatPercentageOfLead("player", unit)
-                if canaccessvalue(lead) and lead then display = lead end
-            end
-        end
+        display, status, secret = ns.ThreatPercent(unit)
         local class = UnitClassification(unit)
-        if canaccessvalue(class) and class == "minus" then display = nil end
+        if canaccessvalue(class) and class == "minus" then display, secret = nil, nil end
     end
-    if not display or display == 0 then text:SetText("") return end
+    -- (a hidden number is drawn unread, rounded by the client)
+    local shown = secret and ns.ThreatPercentText(display)
+    if not secret and display and display ~= 0 then shown = ("%.0f"):format(display) end
+    if not shown then text:SetText("") return end
     local r, g, b = 1, 1, 1
     if status and status >= 1 and GetThreatStatusColor then r, g, b = GetThreatStatusColor(status) end
     if ring then
         text:SetTextColor(r, g, b)
-        text:SetFormattedText("%.0f%%", display)
+        text:SetFormattedText("%s%%", shown)
     else
         text:SetTextColor(f.HealthText:GetTextColor())
-        text:SetFormattedText(" | |cff%02x%02x%02x%.0f%%|r", r * 255, g * 255, b * 255, display)
+        text:SetFormattedText(" | |cff%02x%02x%02x%s%%|r", r * 255, g * 255, b * 255, shown)
     end
 end
 

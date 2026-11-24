@@ -93,7 +93,7 @@ assert(not text(o.quest1, "(Complete)") and not shown(o.objectiveDone) and not s
 
 profile.damagemeter = { threatValueDisplay = "percent", threatTankLead = true, threatPullLine = true }
 draw("meter", "dm.pullFlash", true, "damagemeter.threatPullFlash")
-assert(text(o.meterTitle, "Threat") and text(o.meterName1, "75% (+25%)") and shown(o.pullLine))
+assert(text(o.meterTitle, "Threat") and text(o.meterName1, "125%") and shown(o.pullLine))
 c.frame:RunScript("OnUpdate", 0.2)
 local flash = o.pullFlash:GetAlpha()
 assert(flash > 0 and flash < 0.55)

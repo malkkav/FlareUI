@@ -2,6 +2,63 @@
 
 Versions 7.0.3 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
 
+# FlareUI 7.0.6
+
+More control over fading, a stack of nameplate options you asked for, and Korean and German translations by a player.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Nameplates:** the cast bar has its own **Bar Texture** and **Border** now, FlareUI Dark and FlareUI Thin to start. It no longer copies the plate's texture and border, so set them again on the Cast Bar tab if you changed the plate's.
+- **Nameplates:** the plate under your mouse gets a lighter border and bar. Pick what lights up, or turn it off, with **Mouseover Highlight** on the Targeting tab.
+- **Loot Window:** with auto loot on, FlareUI's loot window opens for a moment like Blizzard's, and the items leave it as you pick them up.
+
+## Highlights
+- **Fade Delay** on every frame that fades by your choice.
+- **Nameplates:** class-coloured names, guild colours, titles and a separate cast bar look.
+- **Korean** and **German** translations by ithiel.
+
+## New
+
+### Fading
+- **Fade Delay** (0 seconds) in the Fading section of Edit Mode: how long a frame stays after its last reason to show, before it fades.
+  - On the action bars (1–8, pet, stance, Totem Bar), the gryphons, the bags bar, the micro menu, the player and pet frames, the Resource Bars' Health, Power, Mana and Combo Points, the XP bar, the minimap, Buffs, Debuffs, the Quest Tracker and the Cooldown Manager.
+  - In a fade group the whole group shares one delay.
+  - Frames the game shows and hides by itself (target, focus, the cast bar and similar) don't have it.
+- **Slower** Hide Speed: fades to about half over 2 seconds, waits 2 seconds, then fades out. By themese.
+
+### Chat
+- **Keep Messages Shown** (off) in the chat's Edit Mode Fading section, after Fade Old Lines: the window, tabs and buttons fade as set, but the messages stay readable.
+
+### Nameplates
+- **Colour Names by Class** (off) on the Plate tab: players' names on full plates in their class colour.
+- **Colour Guild Members** (off, Friendly Player): your guild's names in Blizzard's guild green on Name Only plates.
+- **Show Titles**: players' titles and NPC roles under the name. On for NPCs, off for players and Minor.
+- **Bar Texture** and **Border** for the cast bar, on the Cast Bar tab above Cast Bar Height.
+- **Mouseover Highlight** on the Targeting tab, under Target Highlight: tick **Border**, **Bar** and **Outer Glow** (Border and Bar to start).
+
+### Radial Menu
+- **Tanning** and **Bait and Tackle** in the Professions list.
+
+### Translations
+- **Korean** and **German**, by ithiel.
+
+## Changed
+- **Nameplates:**
+  - **Height** goes down to 5.
+  - The tab row is split into two labelled groups: **This Unit Type** and **All Nameplates**.
+  - The mouseover highlight also lightens the target and threat border colours.
+  - **Show Full Name** is hidden for NPC types, where it did nothing.
+  - Plates update more cheaply in big pulls. By parchinskiy.
+- **Party Frames:** in the Gamepad UI, the target highlight is twice as bright, to spot the member picked with the D-pad.
+- **Meters:** the Cyrillic font is used only for names with Russian letters.
+- **French:** the 7.0.4 and 7.0.5 text translated. By Brainc3ll.
+
+## Fixed
+- **Gamepad UI:** party targeting with LB and the D-pad didn't work if the Gamepad UI was switched on after login. **Controller players, please tell us if it works for you now.**
+- **Unit Frames:** **Values on Mouseover** with a druid's **Mana on Shapeshift** hid all the numbers in caster form.
+- **Buff Reminders:** the food reminder remembered a drink as your food. By GregDuhamel.
+- **Loot Window:** the gap above the first row now matches the sides.
+
 # FlareUI 7.0.5
 
 Two new windows from the community: a FlareUI loot window and a searchable flight list. Pet threat on nameplates, the same Health Text picker on raid frames, and a stack of fixes.

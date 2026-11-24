@@ -28,10 +28,11 @@ env.ToggleLootHistoryFrame = function() ui.historyToggled = true end
 
 local callbacks, edit = {}, {}
 function edit:AddFrame(holder, move) self.holder, self.move = holder, move end
-function edit:AddFrameSettings(_, settings) self.scale = settings[1] end
+function edit:AddFrameSettings(_, settings) self.scale, self.rows = settings[1], settings end
+function edit:RefreshFrameSettings(frame) assert(frame == self.holder) self.refreshed = true end
 function edit:RegisterCallback(event, callback) callbacks[event] = callback end
 function edit:GetActiveLayoutName() return "Modern" end
-edit.SettingType = { Slider = "slider" }
+edit.SettingType = { Slider = "slider", Checkbox = "checkbox" }
 env.LibStub = function(name)
     if name == "FlareEditMode" then return edit end
     assert(name == "LibSharedMedia-3.0")
@@ -134,7 +135,12 @@ local ns = {
         layouts[key] = layouts[key] or {}
         return layouts[key]
     end,
-    EditSection = function(_, settings) return settings end,
+    EditSections = function()
+        local all = {}
+        return function(key, rows)
+            for _, row in ipairs(rows) do row.section = key all[#all + 1] = row end
+        end, all
+    end,
     DamageMeter = { HeaderFontDb = function() return { face = "Medieval", size = 16 } end },
 }
 ui:load("Modules/LootRolls.lua", ns)
@@ -266,6 +272,65 @@ assert(tweaks.moverLayouts.Modern.loot.x == 17)
 callbacks.exit()
 assert(not lr.previewing and edit.holder:GetHeight() == 26 * 1.25)
 assert(lr.ApplyOpacity == nil and win.skin[1]:GetAlpha() == 1)
+-- Fade in Combat (11-24): off until picked, back under the pointer, in a roll's last seconds and after the fight
+do
+    local opacity, switch
+    for _, row in ipairs(edit.rows) do
+        if row.name == "Faded Opacity" then opacity = row elseif row.name == "Fade in Combat" then switch = row end
+    end
+    assert(opacity.section == "Fading" and switch.section == "Fading" and edit.scale.section == "Frame")
+    assert(switch.get() == false and opacity.hidden() and opacity.get() == 30 and opacity.formatter(30) == 30)
+    timeLeft = 30000
+    names[31], names[32], links[31], links[32] = "Cloak", "Wand", "|Hitem:131:0|h[Cloak]|h", "|Hitem:132:0|h[Wand]|h"
+    ui:emit("START_LOOT_ROLL", 31, 30000)
+    assert(win:IsShown())
+    ui:emit("PLAYER_REGEN_DISABLED")
+    assert(win:GetAlpha() == 1 and not win.fader:IsShown(), "off: nothing fades")
+    switch.set(nil, true)
+    assert(edit.refreshed and not opacity.hidden() and win.fader:IsShown() and math.abs(win:GetAlpha() - 0.3) < 0.001)
+    local function tick(elapsed) win.fader:RunScript("OnUpdate", elapsed) end
+    -- the pointer brings it back, with the click guard; then it fades again, over FADE_TIME
+    win.mouseOver = true
+    tick(0.2)
+    assert(win:GetAlpha() == 1)
+    local clicks = #rollClicks
+    visible(31, true).need:Click()
+    assert(#rollClicks == clicks, "a click as it comes back rolls nothing")
+    win.mouseOver = false
+    tick(0.1)
+    tick(0.05)
+    assert(win:GetAlpha() < 1 and win:GetAlpha() > 0.3)
+    tick(0.5)
+    assert(math.abs(win:GetAlpha() - 0.3) < 0.001)
+    -- the last seconds of an undecided roll
+    timeLeft = 4000
+    tick(0.2)
+    assert(win:GetAlpha() == 1)
+    timeLeft = 30000
+    tick(0.2)
+    tick(0.5)
+    assert(win:GetAlpha() < 0.31)
+    opacity.set(nil, 0)
+    assert(opacity.get() == 0 and tweaks.lootRollFadeOpacity == 0 and win:GetAlpha() == 0)
+    opacity.set(nil, 30)
+    assert(tweaks.lootRollFadeOpacity == nil)
+    -- the samples show at full
+    callbacks.enter()
+    assert(win:GetAlpha() == 1 and not win.fader:IsShown())
+    callbacks.exit()
+    assert(win.fader:IsShown())
+    -- it opens faded in a fight, and leaves from there
+    ui:emit("CANCEL_ALL_LOOT_ROLLS")
+    assert(win.out:IsPlaying())
+    win.out:RunScript("OnFinished")
+    assert(not win:IsShown())
+    ui:emit("START_LOOT_ROLL", 32, 30000)
+    assert(win:IsShown() and math.abs(win:GetAlpha() - 0.3) < 0.001)
+    ui:emit("PLAYER_REGEN_ENABLED")
+    assert(win:GetAlpha() == 1 and not win.fader:IsShown())
+    switch.set(nil, false)
+    assert(tweaks.lootRollFade == nil and opacity.hidden())
+end
 tweaks.lootRollFont.size = 17
 lr:ApplyFont()
 assert(select(2, first.name:GetFont()) == 17)

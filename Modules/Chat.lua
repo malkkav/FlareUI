@@ -1850,7 +1850,7 @@ local function SetDockedTextShown(shown)
 end
 
 -- With the chat fading (Visibility), the meter takes the mouse the window would see: the fader counts
--- a hover over it as one over the chat (Chat.MouseOverChat, section 16).
+-- a hover over it as one over the chat (Chat.MouseOverHeader, section 16).
 
 -- Called by the Damage Meter module whenever the tab's state may have changed: a click, Visibility,
 -- the options, Blizzard's switch. Its Refresh asks often, so an unchanged state is left alone.
@@ -3894,15 +3894,8 @@ function Chat:FadeApply(alpha)
     if dock and ns.IsGamepadUI() and not dock:IsForbidden() then dock:SetAlpha(alpha) end
 end
 
--- The pointer on a shown chat window, its skin or tab bar, a header button, or the meter in the Meter tab
-function Chat.MouseOverChat()
-    for _, cf in Windows() do
-        if cf and not cf:IsForbidden() and cf:IsVisible() then
-            if cf:IsMouseOver() then return true end
-            if cf.FlareUI_Skin and cf.FlareUI_Skin:IsMouseOver() then return true end
-            if cf.FlareUI_TabBar and cf.FlareUI_TabBar:IsVisible() and cf.FlareUI_TabBar:IsMouseOver() then return true end
-        end
-    end
+-- The pointer on a header button, or on the meter in the Meter tab
+function Chat.MouseOverHeader()
     for _, name in pairs(HEADER_BLIZZARD) do
         local btn = _G[name]
         if btn and btn:IsVisible() and btn:IsMouseOver() then return true end
@@ -3920,14 +3913,31 @@ function Chat.BoxFocused(box)
     return ChatFrameUtil ~= nil and ChatFrameUtil.GetActiveWindow ~= nil and ChatFrameUtil.GetActiveWindow() == box
 end
 
+-- Is any chat window being typed in? The frame with the keyboard says it at once (11-24, Perfy: asking
+-- every window's box, 20 times a second, was the dearest part of the chat's fading); Blizzard's active
+-- box too, for one whose answer is hidden
+function Chat.Typing()
+    local focus
+    if GetCurrentKeyBoardFocus then
+        focus = GetCurrentKeyBoardFocus()
+        if canaccessvalue(focus) and focus == nil then
+            local active = ChatFrameUtil and ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow()
+            return active ~= nil and Chat.BoxFocused(active)
+        end
+    end
+    for _, cf in Windows() do
+        if cf and not cf:IsForbidden() and Chat.BoxFocused(cf.editBox) then return true end
+    end
+    return false
+end
+
 -- Reasons that show the chat whatever its Visibility: an open edit box (typing), a window with the
 -- gamepad (the Gamepad UI's chat), Ignore Chat Fade on the Meter tab, Settings > Chat open
 function Chat.ChatWanted()
-    if Chat.settingsPreview then return true end
-    for _, cf in Windows() do
-        if cf and not cf:IsForbidden() then
-            if Chat.BoxFocused(cf.editBox) then return true end
-            if cf.HasGamepadFocus and cf:IsVisible() and cf:HasGamepadFocus() then return true end
+    if Chat.settingsPreview or Chat.Typing() then return true end
+    if ns.IsGamepadUI() then
+        for _, cf in Windows() do
+            if cf and not cf:IsForbidden() and cf.HasGamepadFocus and cf:IsVisible() and cf:HasGamepadFocus() then return true end
         end
     end
     if Chat:MeterTabActive() and ns.DamageMeter:ChatTabIgnoresFade() then return true end
@@ -4041,7 +4051,7 @@ function Chat.HoldMouseWindows(now)
             any = true
         end
     end
-    if not any and Chat.MouseOverChat() then
+    if not any and Chat.MouseOverHeader() then
         Chat.windowHolds.dock = math_max(Chat.windowHolds.dock or 0, now + Chat.FadeDelay())
         any = true
     end
@@ -4095,7 +4105,8 @@ function Chat.ApplyWindowFades(elapsed)
     local span = math_max(0.01, 1 - minAlpha)
     local moving = false
     for _, cf in Windows() do
-        if cf and cf.FlareUI_Skin and not cf:IsForbidden() then
+        -- (the ticker, elapsed, leaves the windows that aren't on screen to the fader's own pass)
+        if cf and cf.FlareUI_Skin and not cf:IsForbidden() and (not elapsed or cf:IsVisible()) then
             local target = fades and WindowTarget(cf, now, alpha, minAlpha) or alpha
             local value = cf.FlareUI_WindowAlpha or alpha
             -- a window following the fader stays on it; one that left it (faded alone) moves on its own

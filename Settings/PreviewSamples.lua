@@ -689,8 +689,8 @@ function R.meter(c, spec)
         local y = 61 + (i - 1) * 33
         c:Bar('meterBar' .. i, 10, y, c.width - 20, 27, 1 - (i - 1) * 0.22, ({ { 0.41, 0.8, 0.94 }, { 0.77, 0.12, 0.23 }, { 1, 0.49, 0.04 } })[i])
         local mode = Get('damagemeter.threatValueDisplay', 'both')
-        local value = threat and (mode == 'percent' and '75%' or mode == 'value' and '12.5k' or '12.5k (75%)') or '12.5k'
-        if threat and i == 1 and Get('damagemeter.threatTankLead') then value = value .. ' (+25%)' end
+        local percent = i == 1 and (Get('damagemeter.threatTankLead') and '125%' or '100%') or '75%'
+        local value = threat and (mode == 'percent' and percent or mode == 'value' and '12.5k' or '12.5k (' .. percent .. ')') or '12.5k'
         c:Text('meterName' .. i, name .. '  ' .. value, 15, y + 6, c.width - 30, Font('damagemeter.barFont')):SetWordWrap(false)
     end
     if threat and Get('damagemeter.threatPullLine') then

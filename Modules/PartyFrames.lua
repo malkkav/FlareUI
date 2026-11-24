@@ -439,11 +439,22 @@ local function SafeName(name)
     return name
 end
 
+-- which name a tile shows (ns.UnitDisplayName's full); nil: the default
+function PF.NameFull(f)
+    if PF.SlotOn(f) and not RaidTile(f) then
+        local full = f.btFullName
+        if full == nil then return true end
+        return full
+    end
+    local st = TS(f)
+    if st and st.nameShown then return ns.BarText.FullOf(st.nameShown) end
+    return nil
+end
+
 local function UpdateName(f)
     -- the party frames pass "party" (first-name rules); raid and boss tiles show the whole name
-    -- (bar text tiles: the slot's First Name or Full Name)
-    local full = nil
-    if PF.SlotOn(f) and not RaidTile(f) then full = f.btFullName ~= false end
+    -- (bar text tiles: the slot's First, Full or Last Name; the others by Show Name)
+    local full = PF.NameFull(f)
     f.Name:SetText(SafeName(ns.UnitDisplayName(f.fuiUnit, not f.ctx and "party" or nil, full)))
     if f.NameAboveText then ns.NameAbove.SetName(f, PF.NameAboveDb(f), f.fuiUnit) end
 end
@@ -1590,12 +1601,16 @@ end
 -- Blizzard's aura button and every frame inside it have secret aspects (no scripts, so no animation
 -- restart on show): one driver of FlareUI's own sets the alpha of the highlight's pieces, ~30 times a
 -- second, skipping tiles that are not on screen. frame: a piece; tile: its tile (nil: always).
+-- (11-24, Perfy) which tiles show is looked up four times a second, once per tile, not for every piece
+-- on every beat.
 PF.DISPEL_PULSE = { 0.3, 1, 0.2 }   -- low alpha, high alpha, seconds each way
 PF.dispelPulsing = {}
+PF.dispelLive = { wait = 0, EVERY = 0.25, seen = {} }   -- [1..n]: the pieces on screen; seen: tile -> shown, while looking
 PF.dispelSetAlpha = CreateFrame("Frame").SetAlpha   -- the method, called through pcall (a locked piece can't be indexed safely)
 function PF.DispelPulse(frame, tile)
     if not frame then return end
     PF.dispelPulsing[frame] = tile or false
+    PF.dispelLive.wait = 0
     if PF.dispelDriver then return end
     local driver = CreateFrame("Frame")
     PF.dispelDriver = driver
@@ -1603,7 +1618,26 @@ function PF.DispelPulse(frame, tile)
     driver:SetScript("OnUpdate", function(_, dt)
         wait = wait + dt
         if wait < 0.033 then return end
+        local live = PF.dispelLive
+        live.wait = live.wait - wait
         wait = 0
+        if live.wait <= 0 then
+            live.wait = live.EVERY
+            for i = #live, 1, -1 do live[i] = nil end
+            wipe(live.seen)
+            for piece, owner in pairs(PF.dispelPulsing) do
+                local shown = not owner
+                if owner then
+                    shown = live.seen[owner]
+                    if shown == nil then
+                        shown = owner:IsVisible() and true or false
+                        live.seen[owner] = shown
+                    end
+                end
+                if shown then live[#live + 1] = piece end
+            end
+        end
+        if not live[1] then return end
         local low, high, half = PF.DISPEL_PULSE[1], PF.DISPEL_PULSE[2], PF.DISPEL_PULSE[3]
         local t = (GetTime() % (2 * half)) / half   -- 0 to 2: up, then down
         if t > 1 then t = 2 - t end
@@ -1611,15 +1645,14 @@ function PF.DispelPulse(frame, tile)
         -- a piece inside Blizzard's aura button is locked to addon code while the aura in that slot is
         -- secret: skip it that tick (unguarded, it errors hundreds of times a fight)
         local setAlpha = PF.dispelSetAlpha
-        for piece, owner in pairs(PF.dispelPulsing) do
-            if not owner or owner:IsVisible() then pcall(setAlpha, piece, alpha) end
-        end
+        for i = 1, #live do pcall(setAlpha, live[i], alpha) end
     end)
 end
 -- a piece that stops pulsing (reused after a style change): back to full and steady
 function PF.DispelSteady(frame)
     if not frame then return end
     PF.dispelPulsing[frame] = nil
+    PF.dispelLive.wait = 0
     pcall(PF.dispelSetAlpha, frame, 1)
 end
 
@@ -2080,7 +2113,7 @@ function PF.LayoutSlotTexts(f)
         pick = BT.NameOf(slots[slot])
         if pick then nameSlot = slot break end
     end
-    f.btFullName = pick ~= "firstname"
+    f.btFullName = BT.FullOf(pick or "fullname")
     local levelOnRing = f.ringKind ~= nil
     f.Name:SetShown(nameSlot and true or false)   -- (off the plate the slot alone decides, 11-20)
     if not levelOnRing then f.Level:SetShown((nameSlot and st.showLevel) and true or false) end
@@ -2908,13 +2941,9 @@ ApplyPreview = function(f)
     local class = data.class
     -- Full Player Names on: the sample's surname too, as ns.UnitDisplayName joins them
     local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
-    local full = not (uf and uf.fullNames == false)
-    if PF.SlotOn(f) and not RaidTile(f) then full = f.btFullName ~= false end
-    if data.surname and full then
-        f.Name:SetText(data.name .. " " .. data.surname)
-    else
-        f.Name:SetText(data.name)
-    end
+    local full = PF.NameFull(f)
+    if full == nil then full = not (uf and uf.fullNames == false) end
+    f.Name:SetText(ns.BarText.SampleName(data.name, data.surname, full))
     if f.NameAboveText then ns.NameAbove.SetSample(f, PF.NameAboveDb(f), data.name, data.surname) end
     if st.showLevel and data.level == -1 then
         f.Level:SetText("??")
@@ -3580,8 +3609,11 @@ local function BuildSettings()
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
         -- (Classic off the plate: the name is a Health Text pick)
+        -- (Forever Style's name box: the plain switch, its name is fixed; Raid Style picks which name)
         { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return getS("showName")() ~= false end, set = setS("showName"),
-          hidden = function() return not (IsRaidStyle() or onPlate()) end },
+          hidden = function() return not onPlate() or IsRaidStyle() end },
+        ns.BarText.ShowNameSetting({ db = function() return (S()) end, changed = function() Refresh() end,
+            hidden = function() return not IsRaidStyle() end, first = ns.BarText.OldFirstOnly }),
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
         K.ValuesOnHoverSetting(getS("valuesOnHover"), setS("valuesOnHover")),
         -- Level Disc Size (11-20, per frame): the ring styles' level disc, with Show Level on

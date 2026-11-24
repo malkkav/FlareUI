@@ -1001,6 +1001,7 @@ local function AddThreat(unit)
     s.pool[n] = data
     data.value, data.scaled = value, scaled or 0
     data.order = n
+    data.unit = unit
     data.name = Readable(name) and name or "?"
     data.class = class
     data.isPet = owner ~= nil
@@ -1200,11 +1201,11 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
         row.ftRank, row.ftName = data.rank, data.name
         row:GetName():SetText(("%d. %s"):format(data.rank, data.name))
     end
-    -- Tank's Lead: after the tank's own numbers, how far it is ahead of second place, as "(+25%)"
-    local percent = math.floor(data.scaled + 0.5)
+    -- Tank's Lead: the tank's percent is its threat against second place (data.lead), not 100
+    local percent = data.lead or math.floor(data.scaled + 0.5)
     local display = db.threatValueDisplay or "percent"
-    if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftLead ~= data.lead or row.ftDisplay ~= display then
-        row.ftValue, row.ftPercent, row.ftLead, row.ftDisplay = data.value, percent, data.lead, display
+    if row.ftValue ~= data.value or row.ftPercent ~= percent or row.ftDisplay ~= display then
+        row.ftValue, row.ftPercent, row.ftDisplay = data.value, percent, display
         local pct = ("%d%%"):format(percent)
         local amount = ns.ShortNumber(data.value / 100)
         local text
@@ -1215,7 +1216,6 @@ local function FillRow(row, data, top, window, db, index, height, spacing)
         else
             text = amount .. "  " .. pct
         end
-        if data.lead then text = text .. (" (+%d%%)"):format(data.lead) end
         row:GetValue():SetText(text)
     end
     -- Pull Warning: your bar flashes as you near the point where you pull the mob
@@ -1265,7 +1265,7 @@ local function SampleThreat()
         s.pool[n] = data
         data.name, data.class, data.value, data.scaled = sample[1], sample[2], sample[3], sample[4]
         data.tanking, data.isPlayer, data.isPet = sample[5] or false, sample[6] or false, false
-        data.order, data.rank = n, n
+        data.order, data.rank, data.unit = n, n, nil
         s.list[n] = data
     end
     return s.list
@@ -1311,8 +1311,16 @@ local function UpdateThreatView(window, view)
         end
         if data.isPlayer then me = data end
     end
-    if db.threatTankLead and tank and second and second.value > 0 then
-        tank.lead = math_max(0, math.floor((tank.value / second.value - 1) * 100 + 0.5))
+    -- (11-24, Malkkav: one number everywhere) the game's own lead, as on the plates and unit frames
+    -- (ns.ThreatPercent); from the list's values when it gives none
+    if db.threatTankLead and tank then
+        local lead
+        if tank.unit then
+            local ok, read = pcall(UnitThreatPercentageOfLead, tank.unit, threatScratch.mob)
+            if ok and canaccessvalue(read) and type(read) == "number" and read > 0 then lead = read end
+        end
+        if not lead and second and second.value > 0 then lead = tank.value / second.value * 100 end
+        if lead then tank.lead = math_min(ns.THREAT_MAX, math.floor(lead + 0.5)) end
     end
     -- the scaled percent is your threat against the point you pull at (110% of the tank's in melee,
     -- 130% at range), so that point is your threat over it

@@ -1014,7 +1014,7 @@ local function BuildSettings()
             style = function() return "tile" end, desc = ns.PartyFrames.MID_DESC }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "raid", db = GetDb, changed = function() Refresh() end,
             style = function() return "tile" end, desc = ns.PartyFrames.MID_DESC }),
-        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName", true)() ~= false end, set = set("showName") },
+        ns.BarText.ShowNameSetting({ db = GetDb, changed = function() Refresh() end, first = ns.BarText.OldFirstOnly }),
         ns.UnitFrames.Kit.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
         { name = L["Only Mana Power Bars"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("powerManaOnly", false), set = set("powerManaOnly"),

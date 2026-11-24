@@ -220,8 +220,9 @@ end
 -- as many plates as it takes itself. Its settings are only read (it has no function for these two).
 -- Its AddBar takes no nameplate token, so a bar is handed over with no unit ("none": it follows the bar's own
 -- value and colour), or as "target" on your target's plate, which gets its DoT marker there when it is on for
--- nameplates. With its Your Colours on Their Bars the plates stay ours: that paints every plate the target
--- frame's colour, so hostile, neutral and threat colours would be lost.
+-- nameplates. Colours (linowena): a theme picked for its nameplates is asked for (options.theme); Same as Target and
+-- Game Colour keep ours. With its Your Colours on Their Bars it ignores that and paints every plate as the target
+-- frame (Game Colour: plain green), so there it gets the plates only with real themes for both.
 -- A plate's size can't be read under addon restrictions, and it reads a bar's size when it is first added: so that
 -- happens before the plate goes on the unit (Prepare), and a size it can't know keeps our own fill.
 --------------------------------------------------
@@ -246,18 +247,52 @@ function Sab.Settings()
     return type(root.global) == "table" and root.global or nil
 end
 
+-- a theme that is a colour of its own: not Game Colour, nor Class Color (it needs the unit, which it isn't given)
+function Sab.Real(choice)
+    if type(choice) ~= "string" or choice == "game" or choice == "class" or choice == "same" then return false end
+    if not Sab.themes then
+        local ok, themes = pcall(_G.SmoothAnimatedBars.GetThemes)
+        if not ok or type(themes) ~= "table" then return false end
+        Sab.themes = themes
+    end
+    return tContains(Sab.themes, choice) and true or false
+end
+
+-- its colour for a frame, "same" followed as it does
+Sab.COLORS = { friend = { "plateFriendlyColor", "enemy" }, enemy = { "plateHealthColor", "target" },
+               target = { "targetHealthColor", "player" }, player = { "healthColor" } }
+function Sab.Choice(s, frame)
+    local entry = Sab.COLORS[frame]
+    local choice = s[entry[1]]
+    if choice == "same" and entry[2] then return Sab.Choice(s, entry[2]) end
+    return choice
+end
+
+-- the theme to ask for on a plate of this side (nil: the bar's own colour)
+function Sab.Theme(s, side)
+    if s.externalColors == true then return nil end
+    local choice = s[Sab.COLORS[side][1]]
+    if side == "friend" and choice == "same" then choice = s.plateHealthColor end
+    return Sab.Real(choice) and choice or nil
+end
+
+-- with Your Colours on Their Bars: whether what it would paint is what the player picked for plates
+function Sab.Painted(s, side)
+    return s.externalColors ~= true or (Sab.Real(Sab.Choice(s, side)) and Sab.Real(Sab.Choice(s, "target")))
+end
+
 -- "enemy" or "friend" (which of its switches the plate is under), or nil: not wanted
 function Sab.Side(p, unit)
     local api = _G.SmoothAnimatedBars
     if type(api) ~= "table" or not unit or p.nameOnly or p.hiddenPlate or p.unitHidden then return nil end
     local ok, on = pcall(api.IsEnabled)
     local s = ok and on and Sab.Settings()
-    if not s or s.externalColors == true or not (s.plateHealth == true or s.plateFriendly == true) then return nil end
+    if not s or not (s.plateHealth == true or s.plateFriendly == true) then return nil end
     if p.tdb and (p.tdb.height or 0) < ns.SAB.MIN_HEIGHT then return nil end
     local okA, attack = pcall(UnitCanAttack, "player", unit)
     if not okA or not canaccessvalue(attack) then return nil end
-    if attack then return s.plateHealth == true and "enemy" or nil end
-    return s.plateFriendly == true and "friend" or nil
+    local side = attack and (s.plateHealth == true and "enemy") or not attack and (s.plateFriendly == true and "friend") or nil
+    return side and Sab.Painted(s, side) and side or nil
 end
 
 local function SizeKnown(p)
@@ -282,26 +317,27 @@ local function Own(p, on)
 end
 
 -- token: "none" or "target". False: declined.
-local function Add(p, token)
+local function Add(p, token, theme)
     local api = _G.SmoothAnimatedBars
-    local ok, taken = pcall(api.AddBar, p.health, token, "health", { name = "FlareUI", level = Sab.LEVEL })
+    local ok, taken = pcall(api.AddBar, p.health, token, "health", { name = "FlareUI", level = Sab.LEVEL, theme = theme })
     if not (ok and taken) then
         pcall(api.RemoveBar, p.health)
         p.sabUnit = nil
         Own(p, false)
         return false
     end
-    p.sabUnit, p.sabMade = token, true
+    p.sabUnit, p.sabTheme, p.sabMade = token, theme, true
     Own(p, true)
     return true
 end
 
 -- A plate about to go on a unit for the first time with the liquid: added where its size can be read
 function Sab.Prepare(p, unit)
-    if p.sabMade or not Sab.Side(p, unit) then return end
+    local side = not p.sabMade and Sab.Side(p, unit)
+    if not side then return end
     p.root:ClearAllPoints()
     p.root:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    if SizeKnown(p) and Add(p, "none") then p.sabSize = p.plateW .. "x" .. p.boxH end
+    if SizeKnown(p) and Add(p, "none", Sab.Theme(Sab.Settings(), side)) then p.sabSize = p.plateW .. "x" .. p.boxH end
     p.root:ClearAllPoints()
 end
 
@@ -329,8 +365,9 @@ function Sab.Apply(p)
     end
     local s = Sab.Settings()
     local token = (p.targetShown and side == "enemy" and s and s.plateDots == true) and "target" or "none"
-    if p.sab and p.sabUnit == token then return end
-    Add(p, token)
+    local theme = s and Sab.Theme(s, side)
+    if p.sab and p.sabUnit == token and p.sabTheme == theme then return end
+    Add(p, token, theme)
 end
 
 function Sab.ApplyAll()

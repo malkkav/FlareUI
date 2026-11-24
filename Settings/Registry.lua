@@ -74,8 +74,6 @@ Settings.NEW = {
     ["np.showTitles"] = "7.0",
     ["np.threatPercent"] = "7.0",
     ["qol.flightDestinations"] = "7.0",
-    ["qol.warnSellQuestItems"] = "7.0",
-    ["qol.warnSellSetGear"] = "7.0",
     ["tt.healingDamage"] = "7.0",
 }
 

@@ -129,6 +129,24 @@ assert(p.hits["np.castbar"]:IsShown() and p.hits["np.debuffs"]:IsShown())
 ui.time = 0.4
 plates.Pulse.driver:RunScript("OnUpdate", 0.1)
 assert(p.cast.important.edge:GetAlpha() < 0.3)
+-- the clock looks up what shows five times a second, not every frame
+do
+    local edge, asked = p.cast.important.edge, 0
+    local see = edge.IsVisible
+    edge.IsVisible = function(self) asked = asked + 1 return see(self) end
+    plates.Pulse.wait = 0
+    for _ = 1, 60 do plates.Pulse.driver:RunScript("OnUpdate", 1 / 60) end
+    assert(asked >= 5 and asked <= 6, "a second of frames: " .. asked)
+    edge.IsVisible = nil
+    local other = plates.ClockPulse(env.CreateFrame("Frame", nil, env.UIParent))
+    other:Play()
+    plates.Pulse.driver:RunScript("OnUpdate", 0.01)
+    assert(#plates.Pulse.live >= 2, "a pulse just played joins at once")
+    local n = #plates.Pulse.live
+    other:Stop()
+    plates.Pulse.driver:RunScript("OnUpdate", 0.01)
+    assert(#plates.Pulse.live == n - 1)
+end
 
 -- the bar starts where the border's line ends: no gap, and no corner past the slanted border (johnivve 11-23)
 do
@@ -314,6 +332,88 @@ do
     plates.UpdateGroup()
     live.tdb = tdb
     plates.UpdateThreatText(live, tdb)
+end
+-- a tank's own number: its threat against the next in line, never stuck at 100 (11-24). Hidden values (an
+-- instance) are drawn unread, the lead too while the threat state says you hold it
+do
+    local detail, situation, lead, util = env.UnitDetailedThreatSituation, env.UnitThreatSituation, env.UnitThreatPercentageOfLead, env.C_StringUtil
+    local hidden, leadNow, state = false, 260, 3
+    env.UnitDetailedThreatSituation = function()
+        if hidden then return secret, secret, secret end
+        return state >= 2, state, state >= 2 and 100 or 80
+    end
+    env.UnitThreatSituation = function() return state end
+    env.UnitThreatPercentageOfLead = function() if hidden then return leadNow and secret end return leadNow end
+    local asked = 0
+    env.C_StringUtil = { RoundToNearestString = function(value) assert(value == secret) asked = asked + 1 return "260" end }
+    local function text()
+        plates.UpdateThreatText(live, live.tdb)
+        return live.threatText:IsShown() and live.threatText:GetText() or nil
+    end
+    assert(text() == "260%", "holding it: the lead")
+    leadNow = 12000
+    assert(text() == "999%")
+    leadNow = nil
+    assert(text() == "100%", "nobody else on the list")
+    leadNow = 0
+    assert(text() == "100%")
+    state, leadNow = 1, 260
+    assert(text() == "80%", "not holding it: 100 is where you pull it")
+    hidden, state = true, 3
+    local value, status, isSecret = ns.ThreatPercent(live.unit)
+    assert(value == secret and status == 3 and isSecret)
+    assert(text() == "260%" and asked == 1, "hidden values: the lead, rounded by the client")
+    env.UnitThreatSituation = function() return secret end
+    value, status, isSecret = ns.ThreatPercent(live.unit)
+    assert(value == secret and status == nil and isSecret and text() == "260%", "a hidden state: the number, uncoloured")
+    env.C_StringUtil = nil
+    assert(not text(), "a client that can't round it shows none")
+    env.UnitDetailedThreatSituation = function() end
+    assert(ns.ThreatPercent(live.unit) == nil and not text(), "not on its threat list")
+    env.UnitDetailedThreatSituation, env.UnitThreatSituation, env.UnitThreatPercentageOfLead, env.C_StringUtil = detail, situation, lead, util
+    plates.UpdateThreatText(live, live.tdb)
+end
+-- a plate's aura rows (11-24): only the ones its type uses get its unit, a few plates a frame
+do
+    local queue = plates.AuraQueue
+    local function Fake(unit)
+        local made = { unit = unit, auras = {} }
+        for _, place in ipairs({ "debuffs", "buffs", "cc" }) do
+            local set = {}
+            made.auras[place] = { set = set, used = place ~= "cc",
+                container = { SetUnit = function(_, value) set[#set + 1] = value end } }
+        end
+        return made
+    end
+    local one, two, three = Fake("nameplate11"), Fake("nameplate12"), Fake("nameplate13")
+    for _, plate in ipairs({ one, two, three }) do plates.QueueAuras(plate) end
+    plates.QueueAuras(one)
+    assert(#queue.list == 3 and queue.driver:IsShown() and #one.auras.debuffs.set == 0, "nothing in the claim itself")
+    queue.driver:RunScript("OnUpdate")
+    assert(one.auras.debuffs.set[1] == "nameplate11" and two.auras.buffs.set[1] == "nameplate12" and #three.auras.debuffs.set == 0)
+    assert(one.auras.cc.set[1] == "none" and #one.auras.cc.set == 1, "a row the type has off reads nobody's auras")
+    -- let go before its turn: skipped; its rows are cleared once
+    plates.ClearAuras(three)
+    three.unit = nil
+    assert(#queue.list == 0 and three.auras.debuffs.set[1] == "none")
+    queue.driver:RunScript("OnUpdate")
+    assert(not queue.driver:IsShown() and #three.auras.debuffs.set == 1)
+    plates.ClearAuras(one)
+    assert(one.auras.debuffs.set[2] == "none" and #one.auras.cc.set == 1, "a row on none is left alone")
+    -- the same token again is a new unit
+    one.unit = "nameplate11"
+    plates.QueueAuras(one)
+    queue.driver:RunScript("OnUpdate")
+    assert(one.auras.debuffs.set[3] == "nameplate11")
+    -- a row switched on while held, then a hidden plate
+    one.auras.cc.used = true
+    plates.SetAuraUnits(one)
+    assert(one.auras.cc.set[2] == "nameplate11" and #one.auras.debuffs.set == 3)
+    one.hiddenPlate = true
+    plates.SetAuraUnits(one)
+    assert(one.auras.cc.set[3] == "none" and one.auras.debuffs.set[4] == "none")
+    plates.QueueAuras({})
+    assert(#queue.list == 0, "a client without aura rows")
 end
 assert(live.threatSide == (live.levelAnchor and live.levelSide == "right" and "left" or "right"))
 assert(live.health:GetValue() == 100 and live.textHolder:GetAlpha() == 0 and live.holder:GetAlpha() == 0.35)

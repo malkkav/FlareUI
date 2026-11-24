@@ -3,7 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- WELCOME
--- Every module ships off. The first login with none on opens the setup tour: ten pages that show
+-- Every module ships off. The first login with none on opens the setup tour: its pages show
 -- each module and collect the player's choices, written only by the last page's reload. Closing the
 -- tour changes nothing. The Gamepad UI keeps a small pop-up instead (its navigation is still alpha).
 -- The settings window's look throughout: its stone and heavy bronze frame, Friz Quadrata titles,
@@ -169,10 +169,24 @@ local ART = {
 local tour = { step = 1, ticks = {}, choices = {} }
 
 -- The module switches the tour sets, in the finish page's order
-local MODULE_KEYS = { "uf", "ab", "au", "br", "rb", "rm", "qol", "bl", "ch", "dm", "mm", "qt", "tt" }
+local MODULE_KEYS = { "uf", "np", "ab", "cdm", "rb", "au", "br", "ch", "dm", "mm", "qt", "bl", "tt", "rm", "qol" }
 
 local function Title(key)
     return ns.Settings.modules[key]:Title()
+end
+
+local function Description(key)
+    return ns.Settings.modules[key]:Description() or ""
+end
+
+-- what a module gives, from the settings window's card for a module that is off (one list to keep true,
+-- already translated)
+local function Gives(key)
+    local lines = {}
+    for line in (ns.Settings:ModuleText(key, "offCard") or ""):gmatch("[^\n]+") do
+        lines[#lines + 1] = line:gsub("^%*%s*", "")
+    end
+    return lines
 end
 
 local function Bullets(lines)
@@ -197,23 +211,26 @@ end
 
 -- A module's own sample, as the settings' Info Panel draws it (Settings/Preview.lua), centred in its
 -- box; the store picture when the module can't draw one. Drawn each time its page shows.
-local function Preview(parent, kind, key, width, height, art)
+-- scale: drawn larger and shrunk, for a sample too tall for its box
+local function Preview(parent, kind, key, width, height, art, scale)
     local box = CreateFrame("Frame", nil, parent)
     box:SetSize(width, height)
     local P = ns.SettingsPreview
+    scale = scale or 1
     function box.Draw()
         local ok = false
         if P then
             if not box.canvas then
-                box.canvas = P.Create(box, width, height)
+                box.canvas = P.Create(box, width / scale, height / scale)
+                box.canvas.frame:SetScale(scale)
                 box.canvas.quiet = true   -- a failed sample falls back to the picture, unreported
             end
             -- (a sample that drew nothing says no height: the picture then)
             ok = P.Show(box.canvas, { kind = kind, key = key }) and box.canvas.used ~= nil
             if ok then
-                local used = box.canvas.used or height
+                local room = height / scale
                 box.canvas.frame:ClearAllPoints()
-                box.canvas.frame:SetPoint("TOP", box, "TOP", 0, -math.max(0, (height - used) / 2))
+                box.canvas.frame:SetPoint("TOP", box, "TOP", 0, -math.max(0, (room - (box.canvas.used or room)) / 2))
             end
         end
         if not ok and art and not box.picture then
@@ -221,6 +238,30 @@ local function Preview(parent, kind, key, width, height, art)
             box.picture:SetPoint("CENTER")
         end
         if box.picture then box.picture:SetShown(not ok) end
+    end
+    local list = parent.previews or (parent:GetParent() and parent:GetParent().previews)
+    if list then list[#list + 1] = box end
+    return box
+end
+
+-- A sample a module draws by itself (create(parent), draw(f): its size), centred in its box and grown up to
+-- max times; nothing when it can't be drawn
+local function OwnSample(parent, width, height, max, create, draw)
+    local box = CreateFrame("Frame", nil, parent)
+    box:SetSize(width, height)
+    function box.Draw()
+        local ok = pcall(function()
+            box.sample = box.sample or create(box)
+            local f = box.sample
+            f:SetScale(1)
+            local w, h = draw(f)
+            local k = math.min(max or 1, width / w, height / h)
+            f:SetScale(k)
+            f:ClearAllPoints()
+            f:SetPoint("CENTER", box, "CENTER", 0, 0)
+            f:Show()
+        end)
+        if box.sample and not ok then box.sample:Hide() end
     end
     local list = parent.previews or (parent:GetParent() and parent:GetParent().previews)
     if list then list[#list + 1] = box end
@@ -453,34 +494,63 @@ function BuildPage.unitFrames(page)
     note:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
 end
 
--- 3: the three small modules of the HUD, each with its own sample
+-- 3: nameplates: a real plate going through its states, and a friend's
+function BuildPage.nameplates(page)
+    local top = Card(page, 0, 0, BODY_W, 150)
+    local NP = ns.Nameplates
+    local function Plate(kind, view, width, x)
+        local box = OwnSample(top, width, 122, 1.6, function(parent)
+            local f = NP.CreateSample(parent)
+            f.kind = kind
+            return f
+        end, function(f) return NP.DrawSample(f, view) end)
+        box:SetPoint("TOPLEFT", x, -CARD_PAD)
+    end
+    local room = BODY_W - 2 * CARD_PAD
+    Plate("enemyNpc", "overview", room * 0.6, CARD_PAD)
+    Plate("friendlyPlayer", "enemy", room * 0.4, CARD_PAD + room * 0.6)
+
+    local left = Card(page, 0, -162, CARD_W2, BODY_H - 162, Title("np"))
+    Stack(left, Say(left, "GameFontHighlight", Bullets(Gives("np")), left.inner))
+    CardTick(left, "np")
+    local right = Card(page, CARD_W2 + GAP, -162, CARD_W2, BODY_H - 162, L["Good to Know"])
+    Stack(right, Say(right, "GameFontHighlight", Bullets({
+        L["Enemy and friendly players and NPCs each have their own look"],
+        L["Friends show only their name to begin with"],
+        L["Set up in /fui, not in Edit Mode"],
+        L["With another nameplate addon on, FlareUI leaves the plates to it"],
+    }), right.inner))
+end
+
+-- 4: the bars on your screen
 function BuildPage.bars(page)
     local top = Card(page, 0, 0, BODY_W, 110)
     local buttons = Preview(top, "actions", "ab.overview", BODY_W - 2 * CARD_PAD, 82, "ActionBars")
     buttons:SetPoint("TOPLEFT", CARD_PAD, -14)
+    local CM = ns.CooldownManager
     local entries = {
         { key = "ab", text = L["Blizzard's bars, sharpened: red when out of range, blue with no mana, glows on procs."] },
-        { key = "au", kind = "auras", sample = "au.overview", height = 70, text = L["Your buffs and debuffs in FlareUI's style, with clear timers."],
-          -- Buff Reminders in the same card, its own switch over Use It
-          extra = { key = "br", label = L["Buff Reminders"], text = L["Buff Reminders: an icon for each buff you or your group are missing."] } },
-        { key = "rb", kind = "resources", sample = "rb.health", height = 40, text = L["Extra health, power, combo point and swing bars to place anywhere. Off to begin with: choose your bars in /fui."] },
+        { key = "cdm", text = L["FlareUI's look and keybinds for Blizzard's Cooldown Manager: pick them in /fui. Turning it on here turns Blizzard's on too."],
+          sample = CM and CM.CreateSample and function(card) return OwnSample(card, card.inner, 40, 1, CM.CreateSample, CM.DrawSample) end },
+        { key = "rb", text = L["Extra health, power, combo point and swing bars to place anywhere. Off to begin with: choose your bars in /fui."],
+          sample = function(card) return Preview(card, "resources", "rb.health", card.inner, 40) end },
     }
     for i, entry in ipairs(entries) do
         local card = Card(page, (i - 1) * (CARD_W3 + GAP), -122, CARD_W3, BODY_H - 122, Title(entry.key))
-        if entry.kind then Stack(card, Preview(card, entry.kind, entry.sample, card.inner, entry.height)) end
+        if entry.sample then Stack(card, entry.sample(card)) end
         local text = Stack(card, Say(card, "GameFontHighlight", entry.text, card.inner), 10)
         text:SetTextColor(0.85, 0.82, 0.76)
-        local use = CardTick(card, entry.key)
-        if entry.extra then
-            local extraText = Stack(card, Say(card, "GameFontHighlight", entry.extra.text, card.inner), 8)
-            extraText:SetTextColor(0.85, 0.82, 0.76)
-            local extra = Tick(card, entry.extra.key, entry.extra.label)
-            extra:SetPoint("BOTTOMLEFT", use, "TOPLEFT", 0, 6)
-        end
+        CardTick(card, entry.key)
     end
 end
 
--- 4: nothing to choose: the two places options live
+-- 5: your buffs, and the ones you're missing
+function BuildPage.buffs(page)
+    ModuleCard(page, 0, "au", "auras", "au.overview", nil, 130, Gives("au"))
+    ModuleCard(page, CARD_W2 + GAP, "br", "reminders", "br.overview", nil, 130, Gives("br"))
+end
+
+-- 6: nothing to choose: the two places options live
 function BuildPage.editMode(page)
     local left = Card(page, 0, 0, CARD_W2, BODY_H, L["Edit Mode"])
     local scene = CreateFrame("Frame", nil, left, "BackdropTemplate")
@@ -523,7 +593,7 @@ function BuildPage.editMode(page)
     rest:SetTextColor(TITLE_GOLD[1], TITLE_GOLD[2], TITLE_GOLD[3])
 end
 
--- 5: the FlareUI Edit Mode layout, imported by the player in Blizzard's own dialog
+-- 7: the FlareUI Edit Mode layout, imported by the player in Blizzard's own dialog
 function BuildPage.layout(page)
     local left = Card(page, 0, 0, CARD_W2, BODY_H, L["Use Our Layout"])
     Stack(left, Say(left, "GameFontHighlight", L["Want your screen set up like ours? Import the FlareUI layout into Edit Mode:"], left.inner))
@@ -547,35 +617,37 @@ function BuildPage.layout(page)
     about:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
 end
 
--- 6: the two windows
+-- 8: the two windows
 function BuildPage.chatMeter(page)
-    ModuleCard(page, 0, "ch", "chat", "ch.overview", "Chat", 196, {
-        L["A header with your tabs and buttons"],
-        L["Saved history, so a reload keeps your chat"],
-        L["Tooltips when you hover links"],
-    })
-    ModuleCard(page, CARD_W2 + GAP, "dm", "meter", "dm.overview", "Meter", 196, {
-        L["Blizzard's meter in a FlareUI frame"],
-        L["A Threat tab, so you know when to stop"],
-        L["Moves and resizes in Edit Mode"],
-    })
+    ModuleCard(page, 0, "ch", "chat", "ch.overview", "Chat", 196, Gives("ch"))
+    ModuleCard(page, CARD_W2 + GAP, "dm", "meter", "dm.overview", "Meter", 196, Gives("dm"))
 end
 
--- 7: where you are, what you're doing
+-- 9: where you are, what you're doing
 function BuildPage.mapQuests(page)
-    ModuleCard(page, 0, "mm", "minimap", "mm.overview", "Minimap", 196, {
-        L["A square map with Forever's day and night cycle"],
-        L["Zone, clock and coordinates on the map"],
-        L["All your addon buttons tucked into one bag"],
-    })
-    ModuleCard(page, CARD_W2 + GAP, "qt", "tracker", "qt.overview", "Quests", 196, {
-        L["Your quests grouped by zone"],
-        L["Colours show how hard each quest is"],
-        L["Gets out of the way in combat"],
-    })
+    ModuleCard(page, 0, "mm", "minimap", "mm.overview", "Minimap", 196, Gives("mm"))
+    ModuleCard(page, CARD_W2 + GAP, "qt", "tracker", "qt.overview", "Quests", 196, Gives("qt"))
 end
 
--- 8: the radial, and the key it still needs
+-- 10: one module, its two halves
+function BuildPage.bags(page)
+    local left = Card(page, 0, 0, CARD_W2, BODY_H, L["Bags"])
+    Stack(left, Preview(left, "bags", "bl.bagColumns", left.inner, 196))
+    local gives = Gives("bl")
+    Stack(left, Say(left, "GameFontHighlight", Bullets({ gives[1], gives[2] }), left.inner), 10)
+    CardTick(left, "bl")
+
+    local right = Card(page, CARD_W2 + GAP, 0, CARD_W2, BODY_H, L["Looting"])
+    Stack(right, Preview(right, "lootWindow", "bl.lootWindowFreeSlots", right.inner, 196, nil, 0.8))
+    Stack(right, Say(right, "GameFontHighlight", Bullets({
+        L["A loot window, loot rolls and a loot feed"],
+        L["Faster Auto Loot"],
+    }), right.inner), 10)
+    local pick = Stack(right, Say(right, "GameFontHighlight", L["These start off: pick them in /fui, Bags & Looting."], right.inner), 10)
+    pick:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+end
+
+-- 11: the radial, and the key it still needs
 function BuildPage.radial(page)
     local wheel = Card(page, 0, 0, 300, BODY_H)
     local art = Preview(wheel, "radial", "rm.overview", 300 - 2 * CARD_PAD, BODY_H - 2 * CARD_PAD, "Radial")
@@ -593,13 +665,10 @@ function BuildPage.radial(page)
     CardTick(card, "rm")
 end
 
--- 9: the helpers
+-- 12: the helpers
 function BuildPage.qol(page)
     local tick = Tick(page, "qol", L["Use Quality of Life"])
     tick:SetPoint("TOPLEFT", 0, -2)
-    -- Bags & Looting: its own switch
-    local bags = Tick(page, "bl", L["Use Bags & Looting"])
-    bags:SetPoint("TOPLEFT", CARD_W2 + GAP, -2)
     local height = BODY_H - 38
 
     local left = Card(page, 0, -38, CARD_W2, height, L["Move Any Window"])
@@ -607,7 +676,7 @@ function BuildPage.qol(page)
     -- (Move Any Window and Sync Blizz UI work with Quality of Life off)
     local move = Tick(left, "move", L["Use It"])
     Stack(left, move, 10)
-    local syncName = Say(left, "GameFontNormalLarge", L["Sync Blizz UI"], left.inner)
+    local syncName = Say(left, "GameFontNormalLarge", L["Sync Blizzard UI"], left.inner)
     syncName:SetTextColor(SECTION_GOLD[1], SECTION_GOLD[2], SECTION_GOLD[3])
     syncName:SetPoint("TOPLEFT", move, "BOTTOMLEFT", 0, -22)
     local syncText = Say(left, "GameFontHighlight", L["Got alts? Copies one character's interface options, Edit Mode layout, chat and bag settings to your others."], left.inner)
@@ -616,13 +685,11 @@ function BuildPage.qol(page)
     sync:SetPoint("TOPLEFT", syncText, "BOTTOMLEFT", 0, -10)
 
     local right = Card(page, CARD_W2 + GAP, -38, CARD_W2, height, L["Also in There"])
-    Stack(right, Say(right, "GameFontHighlight", Bullets({
-        L["Faster Auto Loot"],
-        L["A Train All button at trainers"],
-        L["A camera that zooms out further"],
-        L["Map pins with /way"],
-        L["Alert sounds for ready checks and invites"],
-    }), right.inner))
+    local more = Gives("qol")
+    more[#more + 1] = L["A Train All button at trainers"]
+    more[#more + 1] = L["Map pins with /way"]
+    more[#more + 1] = L["Alert sounds for ready checks and invites"]
+    Stack(right, Say(right, "GameFontHighlight", Bullets(more), right.inner))
     local pick = Stack(right, Say(right, "GameFontHighlight", L["Pick them in /fui, Quality of Life."], right.inner), 8)
     pick:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
     local tt = Stack(right, Say(right, "GameFontNormalLarge", Title("tt"), right.inner), 20)
@@ -631,15 +698,15 @@ function BuildPage.qol(page)
     CardTick(right, "tt")
 end
 
--- 10: the choices (each module with its round icon, lit when on), and what to try after the reload
+-- 13: the choices (each module with its round icon, lit when on), and what to try after the reload
 function BuildPage.finish(page)
-    local summary = Card(page, 0, 0, BODY_W, 244, L["What you turned on"])   -- (13 modules)
+    local summary = Card(page, 0, 0, BODY_W, 196, L["What you turned on"])   -- (15 modules, three columns)
     local rows = {}
-    local columnW = summary.inner / 2
+    local columnW = summary.inner / 3
     for i, key in ipairs(MODULE_KEYS) do
         local holder = CreateFrame("Frame", nil, summary)
         holder:SetSize(columnW - 8, 26)
-        holder:SetPoint("TOPLEFT", CARD_PAD + (i - 1) % 2 * columnW, -48 - math.floor((i - 1) / 2) * 27)
+        holder:SetPoint("TOPLEFT", CARD_PAD + (i - 1) % 3 * columnW, -48 - math.floor((i - 1) / 3) * 27)
         holder.icon = Kit().ModuleIcon(holder, key, 22)
         holder.icon:SetPoint("LEFT", 0, 0)
         holder.text = Say(holder, "GameFontHighlight", "", columnW - 40)
@@ -650,7 +717,7 @@ function BuildPage.finish(page)
     local nothing = Say(summary, "GameFontHighlight", L["Nothing is on yet. Go back and tick something, or open the settings later with /fui."], summary.inner)
     nothing:SetPoint("TOPLEFT", CARD_PAD, -48)
 
-    local after = Card(page, 0, -256, BODY_W, BODY_H - 256, L["Try These Next"])
+    local after = Card(page, 0, -208, BODY_W, BODY_H - 208, L["Try These Next"])
     local tips = Stack(after, Say(after, "GameFontHighlight", "", after.inner))
 
     function page.Refresh()
@@ -674,6 +741,7 @@ function BuildPage.finish(page)
         for _, row in pairs(rows) do row:SetShown(any and true or false) end
         nothing:SetShown(not any)
         local lines = { L["Press |cffffd100Esc|r, then |cffffd100Edit Mode|r, and drag things where you want them"] }
+        if c.np then lines[#lines + 1] = L["Open |cffffd100/fui|r, Nameplates, and pick each unit's look under Plate Setup"] end
         if c.rm then lines[#lines + 1] = L["Choose a key for your Radial Menu (the page opens after the reload)"] end
         lines[#lines + 1] = L["Type |cffffd100/fui|r whenever you want to change something"]
         tips:SetText(Bullets(lines))
@@ -682,12 +750,15 @@ end
 
 local PAGES = {
     { build = "welcome", bare = true },
-    { build = "unitFrames", title = function() return Title("uf") end, lead = L["Your player, target, focus and pet frames, and the boss frames."] },
-    { build = "bars", title = L["Bars and Buffs"], lead = L["The buttons and bars you look at all day."] },
+    { build = "unitFrames", title = function() return Title("uf") end, lead = function() return Description("uf") end },
+    { build = "nameplates", title = function() return Title("np") end, lead = function() return Description("np") end },
+    { build = "bars", title = L["Bars and Cooldowns"], lead = L["The buttons and bars you look at all day."] },
+    { build = "buffs", title = L["Buffs and Reminders"], lead = L["What you have on you, and what you're missing."] },
     { build = "editMode", title = L["Where do the options live?"], lead = L["This is the one thing to remember: there are two places."] },
     { build = "layout", title = L["The FlareUI Layout"], lead = L["Your screen set up the way FlareUI is made to look."] },
     { build = "chatMeter", title = L["Chat and Damage Meter"], lead = L["Two windows that match, usually in the bottom corners of your screen."] },
     { build = "mapQuests", title = L["Minimap and Quests"], lead = L["Where you are, and what you're doing there."] },
+    { build = "bags", title = function() return Title("bl") end, lead = function() return Description("bl") end },
     { build = "radial", title = function() return Title("rm") end, lead = L["Everything you need, one key away."] },
     { build = "qol", title = function() return Title("qol") end, lead = L["Small helpers that save you clicks."] },
     { build = "finish", title = L["Good dog. All done!"], lead = L["One reload and your choices take effect."] },
@@ -706,6 +777,7 @@ local function ApplyChoices()
         -- newly on: the radial still has no key, so the first login opens the page for it
         if c.rm and not S.modules.rm:IsOn() then global.tourRadialKeys = true end
     end
+    local newCooldowns = c.cdm and not S.modules.cdm:IsOn()
     for _, key in ipairs(MODULE_KEYS) do
         local module = S.modules[key]
         if module then module:SetOn(c[key]) end
@@ -716,6 +788,10 @@ local function ApplyChoices()
     local move, sync = c.move and true or false, c.sync and true or false
     if move ~= (S.rows["qol.move"]:Get() and true or false) then S.rows["qol.move"]:Set(move) end
     if sync ~= (S.rows["qol.sync"]:Get() and true or false) then S.rows["qol.sync"]:Set(sync) end
+    -- newly on: the Cooldowns module dresses Blizzard's Cooldown Manager, which needs its own switch on
+    if newCooldowns and not C_CVar.GetCVarBool("cooldownViewerEnabled") then
+        pcall(C_CVar.SetCVar, "cooldownViewerEnabled", "1")
+    end
     -- FlareUI's meter restyles Blizzard's, which needs its own option on
     if c.dm and not C_CVar.GetCVarBool("damageMeterEnabled") then
         pcall(C_CVar.SetCVar, "damageMeterEnabled", "1")
@@ -804,8 +880,10 @@ function tour.Show(step)
         end
         local title = info.title
         if type(title) == "function" then title = title() end
+        local lead = info.lead
+        if type(lead) == "function" then lead = lead() end
         tour.title:SetText(title)
-        tour.lead:SetText(info.lead)
+        tour.lead:SetText(lead)
         local last = step == #PAGES
         tour.next:SetShown(not last)
         tour.skip:SetShown(not last)
@@ -870,7 +948,7 @@ local function BuildTour()
     for i = 1, #PAGES do
         local dot = header:CreateTexture(nil, "ARTWORK")
         dot:SetTexture(CIRCLE)
-        dot:SetPoint("CENTER", header, "TOPRIGHT", -SIDE - 5 - (#PAGES - i) * 15, -66)
+        dot:SetPoint("CENTER", header, "TOPRIGHT", -SIDE - 5 - (#PAGES - i) * 13, -66)
         tour.dots[i] = dot
     end
     -- a line under the header, as the settings window's tab line
@@ -896,15 +974,18 @@ local function BuildTour()
     tour.finish:SetPoint("BOTTOMRIGHT", -SIDE, 23)
 end
 
--- A first run proposes every module but Resource Bars (all its bars start off, so it would show
--- nothing); a later run starts from what is on now.
+-- A first run proposes every module but Resource Bars (all its bars start off, so it would show nothing),
+-- Buff Reminders, Cooldowns while Blizzard's Cooldown Manager is off, and Nameplates with another nameplate
+-- addon on; a later run starts from what is on now.
 local function StartChoices()
     local S = ns.Settings
     local fresh = not AnyModuleEnabled()
     local c = {}
     for _, key in ipairs(MODULE_KEYS) do
         if fresh then
-            c[key] = key ~= "rb" and key ~= "br"   -- (Resource Bars and Buff Reminders: the player picks them)
+            c[key] = key ~= "rb" and key ~= "br"
+            if key == "cdm" then c[key] = ns.CooldownManager ~= nil and ns.CooldownManager.BlizzardOn() end
+            if key == "np" then c[key] = not (ns.Nameplates and ns.Nameplates.OtherAddon and ns.Nameplates.OtherAddon()) end
         else
             c[key] = S.modules[key] and S.modules[key]:IsOn() or false
         end

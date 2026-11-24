@@ -107,7 +107,12 @@ local barText = row("barText")
 local dropdown = widgetFor("barText").control
 local entries = dropdown:OpenMenu().entries
 assert(#entries == 3 and entries[1].text == "Left")
-entries[1].entries[4].pick()
+do
+    local at, names = {}, {}
+    for i, e in ipairs(entries[1].entries) do if e.text then at[e.text] = i; names[#names + 1] = e.text end end
+    assert(at["First Name"] < at["Last Name"] and at["Last Name"] < at["Full Name"], table.concat(names, ", "))
+    entries[1].entries[at["Full Name"]].pick()
+end
 dropdown:CloseMenu()
 assert(barText.slotTicked("left", "fullname") and barText:Get() == "left=fullname;middle=;right=")
 barText:Set(barText.slotToggle("left", "percent"))
@@ -161,7 +166,16 @@ assert(row("mouseoverHighlight"):Get() == "border,bar", "Mouseover Highlight sta
 side.unitGroup.cells[1]:Click()
 assert(side.sample.kind == "enemyPlayer" and row("questMarks"):IsHidden()
     and NP.TypeDB("enemyPlayer").colorBoss ~= true)
-assert(not row("nameOnlyFull"):IsHidden(), "a player type shows Show Full Name")
+assert(not row("nameOnlyFull"):IsHidden(), "a player type shows Show Name")
+do
+    local pick = row("nameOnlyFull")
+    assert(pick:Get() == "fullname")
+    pick:Set("lastname")
+    assert(pick:Get() == "lastname")
+    pick:Set("firstname")
+    assert(pick:Get() == "firstname")
+    pick:Set("fullname")
+end
 assert(row("showTitles"):Get() == false, "players start without titles")
 side.unitGroup.cells[2]:Click()
 

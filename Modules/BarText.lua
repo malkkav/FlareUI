@@ -5,7 +5,7 @@ local L = ns.L
 -- BAR TEXT
 -- Left, Middle and Right text slots on a frame's health, power and druid mana bars. Each slot is a
 -- multi-pick dropdown in Edit Mode; what a slot holds is joined with " / ", in the order the player
--- ticked it (the menu numbers the ticks). A name (First Name or Full Name) is a slot of its own: picking
+-- ticked it (the menu numbers the ticks). A name (First, Full or Last Name) is a slot of its own: picking
 -- it clears the rest, picking a number clears it. Stored per frame as udb.barText[bar][slot] =
 -- { item = n, ... } (n = place in the slot; true, from defaults and older saves, = BT.ORDER's place); a
 -- slot never set reads the style's default, and a frame with an old Health Text / Power Text choice
@@ -23,15 +23,16 @@ BT.SLOTS = { "left", "middle", "right" }
 BT.BARS = { "health", "power", "mana" }
 BT.SEPARATOR = " / "
 -- the order of items without a ticked place (defaults, older saves)
-BT.ORDER = { "firstname", "fullname", "percent", "value", "max", "lost" }
-BT.NAMES = { firstname = true, fullname = true }
+BT.ORDER = { "firstname", "lastname", "fullname", "percent", "value", "max", "lost" }
+-- (11-24, Malkkav: the most asked-for pick) Last Name: the surname alone
+BT.NAMES = { firstname = true, fullname = true, lastname = true }
 BT.ITEMS = {
-    health = { "firstname", "fullname", "percent", "value", "max", "lost" },
+    health = { "firstname", "lastname", "fullname", "percent", "value", "max", "lost" },
     power = { "percent", "value", "max" },
     mana = { "percent", "value", "max" },
 }
 BT.LABELS = {
-    firstname = L["First Name"], fullname = L["Full Name"], percent = L["Health Percent"], value = L["Health Value"], max = L["Health Max"], lost = L["Health Lost"],
+    firstname = L["First Name"], fullname = L["Full Name"], lastname = L["Last Name"], percent = L["Health Percent"], value = L["Health Value"], max = L["Health Max"], lost = L["Health Lost"],
 }
 BT.POWER_LABELS = { percent = L["Power Percent"], value = L["Power Value"], max = L["Power Max"] }
 
@@ -147,6 +148,10 @@ function BT.Place(set, item)
     for i = 1, n do if list[i] == item then return i end end
 end
 
+function BT.DropNames(set)
+    for name in pairs(BT.NAMES) do set[name] = nil end
+end
+
 -- The three slots of one bar: { left = set, middle = set, right = set }. style: "plate" (Forever
 -- Style) or "plain" (Addon and FlareUI Style). An old choice is converted and stored here, once.
 function BT.Slots(udb, bar, style, firstOnly, oldKey, unit)
@@ -175,7 +180,7 @@ function BT.Slots(udb, bar, style, firstOnly, oldKey, unit)
         local set = (mine and mine[slot]) or fallback[slot]
         out[slot] = Copy(set, firstOnly)
         -- the plate's name has its own box; the resource bars have none
-        if not named then out[slot].firstname, out[slot].fullname = nil, nil end
+        if not named then BT.DropNames(out[slot]) end
     end
     return out
 end
@@ -212,7 +217,7 @@ function BT.Toggle(udb, bar, slot, style, value, reset, firstOnly, oldKey, unit)
         -- a name stands alone
         set = set[value] and {} or { [value] = 1 }
     else
-        set.firstname, set.fullname = nil, nil
+        BT.DropNames(set)
         -- a new tick goes last; an untick closes the gap
         if set[value] then set[value] = nil else set[value] = 1000 end
         set = Renumber(set)
@@ -235,9 +240,48 @@ function BT.HasNumbers(set)
     for item in pairs(set) do if not BT.NAMES[item] then return true end end
     return false
 end
--- the slot's name pick: "firstname", "fullname" or nil
+-- the slot's name pick: "firstname", "fullname", "lastname" or nil
 function BT.NameOf(set)
-    return (set.fullname and "fullname") or (set.firstname and "firstname") or nil
+    return (set.fullname and "fullname") or (set.lastname and "lastname") or (set.firstname and "firstname") or nil
+end
+-- a pick as ns.UnitDisplayName's full: false, true or "lastname"
+function BT.FullOf(pick)
+    return pick == "lastname" and "lastname" or pick == "fullname"
+end
+-- a sample's name by it
+function BT.SampleName(first, surname, full)
+    if not (full and surname and surname ~= "") then return first end
+    return full == "lastname" and surname or first .. " " .. surname
+end
+
+-- a setup whose old Full Player Names was off: the tiles without a pick start as First Name
+function BT.OldFirstOnly()
+    local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
+    return uf ~= nil and uf.fullNames == false
+end
+
+-- Show Name on the raid tiles (raid frames, the party's Raid Style), whose name sits on top: one dropdown, Off
+-- and which name (the old switch's off stays Off). Saved as showName (false: off) and nameShown. Not Forever
+-- Style's name box: its name is fixed (Malkkav 11-24).
+--   o: db(), changed(), hidden, first() (true: First Name until picked)
+function BT.ShowNameSetting(o)
+    local LEM = LibStub("FlareEditMode")
+    return { name = L["Show Name"], kind = LEM.SettingType.Dropdown, hidden = o.hidden,
+        default = "fullname",
+        values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["First Name"], value = "firstname", isRadio = true },
+                   { text = L["Last Name"], value = "lastname", isRadio = true }, { text = L["Full Name"], value = "fullname", isRadio = true } },
+        get = function()
+            local db = o.db()
+            if db and db.showName == false then return "off" end
+            return db and db.nameShown or (o.first and o.first() and "firstname") or "fullname"
+        end,
+        set = function(_, value, reset)
+            local db = o.db()
+            if not db then return end
+            db.showName = value ~= "off"
+            if reset then db.nameShown = nil elseif value ~= "off" then db.nameShown = value end
+            if o.changed then o.changed() end
+        end }
 end
 
 -- Fills fs with a slot's numbers, " / " between them; prefix goes in front (the name's "/ " when the
@@ -317,7 +361,7 @@ end
 -- The Edit Mode dropdown of one bar: Left, Middle and Right as submenus of ticks; the
 -- closed box sums the three slots up left to right, "Full Name · — · Value".
 BT.MENU_SLOTS = { left = L["Left"], middle = L["Centre"], right = L["Right"] }
-BT.SHORT = { firstname = L["First Name"], fullname = L["Full Name"], percent = "%", value = L["Value"],
+BT.SHORT = { firstname = L["First Name"], fullname = L["Full Name"], lastname = L["Last Name"], percent = "%", value = L["Value"],
              max = L["Max"], lost = L["Lost"] }
 function BT.Summary(slots, only)
     local parts = {}
@@ -392,14 +436,14 @@ end
 --------------------------------------------------
 -- NAME ABOVE PLATES (11-20, Malkkav, the most asked-for change): the unit's name above the frame, so the
 -- bars can stay clean. One Edit Mode dropdown in each frame's Text section: Off, then Left, Centre and
--- Right, each with First Name and Full Name. One pick in all: a new pick replaces the old one. Stored
--- per frame as udb.nameAbove = "<slot>:<firstname|fullname>". The spot is the frame's own left, centre
+-- Right, each with First, Full and Last Name. One pick in all: a new pick replaces the old one. Stored
+-- per frame as udb.nameAbove = "<slot>:<firstname|fullname|lastname>". The spot is the frame's own left, centre
 -- or right (not mirrored). Auras and a cast bar above the frame move up by the name's height
 -- (f.nameAboveLift), so nothing covers it.
 --------------------------------------------------
 local NA = {}
 ns.NameAbove = NA
-NA.KINDS = { "firstname", "fullname" }
+NA.KINDS = { "firstname", "lastname", "fullname" }
 NA.GAP = 2      -- px between the frame's top and the name
 NA.INSET = 3    -- px in from the frame's side for Left and Right
 
@@ -407,7 +451,7 @@ function NA.Get(udb)
     local v = udb and udb.nameAbove
     if type(v) ~= "string" then return nil end
     local slot, kind = v:match("^(%a+):(%a+)$")
-    if BT.MENU_SLOTS[slot] and (kind == "firstname" or kind == "fullname") then return slot, kind end
+    if BT.MENU_SLOTS[slot] and BT.NAMES[kind] then return slot, kind end
     return nil
 end
 
@@ -497,7 +541,7 @@ function NA.SetName(f, udb, unit)
     local fs = f.NameAboveText
     local slot, kind = NA.Get(udb)
     if not (fs and slot) then return end
-    local name = unit and UnitExists(unit) and ns.UnitDisplayName(unit, nil, kind == "fullname") or nil
+    local name = unit and UnitExists(unit) and ns.UnitDisplayName(unit, nil, BT.FullOf(kind)) or nil
     if canaccessvalue(name) and not name then name = "" end
     fs:SetText(name or "")
 end
@@ -506,5 +550,5 @@ function NA.SetSample(f, udb, first, surname)
     local fs = f.NameAboveText
     local slot, kind = NA.Get(udb)
     if not (fs and slot) then return end
-    fs:SetText((kind == "fullname" and surname and surname ~= "") and (first .. " " .. surname) or first or "")
+    fs:SetText(first and BT.SampleName(first, surname, BT.FullOf(kind)) or "")
 end
