@@ -214,7 +214,7 @@ C.TYPE_KEYS = {
     auraStyle = true, auraSwipe = true, auraTimer = true, auraTimerColor = true, auraRows = true,
     nameAbove = true, nameOnlyFull = true, castGlow = true,
     -- (11-23) the cast bar's own look; names by class on a full plate, guild colour, titles
-    castTexture = true, castBorder = true, nameClassColor = true, guildColor = true, showTitles = true,
+    castTexture = true, castBorder = true, nameClassColor = true, guildColor = true, showTitles = true, showGuild = true,
 }
 -- these were one shared value before 11-20: a preset reads the profile's old shared value, so every
 -- type keeps the look it had; a type's Custom keeps its own from then on
@@ -758,6 +758,11 @@ function NP.Build(parent, sample)
     p.npcTitle:SetWordWrap(false)
     p.npcTitle:SetJustifyH("CENTER")
     p.npcTitle:Hide()
+    -- a player's guild, under the title or the name (NP.UpdateGuild)
+    p.guildName = NewText(overlay)
+    p.guildName:SetWordWrap(false)
+    p.guildName:SetJustifyH("CENTER")
+    p.guildName:Hide()
     -- Quest Marks: the quest "!" and what's left ("3/8") at the name line's right end
     p.quest = overlay:CreateTexture(nil, "OVERLAY", nil, 2)
     p.quest:Hide()
@@ -1813,8 +1818,15 @@ function NP.Layout(p)
             p.npcTitle:SetPoint("TOP", p.name, "BOTTOM", 0, -1)
             p.npcTitle:SetWidth((w + 40) * math_max(1, scale))
         end
+        if p.guildName then
+            if K and K.ApplyFont then
+                K.ApplyFont(p.guildName, font, math_floor(base * (scale * C.TITLE_SIZE - 1) + 0.5))
+            end
+            p.guildName:SetWidth((w + 40) * math_max(1, scale))
+        end
     elseif p.npcTitle then
         p.npcTitle:Hide()
+        if p.guildName then p.guildName:Hide() end
     end
     NP.LayoutThreat(p, db)
     -- (again now that nameOnly is known: the raid marker's place depends on it)
@@ -2364,7 +2376,30 @@ function NP.PlayerTitle(unit)
     title = title:gsub("^%s*,?%s*", ""):gsub("%s+$", "")
     return title ~= "" and title or nil
 end
+-- SHOW GUILD NAME (11-24, illsism / Malkkav; the player types, off): a player's guild on a Name Only plate,
+-- under the title when there is one, as Blizzard writes it: <Guild>. A secret one is left out.
+function NP.UpdateGuild(p)
+    local fs = p.guildName
+    if not fs then return end
+    local guild
+    if p.nameOnly and p.unit and (p.kind == "friendlyPlayer" or p.kind == "enemyPlayer") and PDB(p).showGuild then
+        guild = GetGuildInfo(p.unit)
+        if not (canaccessvalue(guild) and type(guild) == "string" and guild ~= "") then guild = nil end
+    end
+    if not guild then fs:Hide() return end
+    fs:SetText("<" .. guild .. ">")
+    local c = ns.PALETTE.bronze5
+    fs:SetTextColor(c[1], c[2], c[3], 1)
+    fs:ClearAllPoints()
+    fs:SetPoint("TOP", (p.npcTitle and p.npcTitle:IsShown()) and p.npcTitle or p.name, "BOTTOM", 0, -1)
+    fs:Show()
+end
+-- the lines under a Name Only name: the title, then the guild
 function NP.UpdateTitle(p)
+    NP.UpdateTitleLine(p)
+    NP.UpdateGuild(p)
+end
+function NP.UpdateTitleLine(p)
     local fs = p.npcTitle
     if not fs then return end
     local title

@@ -226,4 +226,48 @@ assert(hl.Border2:GetBackdrop() ~= nil, "the second copy has the border art")
 ns.IsGamepadUI = isGamepad
 ui:emit("PLAYER_TARGET_CHANGED")
 assert(not hl.Border2:IsShown())
+
+-- Show Level puts the level before Name Above Frames too, not in the ring styles
+do
+    local st, shown = party.classic, party.classic.showLevel
+    local tile = setmetatable({ NameAboveText = a:CreateFontString() }, { __index = a })
+    local function text(level, ring, sample)
+        st.nameAbove, st.showLevel, tile.ringKind = "left:firstname", level, ring
+        pf.SetNameAbove(tile, sample)
+        return tile.NameAboveText:GetText()
+    end
+    local db = pf.NameAboveDb(tile)
+    local old, oldLevel = db.nameAbove, db.showLevel
+    if db ~= st then st = db end
+    assert(text(true):find("42|r Mira", 1, true), "the level before the name")
+    assert(text(false) == "Mira")
+    assert(text(true, "party") == "Mira", "ring styles: the disc has it")
+    tile.ringKind = nil
+    assert(text(true, nil, { name = "Zorgath", level = 60 }) == "|cffffd10060|r Zorgath")
+    db.nameAbove, db.showLevel = old, oldLevel
+    party.classic.showLevel = shown
+end
+
+-- a tile with the Elite & Rare skull (the boss frames'): gold or silver border with it, bronze without it
+-- and in the ring styles
+do
+    local tile = { fuiUnit = a.fuiUnit, Border = env.CreateFrame("Frame", nil, a), ClassIcon = a:CreateTexture() }
+    local classify, kind = env.UnitClassification, nil
+    env.UnitClassification = function() return kind end
+    local rank = ns.UnitFrames.RANK_BORDER
+    local function at(c)
+        pf.UpdateClassIcon(tile)
+        local r, g, b = tile.Border:GetBackdropBorderColor()
+        return r == c.r and g == c.g and b == c.b
+    end
+    kind = "worldboss"
+    assert(at(rank.elite) and tile.ClassIcon:IsShown())
+    kind = "rareelite"
+    assert(at(rank.rare))
+    tile.ringKind = "boss"
+    assert(at(ns.BORDER_COLOR) and not tile.ClassIcon:IsShown())
+    tile.ringKind, kind = nil, "normal"
+    assert(at(ns.BORDER_COLOR))
+    env.UnitClassification = classify
+end
 print("PASS: party frames live health, role/order, secure registration, pets, targets and Edit Mode")

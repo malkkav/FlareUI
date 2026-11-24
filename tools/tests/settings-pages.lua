@@ -29,7 +29,7 @@ ns.Bags = {
     View = function() return S:GetPath("tweaks.bagView") or "all" end,
     Refresh = record("bags"), Filter = { Refresh = record("bag filter") },
 }
-ns.Chat = { RefreshAll = record("chat"), GetOtherChatAddon = function() return ui.otherChat end,
+ns.Chat = { RefreshAll = record("chat"), GetOtherChatAddon = function() return ui.otherChat end, GetClashingChatAddon = function() return ui.clash end,
     EditBoxBorder = function(db) return db.editBoxBorder or "thick" end }
 ns.Tweaks = {
     CameraDefault = function(name) return name == "cameraZoomSpeed" and 20 or 1.9 end,
@@ -96,6 +96,11 @@ set("ch.channelNames", "short")
 assert(row("ch.channelNames"):Get() == "short" and setting("chat.shortChannels"))
 ui.otherChat = "Prat"
 assert(S.modules.ch.banner():find("Prat", 1, true) and calls.chat == 4)
+ui.otherChat, ui.clash = nil, "Chatter"
+assert(S.modules.ch.banner():find("Chatter changes the chat too", 1, true))
+ui.clash = nil
+assert(S.modules.ch.banner() == nil)
+ui.otherChat = "Prat"
 
 local pending = S:PendingCount()
 assert(row("ab.xpBar"):Get() == "split")
@@ -237,6 +242,8 @@ assert(cvars.WorldTextScale == "1.3" and row("fonts.combatSize"):Get() == 130)
 
 set("rm.names", "always")
 assert(row("rm.names"):Get() == "always" and setting("radialmenu.showNames"))
+set("rm.spellRank", "both")
+assert(setting("radialmenu.spellRank") == "both" and row("rm.spellRank"):Get() == "both")
 set("rm.names", "off")
 assert(row("rm.names"):Get() == "off" and not setting("radialmenu.showNames"))
 ui.otherController = "ConsolePort"

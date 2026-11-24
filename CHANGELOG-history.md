@@ -1,6 +1,88 @@
 # FlareUI changelog history
 
-Versions 7.0.3 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.7 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.7
+
+A big round of controller work, a real second power slot for druids in Forever Style, and a long list of fixes from your reports.
+
+**Restart the game fully after updating** (not just /reload): this version adds new files.
+
+**We need your help testing:**
+- **Controller players:** we don't all play with one, so the controller changes below need your hands. Tell us what works and what doesn't.
+- **Druids:** try **Mana on Shapeshift** in Forever Style, in and out of fights.
+- If the game says it blocked an action from FlareUI, send us what `/fui errors` shows. It now lists those too.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Quality of Life:** the **Nameplates** tab is gone.
+  - **Combo Points**, **Quest Objectives** and the **In Combat** choices are in the Nameplates module, and work with Quality of Life off. Your choices carry over.
+  - These are gone from Blizzard's own nameplates: Combo Points, Quest Objectives, Hide Names, Hide Level Box and Level Before Names.
+- **Forever Style:** **Mana on Shapeshift** no longer cuts the power bar in half. The mana bar has its own slot below the frame.
+- **Gamepad UI:** these are off, because each could break the controller until a reload:
+  - stick scrolling in the quest tracker
+  - opening quests from a click in FlareUI's tracker, and linking them to chat
+  - the meter's right-click menus
+  - the FlareUI button in the ESC menu
+  - the chat's Copy button
+  - **Skip Loot Confirmations**
+- **Gamepad UI:** synced chat settings and the chat style wait for a reload or logout.
+
+## Highlights
+- **Quest Tracker:** use all of it with a controller.
+- **Forever Style:** Blizzard's own second power slot for druids.
+- **Party Frames:** raid markers on what your party is targeting.
+
+## New
+
+### Gamepad UI
+- **Quest Tracker:** LB + RB, then D-pad Up, gives the controller to FlareUI's tracker. A legend below it shows the buttons.
+  - D-pad: moves between quests, quest items, zones, recipes and the header buttons
+  - A: focuses a quest, uses an item, folds a zone
+  - X: opens the quest on the map
+  - Y: a list with Share Quest, Collapse, Pin to Top and Untrack
+  - B: gives the controller back
+  - In fights, only quest items work. With none on screen, or with no tracker on screen, the quest log opens instead.
+- **Dialogs:** X picks the third answer.
+
+### Party Frames
+- **Show Target Markers** (off) in Edit Mode under Pets & Targets: the raid marker of what each member is targeting, on the right edge of its frame. Needs **Party Targets** on.
+- **Raid Style:** **Health Text** and **Power Text** have Left, Centre and Right, like Classic. Your old pick stays in the centre.
+
+### Bug reports
+- `/fui errors` also lists what the game blocked from FlareUI.
+
+## Changed
+- **Forever Style:** with **Mana on Shapeshift**, the power bar and its numbers keep their size, and it works with **Power Height** off. The attached cast bar and the auras below the frame make room.
+- **Radial Menu** (controller):
+  - You keep walking when a radial opens.
+  - The lit button is always the one that's used.
+  - The camera stays still for a moment after it closes.
+  - A radial closes on loading screens.
+- **Minimap:** the Info Bar's text is white.
+- **Buff Reminders:** the missing elixir ranks are in the list. By GregDuhamel.
+- **German:** 42 phrases translated. By kluntjewalker.
+- **Hungarian:** translated up to 7.0.6. By Xentinus.
+
+## Fixed
+- **Gamepad UI:**
+  - The quest shortcut (D-pad Up) gave the controller to a tracker nobody could see.
+  - FlareUI's quest tracker took the stick while a radial was open.
+  - B could close a radial opened from a B slot right away.
+  - The dialogs and the settings window could pass button presses on to the game.
+  - Several ways FlareUI's chat could stop the controller from working until a reload.
+- **Quest Tracker:** clicking a quest's text could open the map without the quest.
+- **Settings:** the X didn't close the window in a fight.
+- **Fonts:** a name's shadow could be missing, most visibly with **Outline** on None.
+- **Nameplates:**
+  - **Combo Points** didn't show with Quality of Life off.
+  - The level didn't show with **Names Above Plate** and **Level** on Follow Name.
+- **Radial Menu:**
+  - Toys didn't work from a radial.
+  - Long names in the Catalog ran into its title.
+- **Buff Reminders:** a drink could still be remembered as your food.
+- **Minimap:** icon tooltips showed a second tooltip about moving them.
+- **Chat:** another try at tabs that don't switch during a fight. **If yours still don't, please tell us.**
 
 # FlareUI 7.0.6
 

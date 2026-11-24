@@ -53,6 +53,7 @@ ns.Copy = {
         },
         ch = {
             banner = L["%s is handling your chat, so FlareUI's chat stays off. Turn %s off to use FlareUI's."],
+            banner2 = L["%s changes the chat too, so it can look doubled or broken. Use only one of the two."],
             desc = L["A cleaner chat frame with a customisable header."],
             editNote = L["The chat's visibility and fading are set in Edit Mode."],
             offCard = L["* A cleaner chat with FlareUI's header and tabs\n* Class colours, short channel names and link icons\n* A copy button, and fading when quiet"],
@@ -2128,6 +2129,12 @@ ns.Copy = {
             label = L["Always Show Plates"],
             section = "np.which",
         },
+        ["np.showGuild"] = {
+            desc = L["The player's guild under the name."],
+            label = L["Show Guild Name"],
+            section = "np.nameOnlySection",
+            tags = { "guild", "guild name" },
+        },
         ["np.showOffscreen"] = {
             desc = L["Plates of units just off the screen stay at its edge."],
             label = L["Offscreen Plates"],
@@ -2789,7 +2796,7 @@ ns.Copy = {
         },
         ["rm.font.labels"] = {
             desc = L["The names on the buttons."],
-            label = L["Button Names"],
+            label = L["Icon Labels"],
             section = "rm.fonts",
         },
         ["rm.key"] = {
@@ -2809,8 +2816,9 @@ ns.Copy = {
         ["rm.names"] = {
             choices = { L["Off"], L["Mouseover"], L["Always"] },
             desc = L["The names on the radial's buttons:\n* Mouseover: the button you point at\n* Always: every button. Long names end in \"...\""],
-            label = L["Button Names"],
+            label = L["Icon Labels"],
             section = "rm.look",
+            tags = { "button names", "icon names" },
             tip = L["Set their size on the Fonts tab."],
         },
         ["rm.new"] = {
@@ -2876,6 +2884,14 @@ ns.Copy = {
             desc = L["Which of your characters get this radial. Each picks it up at login."],
             label = L["Available To"],
             tip = L["A new radial starts on this character only."],
+        },
+        ["rm.spellRank"] = {
+            choices = { L["Off"], L["In the Icon"], L["In the Label"], L["Both"] },
+            desc = L["The rank of a spell below your best one:\n* In the Icon: its number, at the top left\n* In the Label: after the name, like Frostbolt (Rank 2)"],
+            label = L["Show Spell Rank"],
+            section = "rm.look",
+            tags = { "spell rank", "rank", "spell level", "lower rank" },
+            tip = L["The label also needs Icon Labels on."],
         },
         ["rm.subRadials"] = {
             choices = { L["Reset on Close"], L["Remember"] },

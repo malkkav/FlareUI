@@ -451,15 +451,29 @@ function PF.NameFull(f)
     return nil
 end
 
+-- Name Above Frames (BarText.lua), with the level off the ring styles; sample: Edit Mode's
+function PF.SetNameAbove(f, sample)
+    if not f.NameAboveText then return end
+    local st = TS(f)
+    local levels = st and st.showLevel and not f.ringKind and st or nil
+    if sample then
+        local level = levels and (sample.level or UnitLevel("player")) or nil
+        ns.NameAbove.SetSample(f, PF.NameAboveDb(f), sample.name, sample.surname, level, st and st.icons)
+    else
+        ns.NameAbove.SetName(f, PF.NameAboveDb(f), f.fuiUnit, levels)
+    end
+end
+
 local function UpdateName(f)
     -- the party frames pass "party" (first-name rules); raid and boss tiles show the whole name
     -- (bar text tiles: the slot's First, Full or Last Name; the others by Show Name)
     local full = PF.NameFull(f)
     f.Name:SetText(SafeName(ns.UnitDisplayName(f.fuiUnit, not f.ctx and "party" or nil, full)))
-    if f.NameAboveText then ns.NameAbove.SetName(f, PF.NameAboveDb(f), f.fuiUnit) end
+    PF.SetNameAbove(f)
 end
 
 local function UpdateLevel(f)
+    PF.SetNameAbove(f)
     local st = TS(f)
     if not (st and st.showLevel) then f.Level:SetText("") return end
     local level = ns.UnitShownLevel(f.fuiUnit)
@@ -684,10 +698,16 @@ end
 function PF.UpdateClassIcon(f)
     local icon = f.ClassIcon
     if not icon then return end
-    if f.ringKind or not IconShown("classification", f) then icon:Hide() return end
+    if f.ringKind or not IconShown("classification", f) then
+        icon:Hide()
+        K.SetBorderRank(f.Border)
+        return
+    end
     local c = UnitClassification(f.fuiUnit)
     local kind = canaccessvalue(c) and PF.ClassKind(c) or nil
-    icon:SetShown(kind ~= nil and K.ClassArt(icon, kind) or false)
+    local shown = kind ~= nil and K.ClassArt(icon, kind) or false
+    icon:SetShown(shown)
+    K.SetBorderRank(f.Border, shown and kind or nil)
 end
 
 -- Blizzard's role icon routine (keeps a secret role secret), handed a stand-in frame; the plain
@@ -2191,7 +2211,8 @@ function PF.LayoutPetHappiness(f)
     local gap = 4
     local place = UFM.PetHappinessPlace and UFM.PetHappinessPlace() or "RIGHT"
     local height = p:GetHeight() or 0
-    local size = place == "CENTER" and math_max(12, math_min(20, height + 4)) or 20
+    local size = place == "CENTER" and math_max(12, math_min(20, height + 4))
+        or math_max(20, p.Health:GetHeight() or 0)   -- (11-24) beside it: as tall as the health bar
     face:ClearAllPoints()
     face:SetSize(size, size)
     if place == "LEFT" then
@@ -2944,7 +2965,7 @@ ApplyPreview = function(f)
     local full = PF.NameFull(f)
     if full == nil then full = not (uf and uf.fullNames == false) end
     f.Name:SetText(ns.BarText.SampleName(data.name, data.surname, full))
-    if f.NameAboveText then ns.NameAbove.SetSample(f, PF.NameAboveDb(f), data.name, data.surname) end
+    PF.SetNameAbove(f, data)
     if st.showLevel and data.level == -1 then
         f.Level:SetText("??")
         f.Level:SetTextColor(1, 0.1, 0.1)
@@ -3047,6 +3068,7 @@ ApplyPreview = function(f)
             local kind = not f.ringKind and PF.ClassKind(data.classification)
             return kind and K.ClassArt(f.ClassIcon, kind) or false
         end)
+        K.SetBorderRank(f.Border, f.ClassIcon:IsShown() and PF.ClassKind(data.classification) or nil)
     end
     ShowIcon("raidIcon", f.RaidIcon, function()
         if not data.marker then return false end

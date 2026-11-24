@@ -1062,6 +1062,35 @@ assert(plates.PlayerTitle("nameplate9") == "the Patient", tostring(plates.Player
 env.UnitPVPName = function() return "Bob Smith" end
 assert(plates.PlayerTitle("nameplate9") == nil, "no title")
 env.UnitPVPName, ns.UnitDisplayName = oldPvp, oldDisplay
+-- Show Guild Name (11-24): players' Name Only plates, off by default, under the title when it shows
+do
+    local oldGuild, guild = env.GetGuildInfo, "Emerald Circle"
+    env.GetGuildInfo = function() return guild end
+    local p = { nameOnly = true, unit = "nameplate9", kind = "friendlyPlayer", sample = true,
+                name = env.UIParent:CreateFontString(), npcTitle = env.UIParent:CreateFontString(), guildName = env.UIParent:CreateFontString() }
+    p.npcTitle:Hide()
+    local function shown(on)
+        p.tdb = { showGuild = on }
+        plates.UpdateGuild(p)
+        return p.guildName:IsShown()
+    end
+    assert(not plates.TypeDB("friendlyPlayer").showGuild and not shown(nil) and not shown(false))
+    assert(shown(true) and p.guildName:GetText() == "<Emerald Circle>" and select(2, p.guildName:GetPoint()) == p.name)
+    p.npcTitle:Show()
+    assert(shown(true) and select(2, p.guildName:GetPoint()) == p.npcTitle, "under the title")
+    guild = nil
+    assert(not shown(true), "no guild")
+    guild = "Secret Circle"
+    local readable = env.canaccessvalue
+    env.canaccessvalue = function(v) return v ~= "Secret Circle" and readable(v) end
+    assert(not shown(true), "a secret guild is left out")
+    env.canaccessvalue, guild = readable, "Emerald Circle"
+    p.nameOnly = false
+    assert(not shown(true), "a full plate never shows it")
+    p.nameOnly, p.kind = true, "friendlyNpc"
+    assert(not shown(true), "players only")
+    env.GetGuildInfo = oldGuild
+end
 -- the mouseover border: lighter than the plate's own bronze, back after (target and threat colours get lighter too)
 local savedThreat, savedTarget = live.threatRGB, live.targetShown
 live.threatRGB, live.targetShown = nil, nil

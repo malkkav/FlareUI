@@ -47,6 +47,22 @@ assert(not player.PlateFrame:IsShown() and not player.RingFrame:IsShown() and no
 assert(player.Border:IsShown() and player.RaidIcon:GetParent() == player.Overlay)
 assert(UF.DrawSample(pet, "addon").width == 90)
 
+-- The happiness face beside the pet frame is as tall as the health bar, never smaller than before;
+-- mid health bar it keeps its share of the bar.
+pet.Happiness = env.CreateFrame("Frame", nil, pet)
+local function faceHeight(style, barHeight, place)
+    pet.Health.height = barHeight
+    db.units.pet.icons = place and { happiness = { place = place } } or nil
+    UF.DrawSample(pet, style)
+    return pet.Happiness:GetHeight()
+end
+assert(faceHeight("addon", 27) == 27 and faceHeight("addon", 27, "LEFT") == 27)
+assert(faceHeight("addon", 6) >= 14, "a thin bar keeps the least size")
+local mid = faceHeight("addon", 27, "CENTER")
+assert(mid == faceHeight("addon", 60, "CENTER"), "mid health bar follows the bar's set height")
+db.units.pet.icons = nil
+pet.Happiness = nil
+
 -- Switching styles preserves per-frame enablement and shared settings while remembering the
 -- frame sizes and pet positions for the setup that owns each of them.
 db.layouts.Main.pet = { point = "BOTTOM", x = 12 }

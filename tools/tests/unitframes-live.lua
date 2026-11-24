@@ -179,7 +179,8 @@ assert(not env.PlayerFrame:IsShown() and not env.TargetFrame:IsShown())
 assert(player:GetParent() == UF:GetFadeFrame("player") and env.ClickCastFrames[target])
 assert(player:GetAttribute("visibility"):find("group:party", 1, true) and target:GetAttribute("visibility"):find("@target", 1, true))
 assert(player.Health:GetValue() == 95 and player.Power:GetValue() == 48 and player.HealBar:GetValue() == 9)
-assert(player.AbsorbBar:GetValue() == 12 and player.NameAboveText:GetText() == "Juniper Vale")
+assert(player.AbsorbBar:GetValue() == 12 and player.NameAboveText:GetText() == "|cffffb30043|r Juniper Vale", "Show Level: before the name above too")
+assert(player.Level:GetText() == "43", "and still in the bar")
 assert(player.NameAboveText:IsShown() and player.HealthText:GetText() == "95 / 100")
 assert(target.Health:GetReverseFill() and target.Name:GetText() == "Forest Spider")
 assert(not db.visibility and ns.db.profile.visibility.elements.uf_player.minAlpha == 15)
@@ -279,6 +280,76 @@ target:RunScript("OnEvent", "UNIT_SPELLCAST_INTERRUPTED", "target")
 assert(target.Cast.flashing and target.Cast.Text:GetText() == "Interrupted")
 target.Cast.flashTimer.callback()
 assert(not target.Cast:IsShown())
+
+-- Elite & Rare (11-24): gold border for an elite, silver for a rare, bronze for the rest; a glow keeps the
+-- border and gives it back to the rank; off with the icon's switch.
+do
+    local border, rank = target.Border, UF.RANK_BORDER
+    local function at(c) local r, g, b = border:GetBackdropBorderColor() return r == c.r and g == c.g and b == c.b end
+    local function classify(kind)
+        state.target.classification = kind
+        target:RunScript("OnEvent", "UNIT_CLASSIFICATION_CHANGED", "target")
+    end
+    for kind, color in pairs({ elite = rank.elite, worldboss = rank.elite, rare = rank.rare, rareelite = rank.rare, normal = ns.BORDER_COLOR }) do
+        classify(kind)
+        assert(at(color), kind)
+        assert(target.ClassIcon:IsShown() == (kind ~= "normal"), kind)
+    end
+    classify("elite")
+    UF.SetBorderGlow(border, 1, 0, 0)
+    assert(border.fuiGlow == true and at({ r = 1, g = 0, b = 0 }))
+    classify("rare")
+    assert(at({ r = 1, g = 0, b = 0 }), "the glow keeps the border")
+    UF.SetBorderGlow(border)
+    assert(at(rank.rare), "the border comes back to the rank")
+    targetDb.icons.classification = { shown = false }
+    classify("elite")
+    assert(at(ns.BORDER_COLOR) and not target.ClassIcon:IsShown())
+    targetDb.icons.classification = nil
+    classify(nil)
+    assert(at(ns.BORDER_COLOR) and player.Border.fuiRank == nil)
+end
+
+-- the name above sits over the ring and the elite dragon (11-24)
+assert(player.NameAboveText:GetParent() == player.NameAboveHolder and player.NameAboveHolder:GetFrameLevel() == player:GetFrameLevel() + 6)
+player.auraLift = 16
+ns.NameAbove.Layout(player, playerDb, player, player.Name)
+assert(player.NameAboveHolder:GetFrameLevel() == player:GetFrameLevel() + 16)
+player.auraLift = nil
+ns.NameAbove.Layout(player, playerDb, player, player.Name)
+
+-- The level before the name above (11-24): the bar's + and R, a new level, Show Level off, the skull
+do
+    local above = player.NameAboveText
+    local function level(event) player:RunScript("OnEvent", event or "UNIT_LEVEL", "player") return above:GetText() end
+    state.player.level = 44
+    assert(level() == "|cffffb30044|r Juniper Vale")
+    for kind, mark in pairs({ elite = "+", rare = "R", rareelite = "R+" }) do
+        state.player.classification = kind
+        assert(level("UNIT_CLASSIFICATION_CHANGED") == "|cffffb30044" .. mark .. "|r Juniper Vale", kind)
+    end
+    state.player.classification = nil
+    state.player.level = -1
+    ns.HIGH_LEVEL_SKULL, ns.SetHighLevelText = "SKULL", function(fs) fs:SetText("SKULL") end
+    assert(level() == "SKULL Juniper Vale")
+    state.player.level, playerDb.showLevel = 43, false
+    assert(level() == "Juniper Vale")
+    playerDb.showLevel = true
+    local readable = env.canaccessvalue
+    local shownLevel = ns.UnitShownLevel
+    ns.UnitShownLevel = function() return 51 end
+    env.canaccessvalue = function(v) return v ~= 51 and readable(v) end
+    assert(level() == "51 Juniper Vale", "a secret level goes to the text unread")
+    env.canaccessvalue, ns.UnitShownLevel = readable, shownLevel
+    assert(level() == "|cffffb30043|r Juniper Vale")
+    -- the ring styles have the level in their disc
+    local ring = ns.UFRing
+    ns.UFRing = setmetatable({ Applies = function() return true end }, { __index = ring })
+    UF.SetNameAbove(player)
+    assert(above:GetText() == "Juniper Vale")
+    ns.UFRing = ring
+    UF.SetNameAbove(player)
+end
 
 ui.editing = true
 callbacks.enter()

@@ -57,6 +57,14 @@ assert(select(2, NA.Get({ nameAbove = "left:lastname" })) == "lastname" and NA.G
 local above = { NameAboveText = { SetText = function(self, t) self.t = t end } }
 NA.SetSample(above, { nameAbove = "right:lastname" }, "Elysande", "Brightvale")
 assert(above.NameAboveText.t == "Brightvale")
+-- ... with the sample's level
+ns.HIGH_LEVEL_SKULL = "SKULL"
+NA.SetSample(above, { nameAbove = "right:firstname" }, "Elysande", "Brightvale", 42)
+assert(above.NameAboveText.t == "|cffffd10042|r Elysande")
+NA.SetSample(above, { nameAbove = "right:firstname" }, "Onyxia", nil, -1)
+assert(above.NameAboveText.t == "SKULL Onyxia")
+NA.SetSample(above, { nameAbove = "right:firstname" }, "Onyxia", nil, -1, { highSkull = { shown = false } })
+assert(above.NameAboveText.t == "|cffff1a1a??|r Onyxia", "High Level Skull off: ??")
 -- Show Name (the raid tiles): Off and which name
 _G.LibStub = function() return { SettingType = { Dropdown = 1 } } end
 local frame, changes, first = { showName = false }, 0, false

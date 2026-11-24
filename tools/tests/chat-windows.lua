@@ -59,7 +59,7 @@ local hooks, listeners = {}, {}
 local callbackRegistry = env.CreateFrame("Frame")
 env.EventRegistry = callbackRegistry
 env.LinkUtil = { IsLinkHandlerRegistered = function() return false end, RegisterLinkHandler = noop }
-env.ChatFrameUtil = { AddSenderNameFilter = noop, AddMessageEventFilter = noop, GetTimestampFormat = noop }
+env.ChatFrameUtil = { GetTimestampFormat = noop }
 local libraries = {
     ["LibSharedMedia-3.0"] = {
         IsValid = function(_, _, name) return name == "Test Border" end,
@@ -159,6 +159,9 @@ local function window(id, title)
     cf.SetSpacing = function(self, value) self.spacing = value end
     cf.GetSpacing = function(self) return self.spacing end
     cf.SetTimeVisible = function(self, value) self.timeVisible = value end
+    cf.maxLines = 128
+    cf.GetMaxLines = function(self) return self.maxLines end
+    cf.SetMaxLines = function(self, value) self.maxLines = value end
     cf.SetFadeDuration = function(self, value) self.fadeDuration = value end
     cf.SetFading = function(self, value) self.fading = value end
     cf.GetFading = function(self) return self.fading end
@@ -174,7 +177,8 @@ local function window(id, title)
     local eb = env.CreateFrame("EditBox", name .. "EditBox", cf)
     eb.chatFrame, eb.chatType = cf, "SAY"
     eb.header = eb:CreateFontString()
-    eb.Deactivate, eb.SetHistoryLines, eb.SetAltArrowKeyMode, eb.UpdateHeader = noop, noop, noop, noop
+    eb.Deactivate, eb.SetHistoryLines, eb.UpdateHeader = noop, noop, noop
+    eb.SetAltArrowKeyMode = function(_, value) error("the chat boxes keep Blizzard's Alt+arrows: " .. tostring(value)) end
     eb.SetCursorPosition = function(self, value) self.cursor = value end
     eb.ClearHistory = function(self) self.historyCleared = (self.historyCleared or 0) + 1 end
     eb.GetChatType = function(self) return self.chatType end
@@ -253,6 +257,7 @@ chat:Init()
 ui:flushTimers()
 ui:flushTimers()
 assert(listeners.PLAYER_LEAVING_WORLD == "SaveHistory" and listeners.PLAYER_ENTERING_WORLD == "UpdateInstanceBubbles")
+assert(general.maxLines == 500 and trade.maxLines == 500 and combat.maxLines == 128, "longer scrollback, not for the Combat Log")
 local skin, bar = general.FlareUI_Skin, general.FlareUI_TabBar
 assert(skin and bar and #bar.buttons == 3 and bar.buttons[1].Text:GetText() == "General")
 assert(bar.buttons[1].isSelected and not bar.buttons[2].isSelected)
@@ -413,6 +418,11 @@ eb:SetText("/cast Frostbolt")
 env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxPreSendText", eb)
 assert(#char.sentHistory == 2, "secure commands aren't retained for addon recall")
 eb:SetText("unsent draft")
+-- the arrows alone leave the line be, as Blizzard's; Alt+Up / Alt+Down recall
+eb:RunScript("OnKeyDown", "UP")
+eb:RunScript("OnKeyDown", "DOWN")
+assert(eb:GetText() == "unsent draft")
+ui.alt = true
 eb:RunScript("OnKeyDown", "UP")
 assert(eb:GetText() == "/2 Trade offer")
 eb:RunScript("OnKeyDown", "UP")
@@ -423,6 +433,7 @@ assert(eb:GetText() == "unsent draft" and eb.cursor == #eb:GetText())
 env.C_ChatInfo = { InChatMessagingLockdown = function() return true end }
 eb:RunScript("OnKeyDown", "UP")
 assert(eb:GetText() == "unsent draft")
+ui.alt = nil
 ui:flushTimers()
 assert(eb.historyCleared == 3)
 env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusGained", eb)

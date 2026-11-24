@@ -595,7 +595,7 @@ local ICON_UI = {
         waiting  = _G.READY_CHECK_WAITING_TEXTURE or "UI-LFG-PendingMark",
     },
     HAPPINESS_GAP = 4,   -- the happiness face outside the frame
-    HAPPINESS_PLATE_SIZE = 20,   -- ... and its size beside Forever Style's small pet frame
+    HAPPINESS_PLATE_SIZE = 20,   -- ... and its least size beside Forever Style's small pet frame
     READY_HOLD = 6,   -- seconds a finished check's results stay up
 }
 
@@ -709,10 +709,10 @@ local function GetBorderFile(name)
     return LSM:Fetch("border", name) or BORDER_FILE
 end
 
--- fixed bronze at rest, a status colour (threat) otherwise
+-- fixed bronze at rest (an elite's or rare's own colour: UF.SetBorderRank), a status colour (threat) otherwise
 -- (each tint forgets the glow UF.SetBorderGlow remembers, so its next call sets the border again)
 local function ResetBorderTint(border)
-    local c = DEFAULT_BORDER_COLOR
+    local c = border.fuiRank and UF.RANK_BORDER[border.fuiRank] or DEFAULT_BORDER_COLOR
     border.fuiGlow = nil
     border:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
 end
@@ -720,6 +720,17 @@ end
 local function SetBorderTint(border, r, g, b)
     border.fuiGlow = nil
     border:SetBackdropBorderColor(r, g, b, 1)
+end
+
+-- Elite & Rare (11-24, Aralyn / Malkkav): off the ring styles the frame's border at rest is gold for an
+-- elite, silver for a rare; kind nil: bronze. A glow keeps the border, which comes back to this after it.
+UF.RANK_BORDER = { elite = { r = 1, g = 0.82, b = 0.25, a = 1 }, rare = { r = 0.80, g = 0.83, b = 0.87, a = 1 } }
+function UF.SetBorderRank(border, kind)
+    if not border or border.fuiRank == kind then return end
+    border.fuiRank = kind
+    if border.fuiGlow == true then return end
+    local c = kind and UF.RANK_BORDER[kind] or DEFAULT_BORDER_COLOR
+    border:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
 end
 
 -- Threat Glow / Combat Glow: the frame's own border in a colour, pulsing (the soft
@@ -1042,13 +1053,27 @@ end
 --------------------------------------------------
 -- 5. UPDATERS (all secret-safe: values go straight into widgets)
 --------------------------------------------------
+-- Name Above Frames (BarText.lua), with the level off the ring styles
+function UF.SetNameAbove(f, sample)
+    if not f.NameAboveText then return end
+    local udb = GetUnitDb(f.fuiUnit)
+    local levels = udb and udb.showLevel and not (ns.UFRing and ns.UFRing.Applies(f)) and udb or nil
+    if sample then
+        local info = UNITS[f.fuiUnit]
+        local s = info.sample or {}
+        ns.NameAbove.SetSample(f, udb, s.name or info.label, s.surname, levels and UnitLevel("player"), udb and udb.icons)
+    else
+        ns.NameAbove.SetName(f, udb, f.fuiUnit, levels, true)
+    end
+end
+
 local function UpdateName(f)
     -- First, Full or Last Name by the frame's pick (UF.ShowsFullName)
     local unit = f.fuiUnit
     local name = ns.UnitDisplayName(unit, nil, UF.ShowsFullName(f))
     if canaccessvalue(name) and not name then name = "" end
     f.Name:SetText(name)
-    ns.NameAbove.SetName(f, GetUnitDb(unit), unit)   -- Name Above Frames (BarText.lua)
+    UF.SetNameAbove(f)
 end
 
 -- BAR TEXT (BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
@@ -1337,6 +1362,7 @@ function UF.PlaceSlots(f, bar, barFrame, mirror, plate, pad, levelInRow)
 end
 
 local function UpdateLevel(f)
+    UF.SetNameAbove(f)
     local unit = f.fuiUnit
     local udb = GetUnitDb(unit)
     if not (udb and udb.showLevel) then f.Level:SetText("") return end
@@ -2477,7 +2503,7 @@ local function ApplySample(f)
     local s = info.sample or {}
     local power = s.power or 0.6
     f.Name:SetText(s.name or info.label)
-    ns.NameAbove.SetSample(f, udb, s.name or info.label, s.surname)
+    UF.SetNameAbove(f, true)
     if udb and udb.showLevel then
         f.Level:SetText(UnitLevel("player") or "")
         f.Level:SetTextColor(1, 0.82, 0)
@@ -3685,7 +3711,8 @@ end
 -- / absorb overlays. Art: Blizzard atlases, with the classic textures as fallback.
 --------------------------------------------------
 local ICON_SIZE = {
-    rest = 28, leader = 20, pvp = 24,   -- the Elite & Rare skull takes the PvP crest's size
+    rest = 28, leader = 20, pvp = 24,
+    classification = 32,   -- the Elite & Rare skull (11-24, a third larger: players missed it)
     quest = 24,   -- the quest "!" height; its width follows the art
 }
 local QUEST_ATLAS     = "QuestNormal"   -- the map's quest-offer "!", as on the nameplate quest tags
@@ -3853,8 +3880,8 @@ local function LayoutIndicators(f)
     if f.ClassIcon and not onRing.classification then
         local info = C_Texture.GetAtlasInfo(ICON_UI.CLASS_SKULL)
         local aspect = (info and info.width > 0 and info.height > 0) and (info.width / info.height) or 1
-        -- above the PvP crest, in its column and at its size (top-right on a mirrored frame, top-left otherwise)
-        local size = ICON_SIZE.pvp
+        -- above the PvP crest, in its column (top-right on a mirrored frame, top-left otherwise)
+        local size = ICON_SIZE.classification
         if mirror then
             ICON_UI.Place(f.ClassIcon, size * aspect, size, "CENTER", f, "TOPRIGHT", -4, -2)
         else
@@ -4775,8 +4802,10 @@ function UpdateIndicators(f)
         if kind and ICON_UI.Shown(unit, "classification") and ICON_UI.ClassArt(f.ClassIcon, kind) then
             f.ClassIcon:Show()
         else
+            kind = nil
             f.ClassIcon:Hide()
         end
+        UF.SetBorderRank(f.Border, not (ns.UFRing and ns.UFRing.Applies(f)) and kind or nil)
     end
     if f.QuestIcon then
         local show = ICON_UI.QuestShown(unit)
@@ -4885,6 +4914,7 @@ function ICON_UI.PreviewIcon(f, key)
         end
     elseif key == "classification" then
         if not ICON_UI.ClassArt(region, "elite") then return end
+        UF.SetBorderRank(f.Border, "elite")
     elseif key == "quest" then
         SetIconArt(region, QUEST_ATLAS, QUEST_FILE)
     elseif key == "raidIcon" then
@@ -5289,10 +5319,12 @@ local function LayoutFrame(f)
     end
 
     if f.Happiness then
-        local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE) - 4
-        if UNITS[f.fuiUnit].styledPet and ns.UFRing.PlateOn() then size = ICON_UI.HAPPINESS_PLATE_SIZE end
         -- Happiness Position: mid health bar, or just outside the frame on either side
         local place = ICON_UI.HappinessPlace(f.fuiUnit)
+        local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE) - 4
+        if UNITS[f.fuiUnit].styledPet and ns.UFRing.PlateOn() then size = ICON_UI.HAPPINESS_PLATE_SIZE end
+        -- (11-24) beside the frame: as tall as the health bar, as it is drawn (the plate's slot too)
+        if place ~= "CENTER" then size = math.max(size, f.Health:GetHeight() or 0) end
         if place == "RIGHT" then
             ICON_UI.Place(f.Happiness, size, size, "LEFT", f, "RIGHT", ICON_UI.HAPPINESS_GAP, 0)
         elseif place == "LEFT" then
@@ -5308,12 +5340,7 @@ local function LayoutFrame(f)
     -- Name Above Frames (BarText.lua): not on Forever Style's plate, which has its name box
     ns.NameAbove.Layout(f, not (ns.UFRing and ns.UFRing.Plate(f)) and udb or nil, f, f.Name)
     if f.NameAboveText and f.NameAboveText:IsShown() then
-        if f.fuiSample or not UnitExists(f.fuiUnit) then
-            local s = UNITS[f.fuiUnit].sample or {}
-            ns.NameAbove.SetSample(f, udb, s.name or UNITS[f.fuiUnit].label, s.surname)
-        else
-            ns.NameAbove.SetName(f, udb, f.fuiUnit)
-        end
+        UF.SetNameAbove(f, not UnitExists(f.fuiUnit))
     end
 
     -- cast bar hangs off the frame
@@ -6912,7 +6939,7 @@ UF.Kit = {
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
-    ClassArt = ICON_UI.ClassArt, CLASS_SKULL = ICON_UI.CLASS_SKULL, CLASS_ICON_SIZE = ICON_SIZE.pvp,
+    ClassArt = ICON_UI.ClassArt, CLASS_SKULL = ICON_UI.CLASS_SKULL, CLASS_ICON_SIZE = ICON_SIZE.classification,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana,
@@ -6921,7 +6948,7 @@ UF.Kit = {
     BarLook = UF.BarLook, BarLookUpdate = UF.BarLookUpdate,
     CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
-    ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow,
+    ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow, SetBorderRank = UF.SetBorderRank,
 }
 
 function UF:Refresh()

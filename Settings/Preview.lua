@@ -35,7 +35,7 @@ Route('reminders', 'br', 'group before consumables upkeepPick')
 Route('lootFeed', 'bl', 'lootFeed lootFeedPosition lootFeedQuality lootFeedMoney lootFeedSkills')
 Route('lootRolls', 'bl', 'lootRolls')
 Route('lootWindow', 'bl', 'lootWindow lootWindowFreeSlots')
-Route('radial', 'rm', 'scale names')
+Route('radial', 'rm', 'scale names spellRank')
 
 -- How tall the drawn picture is, from the canvas's top to the lowest thing shown (the panel sizes
 -- the picture to it). A sample unit frame's ring and plate hang past the frame itself.

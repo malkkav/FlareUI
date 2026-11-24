@@ -699,6 +699,9 @@ Row{ key = "np.showTitles", tab = "style", section = "np.nameOnlySection", half 
     end,
     set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "showTitles", on and true or false) end end,
     resetValue = function() return PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end }
+-- (11-24, illsism / Malkkav) the player types only: NPCs have no guild
+Row{ key = "np.showGuild", path = "showGuild", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
+    hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
 Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
     choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
     toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },

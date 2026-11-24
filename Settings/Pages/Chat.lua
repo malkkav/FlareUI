@@ -16,6 +16,9 @@ S:Module{ key = "ch", group = "interface", order = 10, enabled = "chat.enabled",
     banner = function()
         local other = ns.Chat and ns.Chat.GetOtherChatAddon and ns.Chat:GetOtherChatAddon()
         if other then return S:ModuleText("ch", "banner"):format(other, other) end
+        -- one that changes the same windows: FlareUI's chat runs beside it
+        local clash = ns.Chat and ns.Chat.GetClashingChatAddon and ns.Chat:GetClashingChatAddon()
+        if clash then return S:ModuleText("ch", "banner2"):format(clash) end
     end,
 }
 

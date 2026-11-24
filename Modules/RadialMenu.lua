@@ -119,7 +119,7 @@ local PING = {
     LABEL_GAP = 4,
     LABEL_ROOM = 24,                    -- kept free past the buttons at a screen edge
     LABEL_WRAP = 16,                    -- a name of several words this long goes on two lines
-    -- Button Names, Always: a name above or below its button takes this share of the gap to the
+    -- Icon Labels, Always: a name above or below its button takes this share of the gap to the
     -- next button; one to the side is at most SIDE_WIDTH wide
     ALWAYS_WIDTH = 0.8, SIDE_WIDTH = 120,
     -- a sub-radial's page dots along the bottom of the rim
@@ -183,7 +183,7 @@ local function RoundStyle()
 end
 
 -- profile options; the radials themselves are account-wide, in global
--- Button Names: "off", "hover" (the button you point at) or "always" (every button). The settings
+-- Icon Labels: "off", "hover" (the button you point at) or "always" (every button). The settings
 -- row writes showNames (false for Off) and buttonNames together; showNames false alone reads as Off.
 local function ShowNames()
     local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
@@ -296,7 +296,42 @@ function RM.BestRank(name)
     end
     return bestByName[name]
 end
-function RM.ForgetRanks() bestByName = nil end
+function RM.ForgetRanks() bestByName, RM.lowRanks = nil, {} end
+
+-- A spell below the best rank known (11-24, howardapplebaum / Malkkav): its rank's number and the game's
+-- own words for it ("Rank 2"); nil for the best rank, a spell without ranks or one not in the book.
+RM.lowRanks = {}
+function RM.LowRank(spellID)
+    if type(spellID) ~= "number" then return nil end
+    local low = RM.lowRanks[spellID]
+    if low == nil then
+        local name, rank = C_Spell.GetSpellName(spellID), RankOf(spellID)
+        local best = name and RM.BestRank(name)
+        -- (no rank read: none, or its words aren't loaded yet; not remembered)
+        if not best or rank == 0 then return nil end
+        low = rank < RankOf(best) and { rank, C_Spell.GetSpellSubtext(spellID) } or false
+        RM.lowRanks[spellID] = low
+    end
+    if low then return low[1], low[2] end
+end
+
+-- Show Spell Rank (Options, off): the rank on the icon, after the name, or both
+function RM.ShowsRank(place)
+    local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
+    local v = db and db.spellRank
+    return v == place or v == "both"
+end
+
+-- A button's name: a spell below its best rank with the rank after it (Show Spell Rank). A party spell's
+-- buttons keep the people's names.
+function RM.ButtonName(action)
+    local name, attributes = action.name, action.attributes
+    if not RM.ShowsRank("label") then return name end
+    local id = attributes and attributes.type == "spell" and attributes.spell
+    local rank, text = RM.LowRank(id)
+    if rank and name and name == C_Spell.GetSpellName(id) then return name .. " (" .. text .. ")" end
+    return name
+end
 
 -- Update Spell Ranks (Action Bars) switches the radials' rank following on too
 local function FollowsRanks()
@@ -896,9 +931,11 @@ end
 
 -- the unit of a party spell while alone: the friendly target (a dead one too, for a resurrection), or
 -- yourself. Asked as the button is used (RM.FIRE_SNIPPET) and for what it shows.
+-- (11-24) A real target only: the condition counts a soft target (the NPC the interact key would pick) as one,
+-- UnitExists doesn't, and with nothing selected the spell went to that NPC.
 RM.HELP = "friendly"
 RM.HELP_UNIT = "[@target,help] target; player"
-function RM.HelpUnit() return SecureCmdOptionParse(RM.HELP_UNIT) or "player" end
+function RM.HelpUnit() return UnitExists("target") and SecureCmdOptionParse(RM.HELP_UNIT) or "player" end
 
 -- Party spell: one helpful spell spread over the group, a button for you and each party member
 -- (party1-4; in a raid, your own group), so you aim at a person and cast on them without changing
@@ -971,7 +1008,8 @@ function RM.StyleButtonFonts(button)
     RM.fontButtons[button] = true
     local db = ns.db and ns.db.profile and ns.db.profile.radialmenu
     if not db then return end
-    for _, part in ipairs({ { button.Label, db.labelFont, 16, true }, { button.Count, db.countFont, 14 } }) do
+    for _, part in ipairs({ { button.Label, db.labelFont, 16, true }, { button.Count, db.countFont, 14 },
+                           { button.Rank, db.countFont, 14 } }) do
         local fontString, font, size, family = part[1], part[2], part[3], part[4]
         if fontString and font then
             local flags = font.flags or ""
@@ -1031,6 +1069,10 @@ local function CreateRadialButton(index, parent)
     button.Count = button.Front:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
     button.Count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
     button.Count:Hide()
+    -- the rank of a spell below the best one known, in the count's font (RM.LowRank)
+    button.Rank = button.Front:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    button.Rank:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+    button.Rank:Hide()
     -- a world marker that is on the ground
     button.Placed = button.Front:CreateTexture(nil, "OVERLAY")
     button.Placed:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
@@ -1050,9 +1092,9 @@ local function CreateRadialButton(index, parent)
 end
 
 -- Blizzard_RadialWheel.lua's rule: the name sits on the button's outer side. chord: the gap between
--- two neighbouring buttons' centres; with Button Names on Always every name shows at once, so each
+-- two neighbouring buttons' centres; with Icon Labels on Always every name shows at once, so each
 -- is one line, cut short with "..." to fit: above or below a button as wide as the gap allows, to
--- the side up to SIDE_WIDTH (the Fonts tab's Button Names size makes them smaller).
+-- the side up to SIDE_WIDTH (the Fonts tab's Icon Labels size makes them smaller).
 local function PlaceLabel(button, angle, chord)
     local a = angle % TAU
     local q, gap = math_pi / 4, PING.LABEL_GAP
@@ -1096,7 +1138,8 @@ local function SetLabelText(button, text)
         local best, bestCost
         for pos in text:gmatch("() ") do
             local cost = math_max(pos - 1, #text - pos)
-            if not bestCost or cost < bestCost then best, bestCost = pos, cost end
+            -- (never inside the rank's brackets)
+            if (not bestCost or cost < bestCost) and not text:find("^[^(]*%)$", pos) then best, bestCost = pos, cost end
         end
         if best then text = text:sub(1, best - 1) .. "\n" .. text:sub(best + 1) end
     end
@@ -1174,7 +1217,7 @@ end
 -- your target
 local function HelpUnit(button, info)
     local unit = RM.HelpUnit()
-    local text = info.name
+    local text = RM.ButtonName(info)
     if unit ~= "player" then
         local who = UnitName(unit)
         if canaccessvalue(who) and who then
@@ -1272,6 +1315,10 @@ local function ApplyButtonState(button, info)
         button.Count:Hide()
     end
 
+    local rank = kind == "spell" and RM.ShowsRank("icon") and RM.LowRank(id) or nil
+    button.Rank:SetText(rank or "")
+    button.Rank:SetShown(rank ~= nil)
+
     -- a world marker already placed: the button picks it up again
     local marker = entry and entry.kind == "worldmarker" and entry.marker
     button.Placed:SetShown(marker and marker > 0 and IsRaidMarkerActive and IsRaidMarkerActive(marker) or false)
@@ -1313,7 +1360,7 @@ local function SetButtonChild(index, childIndex)
     info.childIndex = childIndex
     info.name, info.icon, info.attributes = child.name, child.icon, child.attributes
     SetButtonIcon(button, child.icon)
-    SetLabelText(button, child.name)
+    SetLabelText(button, RM.ButtonName(child))
     SetPageDots(button, #info.children, childIndex)
     ApplyButtonState(button, info)
 end
@@ -1397,7 +1444,7 @@ function RM.PlaceRadialButtons(frame, list, entries)
                 button:SetPoint("CENTER", frame, "CENTER", button.baseX, button.baseY)
                 ApplyButtonShape(button)
                 SetButtonIcon(button, entry.icon)
-                SetLabelText(button, entry.name)
+                SetLabelText(button, RM.ButtonName(entry))
                 button.helpText = nil
                 -- one button alone has no neighbour: the side width
                 PlaceLabel(button, angle, count > 1 and 2 * radius * math_sin(interval / 2) or PING.SIDE_WIDTH)
@@ -2093,7 +2140,7 @@ local OPEN_PAD_SNIPPET = [[
 RM.FIRE_SNIPPET = [[
     for key in gmatch(control:GetAttribute("flare-keys"), "%S+") do
         local value = control:GetAttribute(prefix .. key)
-        if key == "unit" and value == "]] .. RM.HELP .. [[" then value = SecureCmdOptionParse("]] .. RM.HELP_UNIT .. [[") end
+        if key == "unit" and value == "]] .. RM.HELP .. [[" then value = UnitExists("target") and SecureCmdOptionParse("]] .. RM.HELP_UNIT .. [[") or "player" end
         self:SetAttribute(key, value)
     end
 ]]
@@ -3763,7 +3810,7 @@ function RM:Refresh()
     self:LayoutRadial()
 end
 
--- Button Names changed: the names are placed again (the editor's preview, or the radial)
+-- Icon Labels or Show Spell Rank changed: the names are placed again (the editor's preview, or the radial)
 function RM:ApplyNames()
     if not radial then return end
     if previewID then self:RefreshPreview() else self:LayoutRadial() end

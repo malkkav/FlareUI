@@ -251,7 +251,8 @@ do
     env.UnitExists = function(unit) return unit == "player" end
     local alone = rm:ResolveEntry({ kind = "partycast", id = 201 })
     assert(#alone.spread == 1 and alone.spread[1].name == "Blink" and alone.spread[1].attributes.unit == rm.HELP)
-    env.UnitExists = exists
+    local hard = true
+    env.UnitExists = function(unit) if unit == "target" then return hard end return exists(unit) end
     local answer
     local oldParse, oldName = env.SecureCmdOptionParse, env.UnitName
     env.SecureCmdOptionParse = function(text)
@@ -261,6 +262,10 @@ do
     assert(rm.HelpUnit() == "player")
     answer = "target"
     assert(rm.HelpUnit() == "target")
+    -- a soft target alone (the condition says target, nothing is selected): yourself (11-24)
+    hard = false
+    assert(rm.HelpUnit() == "player")
+    hard = true
 
     -- every snippet that uses a button takes the unit this way
     local out
@@ -270,11 +275,15 @@ do
     local function load(prefix)
         out = {}
         local chunk = assert(loadstring("local self, control, prefix = ... " .. rm.FIRE_SNIPPET))
-        setfenv(chunk, { gmatch = string.gmatch, SecureCmdOptionParse = env.SecureCmdOptionParse })
+        setfenv(chunk, { gmatch = string.gmatch, SecureCmdOptionParse = env.SecureCmdOptionParse, UnitExists = env.UnitExists })
         chunk({ SetAttribute = function(_, key, value) out[key] = value end }, control, prefix)
     end
     load("p-")
     assert(out.type == "spell" and out.unit == "target")
+    hard = false
+    load("p-")
+    assert(out.unit == "player", "a soft target is no target")
+    hard = true
     answer = "player"
     load("p-")
     assert(out.unit == "player")
@@ -292,7 +301,7 @@ do
     env.UnitIsPlayer = function() return isPlayer end
     local button = env.CreateFrame("Button")
     button.Icon, button.Placed = button:CreateTexture(), button:CreateTexture()
-    button.Label, button.Count = button:CreateFontString(), button:CreateFontString()
+    button.Label, button.Count, button.Rank = button:CreateFontString(), button:CreateFontString(), button:CreateFontString()
     button.Cooldown = { Clear = noop, SetCooldown = noop, SetCooldownFromDurationObject = noop }
     local info = { name = "Blink", attributes = alone.spread[1].attributes, entry = alone.spread[1].entry }
     local oldColor = env.C_ClassColor.GetClassColor
@@ -313,8 +322,46 @@ do
     answer = "player"
     rm.ApplyButtonState(button, info)
     assert(button.Label:GetText() == "Blink" and asked == "player", "no friendly target: the spell's own name again")
+
+    -- Show Spell Rank (11-24, off): a spell below its best rank, on the icon, after the name, or both
+    local rdb = ns.db.profile.radialmenu
+    local savedLevel = rdb.spellRank
+    local lowName = function() return rm.ButtonName(rm:ResolveEntry({ kind = "spell", id = 101, pinned = true, rankChecked = true })) end
+    for _, want in ipairs({ { nil, false, false }, { "off", false, false }, { "icon", true, false }, { "label", false, true }, { "both", true, true } }) do
+        rdb.spellRank = want[1]
+        rm.ApplyButtonState(button, rm:ResolveEntry({ kind = "spell", id = 101, pinned = true, rankChecked = true }))
+        assert(button.Rank:IsShown() == want[2], tostring(want[1]))
+        assert(lowName() == (want[3] and "Frostbolt (Rank 1)" or "Frostbolt"), tostring(want[1]))
+    end
+    rm.ApplyButtonState(button, info)
+    assert(not button.Rank:IsShown(), "a spell without ranks")
+    local function shown(id) rm.ApplyButtonState(button, rm:ResolveEntry({ kind = "spell", id = id, pinned = true, rankChecked = true })) end
+    shown(102)
+    assert(button.Rank:IsShown() and tostring(button.Rank:GetText()) == "2")
+    shown(103)
+    assert(not button.Rank:IsShown() and button.Rank:GetText() == "", "the best rank: nothing")
+    local low = rm:ResolveEntry({ kind = "spell", id = 101, pinned = true, rankChecked = true })
+    assert(low.name == "Frostbolt" and rm.ButtonName(low) == "Frostbolt (Rank 1)")
+    assert(rm.ButtonName(rm:ResolveEntry({ kind = "spell", id = 103 })) == "Frostbolt")
+    assert(rm.ButtonName({ name = "Aria", attributes = { type = "spell", spell = 101, unit = "party1" } }) == "Aria", "a party spell keeps the person")
+    assert(rm.ButtonName({ name = "Charger", attributes = { type = "spell", spell = "Summon Horse" } }) == "Charger")
+    assert(rm.LowRank(101) == 1 and rm.LowRank(201) == nil and rm.LowRank(nil) == nil)
+    -- alone, the spell's own name carries the rank too
+    local help = { name = "Frostbolt", attributes = { type = "spell", spell = 102, unit = rm.HELP }, entry = { kind = "spell", id = 102 } }
+    button.helpText = nil
+    rm.ApplyButtonState(button, help)
+    assert(button.Label:GetText():gsub("\n", " ") == "Frostbolt (Rank 2)" and button.Label:GetText():find("(Rank 2)", 1, true), "never split inside the brackets")
+    -- a best rank forgotten makes the next one the best, once the book is read again
+    spellBook[4], known[103] = nil, nil
+    listeners.SPELLS_CHANGED()
+    assert(rm.LowRank(102) == nil and rm.LowRank(101) == 1)
+    spellBook[4], known[103] = 103, true
+    listeners.SPELLS_CHANGED()
+    assert(rm.LowRank(102) == 2)
+    rdb.spellRank = savedLevel
     env.C_ClassColor.GetClassColor = oldColor
     env.C_Spell.IsSpellInRange, env.UnitIsPlayer, env.UnitName, env.SecureCmdOptionParse = oldRange, oldPlayer, oldName, oldParse
+    env.UnitExists = exists
 end
 
 local names = rm:GetScopeChoices()

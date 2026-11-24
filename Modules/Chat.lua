@@ -129,6 +129,24 @@ function Chat:GetOtherChatAddon()
     return self.otherAddon or nil
 end
 
+-- Chat addons that change Blizzard's own chat windows, as FlareUI does: both run, so the settings page
+-- says so, and the chat once for each addon
+local CLASHING_CHAT_ADDONS = { "Prat-3.0", "BasicChatMods", "alaChat", "Chatter", "DejaChat", "ls_Glass", "XanChat", "MinimalistChat" }
+function Chat:GetClashingChatAddon()
+    for _, name in ipairs(CLASHING_CHAT_ADDONS) do
+        if C_AddOns.IsAddOnLoaded(name) then return C_AddOns.GetAddOnMetadata(name, "Title") or name, name end
+    end
+end
+function Chat:WarnOfClash()
+    local title, name = Chat:GetClashingChatAddon()
+    local global = ns.db and ns.db.global
+    if not (name and global) then return end
+    global.chatClashSaid = global.chatClashSaid or {}
+    if global.chatClashSaid[name] then return end
+    global.chatClashSaid[name] = true
+    print("|cffCC9957FlareUI:|r " .. L["%s changes the chat too, so it can look doubled or broken. Use only one of the two."]:format(title))
+end
+
 local function GetDb()
     if not ns.db or not ns.db.profile or not ns.db.profile.chat then
         return nil
@@ -596,10 +614,11 @@ local Lines = {
 
 -- Splits off Blizzard's timestamp: the line was just formatted, so this second or the one before
 -- reproduces it.
-function Lines.SplitStamp(message)
+-- at: when the line came, for one that isn't new
+function Lines.SplitStamp(message, at)
     local fmt = StampFormats()
     if not fmt then return "", message end
-    local now = time()
+    local now = at or time()
     for t = now, now - 1, -1 do
         local stamp = CachedDate(fmt, t)
         if message:sub(1, #stamp) == stamp then return stamp, message:sub(#stamp + 1) end
@@ -675,12 +694,20 @@ function Lines.RememberUnit(unit)
     if okL then Lines.Remember(okG and guid, okN and name, level) end
 end
 
--- The sender's level, from a unit token or from what was seen this session; nil when unknown
+-- The sender's level as the game gives it with the rest of the player's info (the 8th return; nil when
+-- it doesn't know it)
+function Lines.InfoLevel(guid)
+    if not guid then return nil end
+    local ok, _, _, _, _, _, _, _, level = pcall(GetPlayerInfoByGUID, guid)
+    if ok and canaccessvalue(level) and type(level) == "number" and level > 0 then return level end
+end
+
+-- The sender's level: the player's info, what was seen this session (the higher of the two: levels only
+-- go up), else a unit token; nil when unknown
 function Lines.LevelFor(guid, sender)
-    -- what was seen first (group changes, level-ups and targets keep it current); the unit only for
-    -- someone not seen yet
     local known = (guid and Lines.levels[guid]) or (sender and Lines.levels[NameKey(sender)])
-    if known then return known end
+    local info = Lines.InfoLevel(guid)
+    if known or info then return math_max(known or 0, info or 0) end
     if guid then
         local ok, unit = pcall(UnitTokenFromGUID, guid)
         if ok and canaccessvalue(unit) and unit then Lines.RememberUnit(unit) end
@@ -784,20 +811,28 @@ function Lines.AddSenderIcons(body, icons)
     return body:sub(1, s - 1) .. icons .. " " .. body:sub(s)
 end
 
--- Better Player Names and Level Before Names change the name itself through Blizzard's own filter
--- for it. It keeps any icon Blizzard or another addon put on the name, and holds when a censored
--- line is revealed:
+-- Better Player Names and Level Before Names change the name inside the line's player link, once the line
+-- is in the window. Not through Blizzard's filter for names (until 11-24): whatever a filter hands back,
+-- Blizzard's handler goes on with, up to the name it keeps to answer a whisper.
 --   Better Player Names   the class-coloured name, without its realm
 --   Level Before Names    "(42)" in front of the name
--- Blizzard skips the filter when the name is hidden, and puts the brackets and link round it.
-function Lines.SenderName(event, decorated, _, sender, ...)
+-- Icons on the name stay.
+function Lines.DressLink(body, event, args)
+    local s, e, head, shown = body:find("(|Hplayer:[^|]*|h)(.-)|h")
+    if not s then return body end
+    local open, name, close = shown:match("^(%[?)(.-)(%]?)$")
+    local sender, guid = Arg(args, 2, "string"), Arg(args, 12, "string")
+    local dressed = Lines.SenderName(event, name, sender, guid)
+    if not dressed or dressed == name then return body end
+    return body:sub(1, s - 1) .. head .. open .. dressed .. close .. "|h" .. body:sub(e + 1)
+end
+function Lines.SenderName(event, decorated, sender, guid)
     local db = GetDb()
     if not (db and db.enabled and (db.formatPlayer or db.showLevel)) then return nil end
     if type(event) ~= "string" or type(decorated) ~= "string" then return nil end
     local chatType = event:sub(10)
     if chatType:sub(1, 7) == "CHANNEL" then chatType = "CHANNEL" end
     if not NAME_EVENTS[chatType] then return nil end
-    local guid = select(10, ...)   -- the 12th message argument (the 3rd is the first in ...)
     if not (canaccessvalue(guid) and type(guid) == "string" and guid ~= "") then guid = nil end
     if not (canaccessvalue(sender) and type(sender) == "string" and sender ~= "") then sender = nil end
     local name = decorated
@@ -893,36 +928,81 @@ function Lines.Build(db, stamp, body, chatType, args, size, sayTag, icons, at)
     return stamp .. body
 end
 
-local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, eventArgs)
-    local db = GetDb()
-    if not (db and event) then return end
-    if not canaccessallvalues(message, event) or type(message) ~= "string" or type(event) ~= "string"
-            or event:sub(1, 9) ~= "CHAT_MSG_" then return end
+-- The text a line gets, or nil where it stays as it is. at: when a revealed line first came.
+function Lines.Rewrite(chatFrame, db, message, event, eventArgs, at)
     local chatType = event:sub(10)
     -- with Better Player Names (which drops "says:"), a Say line gets its clickable label instead;
     -- off, the line stays Blizzard's. Short Channel Names picks [S] or [Say].
     local sayTag = chatType == "SAY" and db.formatPlayer and (db.shortChannels and SHORT_SAY_TAG or SAY_TAG)
     local senderIcons = db.raceIcons or db.classIcons
+    local address = Lines.URL_TYPES[chatType] and Lines.HasAddress(message)
     if not (sayTag or db.shortChannels or db.formatPlayer or db.formatNPC or db.betterTimestamps or senderIcons
-            or db.linkIcons or db.whisperMarkers) then return end
+            or db.linkIcons or db.whisperMarkers or db.showLevel or address) then return end
     -- icons follow each window's font
     local size = (senderIcons or db.linkIcons) and Lines.IconSize(chatFrame) or 0
     -- the same line shown in several windows (General and a Guild tab, say) is worked out once
     local line
     local now = time()
-    if message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt and sayTag == Lines.lastSayTag
-            and size == Lines.lastSize then
+    if not at and message == Lines.lastIn and event == Lines.lastEvent and now == Lines.lastAt
+            and sayTag == Lines.lastSayTag and size == Lines.lastSize then
         line = Lines.lastOut
     else
         local args = type(eventArgs) == "table" and canaccesstable(eventArgs) and eventArgs or nil
         -- Keep Blizzard's timestamp ahead of the new Say prefix, even if it isn't replaced.
         local stamp, body = "", message
-        if db.betterTimestamps or sayTag then stamp, body = Lines.SplitStamp(message) end
-        line = Lines.Build(db, stamp, body, chatType, args, size, sayTag)
-        Lines.lastIn, Lines.lastEvent, Lines.lastOut, Lines.lastAt = message, event, line, now
-        Lines.lastSayTag, Lines.lastSize = sayTag, size
+        if db.betterTimestamps or sayTag then stamp, body = Lines.SplitStamp(message, at) end
+        -- a censored line keeps when it came, for the day it is revealed (Lines.Revealed)
+        if args and not at and message:find("censoredmessage:", 1, true) then
+            local lineID = Arg(args, 11, "number")
+            if lineID then Lines.censoredAt[lineID] = now end
+        end
+        if args and (db.formatPlayer or db.showLevel) and NAME_EVENTS[chatType] then
+            body = Lines.DressLink(body, event, args)
+        end
+        line = Lines.Build(db, stamp, body, chatType, args, size, sayTag, nil, at)
+        if address then line = Lines.LinkAddresses(line) end
+        if not at then
+            Lines.lastIn, Lines.lastEvent, Lines.lastOut, Lines.lastAt = message, event, line, now
+            Lines.lastSayTag, Lines.lastSize = sayTag, size
+        end
     end
-    if line == message then return end
+    return line ~= message and line or nil
+end
+
+-- A line whose text the game hides (a restricted fight) can't be read or changed, but the time can go in
+-- front of it: Better Timestamps, where Blizzard's own timestamps are off (with them on, the line has one).
+-- Where the client won't join a hidden text to another, the line stays as it is.
+Lines.stamped = setmetatable({}, { __mode = "k" })   -- history entry -> true
+local function JoinStamp(stamp, message) return stamp .. message end
+function Lines.StampHidden(chatFrame, db, event)
+    if not db.betterTimestamps or StampFormats() then return end
+    if not (canaccessvalue(event) and type(event) == "string" and event:sub(1, 9) == "CHAT_MSG_") then return end
+    local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
+    -- the line that just came, and only it
+    if not entry or Lines.stamped[entry] or canaccessvalue(entry.message) then return end
+    if not canaccessvalue(entry.timestamp) or entry.timestamp ~= GetTime() then return end
+    Lines.stamped[entry] = true
+    local ok, stamped = pcall(JoinStamp, GetTimestamp(), entry.message)
+    if ok then entry.message = stamped end
+end
+
+local function RewriteStoredLine(chatFrame, message, _, _, _, id, _, _, event, eventArgs)
+    local db = GetDb()
+    if not db then return end
+    if not canaccessvalue(message) then Lines.StampHidden(chatFrame, db, event) return end
+    if not canaccessallvalues(message, event) or type(message) ~= "string" then return end
+    local line
+    if type(event) == "string" then
+        if event:sub(1, 9) ~= "CHAT_MSG_" then return end
+        line = Lines.Rewrite(chatFrame, db, message, event, eventArgs)
+    else
+        -- the game's own system lines come with no event, only their chat type's number
+        local system = ChatTypeInfo.SYSTEM and ChatTypeInfo.SYSTEM.id
+        if system and canaccessvalue(id) and id == system and Lines.HasAddress(message) then
+            line = Lines.LinkAddresses(message)
+        end
+    end
+    if not line or line == message then return end
     local entry = chatFrame.historyBuffer and chatFrame.historyBuffer:GetEntryAtIndex(1)
     if entry and canaccessallvalues(entry.message) and entry.message == message then
         -- Blizzard's AddMessage has just marked the window for a redraw, which shows the new text
@@ -930,11 +1010,39 @@ local function RewriteStoredLine(chatFrame, message, _, _, _, _, _, _, event, ev
     end
 end
 
+-- A censored line the player chose to see: Blizzard puts its own text in, so it is rewritten again
+Lines.censoredAt = {}   -- line ID -> time() it came
+function Lines.Revealed(lineID)
+    local at, db = Lines.censoredAt[lineID], GetDb()
+    if not (at and db) then return end
+    for frame in pairs(Lines.hooked) do
+        local buffer = not frame:IsForbidden() and frame.historyBuffer
+        for i = 1, buffer and frame:GetNumMessages() or 0 do
+            local entry = buffer:GetEntryAtIndex(i)
+            local extra = entry and entry.extraData
+            local event, args = extra and extra[4], extra and extra[5]
+            if canaccessallvalues(event, args) and type(event) == "string" and type(args) == "table" and canaccesstable(args)
+                    and Arg(args, 11, "number") == lineID and event:sub(1, 9) == "CHAT_MSG_"
+                    and canaccessvalue(entry.message) and type(entry.message) == "string" then
+                local line = Lines.Rewrite(frame, db, entry.message, event, args, at)
+                if line then
+                    entry.message = line
+                    if frame.MarkDisplayDirty then frame:MarkDisplayDirty() end
+                end
+            end
+        end
+    end
+end
+
 -- Every chat window, temporary whisper windows included
 local function HookLineRewrite()
-    if not Lines.nameFilter and ChatFrameUtil and ChatFrameUtil.AddSenderNameFilter then
-        Lines.nameFilter = true
-        ChatFrameUtil.AddSenderNameFilter(Lines.SenderName)
+    if not Lines.revealHooked and C_ChatInfo and C_ChatInfo.UncensorChatLine then
+        Lines.revealHooked = true
+        hooksecurefunc(C_ChatInfo, "UncensorChatLine", function(lineID)
+            if not (canaccessvalue(lineID) and type(lineID) == "number") then return end
+            -- (Blizzard changes the text right after)
+            C_Timer.After(0, function() Lines.Revealed(lineID) end)
+        end)
     end
     for _, name in ipairs(CHAT_FRAMES or {}) do
         local frame = _G[name]
@@ -1363,17 +1471,28 @@ end
 -- 8. COPY CHAT LINKS
 -- Web addresses in chat become links that open a box to copy them from.
 --------------------------------------------------
-local URL_EVENTS = {
-    "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
-    "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING", "CHAT_MSG_INSTANCE_CHAT",
-    "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER", "CHAT_MSG_CHANNEL",
-    "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM", "CHAT_MSG_BN_WHISPER", "CHAT_MSG_BN_WHISPER_INFORM",
-    "CHAT_MSG_SYSTEM",
-}
+-- In the line rewriter (section 5), not a message filter (until 11-24): a filter hands every argument of
+-- the line back to Blizzard's handler, the whisper's sender among them.
+Lines.URL_TYPES = {}
+for _, kind in ipairs({ "SAY", "YELL", "EMOTE", "PARTY", "PARTY_LEADER", "PARTY_GUIDE", "RAID", "RAID_LEADER",
+        "RAID_WARNING", "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "GUILD", "GUILD_DISCORD", "OFFICER", "CHANNEL",
+        "COMMUNITIES_CHANNEL", "WHISPER", "WHISPER_INFORM", "BN_WHISPER", "BN_WHISPER_INFORM", "SYSTEM" }) do
+    Lines.URL_TYPES[kind] = true
+end
+-- most lines hold no address: this spares them the per-word scan
+function Lines.HasAddress(text)
+    return (text:find("://", 1, true) or text:find("www.", 1, true)) and true or false
+end
 
 -- A word is a web address when it starts with a scheme ("https://") or with "www." and a domain.
 -- Brackets and punctuation around it stay outside the link.
 local function LinkAddress(word)
+    -- an icon right before it (a raid mark, a phone)
+    local icon, rest = word:match("^(|T[^|]*|t)(.+)$")
+    if icon then
+        local linked = LinkAddress(rest)
+        return linked and icon .. linked or nil
+    end
     local head, address, tail = word:match("^([%(%[]*)(.-)([%.,;:!%?%)%]]*)$")
     if address:match("^%a%a+://%S") or address:match("^www%.[%w%-]+%.%a%a") then
         return head .. "|cff00b2ff|Hflareurl:" .. address .. "|h[" .. address .. "]|h|r" .. tail
@@ -1427,10 +1546,15 @@ end
 -- The copy box, for other modules and the settings panel's links
 function Chat.ShowCopyText(text) ShowCopyBox(text) end
 
--- A chat line as plain text: colour, icon and link codes would paste as gibberish
-function Chat.PlainLine(text)
-    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:]*:", ""):gsub("|r", "")
-        :gsub("|H.-|h(.-)|h", "%1"):gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|K.-|k", ""):gsub("||", "|")
+-- A chat line as plain text: colour, icon, link and wrap codes would paste as gibberish. A Battle.net
+-- friend's name is a token: their BattleTag's name (tags, Chat.BattleTags) or ???. A typed "|" is "||" in
+-- a line: kept out of the codes' way.
+function Chat.PlainLine(text, tags)
+    text = text:gsub("||", "\1")
+        :gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:]*:", ""):gsub("|r", "")
+        :gsub("|H.-|h(.-)|h", "%1"):gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|[Ww]", "")
+        :gsub("|K.-|k", function(token) return tags and tags[token] or "???" end)
+        :gsub("\1", "|")
     return text
 end
 
@@ -1497,14 +1621,14 @@ function Chat:ShowCopyChat(chatFrame)
         self.copyChatFrame = f
     end
 
-    local lines, hidden = {}, 0
+    local lines, hidden, tags = {}, 0, Chat.BattleTags()
     for i = 1, chatFrame:GetNumMessages() do
         local msg = chatFrame:GetMessageInfo(i)
         -- canaccessvalue first, before any other test
         if not canaccessvalue(msg) then
             hidden = hidden + 1
         elseif type(msg) == "string" then
-            lines[#lines + 1] = Chat.PlainLine(msg)
+            lines[#lines + 1] = Chat.PlainLine(msg, tags)
         end
     end
     f.text = table.concat(lines, "\n")
@@ -1525,7 +1649,7 @@ function Chat:ShowCopyChat(chatFrame)
 end
 
 -- The plain stretches of a line get their addresses linked; a hyperlink (|H...|h...|h) is kept whole
-local function LinkPlainText(msg)
+function Lines.LinkAddresses(msg)
     if not msg:find("|H", 1, true) then return (msg:gsub("%S+", LinkAddress)) end
     local out, pos = {}, 1
     while true do
@@ -1539,14 +1663,6 @@ local function LinkPlainText(msg)
     return table.concat(out)
 end
 
--- Blizzard only calls filters with accessible values, so no secret check is needed
-local function URLFilter(self, event, msg, ...)
-    if type(msg) ~= "string" then return false, msg, ... end
-    -- most lines hold no address: skip the per-word scan
-    if not (msg:find("://", 1, true) or msg:find("www.", 1, true)) then return false, msg, ... end
-    return false, LinkPlainText(msg), ...
-end
-
 -- Registered once for the session (LinkUtil asserts on a second registration)
 local function RegisterURLHandler()
     if LinkUtil.IsLinkHandlerRegistered("flareurl") then return end
@@ -1555,17 +1671,11 @@ local function RegisterURLHandler()
     end)
 end
 
-local urlFilterActive = false
-
 -- Always on with the chat
 function Chat:SetupCopyLinks()
     local db = GetDb()
-    if not db or urlFilterActive then return end
-    urlFilterActive = true
+    if not db then return end
     RegisterURLHandler()
-    for _, event in ipairs(URL_EVENTS) do
-        ChatFrameUtil.AddMessageEventFilter(event, URLFilter)
-    end
 end
 
 --------------------------------------------------
@@ -3030,14 +3140,14 @@ end
 
 --------------------------------------------------
 -- 13. EDIT BOX
--- * Sent history: the last lines sent (all channels, per character). Up / Down, with or without
---   Shift or Alt, step through them; Down past the newest restores the draft. Blizzard's own list
---   is emptied after each line so Alt+Up does not fight this one.
+-- * Sent history: the last lines sent (all channels, per character). Alt+Up / Alt+Down step through
+--   them, as Blizzard's own (11-24: the arrows alone are Blizzard's again); Down past the newest
+--   restores the draft. Blizzard's own list is emptied after each line so it does not fight this one.
 -- * Inside: while the box is open over the chat's last lines, the lines move up above it. The chat
 --   lays its lines out from the bottom up, so only the first is moved.
 --------------------------------------------------
 local EDIT_BOX_GAP = 1   -- px between the chat window's border and an edit box below / above it
-local EditExtras = { SENT_MAX = 50, PUSH_GAP = 2 }
+local EditExtras = { SENT_MAX = 200, PUSH_GAP = 2 }
 
 function EditExtras.Sent()
     local char = ns.CharDB()
@@ -3107,7 +3217,7 @@ function EditExtras.OnKeyDown(eb, key)
         if not picking then EditExtras.OnLineSent(eb) end
         return
     end
-    if (key ~= "UP" and key ~= "DOWN") or IsControlKeyDown() or picking or ChatLocked() then return end
+    if (key ~= "UP" and key ~= "DOWN") or not IsAltKeyDown() or IsControlKeyDown() or picking or ChatLocked() then return end
     local list = EditExtras.Sent()
     if #list == 0 then return end
     local pos = eb.FlareUI_HistoryPos or 0
@@ -3404,7 +3514,6 @@ function Chat:StyleEditBox(chatFrame, db)
     bg:SetShown(not blizzardArt)
 
     eb:SetHistoryLines(100)
-    eb:SetAltArrowKeyMode(false)
     EditExtras.Setup(eb)
 
     local path, size, flags = GetFontData(db.editBoxFont)
@@ -3683,6 +3792,7 @@ function Chat:ApplyMessageFont(chatFrame, db)
     ApplyLineSpacing(chatFrame, db)
 end
 
+Chat.MAX_LINES = 500
 function Chat:StyleChatFrame(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     -- the main window is Edit Mode's chat system: its box goes on the skin and keeps it on screen
@@ -3701,6 +3811,12 @@ function Chat:StyleChatFrame(chatFrame, db)
     end
 
     Chat.LineFadeOn(chatFrame, db)   -- Blizzard's line fading off, or Fade Old Lines
+
+    -- more lines to scroll back through than Blizzard's 128 (the Combat Log keeps its own number). Blizzard's
+    -- own call, which keeps the lines already there and runs as the game's (11-24)
+    if chatFrame ~= _G.ChatFrame2 and chatFrame.SetMaxLines and (chatFrame:GetMaxLines() or 0) < Chat.MAX_LINES then
+        chatFrame:SetMaxLines(Chat.MAX_LINES)
+    end
 
     -- Blizzard's own alpha changes are overruled by FlareUI's target alpha
     if not chatFrame.FlareUI_AlphaHooked then
@@ -4624,6 +4740,7 @@ function Chat:Init()
 
     self:ScheduleTimer(function() Chat:RefreshAll() end, 0.2)
     self:ScheduleTimer(function() Chat:RestoreHistory() end, 1)
+    self:ScheduleTimer(function() Chat:WarnOfClash() end, 5)
 
     if not Chat.npcEventsRegistered then
         self:RegisterEvent("GOSSIP_CLOSED", "OnNPCInteractionEnd")
@@ -4807,8 +4924,19 @@ local function BattleTagsByToken()
     end
     return map
 end
+Chat.BattleTags = BattleTagsByToken
+
+-- What a line's links point at only this session: the line's number (the menu's Report goes by it, and
+-- another line can have that number next time), a Discord user, a censored line's buttons
+local function SettleLinks(msg)
+    if not msg:find("|H", 1, true) then return msg end
+    msg = msg:gsub("(|Hplayer:[^:|]*):%d+", "%1:0")
+    msg = msg:gsub("|H%a*censoredmessage%a*:.-|h(.-)|h", "%1")
+    return (msg:gsub("|Hdiscorduser:.-|h(.-)|h", "%1"))
+end
 
 local function SafeHistoryLine(msg, tags)
+    msg = SettleLinks(msg)
     if not msg:find("|K", 1, true) and not msg:find("|HBNplayer", 1, true) then return msg end
     local missing = false
     msg = msg:gsub("|K.-|k", function(token)
@@ -4824,8 +4952,8 @@ end
 -- or addon lines, which have no chat event
 local PLAYER_CHAT = {}
 for _, kind in ipairs({ "SAY", "YELL", "EMOTE", "TEXT_EMOTE", "WHISPER", "WHISPER_INFORM", "BN_WHISPER",
-        "BN_WHISPER_INFORM", "GUILD", "OFFICER", "PARTY", "PARTY_LEADER", "PARTY_GUIDE", "RAID", "RAID_LEADER",
-        "RAID_WARNING", "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "CHANNEL", "COMMUNITIES_CHANNEL" }) do
+        "BN_WHISPER_INFORM", "GUILD", "GUILD_DISCORD", "OFFICER", "PARTY", "PARTY_LEADER", "PARTY_GUIDE", "RAID",
+        "RAID_LEADER", "RAID_WARNING", "INSTANCE_CHAT", "INSTANCE_CHAT_LEADER", "CHANNEL", "COMMUNITIES_CHANNEL" }) do
     PLAYER_CHAT["CHAT_MSG_" .. kind] = true
 end
 
@@ -4848,14 +4976,15 @@ local function StripStamp(msg, at)
     return msg
 end
 
--- A window's last HISTORY_LINES player-chat lines, added to out with when each arrived (server time)
+-- A window's player-chat lines, added to out with when each arrived (server time); the newest
+-- HISTORY_LINES are kept (Chat:SaveHistory), however much loot came between them
 local function ReadHistoryLines(cf, tags, out)
     local num = cf:GetNumMessages()
     local buffer = cf.historyBuffer
     local offset = time() - GetTime()   -- the buffer keeps GetTime(); saved lines keep the clock
     -- never earlier than the line before it, so the window's own order holds
     local last = 0
-    for j = math_max(1, num - (HISTORY_LINES - 1)), num do
+    for j = 1, num do
         local msg, r, g, b, id, _, _, event = cf:GetMessageInfo(j)
         -- secret lines are skipped; canaccessvalue first, before any other test
         if canaccessvalue(msg) and type(msg) == "string" then
@@ -4951,7 +5080,8 @@ function Chat:RestoreHistory()
             for j = #msgs, 1, -1 do
                 local line = msgs[j]
                 if type(line) == "table" and type(line[1]) == "string" then
-                    local raw, at = line[1], tonumber(line[6])
+                    -- (lines saved before 11-24 still have their session's links)
+                    local raw, at = SettleLinks(line[1]), tonumber(line[6])
                     local text = raw
                     if at then
                         -- stamped again, in today's format, with the time it arrived
@@ -4965,7 +5095,7 @@ function Chat:RestoreHistory()
                     end
                     cf:BackFillMessage(text, line[2], line[3], line[4], line[5] or nil)
                 elseif type(line) == "string" then
-                    cf:BackFillMessage(line)
+                    cf:BackFillMessage(SettleLinks(line))
                 end
             end
         end

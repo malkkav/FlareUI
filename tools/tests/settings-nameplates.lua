@@ -161,6 +161,7 @@ assert(row("nameOnlyFull"):IsHidden(), "an NPC type has no full name")
 -- own texture and border with their defaults, class-coloured names off
 assert(row("guildColor"):IsHidden() and not row("showTitles"):IsHidden() and row("showTitles"):Get() == true)
 assert(not row("nameClassColor"):Get())
+assert(row("showGuild"):IsHidden(), "NPCs have no guild")
 assert(row("castTexture"):Get() == "FlareUI Dark" and row("castBorder"):Get() == "FlareUI Frames")
 assert(row("mouseoverHighlight"):Get() == "border,bar", "Mouseover Highlight starts on Border and Bar")
 side.unitGroup.cells[1]:Click()
@@ -177,6 +178,7 @@ do
     pick:Set("fullname")
 end
 assert(row("showTitles"):Get() == false, "players start without titles")
+assert(not row("showGuild"):IsHidden() and not row("showGuild"):Get(), "players: Show Guild Name, off")
 side.unitGroup.cells[2]:Click()
 
 P:Open("np", "targeting")

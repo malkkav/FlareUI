@@ -71,9 +71,11 @@ Settings.NEW = {
     ["np.nameOnlyMode"] = "7.0",
     ["np.nameOnlySize"] = "7.0",
     ["np.peacefulNames"] = "7.0",
+    ["np.showGuild"] = "7.0",
     ["np.showTitles"] = "7.0",
     ["np.threatPercent"] = "7.0",
     ["qol.flightDestinations"] = "7.0",
+    ["rm.spellRank"] = "7.0",
     ["tt.healingDamage"] = "7.0",
 }
 

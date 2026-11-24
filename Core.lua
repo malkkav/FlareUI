@@ -942,7 +942,8 @@ local defaults = {
         radialmenu = {
             enabled = false,
             showNames = true,           -- button names on (Off saves false; buttonNames picks hover or always)
-            buttonNames = "hover",      -- Button Names: hover | always (showNames false = Off)
+            buttonNames = "hover",      -- Icon Labels: hover | always (showNames false = Off)
+            spellRank = "off",          -- Show Spell Rank: off | icon | label | both (a spell below its best rank)
             targetMouseover = "off",    -- Target Mouseover: off | on | shift | ctrl | alt
             position = "cursor",        -- cursor | center: where a mouse radial opens
             activation = "hold",        -- hold (release to use) | toggle (press to open, click to use)

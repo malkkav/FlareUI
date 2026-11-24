@@ -928,6 +928,13 @@ function R.radial(c, spec)
         c:Texture('radialRim' .. i, P.MEDIA .. 'Previews\\Ring.tga', px - 2, py - 2, s + 4, s + 4, true)
     end
     local names = { L["Frostbolt"], L["Heal"], L["Bags"], L["Mount"] }
+    -- Show Spell Rank: Frostbolt is a lower rank here
+    local level = Get('radialmenu.spellRank', 'off')
+    if level == 'label' or level == 'both' then names[1] = ('%s (%s 2)'):format(names[1], RANK or 'Rank') end
+    if level == 'icon' or level == 'both' then
+        local s = size * 0.17
+        c:Text('radialRank', '2', c.width / 2 - s / 2, 12 + size / 2 - size * 0.30 - s / 2, s, { size = 10 }):SetJustifyH('LEFT')
+    end
     local showNames = Get('radialmenu.showNames', true)
     local always = showNames and Get('radialmenu.buttonNames', 'hover') == 'always'
     if always then

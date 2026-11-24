@@ -188,6 +188,11 @@ assert(text(o.radialName, "Heal"), "the hover label follows the selected slice")
 profile.radialmenu.buttonNames = "always"
 draw("radial", "rm.names")
 assert(shown(o.radialName1) and text(o.radialName4, "Mount") and not shown(o.radialName))
+-- Show Spell Rank: a lower rank of Frostbolt, on the icon and after its name
+profile.radialmenu.spellRank = "both"
+draw("radial", "rm.spellRank")
+assert(text(o.radialName1, "Frostbolt (Rank 2)") and text(o.radialRank, "2"))
+profile.radialmenu.spellRank = nil
 
 profile.auras = { reminders = true, reminder = { group = "party", consumables = "all", glowMissing = true } }
 draw("reminders", "au.reminderGroup")

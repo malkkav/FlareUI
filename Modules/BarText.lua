@@ -508,10 +508,14 @@ function NA.Layout(f, udb, anchor, font)
         return 0
     end
     if not fs then
-        fs = f:CreateFontString(nil, "OVERLAY")
+        f.NameAboveHolder = CreateFrame("Frame", nil, f)
+        f.NameAboveHolder:SetAllPoints()
+        fs = f.NameAboveHolder:CreateFontString(nil, "OVERLAY")
         fs:SetWordWrap(false)
         f.NameAboveText = fs
     end
+    -- over the portrait ring and the elite dragon (11-24, nehcro), as the auras are (f.auraLift)
+    f.NameAboveHolder:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6))
     if font and font.GetFont then
         local face, size, flags = font:GetFont()
         if face then fs:SetFont(face, size, flags) end
@@ -536,19 +540,45 @@ function NA.Layout(f, udb, anchor, font)
     return f.nameAboveLift
 end
 
--- The name's text (secret names go to the widget as they are)
-function NA.SetName(f, udb, unit)
-    local fs = f.NameAboveText
-    local slot, kind = NA.Get(udb)
-    if not (fs and slot) then return end
-    local name = unit and UnitExists(unit) and ns.UnitDisplayName(unit, nil, BT.FullOf(kind)) or nil
-    if canaccessvalue(name) and not name then name = "" end
-    fs:SetText(name or "")
+-- The level in front of the name (11-24, Thinkysaurus / Malkkav): Show Level off the ring styles, whose
+-- disc has it; with the name in the bar too, the level is in both. The bar level's colours and marks;
+-- icons: the frame's (High Level Skull); ranked: + and R, as in the bar. nil: none to show.
+function NA.LevelText(level, color, icons, ranked)
+    if level <= 0 then
+        local store = icons and icons.highSkull
+        if store and store.shown == false then return "|cffff1a1a??|r " end
+        return ns.HIGH_LEVEL_SKULL .. " "
+    end
+    color = color or { r = 1, g = 1, b = 1 }
+    return ("|cff%02x%02x%02x%d%s|r "):format(color.r * 255 + 0.5, color.g * 255 + 0.5, color.b * 255 + 0.5, level, ranked or "")
 end
--- a sample's name in Edit Mode (first, surname)
-function NA.SetSample(f, udb, first, surname)
+
+-- The name's text (secret names go to the widget as they are). levels: the table with the frame's level
+-- settings, nil for no level; ranked: the unit's + and R too
+function NA.SetName(f, udb, unit, levels, ranked)
     local fs = f.NameAboveText
     local slot, kind = NA.Get(udb)
     if not (fs and slot) then return end
-    fs:SetText(first and BT.SampleName(first, surname, BT.FullOf(kind)) or "")
+    local there = unit and UnitExists(unit)
+    local name = there and ns.UnitDisplayName(unit, nil, BT.FullOf(kind)) or nil
+    if canaccessvalue(name) and not name then name = "" end
+    if not (there and levels and levels.showLevel) then fs:SetText(name or "") return end
+    local level = ns.UnitShownLevel(unit)
+    if not canaccessvalue(level) then fs:SetFormattedText("%s %s", level, name) return end
+    if type(level) ~= "number" then fs:SetText(name) return end
+    local mark = ""
+    local c = ranked and UnitClassification(unit)
+    if canaccessvalue(c) then
+        mark = (c == "rare" and "R") or (c == "rareelite" and "R+") or (c == "elite" and "+") or ""
+    end
+    fs:SetFormattedText("%s%s", NA.LevelText(level, level > 0 and ns.UnitLevelColor(unit, level), levels.icons, mark), name)
+end
+-- a sample's name in Edit Mode (first, surname); level: the sample's, with Show Level on
+function NA.SetSample(f, udb, first, surname, level, icons)
+    local fs = f.NameAboveText
+    local slot, kind = NA.Get(udb)
+    if not (fs and slot) then return end
+    local text = first and BT.SampleName(first, surname, BT.FullOf(kind)) or ""
+    if type(level) == "number" and text ~= "" then text = NA.LevelText(level, { r = 1, g = 0.82, b = 0 }, icons) .. text end
+    fs:SetText(text)
 end
