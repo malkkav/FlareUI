@@ -11,10 +11,6 @@ A small fix for errors in group content, with two more fixes from your reports.
 - **Nameplates:** with **Names Above Plate**, names could show the colour of another player or enemy.
 - **Minimap:** an error in the addon drawer with addons that put thousands of pins on the minimap.
 
----
-
-Older versions (7.0.7 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
-
 # FlareUI 7.0.7
 
 A big round of controller work, a real second power slot for druids in Forever Style, and a long list of fixes from your reports.

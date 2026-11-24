@@ -324,3 +324,7 @@ Some things look or work differently even if you change nothing:
 - **Raid Frames:** click-casting didn't work on the main tanks' targets.
 - **Meters:** the warning about Blizzard's own Visibility setting could be missed.
 - **Settings:** **Show Item Level** showed a player in its preview.
+
+---
+
+Older versions (7.0.8 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
