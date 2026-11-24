@@ -253,7 +253,7 @@ TT.SNIPPET = [[
     if unit then target:SetAttribute("unit", unit .. "target") else target:SetAttribute("unit", nil) end
 ]]
 
--- Target Frame Width / Height (11-20, as Party Targets): unset, the tank's width, and its height to
+-- Target Frame Width / Height (as Party Targets): unset, the tank's width, and its height to
 -- the right or TT.HEIGHT below
 function TT.Size(w, hh)
     local db = GetDb()
@@ -299,7 +299,7 @@ function TT.Create(f)
     t.Name:SetWordWrap(false)
     t:SetScript("OnShow", TT.Update)
     if type(t.SetRolesets) == "function" then pcall(t.SetRolesets, t, "unitFrames") end
-    -- (11-23) click-casting on a main tank's target too, as on every other tile
+    -- click-casting on a main tank's target too, as on every other tile
     _G.ClickCastFrames = _G.ClickCastFrames or {}
     _G.ClickCastFrames[t] = true
     t:Hide()
@@ -1012,7 +1012,7 @@ local function BuildSettings()
           get = get("height", DEFAULT_H), set = set("height") },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
           get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
-        -- (11-23, Malkkav) the unit frames picker with the Centre slot only, as the party Raid Style
+        -- the unit frames picker with the Centre slot only, as the party Raid Style
         -- (PartyFrames.lua PF.MidOn); the old Health / Power Text choice converts once
         ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "raid", db = GetDb, changed = function() Refresh() end,
             style = function() return "tile" end, desc = ns.PartyFrames.MID_DESC }),
@@ -1116,7 +1116,7 @@ local function BuildTankSettings()
                      { text = L["Right of the Frame"], value = "RIGHT", isRadio = true } },
           get = get("tankTargets", "OFF"), set = set("tankTargets"),
           desc = L["What each main tank is targeting, in a small frame below or right of theirs."] },
-        -- (11-20, as Party Targets) 0 = follow the tank's frame
+        -- (as Party Targets) 0 = follow the tank's frame
         { name = L["Target Frame Width"], kind = LEM.SettingType.Slider, default = 0, minValue = 0, maxValue = 240, valueStep = 1,
           formatter = function(value) return value == 0 and L["Auto"] or value end,
           get = function() return get("targetWidth", 0)() or 0 end,
@@ -1163,7 +1163,7 @@ function RF:OnGlobalEvent(event, ...)
                 rosterPending = false
                 if IsEditing() then return end
                 ForTiles(function(f)
-                    -- (11-24) ... and still for the same player: somebody else can have moved behind the
+                    -- ... and still for the same player: somebody else can have moved behind the
                     -- same unit since
                     local drawn = f.unitSetAt and f.unitSetAt >= burstStart and f.paintedGUID
                     local guid = drawn and UnitGUID(f.fuiUnit)

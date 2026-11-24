@@ -5,7 +5,7 @@ local L = ns.L
 -- CONTROLLER NAVIGATION OF THE QUEST TRACKER
 -- In the Gamepad UI, LB + RB and D-pad Up gives the pad to Blizzard's quest tracker. With FlareUI's
 -- tracker on, Blizzard's is still "shown", shrunk to nothing (ObjectiveTracker.lua section 11): the D-pad
--- and the face buttons were caught on a window nobody sees until B (11-23). Here that press gives the pad
+-- and the face buttons were caught on a window nobody sees until B. Here that press gives the pad
 -- to FlareUI's tracker. With no tracker on screen it opens the quest log, through the game's own button.
 --   D-pad  moves (held: repeats)   B  gives the pad back
 --   A      focuses a quest, folds a zone, presses a button, uses a quest item

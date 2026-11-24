@@ -2413,6 +2413,13 @@ ns.Copy = {
             section = "qol.controller",
             tip = L["Off: the D-pad Up shortcut gives the controller FlareUI's tracker."],
         },
+        ["qol.plateCombo"] = {
+            desc = L["Combo points under your target's nameplate, on Blizzard's own nameplates."],
+            label = L["Nameplate Combo Points"],
+            section = "qol.other",
+            tags = { "combo points", "nameplates" },
+            tip = L["FlareUI's nameplates have their own Combo Points, on the Extras tab."],
+        },
         ["qol.repair"] = {
             desc = L["Repairs your gear at vendors that can."],
             label = L["Auto Repair"],

@@ -260,7 +260,7 @@ local UNITS = {
         globalEvents = { PLAYER_FOCUS_CHANGED = true, GROUP_ROSTER_UPDATE = true, PARTY_LEADER_CHANGED = true, PLAYER_FLAGS_CHANGED = "focus",
                          QUEST_LOG_UPDATE = true },
         castbar = true,
-        -- (11-20: the target's Leader, PvP Flag and Quest Objective too: a focus can be a player or a quest mob)
+        -- (the target's Leader, PvP Flag and Quest Objective too: a focus can be a player or a quest mob)
         indicators = { leader = true, pvp = true, classification = true, highSkull = true, quest = true, threat = true,
                        heals = true, readyCheck = true },
         threatGlow = true,   -- Threat Glow (Look): the player's threat on it
@@ -722,7 +722,7 @@ local function SetBorderTint(border, r, g, b)
     border:SetBackdropBorderColor(r, g, b, 1)
 end
 
--- Elite & Rare (11-24, Aralyn / Malkkav): off the ring styles the frame's border at rest is gold for an
+-- Elite & Rare: off the ring styles the frame's border at rest is gold for an
 -- elite, silver for a rare; kind nil: bronze. A glow keeps the border, which comes back to this after it.
 UF.RANK_BORDER = { elite = { r = 1, g = 0.82, b = 0.25, a = 1 }, rare = { r = 0.80, g = 0.83, b = 0.87, a = 1 } }
 function UF.SetBorderRank(border, kind)
@@ -981,7 +981,7 @@ local function HardHide(name)
     hooksecurefunc(frame, "Show", function(f) if not InCombatLockdown() then ns.RawHide(f) end end)
 end
 
--- BLIZZARD'S GROUP FRAMES, SILENCED (11-24): parking their holder left the frames inside listening to every
+-- BLIZZARD'S GROUP FRAMES, SILENCED: parking their holder left the frames inside listening to every
 -- health, power, aura and threat event of the group, hidden or not (up to 40 after a reload in a raid).
 -- Events off, and off again each time Blizzard registers them (a new unit); no field of theirs is
 -- written. A main tank's target frame would even draw itself every frame, on purpose also while hidden.
@@ -1162,15 +1162,15 @@ end
 -- BAR TEXT (BarText.lua): each bar's Left, Middle and Right slot texts. The Right slot
 -- keeps the bar's old text (HealthText, PowerText, ShiftManaText); Left and Middle are its "Left" and
 -- "Mid". Off the plate Left is the name side (Mirror puts it on the right), on the plate the bar's end.
--- VALUES ON MOUSEOVER (11-20, every frame's Text section, off; Blizzard's own status text option): the
+-- VALUES ON MOUSEOVER (every frame's Text section, off; Blizzard's own status text option): the
 -- health and power numbers sit on a layer of their own that shows only while the pointer is on the
 -- frame. Names and the level stay. Edit Mode always shows them. texts: the font strings to move there.
--- (11-23, Kelvan) one layer per bar the texts sat on: a single layer took the first text's bar, and
+-- one layer per bar the texts sat on: a single layer took the first text's bar, and
 -- when that was the druid's Mana on Shapeshift bar (hidden in caster form) every number hid with it.
 -- f.ValueLayer stays the first one made, f.ValueLayers holds them all (by the texts' own bar).
 function UF.SetValueLayersAlpha(f, a)
     for _, layer in pairs(f.ValueLayers or {}) do
-        -- (what was set last, kept here: in group content the layer's own alpha can't be read; 11-23, betonlol)
+        -- (what was set last, kept here: in group content the layer's own alpha can't be read; betonlol)
         if layer.FlareUI_Alpha ~= a then
             layer.FlareUI_Alpha = a
             layer:SetAlpha(a)
@@ -1208,7 +1208,7 @@ function UF.ValuesOnHover(f, on, texts)
     UF.SetValueLayersAlpha(f, (not on or ns.EditPreviewing() or f:IsMouseOver()) and 1 or 0)
     UF.WatchValuesHover(f, on)
 end
--- (11-22) the frame's own OnEnter/OnLeave miss the pointer when a part of the frame takes the mouse (the
+-- the frame's own OnEnter/OnLeave miss the pointer when a part of the frame takes the mouse (the
 -- player frame's numbers never came back), and nothing looked again after Edit Mode closed (one hover
 -- was needed): a light watcher, ten checks a second, only for frames with the option on, follows the
 -- pointer itself
@@ -1275,7 +1275,7 @@ function UF.FirstNameOnly(unit)
     return unit == "focus" or unit == "targettarget" or unit == "focustarget"
 end
 -- which name the frame shows, as ns.UnitDisplayName's full (false, true or "lastname"): Forever Style the
--- full name everywhere but the focus and target-of frames (fixed, Malkkav 11-24: no Last Name there); the
+-- full name everywhere but the focus and target-of frames (fixed: no Last Name there); the
 -- others by the health bar's name pick
 function UF.ShowsFullName(f)
     -- the focus and target-of frames show the first name in every style
@@ -1388,7 +1388,7 @@ function UF.PlaceSlots(f, bar, barFrame, mirror, plate, pad, levelInRow)
     for _, slot in ipairs(BT.SLOTS) do
         if BT.NameOf(slots[slot]) then nameSlot = slot break end
     end
-    -- (11-20: off the plate the name slot alone decides; Show Name is the plate's name box)
+    -- (off the plate the name slot alone decides; Show Name is the plate's name box)
     local showName = true
     local lead = levelInRow and f.Level or nil
     local piece = (showName and f.Name) or lead
@@ -2942,7 +2942,10 @@ local function ConfigureAuraCorner(f, corner, lanes)
                 maxFrameCount = max,
                 candidateFilters = lane.candidates,
                 sortMethod = sortMethod, sortDirection = sortDirection,
-                initializeFrame = function(button) InitAuraButton(button, size, isDebuff, unit, font, showTimer, look) end,
+                initializeFrame = function(button)
+                    button.FlareUI_AuraOwner = f   -- (its side hides the dispel type icons: ns.AuraLook.DispelSide)
+                    InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
+                end,
                 layout = {
                     elementWidth = size, elementHeight = look and look.cellHeight or size,
                     elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
@@ -2979,7 +2982,7 @@ end
 -- PF.DispelHighlight), a dispellable debuff on you pulsing the border, and the ring, in its type's colour
 function UF.LayoutDispelHighlight(f)
     local PF = ns.PartyFrames
-    -- (11-20: target and focus too, for a friendly target you dispel)
+    -- (target and focus too, for a friendly target you dispel)
     local unit = f.fuiUnit
     if not (unit == "player" or unit == "target" or unit == "focus") or not (PF and PF.DispelHighlight) then return end
     local udb = GetUnitDb(unit)
@@ -3162,7 +3165,7 @@ function AURA.Clash(a, b)
     return (a:find("^TOP") ~= nil) == (b:find("^TOP") ~= nil) and (AURA.FULL[a] or AURA.FULL[b]) or false
 end
 
--- STACKED AURAS (11-22, Malkkav): Buffs and Debuffs may pick clashing places; they stack instead.
+-- STACKED AURAS: Buffs and Debuffs may pick clashing places; they stack instead.
 -- The one that was in its place first stays nearer the frame, the one picked after it goes one row
 -- further out (udb.auraOuter = "buffs" | "debuffs", saved when the clashing pick is made). The same
 -- place: one container, the nearer kind's rows first (LayoutAuras). Top / Bottom with a corner on that
@@ -3418,7 +3421,7 @@ end
 -- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style
 local function UsesClassicCombo(f)
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
-    -- (11-20: Forever Style reads the mode too, so its gems can be turned off)
+    -- (Forever Style reads the mode too, so its gems can be turned off)
     if ringOn and UF.RingComboMode(GetUnitDb(f.fuiUnit)) ~= "classic" then return false end
     return (ringOn and GetClassicCombo()) and true or false
 end
@@ -3806,7 +3809,7 @@ end
 --------------------------------------------------
 local ICON_SIZE = {
     rest = 28, leader = 20, pvp = 24,
-    classification = 32,   -- the Elite & Rare skull (11-24, a third larger: players missed it)
+    classification = 32,   -- the Elite & Rare skull (a third larger: players missed it)
     quest = 24,   -- the quest "!" height; its width follows the art
 }
 local QUEST_ATLAS     = "QuestNormal"   -- the map's quest-offer "!", as on the nameplate quest tags
@@ -4085,7 +4088,7 @@ function UF.PlaceOverAbsorb(over, health, width, mirror, texture)
     bar:SetReverseFill(not mirror)
     bar:SetStatusBarTexture(texture)
     -- see-through: the health still reads under it, also under a shield larger than the whole bar
-    -- (Templar's Bulwark covered all of it at 0.75, capo's report 11-19)
+    -- (Templar's Bulwark covered all of it at 0.75)
     bar:SetStatusBarColor(ABSORB_COLOR[1], ABSORB_COLOR[2], ABSORB_COLOR[3], 0.4)
 end
 
@@ -4136,7 +4139,8 @@ function UF.PlaceShieldGlow(glow, health, mirror)
     glow:SetPoint("TOP" .. (mirror and "RIGHT" or "LEFT"), health, "TOP" .. edge, x, 0)
     glow:SetPoint("BOTTOM" .. (mirror and "RIGHT" or "LEFT"), health, "BOTTOM" .. edge, x, 0)
     glow:SetWidth(16)
-    local info = C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(UF.SHIELD_GLOW_ATLAS)
+    local info = UF.shieldGlowInfo or C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(UF.SHIELD_GLOW_ATLAS)
+    UF.shieldGlowInfo = info   -- (a new table at every call)
     if info then
         local l, r = info.leftTexCoord, info.rightTexCoord
         if mirror then l, r = r, l end
@@ -5417,7 +5421,7 @@ local function LayoutFrame(f)
         local place = ICON_UI.HappinessPlace(f.fuiUnit)
         local size = math.max(RAID_ICON, healthHeight * HAPPINESS_SHARE) - 4
         if UNITS[f.fuiUnit].styledPet and ns.UFRing.PlateOn() then size = ICON_UI.HAPPINESS_PLATE_SIZE end
-        -- (11-24) beside the frame: as tall as the health bar, as it is drawn (the plate's slot too)
+        -- beside the frame: as tall as the health bar, as it is drawn (the plate's slot too)
         if place ~= "CENTER" then size = math.max(size, f.Health:GetHeight() or 0) end
         if place == "RIGHT" then
             ICON_UI.Place(f.Happiness, size, size, "LEFT", f, "RIGHT", ICON_UI.HAPPINESS_GAP, 0)
@@ -5608,7 +5612,7 @@ function UF:IsMouseOverUnit(unit)
     local f = frames[unit]
     if not (f and f:IsVisible()) then return false end
     if f:IsMouseOver() or (ns.UFRing and ns.UFRing.MouseOverHit(f)) then return true end
-    -- (11-24, GitHub #180) its buffs and debuffs too: faded they still took the pointer and showed their
+    -- (GitHub #180) its buffs and debuffs too: faded they still took the pointer and showed their
     -- tooltips, but didn't bring the frame back. Asked of what the pointer is on, nothing measured.
     return f.Auras and UF.PointerUnder(f) or false
 end
@@ -5802,8 +5806,8 @@ end
 
 -- target, focus, pet and the target-of frames re-check five times a second while shown (range has no event for them)
 UF.RANGE_UNITS = { "target", "focus", "pet", "targettarget", "focustarget" }
--- the ones whose Range Check starts off (the pet since 11-20; Target of Target and Target of Focus
--- since 11-22, Kelvan): on only once switched on
+-- the ones whose Range Check starts off (the pet; Target of Target and Target of Focus
+--, Kelvan): on only once switched on
 UF.RANGE_OFF_FIRST = { pet = true, targettarget = true, focustarget = true }
 function UF.UpdateFrameRanges()
     for _, unit in ipairs(UF.RANGE_UNITS) do
@@ -6440,7 +6444,7 @@ local function BuildPlayerCastSettings()
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
-        -- (11-22, Malkkav: here under Look; on the frames, in their Cast Bar section)
+        -- (here under Look; on the frames, in their Cast Bar section)
         UF.CastGlowSetting(GetPlayerCastDb, set("castGlow")),
     })
     -- the bar is the frame here: no Cast Bar section, its rows are Behaviour
@@ -6595,7 +6599,7 @@ local function BuildSettings(unit)
             ApplyComboMode(f)
             UF.Redraw(f)
         end
-        -- one dropdown in every style (11-20, was a switch in Modern and nothing in Forever):
+        -- one dropdown in every style:
         -- Classic is Blizzard's gems round the portrait (the ring styles), Modern the strip along the
         -- health bar (Modern Style, and FlareUI Style's option). Saved as before: ringCombo in the
         -- ring styles, the comboPoints switch in Modern Style.
@@ -6924,7 +6928,7 @@ local function BuildSettings(unit)
                 desc = L["A dispellable debuff on you makes the frame's border pulse in its type's colour. In the ring styles the portrait's ring pulses too."],
                 get = function() local u = GetUnitDb(unit); return u and u.dispelHighlight or "off" end, set = set("dispelHighlight") }
         end
-        -- target and focus: the same Dispel Highlight, for a friendly unit you dispel (11-20, off)
+        -- target and focus: the same Dispel Highlight, for a friendly unit you dispel (off)
         if unit == "target" or unit == "focus" then
             auraItems[#auraItems + 1] = { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = "off",
                 values = { { text = L["Off"], value = "off", isRadio = true }, { text = L["Dispellable by Me"], value = "mine", isRadio = true },

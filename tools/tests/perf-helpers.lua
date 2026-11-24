@@ -1,7 +1,8 @@
 -- Minimal loader for exercising real addon functions with deterministic client doubles.
 local H = {}
 function H.read(path)
-    local f = assert(io.open(path)); local s = f:read('*a'); f:close(); return s
+    local f = assert(io.open(path, 'rb')); local s = f:read('*a'); f:close()
+    return (s:gsub('\r\n', '\n'))   -- (#183: the cut marks below never depend on a file's line endings)
 end
 function H.section(source, first, last)
     local a = assert(source:find(first, 1, true), first)

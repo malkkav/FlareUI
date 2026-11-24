@@ -284,6 +284,30 @@ db.infoBar.left, db.infoBar.center, db.infoBar.right = "coords", "coordsSimple",
 minimap:Refresh()
 assert(bar:GetPoint() == "TOPLEFT" and not bar.Plates[1]:IsShown())
 assert(square:barText("45.3, 62.1") and square:barText("45, 62") and square:barText("XP 50% |cff4d85e6+10%"))
+-- standing still, the position is read again only twice a second; moving, on each draw
+do
+    local reads, speed, at, position, time = 0, 0, 0.453, env.C_Map.GetPlayerMapPosition, env.GetTime
+    local now = time() + 10
+    env.GetTime = function() return now end
+    env.GetUnitSpeed = function() return speed end
+    env.C_Map.GetPlayerMapPosition = function()
+        reads = reads + 1
+        return { GetXY = function() return at, 0.621 end }
+    end
+    minimap:Refresh()
+    reads, at = 0, 0.5
+    minimap:Refresh()
+    assert(reads == 0 and square:barText("45.3, 62.1"), reads)
+    now = now + 0.6
+    minimap:Refresh()
+    assert(reads == 2 and square:barText("50.0, 62.1"))
+    speed, reads = 7, 0
+    minimap:Refresh()
+    minimap:Refresh()
+    assert(reads >= 4)
+    env.GetTime, env.GetUnitSpeed, env.C_Map.GetPlayerMapPosition = time, nil, position
+    minimap:Refresh()
+end
 cluster.mouseOver = false
 ui:flushTimers()
 assert(bar:GetAlpha() == 0)

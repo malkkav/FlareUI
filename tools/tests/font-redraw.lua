@@ -1,23 +1,8 @@
 -- Run from the repository root:  luajit tools/tests/font-redraw.lua
 -- ns.FontRedraw (Core.lua, 11-20): text drawn before its font file loaded is drawn anew with a size
 -- change and back; only while the string still holds the font asked for; never for the game's files.
-local H = dofile("tools/tests/perf-helpers.lua")
-local source = H.read("Core.lua")
-local s = assert(source:find("ns.FontRedraw = {", 1, true))
-local e = assert(source:find("\nlocal RETRY_SECONDS", s, true))
-local loader = loadstring or load
-local events = {}
-local env = setmetatable({
-    ns = { FontFamily = { alphabets = { "roman" } } },
-    CreateFrame = function()
-        return { RegisterEvent = function() end, SetScript = function(_, _, fn) events.onEvent = fn end }
-    end,
-    C_Timer = { After = function(_, fn) events[#events + 1] = fn end },
-}, { __index = _G })
-local chunk = assert(loader(source:sub(s, e)))
-setfenv(chunk, env)
-chunk()
-local R = env.ns.FontRedraw
+local ui, ns = dofile("tools/tests/fixtures/core.lua")()
+local R = assert(ns.FontRedraw)
 
 local function check(ok, message) assert(ok, message) end
 
@@ -53,9 +38,14 @@ check(#other.calls == 0, "a string with another size is left alone")
 local a, b = FakeString("X.ttf", 13, ""), FakeString("Y.ttf", 9, "")
 R.strings[a] = { path = "X.ttf", size = 13, flags = "" }
 R.strings[b] = { path = "Y.ttf", size = 9, flags = "" }
-events.onEvent()
-check(#events == #R.AFTER_LOAD, "one pass per delay")
-for _, fn in ipairs(events) do fn() end
+local waiting = #ui.timers
+ui:emit("PLAYER_ENTERING_WORLD")
+local passes = 0
+for i = waiting + 1, #ui.timers do
+    if ui.timers[i].callback == R.All then passes = passes + 1 end
+end
+check(passes > 0 and passes == #R.AFTER_LOAD, "one pass per delay")
+ui:flushTimers()
 check(#a.calls == 2 * #R.AFTER_LOAD and #b.calls == 2 * #R.AFTER_LOAD, "every string redrawn each pass")
 
 -- an object with its own redraw (the chat windows)

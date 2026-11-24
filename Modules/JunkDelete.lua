@@ -34,7 +34,7 @@ local function HasRoomFor(itemID)
         end
     end
     if not itemID then return false end
-    -- (11-24) the crafting bag takes crafting reagents, the keyring takes keys
+    -- the crafting bag takes crafting reagents, the keyring takes keys
     local reagentBag = Enum.BagIndex and Enum.BagIndex.ReagentBag
     local keyring = Enum.BagIndex and Enum.BagIndex.Keyring
     if reagentBag and C_Container.GetContainerNumSlots(reagentBag) > 0
@@ -58,7 +58,7 @@ local function HasRoomFor(itemID)
     return (reagentBag and StackIn(reagentBag)) or false
 end
 
--- (11-24) a bag whose greys stay: one set to Ignore Junk Selling in its own menu, or a special bag (the
+-- a bag whose greys stay: one set to Ignore Junk Selling in its own menu, or a special bag (the
 -- slot freed there wouldn't take the loot)
 local function BagKept(bag)
     local _, family = C_Container.GetContainerNumFreeSlots(bag)

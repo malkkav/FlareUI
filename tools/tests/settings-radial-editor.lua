@@ -139,6 +139,7 @@ function RM:DeleteRadial(id)
         if value == id then table.remove(store.radialOrder, i) break end
     end
 end
+function RM.KeepPadMacros(change) change() end
 function RM:RadialChanged() changes = changes + 1 end
 function RM:AvailabilityChanged() changes = changes + 1 end
 function RM:ShowPreview(id, host) preview = { id, host } end

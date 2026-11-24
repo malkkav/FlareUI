@@ -22,7 +22,7 @@ S:Module{ key = "tt", group = "interface", order = 20, enabled = "tooltips.enabl
 -- SETTINGS TAB: Look, then Position (where each kind sits), then Visibility (when each
 -- kind shows). The Tweaks tab holds the content switches.
 
--- LOOK first (11-19, Malkkav: above Position)
+-- LOOK first (above Position)
 local SCALES = {}
 for i = 5, 15 do SCALES[#SCALES + 1] = { i / 10, (i * 10) .. "%" } end
 S:Row{ key = "tt.scale", kind = "range", path = "tooltips.scale", choices = SCALES, apply = Refresh }
@@ -84,7 +84,7 @@ S:Row{ key = "tt.cursorY", kind = "range", half = true, path = "tooltips.cursorY
 
 -- VISIBILITY: when each kind of tooltip shows; never greyed: Shift shows a hidden tooltip.
 -- Two columns, the same order as the Mouseover switches.
-local SHOW = { "never", "always", "combat" }   -- (Never first: Off first, 11-20)
+local SHOW = { "never", "always", "combat" }   -- (Never first: Off first)
 local function Show(key, path, apply)
     local row = { key = key, kind = "choice", half = true, choices = SHOW, apply = apply or Refresh }
     if type(path) == "table" then row.get, row.set = path.get, path.set else row.path = path end

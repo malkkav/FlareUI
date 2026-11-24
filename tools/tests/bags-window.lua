@@ -317,13 +317,36 @@ ui:flushTimers()
 assert(#opens == 2, "a locked or unchanged item is skipped for the session")
 
 ui:emit("PLAYER_LOGIN")
+-- opens the bags and closes them again, without Blizzard's own note of who did (the bank reads that one)
+env.OpenAllBags = function(...) assert(select("#", ...) == 0) ui.openOwner = character end
+env.CloseAllBags = function() error("CloseAllBags writes Blizzard's note") end
+local closeBackpack, closeBag, anyOpen = env.CloseBackpack, env.CloseBag, env.IsAnyBagOpen
+local cleaned, closed = {}, {}
+env.ContainerFrameSettingsManager = { bagSetupDirty = false, bagsShown = {} }
+ns.CleanField = function(t, key) assert(t == env.ContainerFrameSettingsManager) cleaned[key] = true end
+env.IsAnyBagOpen = function() return true end
+character:Show()
+ui:flushTimers()
+assert(not ui.openOwner, "bags already open stay the player's")
+env.CloseBackpack = function() ui.closeOwner = character end
+env.CloseBag = function(id) closed[id] = true end
+character:Hide()
+assert(not ui.closeOwner)
+env.IsAnyBagOpen = function() return false end
 character:Show()
 ui:flushTimers()
 assert(ui.openOwner == character)
+assert(cleaned.bagSetupDirty and cleaned.bagsShown)
+-- a flag that is up (the bags need setting up again) stays
+cleaned, env.ContainerFrameSettingsManager.bagSetupDirty = {}, true
+bags.CleanFlags()
+assert(not cleaned.bagSetupDirty and cleaned.bagsShown)
 local headLabel = ui:find(function(w) return w:GetParent() == head and w:GetText() == "39" end)
 assert(headLabel and headLabel:IsShown())
 character:Hide()
-assert(ui.closeOwner == character)
+assert(ui.closeOwner == character and closed[1] and closed[5])
+env.CloseBackpack, env.CloseBag, env.IsAnyBagOpen = closeBackpack, closeBag, anyOpen
+env.ContainerFrameSettingsManager, ns.CleanField = nil, nil
 addonLoaded.Blizzard_InspectUI()
 ui:emit("INSPECT_READY")
 ui:flushTimers()

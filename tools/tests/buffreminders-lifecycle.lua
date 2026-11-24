@@ -176,9 +176,9 @@ assert(fort:GetAlpha() == 0)
 db.classScope = "always"
 fort:RunScript("OnMouseUp", "RightButton")
 menus["Never Remind Me"]()
-assert(not iconFor("fortitude") and br.HiddenCount() == 1)
-br.ShowHidden()
-assert(iconFor("fortitude") and br.HiddenCount() == 0)
+assert(not iconFor("fortitude") and #br.HiddenChoices() == 1)
+br.SetHidden("none")
+assert(iconFor("fortitude") and #br.HiddenChoices() == 0)
 
 db.hideRested, rested = true, true
 br.Update()
@@ -213,7 +213,7 @@ assert(#sample.icons == 3 and sample.icons[1].count:GetText() == "2/5" and sampl
 
 br.AddCustom(" 10952, item:124 ")
 br.AddCustom(" item:124 ")
-assert(br.CustomCount() == 2 and br.CustomChoices()[1][2] == "Inner Fire / Item 124")
+assert(#br.CustomChoices() == 2 and br.CustomChoices()[1][2] == "Inner Fire / Item 124")
 assert(br.CustomValue() == "c1,c2")
 br.SetCustom("c2")
 bag[124] = 3
@@ -222,7 +222,7 @@ local custom = assert(iconFor("custom2"), "what is remembered about one follows 
 assert(custom:GetAttribute("item") == "item:124" and custom.count:GetText() == "3")
 custom:RunScript("OnMouseUp", "RightButton")
 menus["Remove This Reminder"]()
-assert(br.CustomCount() == 0)
+assert(#br.CustomChoices() == 0)
 -- (11-24) Never Remind Me stays with its own reminder when another is removed, and goes with it
 br.AddCustom("Alpha Buff")
 br.AddCustom("Beta Buff")
@@ -232,19 +232,19 @@ iconFor("custom2"):RunScript("OnMouseUp", "RightButton")
 menus["Never Remind Me"]()
 assert(not iconFor("custom2") and db.hidden["PRIEST:custom2"])
 br.SetCustom("c2,c3")
-assert(br.CustomCount() == 2 and not iconFor("custom2") and iconFor("custom3"))
+assert(#br.CustomChoices() == 2 and not iconFor("custom2") and iconFor("custom3"))
 br.AddCustom("Delta Buff")
 assert(iconFor("custom4") and not iconFor("custom2"))
 br.SetCustom("c2,c3")
 assert(db.hidden["PRIEST:custom2"] == nil, "removed: no longer remembered as hidden")
-br.ClearCustom()
-assert(br.CustomCount() == 0)
+br.SetCustom("none")
+assert(#br.CustomChoices() == 0)
 -- saved before the ids: each gets its place
 db.custom.PRIEST = { { spells = { "Old One" } }, { spells = { "Old Two" } } }
 br.Resolve()
 br.Update()
 assert(iconFor("custom1") and iconFor("custom2") and db.custom.PRIEST[2].id == 2)
-br.ClearCustom()
+br.SetCustom("none")
 
 bag[123], bag[125], bag[126] = 3, 5, 2
 names[432] = "Drink"

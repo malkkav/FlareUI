@@ -648,6 +648,120 @@ do
     env.GamepadActionBarBindingUtil, env.PickupMacro, env.GetCursorInfo, env.GetMacroInfo = util, pickup, cursor, info
 end
 
+-- (11-24, Dutra) pet commands: the ones on the pet's bar, as Blizzard's slash commands
+do
+    local has = true
+    local bar = { "PET_ACTION_ATTACK", "PET_ACTION_MOVE_TO", "PET_MODE_PASSIVE", "PET_ACTION_MODE_DEFENSIVEASSIST", "Growl", "PET_ACTION_DISMISS" }
+    local info, hasBar, label, slash = env.GetPetActionInfo, env.PetHasActionBar, env.PET_ACTION_ATTACK, env.SLASH_PET_PASSIVE1
+    env.PetHasActionBar = function() return has end
+    env.GetPetActionInfo = function(i) return bar[i], 1, bar[i] ~= nil and bar[i]:find("^PET_") ~= nil end
+    env.PET_ACTION_ATTACK, env.SLASH_PET_PASSIVE1 = "Attack", "/petpassiv"
+    local list = rm.PetCommands()
+    assert(#list == 4 and list[1].command == "ATTACK" and list[2].command == "MOVE_TO"
+        and list[3].command == "DEFENSIVEASSIST" and list[4].command == "PASSIVE")
+    local attack, passive = rm:ResolveEntry(list[1]), rm:ResolveEntry(list[4])
+    assert(attack.name == "Attack" and attack.attributes.type == "macro" and attack.attributes.macrotext == "/petattack")
+    assert(passive.attributes.macrotext == "/petpassiv", "the client's own language")
+    assert(not rm:ResolveEntry({ kind = "petcommand", command = "DANCE" }))
+    has = false
+    assert(#rm.PetCommands() == 0)
+    env.GetPetActionInfo, env.PetHasActionBar, env.PET_ACTION_ATTACK, env.SLASH_PET_PASSIVE1 = info, hasBar, label, slash
+end
+
+-- (11-24, Kyu-ball) a controller bar macro names its radial by a word made from its name, the same on every
+-- computer; one made before, by an id another computer gave out, goes to the radial of the macro's name
+do
+    local info, count, edit, delete = env.GetMacroInfo, env.GetNumMacros, env.EditMacro, env.DeleteMacro
+    local word = rm.PadWord("Mounts")
+    assert(word:match("^n%d+$") and rm.PadWord("MOUNTS ") == word and rm.PadWord("Mount") ~= word)
+    assert(rm.PadWord("Маунты") ~= rm.PadWord("Зелья") and rm.PadWord(("x"):rep(300)):match("^n%d+$"))
+    assert(rm.PadMacroWord("#flareui-radial\n/click FlareUI_RadialPad r7\n") == "r7")
+    assert(not rm.PadMacroWord("#flareui-radial\n/click FlareUI_RadialPad r7\n/cast Blink"), "a line the player added")
+    assert(not rm.PadMacroWord("/click FlareUI_RadialPad r7") and not rm.PadMacroWord(nil))
+
+    local mounts, potions = rm:CreateRadial("Pad Mounts"), rm:CreateRadial("Pad Potions")
+    local function body(name) return "#flareui-radial\n/click FlareUI_RadialPad " .. name end
+    local macros
+    env.GetMacroInfo = function(i) if macros[i] then return macros[i][1], 5, macros[i][2] end end
+    env.GetNumMacros = function() return #macros, 0 end
+    env.EditMacro = function(i, name, _, text) macros[i] = { name, text } end
+    env.DeleteMacro = function(i) table.remove(macros, i) end
+    -- the other computer's ids are swapped; one macro's name is nobody's, one isn't ours
+    macros = { { "Pad Potions", body(mounts) }, { "Pad Mounts", body(potions) }, { "Mine", body(mounts) }, { "Pad Mounts", "/cast Blink" } }
+    ui.combat = true
+    rm.UpdatePadMacros()
+    assert(macros[1][2] == body(mounts), "never in a fight")
+    ui.combat = false
+    rm.UpdatePadMacros()
+    assert(macros[1][2] == body(rm.PadWord("Pad Potions")) and macros[2][2] == body(rm.PadWord("Pad Mounts")))
+    assert(macros[3][2] == body(mounts) and macros[4][2] == "/cast Blink")
+    -- the secure side knows the words
+    rm.MarkDirty()
+    header:OnSecureWarm()
+    assert(header:GetAttribute("tag-" .. rm.PadWord("Pad Mounts")) == mounts)
+    assert(header:GetAttribute("tag-" .. rm.PadWord("Pad Potions")) == potions)
+
+    -- where it is: placed on another computer, so this one has no note of it
+    local ui2, frame, util, key, action, char = env.C_GamepadUI, env.GamepadMainActionBarFrame, env.GamepadActionBarBindingUtil,
+        env.GetBindingKey, env.GetActionInfo, nil
+    local slots, cleared = { [202] = 2 }, {}
+    env.C_GamepadUI = { GetFirstGamepadActionStorageSlotIndex = function() return 201 end,
+        IsValidGamepadActionStorageSlotIndex = function(slot) return slot <= 204 end }
+    env.GetActionInfo = function(slot) if slots[slot] then return "macro", slots[slot] end end
+    env.GetBindingKey = function(command) return command == "GAMEPADACTIONBUTTON2" and "PAD2" or nil end
+    local bar = { GetActionButtonByIndex = function(_, n) return { GetGamepadPageUnitSlotID = function() return n end } end }
+    env.GamepadMainActionBarFrame = { PageUnit = { actionBars = { leftBar = bar }, GetCurrentPage = function() return 1 end } }
+    env.GamepadActionBarBindingUtil = { IsBindablePageUnitSlotID = function() return true end,
+        GetGamepadStorageSlotIndexFromPageAndPageUnitSlotID = function(_, slotID) return 200 + slotID end,
+        ClearActionFromGamepadSlot = function(slot) cleared[#cleared + 1] = slot slots[slot] = nil end }
+    ns.PadBarKey = ns.PadBarKey or function(side, button) return "PADBAR-" .. side .. "-" .. button end
+    local parse = ns.ParsePadBar
+    ns.ParsePadBar = function(k) return k:match("^PADBAR%-(%u+)%-(%w+)$") end
+    assert(rm:GetBarKey(mounts) == ns.PadBarKey("LT", "PAD2"), "found on the bar")
+    assert(rm:GetBarKey(potions) == nil)
+    assert(rm:RemoveFromBar(mounts) and cleared[1] == 202 and rm:GetBarKey(mounts) == nil)
+    ns.ParsePadBar = parse
+    env.C_GamepadUI, env.GamepadMainActionBarFrame, env.GamepadActionBarBindingUtil, env.GetBindingKey, env.GetActionInfo =
+        ui2, frame, util, key, action
+
+    -- renamed: the macro follows, name and word; deleted: it goes
+    rm:RenameRadial(mounts, "Pad Horses")
+    assert(macros[2][1] == "Pad Horses" and macros[2][2] == body(rm.PadWord("Pad Horses")))
+    rm:DeleteRadial(potions)
+    assert(#macros == 3 and macros[1][1] == "Pad Horses")
+    -- renamed in a fight the macro can't follow: its old word still opens the radial
+    ui.combat = true
+    local before = macros[1][2]
+    rm:RenameRadial(mounts, "Pad Steeds")
+    assert(macros[1][2] == before)
+    ui.combat = false
+    rm.MarkDirty()
+    header:OnSecureWarm()
+    assert(header:GetAttribute("tag-" .. rm.PadWord("Pad Horses")) == mounts)
+    -- two radials of one name, each with its own macro: moving them leaves each macro on its radial
+    local twin = rm:CreateRadial("Pad Steeds")
+    macros = { { "Pad Steeds", body(rm.PadWord("Pad Steeds")) }, { "Pad Steeds", body(twin) } }
+    assert(rm:MoveRadial(twin, mounts))
+    assert(macros[1][2] == body(mounts) and macros[2][2] == body(rm.PadWord("Pad Steeds")))
+    -- (an id macro of a name two radials share is left alone)
+    macros[3] = { "Pad Steeds", body("r999") }
+    rm.UpdatePadMacros()
+    assert(macros[3][2] == body("r999"))
+    -- undone (RadialEditor.lua): names swapped back, the macros follow; every macro of a deleted radial goes
+    rm:RenameRadial(twin, "Pad Twin")
+    assert(macros[2][1] == "Pad Twin" and macros[2][2] == body(rm.PadWord("Pad Twin")))
+    rm.KeepPadMacros(function()
+        rm:GetRadial(twin).name, rm:GetRadial(mounts).name = "Pad Steeds", "Pad Twin"
+    end)
+    assert(macros[2][1] == "Pad Steeds" and macros[2][2] == body(rm.PadWord("Pad Steeds")))
+    assert(macros[1][1] == "Pad Twin" and macros[1][2] == body(rm.PadWord("Pad Twin")))
+    macros[4] = { "Copy", body(twin) }
+    rm:DeleteRadial(twin)
+    assert(#macros == 2 and macros[1][1] == "Pad Twin" and macros[2][2] == body("r999"))
+    rm:DeleteRadial(mounts)
+    env.GetMacroInfo, env.GetNumMacros, env.EditMacro, env.DeleteMacro = info, count, edit, delete
+end
+
 -- opened near a screen edge the wheel moves in, and nothing is aimed until the cursor moves
 do
     local width, height = env.UIParent:GetWidth(), env.UIParent:GetHeight()

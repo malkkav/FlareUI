@@ -286,7 +286,7 @@ function R.minimap(outer, spec)
         c:Box('microPanel', x + 45, y + 65, 154, 72, 'FlareUI Frames', 0.95)
         c:Text('microText', L["Character"] .. '\n' .. L["Spellbook"] .. '\n' .. L["Game Menu"], x + 54, y + 74, 130, { size = 12 })
     end
-    -- (11-23) the Info Bar: Left, Centre and Right cells over the map's bottom edge, or under the map
+    -- the Info Bar: Left, Centre and Right cells over the map's bottom edge, or under the map
     -- (Below the Map); the round map keeps the Centre cell alone, inside the circle, unless below it.
     -- Show Box puts the plate behind them.
     if not card then
@@ -379,7 +379,7 @@ end
 function R.auras(c, spec) Auras(c, false, spec) end
 function R.unitAuras(c, spec) Auras(c, true, spec) end
 
--- (11-23) a toggle dropdown's picks, also while one is hovered: the hovered row's value, else read()
+-- a toggle dropdown's picks, also while one is hovered: the hovered row's value, else read()
 local function Picks(spec, key, read)
     if spec.key == key and type(spec.value) == 'string' then
         local on = {}
@@ -458,7 +458,7 @@ function R.chat(c, spec)
     c:Text('editText', L["Say:"] .. ' ...', 14, editY + 5, c.width - 28, Font('chat.editBoxFont'))
     c.objects.editText:SetWordWrap(false)
     local buttonX = 12
-    -- Header Buttons (one toggle dropdown since 11-16: social, channels, menu, volume)
+    -- Header Buttons (one toggle dropdown: social, channels, menu, volume)
     local buttons = Picks(spec, 'ch.headerButtons', function()
         return { social = not Get('chat.socialHide'), channels = not Get('chat.channelHide'),
                  menu = not Get('chat.menuHide'), volume = Get('chat.showVolume') and true or false }
@@ -566,7 +566,7 @@ function R.tooltip(c, spec)
     Note(outer)
 end
 
--- (11-23) the tracker's colours in a Colour Scheme (ObjectiveTracker.lua OT.ApplyColorScheme): Blizzard's,
+-- the tracker's colours in a Colour Scheme (ObjectiveTracker.lua OT.ApplyColorScheme): Blizzard's,
 -- or FlareUI's (light bronze headings and titles, every other colour softer)
 local function TrackerColors(scheme)
     local OT = ns.ObjectiveTracker
@@ -601,7 +601,7 @@ function R.tracker(c, spec)
     local border = (style == 'blizzard' and 'None') or (style == 'flareui' and 'FlareUI Frames') or Get('objectivetracker.borderTexture')
     c:Box('trackerBox', 4, 12, c.width - 8, 184, border, style == 'blizzard' and 0 or Get('objectivetracker.opacity', 0.75))
     c:Text('trackerTitle', L["Quests"] .. ' (2)', 12, 22, c.width - 24, Font('objectivetracker.headerFont')):SetTextColor(unpack(colors.HEADING))
-    -- (11-23) the header buttons, right to left as the tracker has them: the fold arrow, sort, filter,
+    -- the header buttons, right to left as the tracker has them: the fold arrow, sort, filter,
     -- then "?" and "!"; bronze or Blizzard's gold by the scheme (OT.IconColors)
     do
         local soft = scheme == 'flareui'
@@ -634,7 +634,7 @@ function R.tracker(c, spec)
     if Get('objectivetracker.zoneHeaders') then c:Text('zone', L["Elwynn Forest"], 12, y, c.width - 24):SetTextColor(unpack(colors.ZONE)); y = y + 22 end
     for i, title in ipairs({ L["A Threat Within"], L["Kobold Camp Cleanup"] }) do
         local text = (Get('objectivetracker.hideLevel') and '' or '[5] ') .. title .. (Get('objectivetracker.showTags') and ' [G]' or '')
-        -- (11-23) the first quest is finished: Show Complete Tag adds the green "(Complete)"
+        -- the first quest is finished: Show Complete Tag adds the green "(Complete)"
         if i == 1 and Get('objectivetracker.showCompleteTag') ~= false then
             local tc = colors.TITLE_DONE
             text = text .. (' |cff%02x%02x%02x'):format(tc[1] * 255, tc[2] * 255, tc[3] * 255) .. L["(Complete)"] .. '|r'
@@ -665,7 +665,7 @@ function R.tracker(c, spec)
         if y + h + (Font('objectivetracker.objectiveFont').size or 12) > 190 then t:Hide(); break end
         c:Text('objective' .. i, i == 1 and L["Speak to the Marshal"] or '4/8 ' .. L["Kobolds defeated"], 20, y + h, c.width - 32, Font('objectivetracker.objectiveFont')):SetWordWrap(false)
         c.objects['objective' .. i]:SetTextColor(unpack(colors.OBJECTIVE))
-        -- (11-23) a finished objective, greyed, unless Show Completed Objectives is off
+        -- a finished objective, greyed, unless Show Completed Objectives is off
         local extra = 0
         if i == 2 and not Get('objectivetracker.hideFinished') then
             local objH = (Font('objectivetracker.objectiveFont').size or 12) + 4
@@ -841,7 +841,7 @@ function R.bags(c)
     groupGap = groupGap * scale
     local size = 32 * scale
     gap = gap * scale
-    -- (11-23) the last two slots are empty: each with its bag's picture, or plain (Plain Empty Slots);
+    -- the last two slots are empty: each with its bag's picture, or plain (Plain Empty Slots);
     -- Combine Empty Slots shows one, with the free count on it
     local total = columns * 3
     local combine, plain = Get('tweaks.bagCombineEmpty'), Get('tweaks.bagPlainEmpty')
@@ -875,7 +875,7 @@ function R.bags(c)
         end
         if i == 3 then c:Text('bagStack', '5', x + size * 0.55, y + size * 0.5, size * 0.45, { size = math.max(8, size * 0.4) }) end
         if i == 1 and Get('tweaks.bagJunkIcon') then c:Texture('junk', P.MEDIA .. 'Previews\\Coin.tga', x, y, size * 0.5, size * 0.5, true) end
-        -- (11-23) the sword's marks, where the bags put them: item level bottom left in its quality
+        -- the sword's marks, where the bags put them: item level bottom left in its quality
         -- colour, BoE top left, the uncollected eye top right
         if i == 3 then
             local small = { size = math.max(7, size * 0.32) }
@@ -1196,7 +1196,7 @@ function R.lootRolls(c, spec)
         -- as the window: the settings window's plain rock, no brown wash (LootRolls.lua Panel)
         box.wash:SetColorTexture(0.05, 0.038, 0.026, 0)
     end
-    -- (always full strength: 11-23, no Background Opacity)
+    -- (always full strength: no Background Opacity)
     box.rock:SetAlpha(1)
     box.wash:SetAlpha(1)
     -- on the overlay: the stone would cover a texture of the canvas itself
@@ -1277,7 +1277,7 @@ function R.lootRolls(c, spec)
     end)
 end
 
--- The loot window (PR #146 by Xentinus; 11-23 slimmed as LootWindow.lua): money and item rows in the
+-- The loot window (PR #146 by Xentinus; slimmed as LootWindow.lua): money and item rows in the
 -- loot roll window's panel at full strength, the icon edge and marks from the Bags options (Skin Item
 -- Slots, Item Level, Junk, BoE, Uncollected), the owned count always, Show Free Bag Slots' footer
 function R.lootWindow(c, spec)

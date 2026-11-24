@@ -81,7 +81,7 @@ S:Row{
 local function ModernStyle() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true, half = true, hidden = ModernStyle }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true, half = true, hidden = ModernStyle }
--- (Level Disc Size: each frame's Edit Mode Text section since 11-20)
+-- (Level Disc Size: each frame's Edit Mode Text section)
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (Off first in every dropdown)

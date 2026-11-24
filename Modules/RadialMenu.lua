@@ -234,8 +234,7 @@ local ResolveEntry                -- ACTIONS.subradial recurses through it
 -- Panels open through a macro on the secure button (a micro button /click or Blizzard's toggle):
 -- opened from a tainted call, a panel taints its frames and secret comparisons there then fail.
 local MICRO_PANELS = {
-    bags        = { order = 1,  label = L["Bags"],         icon = 133633,  button = "MainMenuBarBackpackButton",
-                    macrotext = "/run ToggleAllBags()" },
+    bags        = { order = 1,  label = L["Bags"],         icon = 133633,  button = "MainMenuBarBackpackButton" },
     character   = { order = 2,  label = L["Character"],    icon = 136047,  button = "CharacterMicroButton" },
     collections = { order = 3,  label = L["Collections"],  icon = 132261,  button = "CollectionsMicroButton" },
     groupfinder = { order = 4,  label = L["Group Finder"], icon = 132161,  button = "LFDMicroButton" },
@@ -298,7 +297,7 @@ function RM.BestRank(name)
 end
 function RM.ForgetRanks() bestByName, RM.lowRanks = nil, {} end
 
--- A spell below the best rank known (11-24, howardapplebaum / Malkkav): its rank's number and the game's
+-- A spell below the best rank known: its rank's number and the game's
 -- own words for it ("Rank 2"); nil for the best rank, a spell without ranks or one not in the book.
 RM.lowRanks = {}
 function RM.LowRank(spellID)
@@ -341,7 +340,7 @@ end
 
 -- A spell put on a radial at a lower rank than the best one known was picked on purpose: pinned to
 -- that rank. Run when a button is added, and once for buttons saved before ranks were followed.
--- A party spell only when it is added (added): before the Catalog's rank drawer (11-24) its ranks
+-- A party spell only when it is added (added): before the Catalog's rank drawer its ranks
 -- looked all alike, so the one saved wasn't picked on purpose.
 function RM.MarkRank(entry, added)
     if not (entry and entry.id and (entry.kind == "spell" or (added and entry.kind == "partycast"))) then return end
@@ -385,7 +384,7 @@ ACTIONS.mount = function(entry)
     return name, { texture = icon }, { type = "spell", spell = spellName }
 end
 
--- a toy (Collections, 11-20): Blizzard's own "toy" action by item ID; one this character doesn't have
+-- a toy: Blizzard's own "toy" action by item ID; one this character doesn't have
 -- is left out (radials are shared)
 ACTIONS.toy = function(entry)
     if not (entry.id and C_ToyBox and PlayerHasToy) or not PlayerHasToy(entry.id) then return nil end
@@ -905,6 +904,45 @@ ACTIONS.emote = function(entry)
     return EK.Label(command, info.upper), icon, { type = "macro", macrotext = command }
 end
 
+-- PET COMMANDS: what the pet bar's own commands do, as their slash commands. Which ones there are
+-- is read off the pet's bar (Settings/RadialEditor.lua, the top of Pet Spells). key: the end of the bar's token
+-- (PET_ACTION_ATTACK, PET_MODE_PASSIVE); slash: Blizzard's command, with its English form to fall back on.
+RM.PET_COMMANDS = {
+    { key = "ATTACK",          slash = "PET_ATTACK",          text = "/petattack",          label = "PET_ACTION_ATTACK",        icon = "Ability_GhoulFrenzy" },
+    { key = "FOLLOW",          slash = "PET_FOLLOW",          text = "/petfollow",          label = "PET_ACTION_FOLLOW",        icon = "Ability_Tracking" },
+    { key = "WAIT",            slash = "PET_STAY",            text = "/petstay",            label = "PET_ACTION_WAIT",          icon = "Spell_Nature_TimeStop" },
+    { key = "MOVE_TO",         slash = "PET_MOVE_TO",         text = "/petmoveto",          label = "PET_ACTION_MOVE_TO",       icon = "Ability_Hunter_Pet_Goto" },
+    { key = "AGGRESSIVE",      slash = "PET_AGGRESSIVE",      text = "/petaggressive",      label = "PET_MODE_AGGRESSIVE",      icon = "Ability_Racial_BloodRage" },
+    { key = "DEFENSIVEASSIST", slash = "PET_DEFENSIVEASSIST", text = "/petdefensiveassist", label = "PET_MODE_DEFENSIVEASSIST", icon = "Ability_Defend" },
+    { key = "DEFENSIVE",       slash = "PET_DEFENSIVE",       text = "/petdefensive",       label = "PET_MODE_DEFENSIVE",       icon = "Ability_Defend" },
+    { key = "PASSIVE",         slash = "PET_PASSIVE",         text = "/petpassive",         label = "PET_MODE_PASSIVE",         icon = "Ability_Seal" },
+}
+
+-- the commands on your pet's bar, in the order above (none without a pet)
+function RM.PetCommands()
+    local on, out = {}, {}
+    if not (GetPetActionInfo and PetHasActionBar and PetHasActionBar()) then return out end
+    for i = 1, (NUM_PET_ACTION_SLOTS or 10) do
+        local name, _, isToken = GetPetActionInfo(i)
+        if canaccessvalue(name) and canaccessvalue(isToken) and isToken and type(name) == "string" then
+            on[name:gsub("^PET_ACTION_", ""):gsub("^PET_", ""):gsub("^MODE_", "")] = true
+        end
+    end
+    for _, info in ipairs(RM.PET_COMMANDS) do
+        if on[info.key] then out[#out + 1] = { kind = "petcommand", command = info.key } end
+    end
+    return out
+end
+
+ACTIONS.petcommand = function(entry)
+    for _, info in ipairs(RM.PET_COMMANDS) do
+        if info.key == entry.command then
+            local command = _G["SLASH_" .. info.slash .. "1"] or info.text
+            return _G[info.label] or info.key, { texture = "Interface\\Icons\\" .. info.icon }, { type = "macro", macrotext = command }
+        end
+    end
+end
+
 -- A button standing for another radial: it shows one resolved child at a time and the mouse wheel
 -- steps through them. seen holds the radials on the current path, so no radial contains itself.
 ACTIONS.subradial = function(entry, depth, seen)
@@ -962,7 +1000,7 @@ end
 
 -- the unit of a party spell while alone: the friendly target (a dead one too, for a resurrection), or
 -- yourself. Asked as the button is used (RM.FIRE_SNIPPET) and for what it shows.
--- (11-24) A real target only: the condition counts a soft target (the NPC the interact key would pick) as one,
+-- A real target only: the condition counts a soft target (the NPC the interact key would pick) as one,
 -- UnitExists doesn't, and with nothing selected the spell went to that NPC.
 RM.HELP = "friendly"
 RM.HELP_UNIT = "[@target,help] target; player"
@@ -989,7 +1027,7 @@ ACTIONS.partycast = function(entry)
     end
     if #spread == 0 then return nil end
     -- alone there is no one to aim at: the spell's own name, not yours, and it goes to your friendly target
-    -- first (11-24, dutra_). Not in a group: your own button is you, whoever is targeted.
+    -- first. Not in a group: your own button is you, whoever is targeted.
     if #spread == 1 then
         spread[1].name = name
         spread[1].attributes.unit = RM.HELP
@@ -1622,8 +1660,8 @@ end
 
 -- While the controller radial is open the right stick aims it, so the camera holds still and the left
 -- stick keeps moving you. A frame that listens to the sticks takes BOTH from the game unless it passes
--- its input on; a handler's "return true" only does that for Blizzard's own frames (11-23, ericusson:
--- opening a radial stopped the character; likely the 11-09 dead sticks too). So two frames:
+-- its input on; a handler's "return true" only does that for Blizzard's own frames (one gave its input away:
+-- opening a radial stopped the character; likely the dead sticks too). So two frames:
 --   Sticks.guard passes everything on and only watches. It is shown ONLY while a controller radial is
 --     open, and a hidden frame takes no input: showing a plain frame works in a fight too, where turning
 --     stick input on is refused. (7.0.7 had it on a protected frame that the secure snippets turned on;
@@ -1903,7 +1941,7 @@ local function OpenRadial(radialID, mode)
         for _, list in pairs(resolvedCache) do
             for _, info in ipairs(list) do
                 -- the first child's name, icon and action too: SetButtonChild wrote the last one's
-                -- over them, so the button kept its look after a cancel (AstroFox, 11-19)
+                -- over them, so the button kept its look after a cancel
                 local first = info.children and info.children[1]
                 if first then
                     info.childIndex = 1
@@ -2047,7 +2085,7 @@ end
 -- OPENX / OPENY: where the radial opened (screen centre with "flare-center").
 --------------------------------------------------
 -- every attribute an ACTIONS entry sets (a field missing here never reaches the secure button: toys did
--- nothing until 11-23)
+-- nothing in older versions)
 RM.RELEASE_IN, RM.RELEASE_OUT = 0.5, 0.8   -- how far out the stick still is when a release uses the button
 local ACTION_KEYS = "type spell item toy macro macrotext unit marker action"
 RM.ACTION_KEYS = ACTION_KEYS
@@ -2223,7 +2261,7 @@ local PAD_SNIPPET = [[
     end
     -- what this press opens: a stick press, the radial of the triggers held with it (LT / RT are the
     -- bar's crossbar modifiers, so they are read here rather than bound); anything else is a gamepad
-    -- bar macro ("/click FlareUI_RadialPad <radial id>")
+    -- bar macro ("/click FlareUI_RadialPad <RM.PadWord>", or the radial's id)
     local id
     if button == "PadL3" or button == "PadR3" then
         local state = GetGamePadState()
@@ -2235,7 +2273,11 @@ local PAD_SNIPPET = [[
     else
         id = control:GetAttribute("tag-" .. strlower(button)) or button
     end
-    if id and (control:GetAttribute(id .. "-count") or 0) == 0 then control:CallMethod("OnSecureWarm") end
+    if id and (control:GetAttribute(id .. "-count") or 0) == 0 then
+        control:CallMethod("OnSecureWarm")
+        -- (a macro's word may only be known now)
+        if button ~= "PadL3" and button ~= "PadR3" then id = control:GetAttribute("tag-" .. strlower(button)) or button end
+    end
     if id and (control:GetAttribute(id .. "-count") or 0) == 0 then id = nil end
     -- pressed again while its radial is open: with nothing aimed and Press again to repeat on, the
     -- last button; otherwise it closes. Another radial's button switches to that radial.
@@ -2459,7 +2501,7 @@ local MACRO_SNIPPET = [[
         end
         if not id then return false end
     end
-    -- (11-22) in the Gamepad UI the macro opens it for the controller: the right stick aims, B closes
+    -- in the Gamepad UI the macro opens it for the controller: the right stick aims, B closes
     -- (in click mode only the mouse could aim it)
     if control:GetAttribute("flare-padui") then
         if MODE == "pad" and ACTIVE == id then
@@ -2508,6 +2550,17 @@ local function TagOf(name)
     return (name or ""):gsub("[^%w]", "")
 end
 
+-- The word a controller bar macro names its radial by: a number made from the radial's name, the same
+-- on every computer (ids are handed out per computer). Any
+-- alphabet, any case, spaces left out.
+function RM.PadWord(name)
+    local sum = 0
+    for byte in (name or ""):lower():gsub("%s", ""):gmatch(".") do
+        sum = (sum * 31 + byte:byte()) % 4294967296
+    end
+    return ("n%.0f"):format(sum)
+end
+
 local function MacroTags()
     local byTag, tagOf = {}, {}
     local order = RM:GetRadialOrder()
@@ -2517,6 +2570,11 @@ local function MacroTags()
         if tag ~= "" and not byTag[tag:lower()] then
             byTag[tag:lower()], tagOf[id] = id, tag
         end
+    end
+    for _, id in ipairs(order) do
+        local data = RM:GetRadial(id)
+        local word = data and RM.PadWord(data.name)
+        if word and not byTag[word] then byTag[word] = id end
     end
     for _, id in ipairs(order) do
         local data = RM:GetRadial(id)
@@ -2803,7 +2861,7 @@ end
 --------------------------------------------------
 -- 12. GAMEPAD BAR (the Gamepad UI)
 -- A radial on a slot of Blizzard's controller bar (LT + A, a D-pad direction ...): an account macro
--- "/click FlareUI_RadialPad <radial id>" (PAD_SNIPPET opens it as the stick press does), placed with
+-- "/click FlareUI_RadialPad <word>" (PAD_SNIPPET opens it as the stick press does), placed with
 -- Blizzard's own GamepadActionBarBindingUtil, out of combat, on this character
 -- (CharDB().padBar[id] = the slot, ns.PadBarKey). The macro's first line marks it as FlareUI's, so no
 -- other macro is ever touched. A slot is a crossbar (none, LT, RT or both held) and the button its
@@ -2812,18 +2870,40 @@ end
 local PAD_MACRO_MARK = "#flareui-radial"
 local PAD_BARS = { TOP = "topBar", LT = "leftBar", RT = "rightBar", LTRT = "bottomBar" }
 
-local function PadMacroBody(id)
-    return PAD_MACRO_MARK .. "\n/click " .. PAD_NAME .. " " .. id
+-- the radial's word, or its id while another radial of that name has the word
+local function PadMacroBody(id, byTag)
+    local data = RM:GetRadial(id)
+    local word = data and RM.PadWord(data.name)
+    if not (word and (byTag or MacroTags())[word] == id) then word = id end
+    return PAD_MACRO_MARK .. "\n/click " .. PAD_NAME .. " " .. word
 end
 
--- the account macro that opens this radial, or nil
-local function FindPadMacro(id)
-    local body = PadMacroBody(id)
+-- what one of FlareUI's bar macros names (a word, or a radial's id), or nil for any other macro
+function RM.PadMacroWord(text)
+    local word = type(text) == "string" and text:match("^%s*(%S+%s+/click%s+%S+%s+%S+)%s*$")
+    if not word then return nil end
+    local mark, button, named = word:match("^(%S+)%s+/click%s+(%S+)%s+(%S+)$")
+    return mark == PAD_MACRO_MARK and button == PAD_NAME and named or nil
+end
+
+-- every account macro that opens this radial (index -> true), and the first of them; as the secure side
+-- reads them: the word first, then the id
+function RM.FindPadMacros(id)
+    local byTag, found, first = MacroTags(), {}, nil
     local accountCount = GetNumMacros()
     for index = 1, accountCount or 0 do
         local _, _, text = GetMacroInfo(index)
-        if text and strtrim(text) == body then return index end
+        local word = RM.PadMacroWord(text)
+        if word and (byTag[word:lower()] or word) == id then
+            found[index] = true
+            first = first or index
+        end
     end
+    return found, first
+end
+
+local function FindPadMacro(id)
+    return (select(2, RM.FindPadMacros(id)))
 end
 
 -- the radial's name cut to a macro name's 16 bytes, never mid-letter
@@ -2834,6 +2914,81 @@ local function PadMacroName(name)
         out = out .. char
     end
     return out ~= "" and out or "Radial"
+end
+
+-- Macros made by older versions name a radial by its id, which is another radial on another computer. The
+-- macro's own name is the radial's: the radial of that name gets it, whatever the id says.
+function RM.UpdatePadMacros()
+    if RM.padMacroBusy or InCombatLockdown() or not GetNumMacros or (_G.MacroFrame and _G.MacroFrame:IsShown()) then return end
+    local byTag, byName
+    local accountCount = GetNumMacros()
+    for index = 1, accountCount or 0 do
+        local name, icon, text = GetMacroInfo(index)
+        local word = canaccessvalue(text) and RM.PadMacroWord(text)
+        if word and word:find("^r%d+$") and canaccessvalue(name) then
+            if not byTag then
+                byTag, byName = MacroTags(), {}
+                for _, id in ipairs(RM:GetRadialOrder()) do
+                    local data = RM:GetRadial(id)
+                    local short = data and PadMacroName(data.name)
+                    -- (two radials of one name: no telling which, the macro keeps its id)
+                    if short then byName[short] = byName[short] == nil and id or false end
+                end
+            end
+            local id = byName[name]
+            local body = id and PadMacroBody(id, byTag)
+            if body and body ~= strtrim(text) then
+                RM.padMacroBusy = true
+                pcall(EditMacro, index, name, icon, body)
+                RM.padMacroBusy = nil
+            end
+        end
+    end
+end
+
+-- A change to the radials' names or order (change), with the bar macros kept on the radials they opened before it:
+-- each gets its radial's word and name as they are now; one whose radial is gone goes too. Not in a fight.
+function RM.KeepPadMacros(change)
+    local plan = {}
+    if not InCombatLockdown() and GetNumMacros then
+        local byTag = MacroTags()
+        for index = 1, (GetNumMacros() or 0) do
+            local name, _, text = GetMacroInfo(index)
+            local word = canaccessvalue(text) and RM.PadMacroWord(text)
+            local id = word and (byTag[word:lower()] or word)
+            if id and RM:GetRadial(id) and canaccessvalue(name) then plan[#plan + 1] = { id = id, name = name, body = strtrim(text) } end
+        end
+    end
+    change()
+    if #plan == 0 then return end
+    local function Find(name, body)
+        for index = 1, (GetNumMacros() or 0) do
+            local other, icon, text = GetMacroInfo(index)
+            if other == name and type(text) == "string" and strtrim(text) == body then return index, icon end
+        end
+    end
+    local byTag = MacroTags()
+    -- (two steps: a macro's new word can be another's old one)
+    RM.padMacroBusy = true
+    for i, p in ipairs(plan) do
+        local data = RM:GetRadial(p.id)
+        p.newName, p.newBody = data and PadMacroName(data.name), data and PadMacroBody(p.id, byTag)
+        if p.newName ~= p.name or p.newBody ~= p.body then
+            local index, icon = Find(p.name, p.body)
+            if index and not data then
+                pcall(DeleteMacro, index)
+            elseif index then
+                p.mark = PAD_MACRO_MARK .. "\n/click " .. PAD_NAME .. " moving" .. i
+                pcall(EditMacro, index, p.name, icon, p.mark)
+            end
+        end
+    end
+    for _, p in ipairs(plan) do
+        local index, icon
+        if p.mark then index, icon = Find(p.name, p.mark) end
+        if index then pcall(EditMacro, index, p.newName, icon, p.newBody) end
+    end
+    RM.padMacroBusy = nil
 end
 
 -- every storage slot of the controller bar, on every page
@@ -2885,20 +3040,31 @@ local function PadBarStore()
 end
 
 -- where this radial is on this character's controller bar (a bar key), or nil; a slot the player
--- emptied or filled since is forgotten
+-- emptied or filled since is forgotten. Placed on another computer: found on the bar's current page.
 function RM:GetBarKey(id)
     local key = PadBarStore()[id]
-    if not key then return nil end
-    local macro = FindPadMacro(id)
-    local found = false
+    local macros, macro = RM.FindPadMacros(id)
+    if not key and not macro then return nil end
+    local slots = {}
     if macro then
         ForEachBarSlot(function(slot)
             local kind, actionID = GetActionInfo(slot)
-            if kind == "macro" and actionID == macro then found = true end
+            if kind == "macro" and macros[actionID] then slots[slot] = true end
         end)
     end
-    if not found and _G.C_GamepadUI then PadBarStore()[id] = nil return nil end
-    return key
+    if not next(slots) then
+        if _G.C_GamepadUI then PadBarStore()[id] = nil return nil end
+        return key
+    end
+    if key then return key end
+    for side in pairs(PAD_BARS) do
+        for n = 1, 8 do
+            local ok, button = pcall(GetBindingKey, "GAMEPADACTIONBUTTON" .. n, 1)
+            local try = ok and button and ns.PadBarKey(side, button)
+            local slot = try and BarStorageSlot(try)
+            if slot and slots[slot] then return try end
+        end
+    end
 end
 
 -- Puts the radial on the slot `key` presses (this page). Returns true, or false and why: "combat",
@@ -2908,10 +3074,10 @@ function RM:PlaceOnBar(id, key, force)
     if not self:GetRadial(id) then return false, "nobar" end
     local slot, why = BarStorageSlot(key)
     if not slot then return false, why end
-    local macro = FindPadMacro(id)
+    local macros, macro = RM.FindPadMacros(id)
     local occupant = SlotContents(slot)
     local kind, actionID = GetActionInfo(slot)
-    if occupant and not force and not (macro and kind == "macro" and actionID == macro) then
+    if occupant and not force and not (kind == "macro" and macros[actionID]) then
         return false, "occupied", occupant
     end
     if not macro then
@@ -2921,18 +3087,19 @@ function RM:PlaceOnBar(id, key, force)
         local icon = (type(texture) == "number" or type(texture) == "string") and texture or UNKNOWN_ICON
         macro = CreateMacro(PadMacroName(self:GetRadial(id).name), icon, PadMacroBody(id), false)
         if not macro then return false, "full" end
+        macros[macro] = true
     end
     -- one place per radial: off any other slot first
     local util = _G.GamepadActionBarBindingUtil
     ForEachBarSlot(function(other)
         local otherKind, otherID = GetActionInfo(other)
-        if other ~= slot and otherKind == "macro" and otherID == macro then util.ClearActionFromGamepadSlot(other) end
+        if other ~= slot and otherKind == "macro" and macros[otherID] then util.ClearActionFromGamepadSlot(other) end
     end)
     RM.PutMacroOnSlot(id, slot, key, 5)
     return true
 end
 
--- A macro just made can't be picked up yet (dutra_ 11-23: the game's "Failed to pick up an action to bind"):
+-- A macro just made can't be picked up yet (the game's "Failed to pick up an action to bind"):
 -- tried again a moment later, and the game's own placing is called only with the macro on the cursor
 function RM.PutMacroOnSlot(id, slot, key, tries)
     if InCombatLockdown() then return end
@@ -2952,12 +3119,12 @@ end
 -- off this character's controller bar (the macro stays for the other characters)
 function RM:RemoveFromBar(id)
     if InCombatLockdown() then return false end
-    local macro = FindPadMacro(id)
+    local macros, macro = RM.FindPadMacros(id)
     local util = _G.GamepadActionBarBindingUtil
     if macro and util then
         ForEachBarSlot(function(slot)
             local kind, actionID = GetActionInfo(slot)
-            if kind == "macro" and actionID == macro then util.ClearActionFromGamepadSlot(slot) end
+            if kind == "macro" and macros[actionID] then util.ClearActionFromGamepadSlot(slot) end
         end)
     end
     PadBarStore()[id] = nil
@@ -3109,6 +3276,11 @@ end
 -- the radials list's drag: id moves to where target is, and into target's group
 -- (or out of its own, onto a radial outside one)
 function RM:MoveRadial(id, target)
+    local moved
+    RM.KeepPadMacros(function() moved = RM.MoveRadialNow(self, id, target) end)
+    return moved
+end
+function RM.MoveRadialNow(self, id, target)
     local store = GetStore()
     local order = self:GetRadialOrder()
     local from, to
@@ -3127,6 +3299,11 @@ end
 
 -- a whole group to where target is (a radial id, or a group's "group:gid")
 function RM:MoveGroup(gid, target)
+    local moved
+    RM.KeepPadMacros(function() moved = RM.MoveGroupNow(self, gid, target) end)
+    return moved
+end
+function RM.MoveGroupNow(self, gid, target)
     local store = GetStore()
     if not store then return false end
     local order, radials = store.radialOrder, store.radials
@@ -3216,35 +3393,33 @@ function RM:RenameRadial(id, name)
     local data = self:GetRadial(id)
     if not (data and name and name ~= "") then return end
     local old = TagOf(data.name):lower()
-    if old ~= "" and old ~= TagOf(name):lower() then
-        data.oldTags = data.oldTags or {}
-        data.oldTags[old] = true
+    -- (its bar macro's old word too: in a fight the macro can't follow the name)
+    for _, pair in ipairs({ { old, TagOf(name):lower() }, { RM.PadWord(data.name), RM.PadWord(name) } }) do
+        if pair[1] ~= "" and pair[1] ~= pair[2] then
+            data.oldTags = data.oldTags or {}
+            data.oldTags[pair[1]] = true
+        end
+        if data.oldTags then data.oldTags[pair[2]] = nil end
     end
-    if data.oldTags then data.oldTags[TagOf(name):lower()] = nil end
     if data.oldTags and not next(data.oldTags) then data.oldTags = nil end
-    data.name = name
     -- its gamepad bar macro is named after it
-    local macro = not InCombatLockdown() and FindPadMacro(id)
-    if macro then
-        local _, icon, body = GetMacroInfo(macro)
-        EditMacro(macro, PadMacroName(name), icon, body)
-    end
+    RM.KeepPadMacros(function() data.name = name end)
 end
 
 function RM:DeleteRadial(id)
     syncDirty = true
     local store = GetStore()
     if not (store and store.radials[id]) then return end
-    store.radials[id] = nil
-    for i, other in ipairs(store.radialOrder) do
-        if other == id then table.remove(store.radialOrder, i) break end
-    end
-    NormalizeGroups(store)   -- a group left empty goes
+    -- its gamepad bar macro goes too (deleting a macro empties its bar slots)
+    RM.KeepPadMacros(function()
+        store.radials[id] = nil
+        for i, other in ipairs(store.radialOrder) do
+            if other == id then table.remove(store.radialOrder, i) break end
+        end
+        NormalizeGroups(store)   -- a group left empty goes
+    end)
     local charDB = ns.CharDB()
     if charDB.radialKeyOverride then charDB.radialKeyOverride[id] = nil end
-    -- its gamepad bar macro goes too (deleting a macro empties its bar slots)
-    local macro = not InCombatLockdown() and FindPadMacro(id)
-    if macro then DeleteMacro(macro) end
     if charDB.padBar then charDB.padBar[id] = nil end
     self:LoadActiveRadial()
     self:LayoutRadial()
@@ -3795,7 +3970,7 @@ local function MigrateKeys()
     store.key, store.lastSetup = nil, nil
 end
 
--- (11-24) the last moment the secure copy can be rewritten (the event comes before the lockdown): what
+-- the last moment the secure copy can be rewritten (the event comes before the lockdown): what
 -- changed since the last open would be missing on the first open of the fight, and for all of it. Never
 -- under the hand: an open radial keeps its buttons.
 function RM:PLAYER_REGEN_DISABLED()
@@ -3936,7 +4111,10 @@ for _, event in ipairs({ "SPELLS_CHANGED", "UPDATE_MACROS", "BAG_UPDATE_DELAYED"
     pcall(dirtyEvents.RegisterEvent, dirtyEvents, event)
 end
 dirtyEvents:SetScript("OnEvent", function(_, event)
-    if event == "UPDATE_MACROS" then RM.macroFound = nil end
+    if event == "UPDATE_MACROS" then
+        RM.macroFound = nil
+        RM.UpdatePadMacros()
+    end
     RM.MarkDirty()
 end)
 

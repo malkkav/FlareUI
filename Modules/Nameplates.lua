@@ -74,7 +74,7 @@ local C = {
     ELITE = 14,               -- elite / rare mark
     RAID = 18,                -- raid marker
     HIGHLIGHT = 0.18,         -- mouseover light
-    HOVER_BORDER = 0.35,      -- (11-23) mouseover: the border this much of the way to white
+    HOVER_BORDER = 0.35,      -- mouseover: the border this much of the way to white
     TEXT_ROOM = 40,           -- what a slot of numbers takes beside the name
     -- Nameplate Colours: FlareUI's palette (muted, as the unit frames'); yours replace any of them
     -- (nameplates.palette "custom", nameplates.customColors), picked in the colour window
@@ -192,7 +192,7 @@ end
 -- and minor mobs).
 -- Each type keeps its own value of these settings (nameplates.types[kind]); every other setting is
 -- shared. A type's view reads its own value first, then the shared one.
--- (11-20, Malkkav: open PvP is big on Forever, so players and NPCs are split again on both sides;
+-- (open PvP is big on Forever, so players and NPCs are split again on both sides;
 -- Minions merged into Minor, one type for pets, totems, guardians and minor mobs)
 C.KINDS = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }
 C.FRIENDLY = { friendlyPlayer = true, friendlyNpc = true }
@@ -200,9 +200,9 @@ C.TYPE_KEYS = {
     plate = true, width = true, height = true, level = true, levelSide = true, barText = true, hideTextAtFull = true,
     healthColor = true, castbar = true, castHeight = true, debuffs = true, debuffSize = true, debuffMax = true,
     buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true, clickThrough = true,
-    -- (11-20, Malkkav: every row on the Style tab is the type's own) the look rows and Name Only Size
+    -- (every row on the Style tab is the type's own) the look rows and Name Only Size
     texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true,
-    -- (11-20, Malkkav: every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
+    -- (every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
     -- Targeting, Visibility and Fonts stay shared. Role stays shared: it is yours, not the plate's;
     -- so do the colours, picked in their own window)
     rarityIcon = true, combo = true, questIcon = true, questProgress = true,
@@ -210,13 +210,13 @@ C.TYPE_KEYS = {
     execute = true, colorBoss = true, colorElite = true, colorCaster = true, colorTrivial = true, mobTypesWhere = true,
     groupColor = true, raidColor = true,
     castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
-    -- (11-22) the Auras and Aura Positions sections
+    -- the Auras and Aura Positions sections
     auraStyle = true, auraSwipe = true, auraTimer = true, auraTimerColor = true, auraRows = true,
     nameAbove = true, nameOnlyFull = true, castGlow = true,
-    -- (11-23) the cast bar's own look; names by class on a full plate, guild colour, titles
+    -- the cast bar's own look; names by class on a full plate, guild colour, titles
     castTexture = true, castBorder = true, nameClassColor = true, guildColor = true, showTitles = true, showGuild = true,
 }
--- these were one shared value before 11-20: a preset reads the profile's old shared value, so every
+-- these were one shared value in older versions: a preset reads the profile's old shared value, so every
 -- type keeps the look it had; a type's Custom keeps its own from then on
 C.WAS_SHARED = { texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true,
     rarityIcon = true, questProgress = true, threat = true, threatGlow = true, aggroFlash = true, threatScale = true, threatPercent = true,
@@ -239,7 +239,7 @@ C.DEFAULT_PRESET = { enemyPlayer = "full", enemyNpc = "full", friendlyPlayer = "
     -- (not a type of its own: Name Only While Unattackable lays an enemy NPC you can't attack out
     -- with the Name Only preset, NP.Peaceful)
     peaceful = "name" }
--- EACH TYPE'S OWN DEFAULTS (11-20, Malkkav's setup): what Full and the other presets build on. Both
+-- EACH TYPE'S OWN DEFAULTS: what Full and the other presets build on. Both
 -- enemy types and both friendly types share Enemy's; the friendly ones start on Name Only, its
 -- name at 140%. Minor (minions too) has its own.
 C.ENEMY_BASE = {
@@ -258,7 +258,7 @@ C.TYPE_BASE = {
     friendlyPlayer = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
     friendlyNpc = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
     minor = {
-        width = 100, height = 13, level = "off", levelSide = "left",   -- (Colour By: Core's default, 11-20)
+        width = 100, height = 13, level = "off", levelSide = "left",   -- (Colour By: Core's default)
         hideTextAtFull = false, texture = "FlareUI Dark", border = "FlareUI Frames",
         smoothBars = true, edgeGlow = true, damageTrail = true, rarityIcon = false, questProgress = false,
         execute = "auto", raidColor = false, combo = false,
@@ -410,7 +410,7 @@ function NP.TypeSet(kind, key, value)
     own.custom[key] = Copy(value)
     CacheType(kind, SettingsFor(true))
 end
--- 11-19: types saved before presets (their own values over the shared ones) become their preset when
+-- types saved before presets (their own values over the shared ones) become their preset when
 -- nothing differs, else Custom with what they showed
 local function Same(a, b)
     if type(a) ~= "table" or type(b) ~= "table" then return a == b end
@@ -491,13 +491,9 @@ end
 
 -- Pulses on one shared clock (Flash When Targeted, Highlight Important Casts, Threat Glow): every
 -- pulse on screen rises and falls together, on every plate. Play / Stop / IsPlaying as an animation.
-function NP.PulseTick(self)
-    local wave = 0.5 + 0.5 * math.cos((GetTime() % C.PULSE_PERIOD) / C.PULSE_PERIOD * 2 * math.pi)
-    self:SetAlpha(C.PULSE_LOW + (1 - C.PULSE_LOW) * wave)
-end
--- (11-22, perf pass) one shared clock for every pulse: the wave is worked out once a frame and set
+-- one shared clock for every pulse: the wave is worked out once a frame and set
 -- on each playing frame that shows (it was one OnUpdate per frame); the clock stops with none playing.
--- (11-24, Perfy) every plate of the pool keeps its important glow playing from its layout, so the clock
+-- every plate of the pool keeps its important glow playing from its layout, so the clock
 -- rarely stops: which frames show is looked up five times a second, not every frame (a quarter of all
 -- FlareUI's time before, with no plate on screen)
 NP.Pulse = { set = {}, live = {}, wait = 0, EVERY = 0.2, driver = CreateFrame("Frame") }
@@ -926,7 +922,7 @@ function NP.TextSlots(db)
         if not set then
             set = (slot == "left" and { firstname = 1 }) or (slot == "right" and NP.BlizzardHealthDefault()) or {}
         end
-        -- (Full Name stays Full Name: before 11-21 it was read as First Name, so plates never showed
+        -- (Full Name stays Full Name: in older versions it was read as First Name, so plates never showed
         -- surnames; NP.UpdateName reads p.nameFull)
         local copy = {}
         for k, v in pairs(set) do copy[k] = v end
@@ -998,8 +994,8 @@ function NP.LayoutLevel(p, db, boxH)
     p.levelAnchor = holder
 end
 
--- THREAT PERCENTAGE'S PLACE (11-22, Malkkav): never over the name. A box in the level box's look,
--- shown while there is threat. (11-23, #145 Zackarias / Malkkav) its own box always, never in the
+-- THREAT PERCENTAGE'S PLACE: never over the name. A box in the level box's look,
+-- shown while there is threat. (#145 Zackarias) its own box always, never in the
 -- level's place: on the side away from the level box or disc, or on the right with none. It fits
 -- "100%" in the level's font. The quest icon, marker and Crowd Control on that side move out while it
 -- shows. Not on Name Only plates.
@@ -1044,7 +1040,7 @@ function NP.LayoutThreat(p, db)
 end
 
 -- Debuffs and buffs share the row above the plate, half each; one alone takes the whole width
--- AURA POSITIONS (11-22, Malkkav; per type, saved as auraRows): with both rows on, One Line (the
+-- AURA POSITIONS (per type, saved as auraRows): with both rows on, One Line (the
 -- default: side by side, half the width each), Buffs on Top or Debuffs on Top (each its own line, the
 -- whole width, one line at most, one above the other). Returns "buffsTop" / "debuffsTop", or nil.
 function NP.AuraStack(db)
@@ -1111,7 +1107,7 @@ function NP.PlaceSides(p, iconOn, textOn)
     -- (the quest art is mostly empty round its mark: what sits past it comes in by that much)
     local pad = { left = 0, right = 0 }
     if outer[p.questSide] == p.quest then pad[p.questSide] = p.questPad or 0 end
-    -- The raid marker (11-22, Malkkav): as the quest icon, on the other side of the plate (quest icon
+    -- The raid marker: as the quest icon, on the other side of the plate (quest icon
     -- right, marker left; level box on the right moves the quest icon left, the marker right), the
     -- same gap from the plate. The aura row on its side (Defensives left, Crowd Control right) goes past
     -- it. Name Only: over the name (the box is a whole plate wide round a short name).
@@ -1167,7 +1163,7 @@ end
 
 -- Your target stands out: its border in the target colour (Border), a tint over its bar (Bar Colour),
 -- a soft glow round it (Outer Glow) and the arrows. Everything else draws as it was.
--- MOUSEOVER HIGHLIGHT (11-23, Malkkav / vyf; Targeting, shared): which parts light up on the plate under
+-- MOUSEOVER HIGHLIGHT (Targeting, shared): which parts light up on the plate under
 -- the mouse: Border (a lighter border, NP.PaintBorder), Bar (p.highlight's light) and Outer Glow (the
 -- target's glow). Border and Bar by default; saved as a list, "none" for nothing.
 function NP.HoverParts()
@@ -1287,13 +1283,13 @@ function NP.PlaceBelow(p)
     p.below:SetPoint("TOPRIGHT", p.box, "BOTTOMRIGHT", 0, -1)
 end
 
--- The Auras section (11-22, Malkkav; per type, as every Auras tab row): Aura Icon Shape, Aura Swipe,
+-- The Auras section (per type, as every Auras tab row): Aura Icon Shape, Aura Swipe,
 -- Aura Timer and Timer Colour, the unit frames' four, saved on the nameplates' own (auraStyle,
 -- auraSwipe, auraTimer, auraTimerColor). Defaults are the look the plates had: square, both, none.
 local function AuraLook(size, isDebuff, db)
     local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, db.auraStyle or "square", nil,
         db.auraTimer or "none", "target", { swipe = db.auraSwipe or "both", timerColor = db.auraTimerColor ~= false })
-    -- (11-24, ekci) the debuff's type icon is for what you could dispel: not on an enemy's plate
+    -- the debuff's type icon is for what you could dispel: not on an enemy's plate
     if look and not C.FRIENDLY[db.kind] then look.noTypeIcon = true end
     return look
 end
@@ -1357,7 +1353,7 @@ local function AuraLanes(db)
     return lanes
 end
 
--- WHOSE AURAS (11-24, Perfy: a new plate cost about a millisecond, so a big pull was one long frame). Giving a
+-- WHOSE AURAS (a new plate cost about a millisecond, so a big pull was one long frame). Giving a
 -- row (an aura container) its unit makes the game read that unit's auras. So only rows the type uses get one,
 -- and when several plates arrive at once their rows follow over the next frames, AURAS_A_FRAME plates each. A
 -- plate is asked for its own unit then, so one let go meanwhile is skipped; a row still on an earlier unit is
@@ -1523,7 +1519,7 @@ end
 
 -- The border's file, its edge size and the room it takes round the bar: a thin edge needs a
 -- little, the 16 px frames more (shrunk on a thin bar)
--- how far in FlareUI's own borders' line ends (11-23, johnivve: a dark gap between the bar and the border):
+-- how far in FlareUI's own borders' line ends (a dark gap between the bar and the border):
 -- 8 of the art's 32 px, 8 of 16 for the thin cut. What's inside starts right there: no gap, and its square
 -- corners stay under the slanted ones (further out, they showed past them). nil for other borders.
 function NP.BorderFit(edgeFile, edge)
@@ -1543,7 +1539,7 @@ function NP.Edge(db)
     return edgeFile, edge, pad
 end
 
--- (11-23, Malkkav) the cast bar's own Bar Texture and Border, per type, apart from the plate's so
+-- the cast bar's own Bar Texture and Border, per type, apart from the plate's so
 -- changing the health bar never changes it: FlareUI Dark and FlareUI Thin ("FlareUI Frames") by default
 C.CAST_TEXTURE, C.CAST_BORDER = "FlareUI Dark", "FlareUI Frames"
 function NP.CastTexture(db)
@@ -1725,7 +1721,7 @@ function NP.Layout(p)
         p.castAnchor:SetPoint("BOTTOMRIGHT", p.health, "BOTTOMRIGHT", inset, -(pad + C.CAST_GAP))
         -- (no border from the kit: its border step reads a frame's points, which the game refuses
         -- on a nameplate while addon restrictions are on; the border is set here from known sizes)
-        -- (11-23, Malkkav / vyf) the cast bar's own Bar Texture and Border (NP.CastTexture / CastBorder)
+        -- the cast bar's own Bar Texture and Border (NP.CastTexture / CastBorder)
         local castTexture = NP.CastTexture(db)
         local castArt, castEdge = NP.CastBorder(db)
         K.LayoutCastBar(p.cast, {
@@ -1802,11 +1798,11 @@ function NP.Layout(p)
         p.level:Hide()
         p.levelShown, p.levelAnchor = false, nil
         p.nameSlot = p.nameSlot or "middle"
-        -- Show Name (11-22, Malkkav; per type): a player's full name (true), first (false) or last ("lastname")
+        -- Show Name (per type): a player's full name (true), first (false) or last ("lastname")
         p.nameFull = db.nameOnlyFull == "lastname" and "lastname" or db.nameOnlyFull ~= false
         p.name:ClearAllPoints()
         p.name:SetPoint("CENTER", p.box, "CENTER", 0, 0)
-        -- its own font (11-23, Malkkav), and Name Only Size (11-20): this type's name alone, scaled
+        -- its own font, and Name Only Size: this type's name alone, scaled
         -- (through the font family with a size offset, from the font's own size: a SetFont on the
         -- string would beat the family from then on, and each layout would scale it again)
         local scale = (tonumber(db.nameOnlySize) or 100) / 100
@@ -1922,7 +1918,7 @@ end
 
 local function Readable(v) if canaccessvalue(v) then return v end end
 
--- PET THREAT (11-23, Rex / saamor): your own pet holding the mob counts as another tank having it
+-- PET THREAT (Rex / saamor): your own pet holding the mob counts as another tank having it
 -- (the Another Tank colour), for tanks and damage alike; the game hands pet threat over in a fight
 function NP.PetHolds(unit)
     if not UnitExists("pet") then return false end
@@ -1970,7 +1966,7 @@ local function ThreatRGB(unit, db)
 end
 
 -- Threat Scale (tanks): a mob you lost grows, one someone is taking grows a little, one you hold
--- shrinks a little; another tank's stays as it is. One size per state, never animated.
+-- shrinks a little; another tank's stays as it is. One size per state, never animated (the target's is).
 C.THREAT_SCALE = { lost = 1.15, losing = 1.07, holding = 0.92 }
 
 -- A target can exist without a visible plate. Share that lookup across a queued pass,
@@ -1995,17 +1991,47 @@ function NP.ApplyScale(p, targetState)
         else k = OtherPlateValue(targetState, db.notTargetScale, db.noTargetScale) end
         if db.threatScale and state.role == "tank" and p.threatKey then k = k * (C.THREAT_SCALE[p.threatKey] or 1) end
     end
-    if p.scaleNow ~= k then
-        p.scaleNow = k
-        p.root:SetScale(k)
-    end
+    -- a plate just taken, a threat change and the previews jump; picking a target grows and shrinks
+    local jump = p.sample or p.scaleFresh or not p.scaleNow or p.scaleThreat ~= p.threatKey
+    p.scaleFresh, p.scaleThreat = nil, p.threatKey
+    if p.scaleNow == k then return end
+    p.scaleNow = k
+    jump = jump or not p.root:IsVisible()
+    if jump then NP.StopScale(p) p.root:SetScale(k) else NP.GlideScale(p, k) end
 end
 
+-- TARGET SCALE, as smooth as Blizzard's own plates: one clock over the plates on their way to a new size
+C.SCALE_TIME = 0.15
+NP.Glide = { plates = {}, driver = CreateFrame("Frame") }
+NP.Glide.driver:Hide()
+function NP.GlideScale(p, k)
+    local glide = NP.Glide.plates[p] or {}
+    glide.from, glide.to, glide.time = p.root:GetScale(), k, 0
+    NP.Glide.plates[p] = glide
+    NP.Glide.driver:Show()
+end
+function NP.StopScale(p)
+    NP.Glide.plates[p] = nil
+end
+NP.Glide.driver:SetScript("OnUpdate", function(driver, elapsed)
+    for p, glide in pairs(NP.Glide.plates) do
+        glide.time = glide.time + elapsed
+        local left = 1 - glide.time / C.SCALE_TIME
+        if left <= 0 then
+            NP.Glide.plates[p] = nil
+            p.root:SetScale(glide.to)
+        else
+            p.root:SetScale(glide.to + (glide.from - glide.to) * left * left)   -- (slows down as it gets there)
+        end
+    end
+    if not next(NP.Glide.plates) then driver:Hide() end
+end)
+
 -- The bar's colour, and the Outer Glow's with it (the glow always takes the bar's colour)
--- (11-22, perf pass) the bar, border and level art are painted only when their colour changed; a
+-- the bar, border and level art are painted only when their colour changed; a
 -- layout or a claim paints them again (p.barDirty, p.borderDirty). A colour Lua can't read is always written.
 function NP.BarColor(p, r, g, b)
-    -- (11-24) a hidden colour is never compared, the new one nor the last one painted: that is an error
+    -- a hidden colour is never compared, the new one nor the last one painted: that is an error
     local known = canaccessvalue(r) and canaccessvalue(g) and canaccessvalue(b)
     if known and p.barKnown and not p.barDirty and p.barR == r and p.barG == g and p.barB == b then return end
     p.health:SetStatusBarColor(r, g, b)
@@ -2023,11 +2049,11 @@ function NP.PaintGlow(p)
     for _, t in ipairs(p.discGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
 end
 
--- THREAT PERCENTAGE (11-20, Malkkav; Extras > Threat, off): your threat on the unit as a number, in
+-- THREAT PERCENTAGE (Extras > Threat, off): your threat on the unit as a number, in
 -- the colours of the unit frames' Threat Text (Blizzard's threat status colours). 100% is where you
 -- pull it; a tank holding it reads its lead over the next. Shown in a fight with threat on it, and on
 -- the Test plates; never on Name Only plates. A threat the game keeps hidden shows nothing.
--- (11-23, ekci) Off, In a Group ("groups"), In an Instance ("instances") or Always (saved true / false while it
+-- Off, In a Group ("groups"), In an Instance ("instances") or Always (saved true / false while it
 -- was a switch, and still for Always and Off)
 function NP.ThreatPercentOn(db)
     local mode = db.threatPercent
@@ -2048,7 +2074,7 @@ function NP.UpdateThreatText(p, db)
             if p.threatBoxShown ~= boxShown then
                 p.threatBox:SetShown(boxShown)
                 p.threatBoxShown = boxShown
-                -- (11-22, Malkkav) the pieces on the right make room only while the box shows: out of a
+                -- the pieces on the right make room only while the box shows: out of a
                 -- fight they sit right beside the plate
                 RequestSideLayout(p)
             end
@@ -2060,7 +2086,7 @@ function NP.UpdateThreatText(p, db)
         if NP.testKind then
             display, status = 75, 1
         else
-            -- (11-21) the numbers are read whenever the game hands them over; before, the text gave up
+            -- the numbers are read whenever the game hands them over; before, the text gave up
             -- whenever ShouldUnitThreatStateBeSecret said yes, so it never showed in a fight. A secret
             -- percent goes into the text unread (ns.ThreatPercent, ns.ThreatPercentText).
             local secret
@@ -2149,7 +2175,7 @@ function NP.UpdateColor(p)
     NP.BarColor(p, r, g, b)
 end
 
--- (11-24, Archy) a dead mob's plate goes at once: the game takes it away a while later on Forever. A
+-- a dead mob's plate goes at once: the game takes it away a while later on Forever. A
 -- player's stays (a friend to resurrect).
 function NP.UpdateDead(p)
     local dead = UnitIsDead(p.unit)
@@ -2233,7 +2259,7 @@ function NP.UpdateHeals(p, mask)
     end
 end
 
--- NAMES ABOVE PLATE (11-22, Malkkav; per type): the name above the plate, as the unit frames' Name
+-- NAMES ABOVE PLATE (per type): the name above the plate, as the unit frames' Name
 -- Above Frames: Off, or Left / Centre / Right with First, Full or Last Name (nameAbove =
 -- "<slot>:<firstname|fullname|lastname>"). Debuffs and buffs above the plate move up by its height
 -- (p.nameAboveLift). Never on a Name Only or hidden plate: the name is the plate there.
@@ -2275,7 +2301,7 @@ function NP.UpdateNameAbove(p)
     local fs = p.aboveName
     if not (fs and p.aboveKind and fs:IsShown()) then return end
     if p.unit and UnitExists(p.unit) then
-        -- (11-23, Tride) Level: Follow Name goes in front of this name too
+        -- Level: Follow Name goes in front of this name too
         local name = ns.UnitDisplayName(p.unit, nil, BT.FullOf(p.aboveKind))
         local prefix = p.levelFollow and NP.LevelPrefix(p.unit)
         if prefix then fs:SetFormattedText("%s%s", prefix, name) else fs:SetText(name) end
@@ -2292,7 +2318,7 @@ function NP.UpdateName(p)
 end
 function NP.UpdateBarName(p)
     local db, unit = PDB(p), p.unit
-    -- (11-23, exillix3) the colour even with no name in the bar: Names Above Plate takes it, and it kept
+    -- the colour even with no name in the bar: Names Above Plate takes it, and it kept
     -- the colour of whichever unit the plate had shown before
     if not (p.nameSlot or p.aboveKind) then return end
     p.aboveColor = nil
@@ -2322,7 +2348,7 @@ function NP.UpdateBarName(p)
             return
         end
     end
-    -- (11-23, Malkkav / WildDaisy2) Colour Guild Members: your guild's names in Blizzard's guild green
+    -- Colour Guild Members: your guild's names in Blizzard's guild green
     -- on Friendly Player's Name Only plates (off)
     if player and p.nameOnly and db.guildColor and p.kind == "friendlyPlayer" and UnitIsInMyGuild
         and Readable(UnitIsInMyGuild(unit)) then
@@ -2330,9 +2356,9 @@ function NP.UpdateBarName(p)
         p.name:SetTextColor(g and g.r or 0.25, g and g.g or 1, g and g.b or 0.25)
         return
     end
-    -- (11-22, Malkkav) the class colour on a Name Only plate: on a full plate the bar already carries
+    -- the class colour on a Name Only plate: on a full plate the bar already carries
     -- it, and a class-coloured name on a class-coloured bar was hard to read (white instead).
-    -- (11-23, Ha'Beebs) Colour Names by Class (off) gives full plates their class colour too
+    -- (Ha'Beebs) Colour Names by Class (off) gives full plates their class colour too
     if player and (p.nameOnly or db.nameClassColor) then
         local _, class = UnitClass(unit)
         local ok, color = pcall(C_ClassColor.GetClassColor, class)
@@ -2363,7 +2389,7 @@ end
 
 C.NAME_LIFT = 0.6   -- Colour Names by Class: how far towards white on a class-coloured bar
 
--- NPC TITLES (11-21, Malkkav: always on, no option): an NPC's title ("General Goods", "Blacksmithing
+-- NPC TITLES (always on, no option): an NPC's title ("General Goods", "Blacksmithing
 -- Trainer") under its name on a Name Only plate, as players asked. The game has no call for it: it is
 -- the second line of the NPC's tooltip (one line lower in Colourblind Mode), unless that line is its
 -- level. Read once per NPC name (C.TITLES), never in instances (tooltip data can be secret there),
@@ -2392,7 +2418,7 @@ function NP.NPCTitle(unit)
     if key and type(line) == "table" then C.TITLES[key] = title end
     return title or nil
 end
--- SHOW TITLES (11-23, Malkkav / WildDaisy2; per type): NPC types on by default, players and Minor off
+-- SHOW TITLES (per type): NPC types on by default, players and Minor off
 function NP.TitlesOn(db, kind)
     local v = db and db.showTitles
     if v == nil then v = kind == "friendlyNpc" or kind == "enemyNpc" end
@@ -2410,7 +2436,7 @@ function NP.PlayerTitle(unit)
     title = title:gsub("^%s*,?%s*", ""):gsub("%s+$", "")
     return title ~= "" and title or nil
 end
--- SHOW GUILD NAME (11-24, illsism / Malkkav; the player types, off): a player's guild on a Name Only plate,
+-- SHOW GUILD NAME (the player types, off): a player's guild on a Name Only plate,
 -- under the title when there is one, as Blizzard writes it: <Guild>. A secret one is left out.
 function NP.UpdateGuild(p)
     local fs = p.guildName
@@ -2443,7 +2469,7 @@ function NP.UpdateTitleLine(p)
     end
     if not title then fs:Hide() return end
     fs:SetText(title)
-    -- (11-21, Malkkav) its own colour, apart from the name's: the palette's light bronze, a tan as other
+    -- its own colour, apart from the name's: the palette's light bronze, a tan as other
     -- nameplate addons draw titles in
     local c = ns.PALETTE.bronze5
     fs:SetTextColor(c[1], c[2], c[3], 1)
@@ -2508,7 +2534,7 @@ function NP.PaintBorder(p)
     elseif db.threatGlow and p.threatRGB then c = p.threatRGB end
     -- Threat Glow: the pulsing border and its glow too (not over your target's own border)
     local threat = c ~= nil and c == p.threatRGB and not p.nameOnly
-    -- (11-23, Malkkav: always on) the plate under the mouse: its border a little lighter, whatever
+    -- (always on) the plate under the mouse: its border a little lighter, whatever
     -- colour it has (the bronze, your target's or threat's); the bar's light is p.highlight (SetMouseover)
     local hover = state.mouseover == p and NP.HoverParts().border or false
     local r1, g1, b1 = c and c[1], c and c[2], c and c[3]
@@ -2847,7 +2873,7 @@ end
 
 -- Objective Icon (nameplates.questMarks) and Objective Progress
 -- (nameplates.questProgress; never set, it follows the icon, as before the two were split)
--- Objective Icon and Progress, per type (11-20): the icon needs the shared quest switch
+-- Objective Icon and Progress, per type: the icon needs the shared quest switch
 -- and the type's own Objective Icon; Progress never set follows the icon.
 -- With no plate: whether any type shows them (the module's quest events).
 local function TypeQuest(tdb, master)
@@ -2864,7 +2890,7 @@ function NP.QuestieHasIcons()
     return type(profile) == "table" and profile.nameplateEnabled == true
 end
 -- Questie hangs its icon on the game's plate, which stays one size while ours grows and shrinks around
--- your target, so the icon sat elsewhere on your target's plate, over the level box (11-23, Tride). Its left
+-- your target, so the icon sat elsewhere on your target's plate, over the level box. Its left
 -- point goes on the leftmost of our parts instead (the bar, the level box, a marker beside them); its settings,
 -- size and parent stay Questie's. The same point goes back when the unit's plate does (Questie's own
 -- SetPoint replaces it on reuse anyway).
@@ -2902,7 +2928,7 @@ function NP.QuestParts(p, preview)
     end
     return anyIcon, anyProgress
 end
--- SHOW PLATES IN COMBAT (11-20, Malkkav; Plate > Name Only Mode): the unit types picked there leave
+-- SHOW PLATES IN COMBAT (Plate > Name Only Mode): the unit types picked there leave
 -- Name Only Mode while you are in a fight and show their whole plate (nameplates.combatPlates, a list
 -- of types, "none" first). Entering and leaving combat lays the plates out again (NP.Relayout).
 function NP.CombatList(preview)
@@ -2928,7 +2954,7 @@ function NP.Relayout()
     NP.Sync()
 end
 
--- Combo Points per type (11-20): asked before the points go on your target's plate (NameplateExtras.lua)
+-- Combo Points per type: asked before the points go on your target's plate (NameplateExtras.lua)
 function NP.ComboAllowed(unit)
     if not NP.ready or NP.standDown then return true end
     local want, kind = NP.WantsPlate(unit)
@@ -2987,7 +3013,7 @@ end
 
 -- Out of Range Opacity: your class's spells by name (any rank); in range if any one is. A secret
 -- answer goes to the holder's alpha unread.
--- (11-22, perf pass) the alpha is written only when it changes (p.rangeAlphaNow; nil after a claim
+-- the alpha is written only when it changes (p.rangeAlphaNow; nil after a claim
 -- or a secret answer), friendly plates are never checked (the list is attack spells)
 function NP.SetRangeAlpha(p, a)
     if p.rangeAlphaNow == a then return end
@@ -3102,7 +3128,7 @@ local function OnUnitEvent(self, event)
             NP.Claim(unit)
             return
         end
-        -- (11-22, perf pass) a pull sends many of these per mob in one frame: one repaint per frame
+        -- a pull sends many of these per mob in one frame: one repaint per frame
         NP.QueuePlate(p, D.COLOR)
     elseif event == "UNIT_NAME_UPDATE" then
         NP.QueuePlate(p, bor(D.NAME, D.COLOR))
@@ -3311,7 +3337,7 @@ function NP.Kind(unit)
     if Readable(UnitClassification(unit)) == "minus" then return "minor" end
     return "enemyNpc"
 end
--- NAME ONLY WHILE UNATTACKABLE (11-20, Malkkav): an
+-- NAME ONLY WHILE UNATTACKABLE: an
 -- enemy NPC you can't attack (an event mob, a quest giver of the other side) shows only its name, as
 -- the Name Only preset, until you can attack it. Off by default (nameplates.peacefulNames).
 function NP.Peaceful(unit, kind)
@@ -3320,7 +3346,7 @@ function NP.Peaceful(unit, kind)
     if Readable(UnitIsPlayer(unit)) then return false end
     return Readable(UnitCanAttack("player", unit)) == false
 end
--- ENEMY PLAYERS / ENEMY NPCS (11-20, the Plates' Enemy Types): the game has no switch for these two, so
+-- ENEMY PLAYERS / ENEMY NPCS (the Plates' Enemy Types): the game has no switch for these two, so
 -- FlareUI hides its own plate for them (as Plate: Hidden). Both on by default (nameplates.enemyPlayers,
 -- nameplates.enemyNpcs).
 function NP.UnitHidden(unit, kind)
@@ -3334,7 +3360,7 @@ end
 -- game couldn't say yet
 function NP.WantsPlate(unit)
     -- objects (chairs, signs, mailboxes, herbs and ore with the interact key) and widget-only plates:
-    -- Blizzard's own plate shows them without a bar, so they stay Blizzard's (11-21: they read as
+    -- Blizzard's own plate shows them without a bar, so they stay Blizzard's (they read as
     -- Enemy NPCs and got a full plate with level and health)
     if UnitIsGameObject and Readable(UnitIsGameObject(unit)) then return false, nil end
     if UnitNameplateShowsWidgetsOnly and Readable(UnitNameplateShowsWidgetsOnly(unit)) then return false, nil end
@@ -3363,7 +3389,7 @@ local function SetClickArea(plate, none)
     if none then pcall(plate.ClearAllHitTestPoints, plate) else pcall(plate.SetAllHitTestPoints, plate, plate) end
 end
 
--- DOESITDIE (11-23, Malkkav): DoesItDie draws its marker and kill icon on nameplates itself, on the
+-- DOESITDIE: DoesItDie draws its marker and kill icon on nameplates itself, on the
 -- health bar it finds on the game's plate: Blizzard's (hidden under ours) or a field named like
 -- "health". Each game plate we hold gets an invisible bar under that name, laid over our health bar,
 -- so its marker lands on ours with all of its own settings. One per game plate (DoesItDie remembers
@@ -3465,7 +3491,7 @@ function NP.Claim(unit)
         local musicianFrame = plate.musicianUnitFrame
         if musicianFrame and not musicianFrame:IsForbidden() then musicianFrame:Hide() end
         -- Blizzard marks minions, minor mobs and (by its setting) friends "simplified", and the game
-        -- then shrinks the whole plate, ours with it (11-21: Minor names tiny even at 200%). Ours has
+        -- then shrinks the whole plate, ours with it (Minor names tiny even at 200%). Ours has
         -- its own sizes: off while we hold the plate, Blizzard's value back on release.
         if C_NamePlateManager and C_NamePlateManager.SetNamePlateSimplified then
             pcall(C_NamePlateManager.SetNamePlateSimplified, unit, false)
@@ -3473,8 +3499,9 @@ function NP.Claim(unit)
         NP.QueueAuras(p)
         RegisterUnit(p, unit)
         p.targetShown = nil
+        NP.StopScale(p)
         p.root:SetScale(1)
-        p.scaleNow, p.threatKey, p.threatRGB = 1, nil, nil
+        p.scaleNow, p.threatKey, p.threatRGB, p.scaleFresh = 1, nil, nil, true
         p.deadHidden = false
         p.root:SetShown(not (p.hiddenPlate or p.unitHidden))
         NP.UpdateAll(p)
@@ -4088,7 +4115,7 @@ function NP.DrawSample(f, kind)
         and db.combo ~= false and not p.nameOnly
         and (st.combo or type(kind) ~= "table")
     p.sampleCombo = p.sampleCombo or {}
-    local gemSize = 14
+    local gemSize = 14 * (NP.ComboScale and NP.ComboScale(db.width) or 1)
     local step = ns.ComboPointStep and ns.ComboPointStep(gemSize) or gemSize + 2
     for i = 1, 5 do
         local gem = p.sampleCombo[i]
@@ -4098,6 +4125,7 @@ function NP.DrawSample(f, kind)
         end
         if gem then
             gem:ClearAllPoints()
+            if ns.SizeComboPoint then ns.SizeComboPoint(gem, gemSize) end
             gem:SetPoint("TOP", p.below, "BOTTOM", (i - 3) * step, -4)
             if comboOn then
                 if ns.SetComboPoint then ns.SetComboPoint(gem, 3, false) end
@@ -4127,7 +4155,7 @@ function NP.DrawSample(f, kind)
             local c = look.colors and (look.colors[dispelType] or look.colors.None)
             if c then b.FlareUI_Border:SetVertexColor(c:GetRGBA()) end
             b.FlareUI_Count:SetText("")
-            -- (11-22) a sample time and swipe, so Aura Timer, Timer Colour and Aura Swipe show here
+            -- a sample time and swipe, so Aura Timer, Timer Colour and Aura Swipe show here
             local secs = C.SAMPLE_SECONDS[(n - 1) % #C.SAMPLE_SECONDS + 1]
             b.FlareUI_Duration:SetText(look.timer ~= "none" and ns.FormatAuraTime(secs) or "")
             if look.timerColor and secs < 5 then b.FlareUI_Duration:SetTextColor(1, 0.2, 0.2)
@@ -4340,9 +4368,11 @@ function NP.TestIcons(p, tdb)
         -- once per test: placed, and set to 3 of 5
         p.testIcons = true
         if questOn then NP.PlaceSides(p) end
-        local step = ns.ComboPointStep and ns.ComboPointStep(14) or 16
+        local gemSize = 14 * (NP.ComboScale and NP.ComboScale(PDB(p).width) or 1)
+        local step = ns.ComboPointStep and ns.ComboPointStep(gemSize) or 16
         for i, gem in ipairs(p.testCombo or {}) do
             gem:ClearAllPoints()
+            if ns.SizeComboPoint then ns.SizeComboPoint(gem, gemSize) end
             gem:SetPoint("TOP", p.below, "BOTTOM", (i - 3) * step, -4)
             if ns.SetComboPoint then ns.SetComboPoint(gem, 3, false) end
         end
@@ -4438,7 +4468,7 @@ function NP:Refresh()
 end
 
 -- The game's own plate zoom (distance, target, larger plates) is set to 1 while the module is on, so
--- Target Scale is the only zoom, and (11-24, Archy) its fades with distance and for plates that aren't your
+-- Target Scale is the only zoom, and its fades with distance and for plates that aren't your
 -- target are off, so Out of Range, Out of Sight and the target options are the only ones. Each setting is backed up first and put back when the module is off
 -- (at the next login: ShouldLoad runs either way) or stands down.
 C.ZOOM_CVARS = { "nameplateSelectedScale", "nameplateMinScale", "nameplateMaxScale", "nameplateLargerScale",
@@ -4489,13 +4519,13 @@ end
 
 local function MigrateProfile()
     local db = DB()
-    -- 11-19: text slots saved by the first version kept the Left slot empty; they start over once
+    -- text slots saved by the first version kept the Left slot empty; they start over once
     if db and db.barText and not db.textV2 then db.barText = nil end
     if db then db.textV2 = true end
-    -- 11-19: Friendly Plates (Blizzard / FlareUI) became the Friendly type's Plate
+    -- Friendly Plates (Blizzard / FlareUI) became the Friendly type's Plate
     if db and rawget(db, "friendly") == "flareui" then NP.TypeStore("friendly").plate = "bar" end
     if db then db.friendly = nil end
-    -- 11-20: Enemy and Friendly split again into players and NPCs (each side keeps the one setup it
+    -- Enemy and Friendly split again into players and NPCs (each side keeps the one setup it
     -- had, copied to both); Minions went into Minor (Minor's setup stays). Once per profile.
     if db and not db.typesV3 then
         db.typesV3 = true
@@ -4524,7 +4554,7 @@ local function MigrateProfile()
             db.combatPlates = #out > 0 and table.concat(out, ",") or "none"
         end
     end
-    -- 11-23: Combo Points, Quest Objective and the In Combat plates were saved with Quality of Life. Once
+    -- Combo Points, Quest Objective and the In Combat plates were saved with Quality of Life. Once
     -- per profile (a Quality of Life import later on never reaches the plates). In Combat only worked with
     -- Quality of Life on: with it off nothing is carried over, so no one's plates start to hide.
     if db and not db.ownSwitches then
@@ -4542,7 +4572,7 @@ local function MigrateProfile()
         end
     end
     NP.MigratePresets()
-    -- (11-22) the plates read the unit frames' Aura Swipe, Aura Timer and Timer Colour before they had
+    -- the plates read the unit frames' Aura Swipe, Aura Timer and Timer Colour before they had
     -- their own: those values are saved here once as the old shared ones (C.WAS_SHARED), so every
     -- type's preset keeps them and no plate changes
     if db and not db.auraLookV1 then
@@ -4552,7 +4582,7 @@ local function MigrateProfile()
             if uf[key] ~= nil and rawget(db, key) == nil then db[key] = uf[key] end
         end
     end
-    -- 11-23: Name Only plates have their own font: it starts as the Names font they used until now
+    -- Name Only plates have their own font: it starts as the Names font they used until now
     if db and not db.nameOnlyFontV1 then
         db.nameOnlyFontV1 = true
         if type(db.nameFont) == "table" then
@@ -4560,7 +4590,7 @@ local function MigrateProfile()
             for key, value in pairs(db.nameFont) do db.nameOnlyFont[key] = Copy(value) end
         end
     end
-    -- 11-19: the Chevron and Hook arrows went (Chevron was the Yellow one turned)
+    -- the Chevron and Hook arrows went (Chevron was the Yellow one turned)
     if db and (db.targetArrows == "chevron" or db.targetArrows == "hook") then db.targetArrows = "npe" end
     return db
 end
@@ -4589,7 +4619,7 @@ end
 
 -- the pool, all at once: aura containers made after login never show
 local function BuildPool()
-    -- (11-24) laid out for the types as they usually come, so the first ones need no layout as they appear
+    -- laid out for the types as they usually come, so the first ones need no layout as they appear
     local share = { "enemyNpc", "friendlyNpc", "enemyNpc", "friendlyPlayer", "enemyNpc", "minor", "enemyNpc", "enemyPlayer" }
     for i = 1, C.POOL do
         local p = NP.Build(hidden, false)
@@ -4624,7 +4654,7 @@ function NP:Init()
         end
     end
     -- Musician: out of a fight it swaps a friendly player's plate for its own name frame, which
-    -- showed next to ours (11-21, two names). Its API for nameplate addons turns that off, as its
+    -- showed next to ours. Its API for nameplate addons turns that off, as its
     -- own Plater and ElvUI modules do (NP.Claim hides a frame it already made)
     local musician = _G.Musician and _G.Musician.NamePlates
     if musician and musician.ForbidHideHealthBars then pcall(musician.ForbidHideHealthBars) end

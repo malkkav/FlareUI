@@ -403,6 +403,50 @@ do
         checkSlots(true, true)
         assert(opens[5] == 0 and opens[-1] == i, 'ordinary open must never open native bag 5')
     end
+    -- (11-24) the fallback slots are dressed as the others: Blizzard's parts, then FlareUI's overlay
+    do
+        local slots, decorated, qualities, removed = {}, {}, {}, {}
+        for _, b in ipairs(frames) do if b.fallbackSlot and b:IsVisible() then slots[b:GetID()] = b end end
+        local first, decorate, remove = slots[1], Bags.DecorateButton, env.C_NewItems.RemoveNewItem
+        local quest, cooldown, glow
+        function first:UpdateQuestItem(isQuest, id) quest = isQuest and id end
+        function first:UpdateCooldown(texture) cooldown = texture end
+        function first:UpdateNewItem() error('a value the game hides') end
+        function first:UpdateJunkItem(quality) glow = quality end
+        local read = env.C_Container.GetContainerItemInfo
+        env.C_Container.GetContainerItemInfo = function(id, slot)
+            if id == 5 and slot == 1 then return {itemID = 500, iconFileID = 77, quality = 2, hyperlink = 'link'} end
+            return read(id, slot)
+        end
+        env.C_Container.GetContainerItemQuestInfo = function() return {isQuestItem = true, questID = 9} end
+        env.SetItemButtonQuality = function(b, quality, link) qualities[b] = {quality, link} end
+        Bags.DecorateButton = function(b, config, info, bagID, slot) decorated[slot] = {b, config, info, bagID} end
+        for _, event in ipairs({'BAG_NEW_ITEMS_UPDATED', 'INVENTORY_SEARCH_UPDATE'}) do
+            decorated, cooldown = {}, nil
+            fireBagEvent(event)
+            assert(decorated[1][1] == first and decorated[1][2] == db and decorated[1][3].itemID == 500 and decorated[1][4] == 5)
+            assert(decorated[12] and decorated[12][3] == nil, 'an empty slot keeps its look too')
+            assert(qualities[first][1] == 2 and qualities[first][2] == 'link' and quest == 9 and cooldown == 77 and glow == 2)
+        end
+        -- a cooldown event (often in a fight) draws the cooldowns alone
+        decorated, cooldown = {}, nil
+        env.C_Container.HasContainerItem = function(id, slot) return id == 5 and slot == 1 end
+        fireBagEvent('BAG_UPDATE_COOLDOWN')
+        assert(cooldown == true and not next(decorated))
+        env.C_Container.HasContainerItem = nil
+        -- pointing aside, closing the backpack clears their new item glow, as for Blizzard's windows
+        env.C_NewItems.RemoveNewItem = function(id, slot) removed[id .. ':' .. slot] = true end
+        local scripts = combined.scripts.OnHide
+        assert(scripts, 'the backpack clears new items as it closes')
+        combined:Hide()
+        assert(removed['5:1'] and removed['5:12'])
+        env.C_NewItems.RemoveNewItem, Bags.DecorateButton = remove, decorate
+        env.C_Container.GetContainerItemInfo, env.C_Container.GetContainerItemQuestInfo, env.SetItemButtonQuality = read, nil, nil
+        nextFrame()
+        openBackpack()
+        nextFrame()
+        checkSlots(true, true)
+    end
     for _, highlight in ipairs({true, false}) do
         combined:SetItemsMatchingBagHighlighted(5, highlight)
         for _, b in ipairs(frames) do

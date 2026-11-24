@@ -333,7 +333,7 @@ end
 --------------------------------------------------
 local CATEGORIES = {}
 
--- SUBTITLES (11-20, Malkkav): a category holding two kinds (Mounts and Toys, Spells and Pet Spells...)
+-- SUBTITLES: a category holding two kinds (Mounts and Toys, Spells and Pet Spells...)
 -- lists each under a small title, each list on its own rows. groups: { { title, entries }, ... }; with
 -- only one kind there, no titles. The titles are { header = text } entries; RefreshBrowse lays them out
 -- (and drops them while searching).
@@ -409,7 +409,7 @@ local function ForEachBookSpell(callback)
     end
 end
 
--- RANKS IN A DRAWER (11-24, dutra_; Malkkav's pick "arrow and drawer"): a spell with several ranks is one
+-- RANKS IN A DRAWER: a spell with several ranks is one
 -- entry, its best rank, with ranks = every rank from the lowest up; the arrow on its icon opens them
 -- (RankDrawer). A controller can't reach the arrow, so it keeps every rank in the grid.
 local function RankNumber(entry)
@@ -456,7 +456,10 @@ AddCategory("spells", L["Spells"], function()
         local list = isPet and pet or mine
         list[#list + 1] = { kind = "spell", id = spellID }
     end)
-    return Grouped({ { L["Spells"], CollapseRanks(mine) }, { L["Pet Spells"], CollapseRanks(pet) } })
+    -- the pet's commands (Attack, Follow, Passive...) first
+    local pets = RM().PetCommands and RM().PetCommands() or {}
+    for _, entry in ipairs(CollapseRanks(pet)) do pets[#pets + 1] = entry end
+    return Grouped({ { L["Spells"], CollapseRanks(mine) }, { L["Pet Spells"], pets } })
 end, nil, L["No spells in your spellbook yet."])
 
 -- Party: your helpful spells, each spread over the group (a button per person, RadialMenu.lua
@@ -506,7 +509,7 @@ local PROFESSION_SPELLS = {
     { 2383 },                        -- Find Herbs
     { 818 },                         -- Basic Campfire
     { 1804 },                        -- Pick Lock
-    -- (11-23, Tride: Forever's own profession spells, IDs from their /dump)
+    -- (Forever's own profession spells, IDs from their /dump)
     { 1278068 },                     -- Tanning
     { 1278067 },                     -- Bait and Tackle
 }
@@ -585,7 +588,7 @@ AddCategory("emotes", L["Emotes"], function()
     return out
 end)
 
--- Collections (11-20, was Mounts): your mounts, then your toys, as Blizzard's Collections window. One
+-- Collections: your mounts, then your toys, as Blizzard's Collections window. One
 -- link for both keeps the categories on one line. Toys come from the Toy Box's list as its own filters
 -- leave it (a toy hidden there is left out here too).
 AddCategory("mounts", L["Collections"], function()
@@ -767,12 +770,14 @@ end
 local function RestoreSnapshot()
     local store = RM().GetStore()
     if not (store and snapshot and dirty) then return end
-    -- the store table itself is kept: others hold a reference to it
-    store.radials      = CopyTable(snapshot.radials)
-    store.radialOrder  = CopyTable(snapshot.radialOrder)
-    store.nextRadialID = snapshot.nextRadialID
-    store.groups       = CopyTable(snapshot.groups)
-    store.nextGroupID  = snapshot.nextGroupID
+    -- the store table itself is kept: others hold a reference to it (the bar macros stay on their radials)
+    RM().KeepPadMacros(function()
+        store.radials      = CopyTable(snapshot.radials)
+        store.radialOrder  = CopyTable(snapshot.radialOrder)
+        store.nextRadialID = snapshot.nextRadialID
+        store.groups       = CopyTable(snapshot.groups)
+        store.nextGroupID  = snapshot.nextGroupID
+    end)
     ns.CharDB().radialKeyOverride = CopyTable(snapshot.ownKeys)
     dirty = false
     RM():RadialChanged()
@@ -1877,7 +1882,7 @@ local function BuildLower(host, height, width)
     for i, c in ipairs(CATEGORIES) do
         local link = CreateFrame("Button", nil, host)
         -- (its own text, not the button's: a button puts its font object back, which undid the fitted size
-        -- and ran the links into the title; 11-23, Tride)
+        -- and ran the links into the title; Tride)
         link.Text = Text(link, "GameFontNormalSmall", c.label)
         link.Text:SetPoint("CENTER")
         link.key = c.key

@@ -337,7 +337,7 @@ end
 
 PGT.events = CreateFrame("Frame")
 PGT.events:SetScript("OnEvent", function(_, event, arg1)
-    -- (11-23, Taylor: LB + D-pad did nothing) set up at login only, it missed a Gamepad UI that comes on
+    -- (Taylor: LB + D-pad did nothing) set up at login only, it missed a Gamepad UI that comes on
     -- later (a controller picked up after logging in): it tries again on every switch into it and
     -- after each loading screen
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then

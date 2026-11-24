@@ -37,7 +37,12 @@ S:Row{ key = "bl.combinedNote", kind = "text", noTitle = true, tab = "bags", sec
 -- Combined Bags, switched from here. FlareUI saves nothing: Blizzard's checkbox and this one always agree.
 S:Row{ key = "bl.bagCombined", lead = true, tab = "bags", disabled = BagAddon,   -- (lead: every row below reads it)
     get = function() return GetCVarBool("combinedBags") and true or false end,
-    set = function(on) SetCVar("combinedBags", on and 1 or 0) end,
+    set = function(on)
+        SetCVar("combinedBags", on and 1 or 0)
+        -- switched from here, Blizzard's bags run as FlareUI's until a reload: item clicks and the
+        -- bank's buttons could be blocked. Never un-pending: switching back leaves the same mark.
+        S:TrackReload("bl.bagCombined", true, false)
+    end,
     apply = function()
         -- the rows below follow once Blizzard has switched (USE_COMBINED_BAGS_CHANGED, Bags.lua)
         C_Timer.After(0, function()
@@ -53,7 +58,7 @@ S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButto
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
--- Reverse Bag Fill (11-22): the grid from the top left, the combined empty slot last (Bags.lua Bags.Reverse);
+-- Reverse Bag Fill: the grid from the top left, the combined empty slot last (Bags.lua Bags.Reverse);
 -- not with Category Rows, whose headers sit above their sections
 S:Row{ key = "bl.bagReverse", half = true, tab = "bags", path = "tweaks.bagReverse", apply = RefreshBags,
     disabled = function() return NotCombined() or (ns.Bags and ns.Bags.View and (ns.Bags.View() == "rows" or ns.Bags.View() == "rowsSets")) end }
@@ -76,7 +81,7 @@ S:Row{ key = "bl.bagView", kind = "choice", tab = "bags", path = "tweaks.bagView
 -- BAGS: the item slots --------------------------
 -- Skin Item Slots (one choice): Off (Blizzard's slots), Thin Borders or Thick
 -- Borders. A skinned slot always takes its item's quality colour.
--- Skin Item Slots: Off, Thin or Thick Borders, and under a line Colour by Rarity (11-20; tweaks.bagRarity,
+-- Skin Item Slots: Off, Thin or Thick Borders, and under a line Colour by Rarity (tweaks.bagRarity,
 -- on). Saved as before: tweaks.bagSkinSlots and tweaks.bagThickBorders.
 local SKIN_SPEC = { exclusive = { "off" }, tokens = { "thin", "thick", "rarity" }, rivals = { thin = "thick", thick = "thin" }, empty = "off" }
 S:Row{ key = "bl.bagSkinSlots", kind = "dropdown", tab = "bags", toggles = SKIN_SPEC,
@@ -124,8 +129,8 @@ S:Row{ key = "bl.skipLoot", half = true, tab = "looting", path = "tweaks.skipLoo
 -- Loot Roll Window: FlareUI's roll window in place of Blizzard's roll frames (LootRolls.lua);
 -- placed in Edit Mode. Its own section, alone, so a full row. On and off take a reload.
 S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload = true }
--- (11-23, Malkkav: no Background Opacity: the window reads badly see-through)
--- Loot Window (PR #146 by Xentinus; 11-23 Malkkav: built like the loot roll window, no look options of
+-- (no Background Opacity: the window reads badly see-through)
+-- Loot Window (PR #146 by Xentinus; built like the loot roll window, no look options of
 -- its own): FlareUI's loot window in place of Blizzard's (LootWindow.lua). Its item marks follow the
 -- Bags options; Show Free Bag Slots is its one extra. On and off take a reload.
 S:Row{ key = "bl.lootWindow", half = true, tab = "looting", path = "tweaks.lootWindow", reload = true }
@@ -133,7 +138,7 @@ S:Row{ key = "bl.lootWindowFreeSlots", half = true, tab = "looting", path = "twe
     disabled = function() return not S:GetPath("tweaks.lootWindow") end,
     apply = function() if ns.LootWindow and ns.LootWindow.Refresh then ns.LootWindow:Refresh() end end }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
--- Loot Feed (11-20, was a switch): Off, Square Icons or Round Icons. Saved as before: tweaks.lootFeed,
+-- Loot Feed: Off, Square Icons or Round Icons. Saved as before: tweaks.lootFeed,
 -- and the shape in tweaks.lootFeedIcons (square unset). Turning it on or off asks for a reload; the shape is live.
 local startFeed
 S:Row{ key = "bl.lootFeed", kind = "choice", tab = "looting", choices = { "off", "square", "round" },
@@ -165,7 +170,7 @@ S:Row{ key = "bl.lootFeedPosition", kind = "choice", tab = "looting", parent = "
 S:Row{ key = "bl.lootFeedAlign", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedAlign",
     choices = { "left", "center", "right" }, disabled = NoFeed }
 
--- BANK & VENDOR (11-23, Malkkav: the Bags tab had grown too long): the bank window (Bags.lua 4e). Forever's bank is one window
+-- BANK & VENDOR (the Bags tab had grown too long): the bank window (Bags.lua 4e). Forever's bank is one window
 -- whatever Combined Bags says, so only another bag addon greys these.
 local BANK_COLUMNS = { { 0, L["Default"] } }
 for n = 6, 20 do BANK_COLUMNS[#BANK_COLUMNS + 1] = { n, tostring(n) } end
@@ -176,7 +181,7 @@ S:Row{ key = "bl.bankColumns", kind = "range", tab = "bank", path = "tweaks.bank
 S:Row{ key = "bl.bankGaps", half = true, tab = "bank", path = "tweaks.bankGaps", apply = RefreshBags, disabled = BagAddon }
 S:Row{ key = "bl.bankTight", half = true, tab = "bank", path = "tweaks.bankTight", apply = RefreshBags, disabled = BagAddon }
 
--- VENDOR (from Quality of Life, 11-20): selling, repairing and buying; the switches stay in tweaks.*
+-- VENDOR (from Quality of Life): selling, repairing and buying; the switches stay in tweaks.*
 S:Row{ key = "qol.repair", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.autoRepair", apply = Refresh }
 -- the guild bank pays Auto Repair first; greyed with Auto Repair off
 S:Row{ key = "qol.repairGuild", half = true, module = "bl", tab = "bank", section = "qol.vendor", path = "tweaks.repairGuild",

@@ -18,7 +18,7 @@ local L = ns.L
 -- to focus next), and a list (the parent of its cells) PadScroll(delta).
 -- While it listens it takes EVERY button and passes none on: the game would run a passed-on press's
 -- action as FlareUI's, and its controller code stays broken until a /reload (seen in the client by
--- another addon's author; 11-23). Off while a FlareUI dialog is up, a key is being captured, or in combat.
+-- another addon's author). Off while a FlareUI dialog is up, a key is being captured, or in combat.
 --------------------------------------------------
 local PadNav = {}
 ns.PadNav = PadNav

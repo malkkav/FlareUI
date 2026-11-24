@@ -273,7 +273,7 @@ local function IsForeignButton(frame, sets)
     return (w or 0) > 8 and (w or 0) <= 48 and (h or 0) > 8 and (h or 0) <= 48
 end
 
--- A frame's children as a list. (11-23, storm0542) None of a frame with thousands (a gathering addon's
+-- A frame's children as a list. None of a frame with thousands (a gathering addon's
 -- pins on the map): listing them overflows Lua's stack, and no button is worth finding among them.
 function Bag.Children(parent)
     if not parent or (parent.GetNumChildren and parent:GetNumChildren() > 4000) then return {} end

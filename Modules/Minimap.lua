@@ -129,7 +129,7 @@ function MM.SquareBorder()
 end
 -- The square map's mask: a FlareUI border cuts the terrain's corners along its angled ones (mask: a
 -- 45-degree cut of 3 px for Thin, 5 px for Thick on the 243 terrain), else plain square. The square
--- corners showed past the border's (MunchieDog, 11-19).
+-- corners showed past the border's.
 function MM.SquareMask()
     local flare = HeaderStyle().flare
     return flare and flare.mask or SQUARE_MASK
@@ -476,9 +476,9 @@ local function FitButtonArt(button)
     end
 end
 
--- Blizzard's minimap art in FlareUI's bronze (11-20, palette work): the heavy bronze frame, the
+-- Blizzard's minimap art in FlareUI's bronze: the heavy bronze frame, the
 -- Bordered frame's pieces, Forever's round ring and the zone / Info Bar plates, multiplied like the
--- unit frames' plate (UnitFramesRing.lua Ring.PLATE_TINT; picked in game 11-20).
+-- unit frames' plate (UnitFramesRing.lua Ring.PLATE_TINT; picked in game).
 MM.ART_TINT = { 0.88, 0.80, 0.66 }
 function MM.TintArt(texture)
     if not texture then return end
@@ -641,8 +641,8 @@ end
 local Bar = { cells = {}, lines = {}, picks = {}, at = {}, SUN_ROOM = 30, shown = false }
 Bar.SIDES = { "left", "center", "right" }
 Bar.ICONS = { bags = "Interface\\Buttons\\Button-Backpack-Up", durability = "Interface\\Minimap\\Tracking\\Repair" }
--- (11-21) Blizzard's coin icons after each number, as in the bags, not coloured "g s c" letters; the bags'
--- own art, size and gaps (11-23, BorlandC): 13 px coins and 4 px between two at its 14 px numbers
+-- Blizzard's coin icons after each number, as in the bags, not coloured "g s c" letters; the bags'
+-- own art, size and gaps: 13 px coins and 4 px between two at its 14 px numbers
 Bar.COINS = { "coin-gold", "coin-silver", "coin-copper" }
 Bar.COIN_SIZE, Bar.COIN_GAP, Bar.COIN_UP = 13 / 14, 4 / 14, 1
 Bar.WARN, Bar.ALERT, Bar.BAGS_WARN = "|cffff9933", "|cffff4040", 0.85
@@ -696,8 +696,21 @@ local function BarDurability()
 end
 
 -- Coords (Decimals) "45.3, 62.1"; whole: Coords (Simple) "45, 62"
+-- (standing still, the last answer for half a second: each position read is a new table, five times a second; a
+-- boat or an elevator moves you standing still)
+Bar.coords = {}
 local function BarCoords(whole)
     local map = C_Map.GetBestMapForUnit("player")
+    local last, now, speed = Bar.coords[whole], GetTime(), GetUnitSpeed and GetUnitSpeed("player")
+    local still = speed and canaccessvalue(speed) and speed == 0
+    if last and still and last.still and last.map == map and now - last.at < 0.5 then return last.text end
+    local text = Bar.CoordsText(map, whole)
+    last = last or {}
+    last.text, last.still, last.map, last.at = text, still, map, now
+    Bar.coords[whole] = last
+    return text
+end
+function Bar.CoordsText(map, whole)
     local pos = map and C_Map.GetPlayerMapPosition(map, "player")
     if not pos then return "-" end
     local x, y = pos:GetXY()
@@ -718,7 +731,7 @@ Bar.sources = {
     -- sample: the widest text a cell can show, so the cell is sized for it before it changes (Bar.Need)
     coords       = { text = function() return BarCoords(false) end, every = 0.2, sample = "88.8, 88.8" },
     coordsSimple = { text = function() return BarCoords(true) end, every = 0.2, sample = "88, 88" },
-    -- Experience: how far into the level, "XP 45%" (Sam's idea 11-19); the rested part in blue
+    -- Experience: how far into the level, "XP 45%"; the rested part in blue
     -- after it; at the level cap, the level alone
     xp = { text = function()
         local max = UnitXPMax("player") or 0
@@ -733,7 +746,7 @@ Bar.sources = {
 }
 Bar.PAD = 8   -- a cell's room around its widest text
 
--- Below the Map (minimap.infoBarBelow, off; 11-22, Raikoh: over the map it covered the quest arrow,
+-- Below the Map (minimap.infoBarBelow, off; over the map it covered the quest arrow,
 -- which the game draws on the map itself): the bar hangs under the map's frame instead, with no
 -- room for the sundial, and the map's own texts don't move up for it
 Bar.BELOW_GAP = 2
@@ -785,7 +798,7 @@ local function CreateBar()
         f.Plates[i] = f:CreateTexture(nil, "BACKGROUND")
         Plate(f.Plates[i], f)
     end
-    -- the values in white, as Blizzard's money, bag and durability numbers (11-23, BorlandC: gold read
+    -- the values in white, as Blizzard's money, bag and durability numbers (gold read
     -- as a mistake next to the bags' white); the lines between the cells stay gold
     local c, value = NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR
     for i = 1, #Bar.SIDES do
@@ -802,7 +815,7 @@ local function CreateBar()
             Bar.lines[i - 1] = line
         end
     end
-    -- (a blank bar at login, Ciron 11-20: Core.lua ns.FontRedraw draws the cells anew)
+    -- (a blank bar at login: Core.lua ns.FontRedraw draws the cells anew)
     f:SetScript("OnEvent", function() Bar.Fill() end)
     f:SetScript("OnShow", function() Bar.Fill(); Bar.Tick() end)
     f:SetScript("OnHide", function() Bar.Tick() end)
@@ -1193,7 +1206,7 @@ MM.Moves = {
     handles = {},                                   -- key -> handle
 }
 -- (no "Shift+drag to move" line in the icons' own tooltips: it opened a second box over the LFG eye's
--- own tooltip and cluttered the rest; removed 11-23, BorlandC / Malkkav. The handle's tip still shows
+-- own tooltip and cluttered the rest; removed. The handle's tip still shows
 -- with Shift or Ctrl held, or in Edit Mode.)
 do
     local Moves = MM.Moves
@@ -2261,7 +2274,7 @@ function MM.PlaceAllButtons()
 end
 
 -- Popular addons with a minimap button of their own (not LibDBIcon): placed for their own idea of the
--- map, so on the square map they sat apart from the row (MunchieDog 11-20). Adopted like LibDBIcon's:
+-- map, so on the square map they sat apart from the row. Adopted like LibDBIcon's:
 -- in the packed row, dragged along the square edge, the spot saved under the frame's name. Their own
 -- placing still runs (a SetPoint), and the hook puts them back on the square.
 MM.OWN_BUTTONS = { "HappyCamperMinimapButton", "LoreForeverMinimapButton" }

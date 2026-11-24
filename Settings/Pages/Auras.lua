@@ -32,7 +32,7 @@ S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "non
 S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh, half = true,
     disabled = function() return S:GetPath("auras.timer") == "none" end }
 S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh, half = true }
--- TOTEMS (11-20, from their Edit Mode dialog): the swipe and the time on the player's totems
+-- TOTEMS (from their Edit Mode dialog): the swipe and the time on the player's totems
 -- (unitframes.totems, Totems.lua StyleTotem). The totems come with FlareUI's player frame, not this module.
 local function TotemsRefresh() if ns.Totems and ns.Totems.ApplyLayout then ns.Totems.ApplyLayout() end end
 local function TotemsOff()
@@ -60,7 +60,7 @@ S:Row{ key = "au.mineFirst", path = "auras.mineFirst", apply = Refresh, disabled
 -- saved apart, in auras.hidden and auras.shown)
 local HA = ns.HiddenAuras
 
--- (11-22, zbee's Boosted Rest) a debuff the game won't let addons filter on you or a friend (see the
+-- (zbee's Boosted Rest) a debuff the game won't let addons filter on you or a friend (see the
 -- Restrictions note): not marked never-secret, and harmful (by the spell, or as it sits on you now:
 -- passive effects such as Boosted Rest don't call themselves harmful)
 local function BlockedOnYou(id)
@@ -93,7 +93,7 @@ local function OwnAuras()
     for _, filter in ipairs({ "HELPFUL", "HARMFUL" }) do
         local first = true
         for i = 1, 40 do
-            -- (11-22) while the game keeps auras secret (a fight, a flagged player near) the call errors
+            -- while the game keeps auras secret (a fight, a flagged player near) the call errors
             -- for addon code: the list then simply has none of yours
             local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, filter)
             if not ok or not aura or not canaccessvalue(aura) then break end

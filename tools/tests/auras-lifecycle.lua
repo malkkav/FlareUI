@@ -97,6 +97,21 @@ local buff, debuff = auraButton(buffs), auraButton(debuffs)
 assert(buff.auraIcon == buff.FlareUI_Icon and buff.auraCooldown == buff.FlareUI_Cooldown)
 assert(buff.arrival and buff.cancelClick == "RightButtonUp" and not debuff.cancelClick)
 assert(debuff.dispelTextures[debuff.FlareUI_DispelIcon].style == env.Enum.CustomAuraButtonDispelTypeTextureStyle.Icon)
+-- (11-24) a unit frame's type icons go while its unit is an enemy: Blizzard shows the icon, its frame hides it
+do
+    local owner, look = {}, ns.AuraLook.ForUnit(24, true, false, "square", "both", "none", "target")
+    local first, second = env.CreateFrame("Frame", nil, env.UIParent), env.CreateFrame("Frame", nil, env.UIParent)
+    first.FlareUI_AuraOwner = owner
+    ns.AuraLook.Style(first, look)
+    assert(first.FlareUI_DispelHolder:GetAlpha() == 1 and first.FlareUI_DispelIcon:GetParent() == first.FlareUI_DispelHolder)
+    ns.AuraLook.DispelSide(owner, true)
+    assert(first.FlareUI_DispelHolder:GetAlpha() == 0)
+    second.FlareUI_AuraOwner = owner
+    ns.AuraLook.Style(second, look)
+    assert(second.FlareUI_DispelHolder:GetAlpha() == 0, "a button made while the unit is an enemy")
+    ns.AuraLook.DispelSide(owner, false)
+    assert(first.FlareUI_DispelHolder:GetAlpha() == 1 and second.FlareUI_DispelHolder:GetAlpha() == 1)
+end
 assert(ns.auraTipKind[debuff] == "solo" and buff.FlareUI_Cooldown.drawEdge)
 
 weapon.timeLeft, weapon.charges = 15000, 1

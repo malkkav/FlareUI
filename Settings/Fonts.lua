@@ -196,7 +196,7 @@ function S:FontRows(def)
         else
         Control("face", { kind = "dropdown", dropdownWidth = 150, choices = font.optional and OptionalFaces or FontFaces })
         if not font.noSize then Control("size", { kind = "choice", choices = font.autoSize and AUTO_SIZES or SIZES }) end
-        -- (11-23, thatfireboi / aphoex) Sharp Outline: the game's Slug text, drawn as shapes rather than pictures of
+        -- Sharp Outline: the game's Slug text, drawn as shapes rather than pictures of
         -- letters; Blizzard's own nameplate text is. No thick one: ElvUI found the game doesn't draw it
         Control("flags", { kind = "choice", choices = { "NONE", "OUTLINE", "THICKOUTLINE", "OUTLINE, SLUG" },
             -- (Global Font > Outline is over it)

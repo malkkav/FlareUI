@@ -3,7 +3,7 @@ local L = ns.L
 
 --------------------------------------------------
 -- LOOT WINDOW (Bags & Looting > Looting > Loot Window, off; PR #146 by Xentinus)
--- FlareUI's loot window in place of Blizzard's corpse and chest loot window. (11-23, Malkkav) built
+-- FlareUI's loot window in place of Blizzard's corpse and chest loot window. built
 -- like the loot roll window: its border and rock at full strength, its font; the item marks follow the
 -- Bags options (Item Level, Junk, BoE, Uncollected, Skin Item Slots), the owned count always shows, and
 -- the only option of its own is Show Free Bag Slots. Items stay in the order they dropped.
@@ -16,7 +16,7 @@ local ipairs, pairs = ipairs, pairs
 local LSM = LibStub("LibSharedMedia-3.0")
 
 -- after the loot roll window's (LootRolls.lua): side padding, the rows below its header separator
--- (11-23, Kelvan) TOP 34: the first row as far below the header line as the rows are from the sides
+-- TOP 34: the first row as far below the header line as the rows are from the sides
 local W, PAD, TOP = 260, 8, 34
 local ROW_H, ROW_GAP, ICON, BOX_PAD = 48, 4, 36, 6
 local ROW_W = W - 2 * PAD
@@ -590,7 +590,7 @@ end
 -- OPENING, CLOSING AND THE SPOT
 -- Blizzard's LootFrame only loses its LOOT_OPENED and LOOT_CLOSED; it is never hidden (its OnHide
 -- closes the loot) and none of its fields are written. The Gamepad UI gives it the two back, and so does
--- being the Master Looter: Blizzard's assign menu and window belong to its own loot window (11-24).
+-- being the Master Looter: Blizzard's assign menu and window belong to its own loot window.
 --------------------------------------------------
 local LEM = LibStub("FlareEditMode")
 local MOVER_KEY = "lootWindow"   -- tweaks.moverLayouts[layout].lootWindow
@@ -756,7 +756,7 @@ local function OnEvent(_, event, a, b)
             return
         end
         -- auto loot too: Blizzard's window opens for every loot (LootFrame.lua OnEvent) and its rows
-        -- go as the items are taken, until LOOT_CLOSED hides it (11-23, Kelvan)
+        -- go as the items are taken, until LOOT_CLOSED hides it
         ShowSlots()
     elseif event == "BAG_UPDATE_DELAYED" then
         if win:IsShown() then

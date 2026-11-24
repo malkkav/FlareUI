@@ -129,6 +129,51 @@ NP.standDown = true
 NP.ApplyCombo()
 assert(not row:IsShown(), "another nameplate addon")
 
+-- their size follows the plate's width, within limits
+do
+    assert(NP.ComboScale(150) == 1 and NP.ComboScale(225) == 1.5 and NP.ComboScale(50) == 0.6 and NP.ComboScale(900) == 2)
+    assert(NP.ComboScale(nil) == 1)
+    NP.standDown, parts.kind = nil, "enemyNpc"
+    NP.TypeDB = function(kind) assert(kind == "enemyNpc") return { width = 225 } end
+    NP.ApplyCombo()
+    assert(row:IsShown() and math.abs(row:GetScale() - 1.65) < 0.001)
+    NP.TypeDB = nil
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(math.abs(row:GetScale() - 1.1) < 0.001)
+end
+-- BLIZZARD'S PLATES (11-24, kiwi): Quality of Life's switch, only with the Nameplates module off
+do
+    NP.ready, db.enabled, parts = nil, false, nil
+    local casts = env.CreateFrame("Frame", nil, plate)
+    local healthBar = env.CreateFrame("StatusBar", nil, plate)
+    for _, f in ipairs({ plate, casts, healthBar }) do f.IsForbidden = function() return false end end
+    plate.UnitFrame = { IsForbidden = function() return false end, CastBarsContainer = casts, HealthBarsContainer = { healthBar = healthBar } }
+    NP.ApplyCombo()
+    assert(not row:IsShown(), "off")
+    tweaks.plateCombo = true
+    NP.ApplyCombo()
+    assert(not row:IsShown(), "Quality of Life is off")
+    tweaks.enabled = true
+    NP.ApplyCombo()
+    assert(row:IsShown() and select(2, row:GetPoint()) == casts)
+    casts.IsForbidden = function() return true end
+    row:Hide()
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(row:IsShown() and select(2, row:GetPoint()) == healthBar)
+    plate.UnitFrame.IsForbidden = function() return true end
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(not row:IsShown(), "a plate we may not touch")
+    plate.UnitFrame.IsForbidden = function() return false end
+    NP.OtherAddon = function() return "Plater" end
+    NP.ApplyCombo()
+    assert(not row:IsShown(), "another nameplate addon")
+    NP.OtherAddon, db.enabled = nil, true
+    NP.ApplyCombo()
+    assert(not row:IsShown(), "the module is on: its own Combo Points decide")
+    tweaks.enabled, tweaks.plateCombo, plate.UnitFrame = false, nil, nil
+    NP.ready, NP.standDown, parts = true, true, ours
+end
+
 -- SMOOTH ANIMATED BARS: its own Nameplates switches decide, its API takes the bars
 do
     local S = NP.Sab

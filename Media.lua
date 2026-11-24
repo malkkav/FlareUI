@@ -25,7 +25,7 @@ local ASSETS = {
         ["FlareUI Striped"] = "Bars/FlareUI-Striped.tga",
         ["FlareUI Dark"]    = "Bars/FlareUI-Forever.tga",
         ["FlareUI Light"]   = "Bars/FlareUI-Forever-Bright.tga",
-        -- (their old names, 11-19: still registered so other addons and old saves find them; never
+        -- (their old names: still registered so other addons and old saves find them; never
         -- listed, as every "FlareUI " name is FlareUI's own. Saved values are renamed once: Core.lua)
         ["FlareUI Forever"] = "Bars/FlareUI-Forever.tga",
         ["FlareUI Forever (Light)"] = "Bars/FlareUI-Forever-Bright.tga",
@@ -75,7 +75,7 @@ for mediaType, entries in pairs(ASSETS) do
     end
 end
 
--- Friz Quadrata TT (Crisp) (11-22, Malkkav): Blizzard's Russian copy of Friz Quadrata, which draws
+-- Friz Quadrata TT (Crisp): Blizzard's Russian copy of Friz Quadrata, which draws
 -- sharper. 7.0.3 used it everywhere by accident and players liked it, so it is a pick of its own.
 -- It lacks a few symbols (the middle dot "·" shows as a box): the Font row's tip says so.
 do

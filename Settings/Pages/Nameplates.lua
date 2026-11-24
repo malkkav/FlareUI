@@ -22,13 +22,13 @@ end
 --     everything the type's settings draw, and Test in Game
 -- The hovered row adds its own state.
 local PIN = { hover = nil, scale = 1.5, kind = "enemyNpc" }
--- (11-20: players and NPCs split again; Minions are part of Minor)
+-- (players and NPCs split again; Minions are part of Minor)
 local KINDS = { { "enemyPlayer", L["Enemy Player"] }, { "enemyNpc", L["Enemy NPC"] }, { "friendlyPlayer", L["Friendly Player"] },
                 { "friendlyNpc", L["Friendly NPC"] }, { "minor", L["Minor"] } }
 local PRESETS = { { "full", L["Full"] }, { "compact", L["Simple"] }, { "tiny", L["Minimal"] }, { "name", L["Name Only"] },
                   { "custom", L["Custom"] } }
 local function Named(list, key) for _, e in ipairs(list) do if e[1] == key then return e[2] end end return key end
--- a preset's name; each type's own Custom says whose it is (11-20): "Custom Enemy NPC"
+-- a preset's name; each type's own Custom says whose it is: "Custom Enemy NPC"
 local function PresetName(key, kind)
     if key == "custom" then return L["Custom %s"]:format(Named(KINDS, kind or PIN.kind)) end
     return Named(PRESETS, key)
@@ -409,8 +409,8 @@ end
 
 S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
     enabled = "nameplates.enabled",
-    -- (11-20: Targeting moved next to Visibility; it, Visibility and Fonts are shared by every type)
-    -- (11-23, #165 Nico-Mayer / Malkkav) two groups with a label each: the tabs that change only the unit
+    -- (Targeting moved next to Visibility; it, Visibility and Fonts are shared by every type)
+    -- (#165 Nico-Mayer) two groups with a label each: the tabs that change only the unit
     -- type picked in Plate Setup, then the ones every plate shares (Panel.lua UpdateHeader, groupLabel)
     tabs = { { key = "style", groupLabel = L["This Unit Type"] }, { key = "extras" }, { key = "cast" }, { key = "auras" },
              { key = "targeting", groupLabel = L["All Nameplates"] }, { key = "visibility" }, { key = "fonts" } },
@@ -418,13 +418,13 @@ S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
     subtitle = function(tab)
         local np = NP()
         if not np then return nil end
-        -- the shared tabs say so, instead of the unit being edited (11-20)
+        -- the shared tabs say so, instead of the unit being edited
         if SHARED_TABS[tab] then return L["Overall options for all plates"] end
         return L["Editing: %s (%s)"]:format(Named(KINDS, PIN.kind), PresetName(np.PresetOf(PIN.kind)))
     end,
     sidePanel = {
         -- Plate Setup and Live Preview at the bottom; the text box gets the rest
-        height = 360,   -- (11-20: +30 for the Unit list's three rows)
+        height = 360,   -- (+30 for the Unit list's three rows)
         show = function(host)
             PIN.host = host
             DrawSide()
@@ -441,7 +441,7 @@ local function TypeDefault(key)
     if not (np and np.PresetValue) then return nil end
     return np.PresetValue(np.C.DEFAULT_PRESET[PIN.kind] or "full", key, PIN.kind)
 end
--- NAME ONLY MODE (11-20, Malkkav): with it on, the type's other rows on its own tabs grey out (a
+-- NAME ONLY MODE: with it on, the type's other rows on its own tabs grey out (a
 -- Name Only plate draws none of them), unless Show Plates in Combat gives it its bar in a fight
 local OWN_TABS = { style = true, extras = true, cast = true, auras = true }
 local function NameOnlyLocked()
@@ -452,7 +452,7 @@ local function NameOnlyLocked()
     end
     return true
 end
--- (11-22, AstroFox) the Visibility tab is Blizzard's own nameplate settings, and In Combat keeps
+-- (AstroFox) the Visibility tab is Blizzard's own nameplate settings, and In Combat keeps
 -- working with the module off: its rows stay usable then, so it can be switched back. Only these
 -- two act on FlareUI's plates alone.
 local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true }
@@ -506,8 +506,8 @@ local function Textures()
 end
 -- FRAME: size and background first, then texture, border and level
 Row{ key = "np.width", kind = "range", path = "width", choices = Steps(50, 240, 10), tab = "style", section = "np.frameSection" }
--- (11-23, Malkkav: down to 5, vyf) a slim bar with no text in it
-Row{ key = "np.height", kind = "range", path = "height", choices = Steps(5, 30, 1), tab = "style", section = "np.frameSection" }
+-- (down to 5, vyf) a slim bar with no text in it; up to 50, big screens
+Row{ key = "np.height", kind = "range", path = "height", choices = Steps(5, 50, 1), tab = "style", section = "np.frameSection" }
 Row{ key = "np.bgOpacity", kind = "range", path = "bgOpacity", choices = Steps(0, 100, 5, function(v) return v .. "%" end), tab = "style", section = "np.frameSection" }
 Row{ key = "np.texture", kind = "choice", path = "texture", choices = Textures, tab = "style", section = "np.frameSection" }
 -- Border: None, FlareUI Thin and Thick (the "FlareUI Frames" and "FlareUI Thick" art), Shared Media
@@ -568,7 +568,7 @@ Row{ key = "np.barEffects", kind = "dropdown", tab = "style", section = "np.look
     set = function(value)
         local on = {}
         for token in tostring(value or ""):gmatch("[^,]+") do on[token] = true end
-        -- the type's own (11-20), as every row on this tab
+        -- the type's own, as every row on this tab
         local np = NP()
         for _, e in ipairs(EFFECTS) do if np then np.TypeSet(PIN.kind, e[2], on[e[1]] and true or false) end end
     end,
@@ -595,7 +595,7 @@ local function EncodeSlots(all)
     return table.concat(parts, ";")
 end
 Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health",
-    -- (11-22) Full Name too: 7.0.1 drew it but left it out of this list
+    -- Full Name too: 7.0.1 drew it but left it out of this list
     choices = { "none", { divider = true }, "firstname", "lastname", "fullname", "percent", "value", "max", "lost" },
     slots = { { key = "left", text = L["Left"] }, { key = "middle", text = L["Centre"] }, { key = "right", text = L["Right"] } },
     slotTicked = function(slot, value)
@@ -648,11 +648,11 @@ Row{ key = "np.barText", kind = "dropdown", tab = "style", section = "np.health"
         local right = np and np.BlizzardHealthDefault and np.BlizzardHealthDefault() or {}
         return EncodeSlots({ left = { firstname = true }, middle = {}, right = right })
     end }
--- (11-23, Malkkav / Ha'Beebs) Colour Names by Class (off): players' names on full plates in their class
+-- Colour Names by Class (off): players' names on full plates in their class
 -- colour (Name Only plates already are); beside Hide Value at Full Health
 Row{ key = "np.nameClassColor", path = "nameClassColor", tab = "style", section = "np.health", half = true }
 Row{ key = "np.hideTextAtFull", path = "hideTextAtFull", tab = "style", section = "np.health", half = true }
--- NAMES ABOVE PLATE (11-22, Malkkav): as the unit frames' Name Above Frames, per type (Nameplates.lua
+-- NAMES ABOVE PLATE: as the unit frames' Name Above Frames, per type (Nameplates.lua
 -- NP.LayoutNameAbove); saved as "<slot>:<firstname|fullname|lastname>", nothing for Off
 Row{ key = "np.nameAbove", kind = "choice", tab = "style", section = "np.health",
     choices = { "off", "left:firstname", "left:lastname", "left:fullname", "middle:firstname", "middle:lastname", "middle:fullname",
@@ -662,7 +662,7 @@ Row{ key = "np.nameAbove", kind = "choice", tab = "style", section = "np.health"
     resetValue = function() return "off" end,
     disabled = function() return TV("plate") == "hidden" end }
 
--- NAME ONLY MODE (11-20): the switch (the type's Plate: Name Only, as the Name Only preset), the name's
+-- NAME ONLY MODE: the switch (the type's Plate: Name Only, as the Name Only preset), the name's
 -- size, and which types get their whole plate back in a fight (shared: one list of types)
 local function NameOnlyOff() return TV("plate") ~= "name" end
 Row{ key = "np.nameOnlyMode", tab = "style", section = "np.nameOnlySection", lead = true,
@@ -672,9 +672,9 @@ Row{ key = "np.nameOnlyMode", tab = "style", section = "np.nameOnlySection", lea
     apply = function() Refresh() if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end end }
 Row{ key = "np.nameOnlySize", kind = "range", path = "nameOnlySize", choices = Steps(50, 200, 10, function(v) return v .. "%" end),
     tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff }
--- Show Name (11-22, Malkkav; per type): a Name Only plate's player names, First, Full or Last (11-24; saved
+-- Show Name (per type): a Name Only plate's player names, First, Full or Last (saved
 -- false, true or "lastname": it was the Show Full Name switch)
--- (11-23, #164 Nico-Mayer) players only: NPCs have one name, so it would do nothing there
+-- (#164 Nico-Mayer) players only: NPCs have one name, so it would do nothing there
 Row{ key = "np.nameOnlyFull", kind = "choice", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
     choices = { "firstname", "lastname", "fullname" },
     get = function()
@@ -687,7 +687,7 @@ Row{ key = "np.nameOnlyFull", kind = "choice", tab = "style", section = "np.name
     end,
     resetValue = function() return "fullname" end,
     hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
--- (11-23, Malkkav / WildDaisy2) Colour Guild Members (Friendly Player only, off) and Show Titles (every
+-- Colour Guild Members (Friendly Player only, off) and Show Titles (every
 -- type; on for NPC types, off for players and Minor: Nameplates.lua NP.TitlesOn)
 Row{ key = "np.guildColor", path = "guildColor", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
     hidden = function() return PIN.kind ~= "friendlyPlayer" end }
@@ -699,7 +699,7 @@ Row{ key = "np.showTitles", tab = "style", section = "np.nameOnlySection", half 
     end,
     set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "showTitles", on and true or false) end end,
     resetValue = function() return PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end }
--- (11-24, illsism / Malkkav) the player types only: NPCs have no guild
+-- the player types only: NPCs have no guild
 Row{ key = "np.showGuild", path = "showGuild", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
     hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
 Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
@@ -776,7 +776,7 @@ Row{ key = "np.targetBorder", path = "targetBorder", tab = "targeting", section 
 Row{ key = "np.targetBarColor", path = "targetBarColor", tab = "targeting", section = "np.highlights", half = true }
 Row{ key = "np.targetGlow", path = "targetGlow", tab = "targeting", section = "np.highlights", half = true }
 Row{ key = "np.colorFocus", path = "colorFocus", tab = "targeting", section = "np.highlights", half = true }
--- Mouseover Highlight (11-23, Malkkav / vyf; shared): which parts light up under the mouse, Border and
+-- Mouseover Highlight (shared): which parts light up under the mouse, Border and
 -- Bar by default (Nameplates.lua NP.HoverParts)
 Row{ key = "np.mouseoverHighlight", kind = "dropdown", tab = "targeting", section = "np.mouseoverSection",
     choices = { "none", { divider = true }, "border", "bar", "glow" },
@@ -787,7 +787,7 @@ Row{ key = "np.mouseoverHighlight", kind = "dropdown", tab = "targeting", sectio
 
 -- EXTRAS: what sits on top of the plate - icons, bar effects, threat and the special colours
 Row{ key = "np.rarityIcon", path = "rarityIcon", tab = "extras", section = "np.marks", half = true }
--- Combo Points and Objective Icon (11-20, per type): the shared switch (nameplates.comboPoints, questMarks)
+-- Combo Points and Objective Icon (per type): the shared switch (nameplates.comboPoints, questMarks)
 -- and the type's own; ticking one on turns the shared one on as well
 local function TypeSwitch(path, key)
     return function()
@@ -804,7 +804,7 @@ do
         get = get, set = set, resetValue = function() return false end }
 end
 -- Objective Icon (the saved quest switch, shared with Blizzard's plates) and Objective Progress (never
--- set, it follows the icon: NP.QuestParts). (#128, 11-22) players never carry quest objectives: both
+-- set, it follows the icon: NP.QuestParts). (#128) players never carry quest objectives: both
 -- rows hide on the two player types
 local function PlayerType() return PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer" end
 do
@@ -830,7 +830,7 @@ Row{ key = "np.role", kind = "choice", path = "role", choices = { "auto", "tank"
 Row{ key = "np.threatGlow", path = "threatGlow", tab = "extras", section = "np.threatSection", half = true }
 Row{ key = "np.aggroFlash", path = "aggroFlash", tab = "extras", section = "np.threatSection", half = true }
 Row{ key = "np.threatScale", path = "threatScale", tab = "extras", section = "np.threatSection", half = true }
--- (11-23: a switch before; Always and Off keep its saved true and false)
+-- (a switch before; Always and Off keep its saved true and false)
 Row{ key = "np.threatPercent", kind = "choice", choices = { "off", "groups", "instances", "always" }, tab = "extras", section = "np.threatSection",
     get = function()
         local v = TV("threatPercent")
@@ -883,7 +883,7 @@ Row{ key = "np.raidColor", tab = "extras", section = "np.specialColors", half = 
 -- CAST BAR: the switch alone, then its frame and how it behaves
 local function NoCast() return not TV("castbar") end
 Row{ key = "np.castbar", path = "castbar", tab = "cast", section = "np.castSection" }
--- (11-23, Malkkav / vyf) the cast bar's own Bar Texture and Border, above Cast Bar Height: FlareUI Dark
+-- the cast bar's own Bar Texture and Border, above Cast Bar Height: FlareUI Dark
 -- and FlareUI Thin by default, apart from the plate's (Nameplates.lua NP.CastTexture / NP.CastBorder)
 Row{ key = "np.castTexture", kind = "choice", tab = "cast", section = "np.castFrame", disabled = NoCast,
     choices = Textures,
@@ -895,11 +895,11 @@ Row{ key = "np.castBorder", kind = "choice", tab = "cast", section = "np.castFra
     get = function() return TV("castBorder") or "FlareUI Frames" end,
     set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, "castBorder", v) end end,
     resetValue = function() return "FlareUI Frames" end }
-Row{ key = "np.castHeight", kind = "range", path = "castHeight", choices = Steps(6, 18, 1), tab = "cast", section = "np.castFrame", disabled = NoCast }
+Row{ key = "np.castHeight", kind = "range", path = "castHeight", choices = Steps(6, 40, 1), tab = "cast", section = "np.castFrame", disabled = NoCast }
 Row{ key = "np.castIcon", path = "castIcon", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 Row{ key = "np.castTimer", path = "castTimer", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 Row{ key = "np.castTarget", path = "castTarget", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
--- Edge Glow (11-22, Malkkav; per type): on for new players only (Core.lua ns.CastGlowOn)
+-- Edge Glow (per type): on for new players only (Core.lua ns.CastGlowOn)
 Row{ key = "np.castGlow", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast,
     get = function() return ns.CastGlowOn(TV("castGlow")) end,
     set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "castGlow", on and true or false) end end,
@@ -910,7 +910,7 @@ Row{ key = "np.castTargetedFlash", path = "castTargetedFlash", tab = "cast", sec
 Row{ key = "np.castImportant", path = "castImportant", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
 
 -- AURAS
--- (11-22, Malkkav) the unit frames' four aura look rows, the type's own
+-- the unit frames' four aura look rows, the type's own
 Row{ key = "np.auraStyle", kind = "choice", path = "auraStyle", choices = { "square", "round" }, tab = "auras", section = "np.auraLook" }
 Row{ key = "np.auraSwipe", kind = "choice", path = "auraSwipe", choices = { "none", "icon", "border", "both" }, tab = "auras", section = "np.auraLook" }
 Row{ key = "np.auraTimer", kind = "choice", path = "auraTimer", choices = { "none", "below", "bottom", "middle" }, tab = "auras", section = "np.auraLook" }
@@ -924,25 +924,25 @@ Row{ key = "np.buffs", kind = "dropdown", path = "buffs", tab = "auras", section
 -- as the unit frames' Hide Buffs
 Row{ key = "np.hideBuffs", kind = "choice", path = "hideBuffs", choices = { "OFF", "PERMANENT", "900", "600", "300", "60" },
     tab = "auras", section = "np.buffSection", disabled = function() return TV("buffs") == "off" end }
-Row{ key = "np.buffSize", kind = "range", path = "buffSize", choices = Steps(12, 32, 1), tab = "auras", section = "np.buffSection",
+Row{ key = "np.buffSize", kind = "range", path = "buffSize", choices = Steps(12, 50, 1), tab = "auras", section = "np.buffSection",
     disabled = function() return TV("buffs") == "off" end }
 Row{ key = "np.buffMax", kind = "range", path = "buffMax", choices = Steps(1, 16, 1), tab = "auras", section = "np.buffSection",
     disabled = function() return TV("buffs") == "off" end }
 Row{ key = "np.debuffs", kind = "dropdown", path = "debuffs", tab = "auras", section = "np.debuffSection",
     choices = { "off", "all", { divider = true }, "mine", "dispel" },
     toggles = { exclusive = { "off", "all" }, tokens = { "mine", "dispel" }, empty = "all" } }
-Row{ key = "np.debuffSize", kind = "range", path = "debuffSize", choices = Steps(12, 32, 1), tab = "auras", section = "np.debuffSection",
+Row{ key = "np.debuffSize", kind = "range", path = "debuffSize", choices = Steps(12, 50, 1), tab = "auras", section = "np.debuffSection",
     disabled = function() return TV("debuffs") == "off" end }
 Row{ key = "np.debuffMax", kind = "range", path = "debuffMax", choices = Steps(1, 16, 1), tab = "auras", section = "np.debuffSection",
     disabled = function() return TV("debuffs") == "off" end }
--- AURA POSITIONS (11-22, Malkkav): shown only with both Buffs and Debuffs on (Nameplates.lua NP.AuraStack)
+-- AURA POSITIONS: shown only with both Buffs and Debuffs on (Nameplates.lua NP.AuraStack)
 Row{ key = "np.auraRows", kind = "choice", path = "auraRows", choices = { "one", "buffsTop", "debuffsTop" },
     tab = "auras", section = "np.auraRowsSection",
     hidden = function() return TV("buffs") == "off" or TV("debuffs") == "off" end }
 -- (defensives first: they sit left of the plate, crowd control right)
 Row{ key = "np.defensives", path = "defensives", tab = "auras", section = "np.ccSection", half = true }
 Row{ key = "np.cc", path = "cc", tab = "auras", section = "np.ccSection", half = true }
-Row{ key = "np.ccSize", kind = "range", path = "ccSize", choices = Steps(16, 40, 2), tab = "auras", section = "np.ccSection",
+Row{ key = "np.ccSize", kind = "range", path = "ccSize", choices = Steps(16, 60, 2), tab = "auras", section = "np.ccSection",
     disabled = function() return not (TV("cc") or TV("defensives")) end }
 
 -- VISIBILITY: Blizzard's own nameplate and name settings (the game saves them; not in a fight), in
@@ -993,7 +993,7 @@ local function SwitchesRow(key, section, list, setCVar)
 end
 -- PLATES
 ShowRow("np.enemyShow", "nameplateShowEnemies", "nameplates.enemyInCombat")
--- Enemy Types (11-20): Players and NPCs too. The game has no switch for those two: they are FlareUI's
+-- Enemy Types: Players and NPCs too. The game has no switch for those two: they are FlareUI's
 -- (nameplates.enemyPlayers / enemyNpcs, Nameplates.lua NP.UnitHidden); Minions and Minor are the game's
 do
     local GAME = { minions = "nameplateShowEnemyMinions", minor = "nameplateShowEnemyMinus" }
@@ -1024,7 +1024,7 @@ do
         resetValue = function() return "players,npcs" end,
         disabled = Locked, apply = Refresh }
 end
--- Show Friendly Plates / Friendly Types (11-21): Forever has no master switch for friendly plates
+-- Show Friendly Plates / Friendly Types: Forever has no master switch for friendly plates
 -- (nameplateShowFriends does not exist), only the three type switches. Off = all three off, Always =
 -- at least one on (Players when none is), In Combat = NameplateExtras.lua holds them at 0 out of a fight
 -- and keeps the picks (NP.FriendlyHeld), which Friendly Types then reads and writes instead of the game's
@@ -1100,7 +1100,7 @@ Row{ key = "np.showOffscreen", tab = "visibility", section = "np.platesBehaviour
     set = function(on) SetGameCVar("nameplateShowOffscreen", on) end,
     disabled = Locked, apply = function() end }
 Row{ key = "np.clickThrough", path = "clickThrough", tab = "visibility", section = "np.platesBehaviour", half = true }
--- (11-20: Realm Names removed, Forever has no realms) Name Only While Unattackable, off (Nameplates.lua NP.Peaceful)
+-- (Realm Names removed, Forever has no realms) Name Only While Unattackable, off (Nameplates.lua NP.Peaceful)
 Row{ key = "np.peacefulNames", path = "peacefulNames", tab = "visibility", section = "np.platesBehaviour", half = true }
 
 -- WORLD NAMES: the names over units' heads (Blizzard's own switches)
@@ -1141,4 +1141,4 @@ S:FontRows{ module = "np", tab = "fonts", section = "np.fonts", apply = Refresh,
     { key = "level", path = "nameplates.levelFont" },
     { key = "cast", path = "nameplates.castFont" },
 } }
--- (11-20: the Blizzard's Names section, a link to the General page, removed)
+-- (the Blizzard's Names section, a link to the General page, removed)

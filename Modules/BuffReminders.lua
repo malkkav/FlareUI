@@ -648,13 +648,6 @@ function BR.HideKey(entry)
     end
     return (class or "") .. ":" .. (entry.key or entry.def and entry.def.key or "")
 end
-function BR.HiddenCount()
-    local db = GetDb() or {}
-    local n = 0
-    for _ in pairs(db.hidden or {}) do n = n + 1 end
-    for _ in pairs(dismissed) do n = n + 1 end
-    return n
-end
 -- a reminder's name, kept with it when hidden so the Hidden Reminders list can show it
 function BR.EntryLabel(entry, owner)
     local name = owner and owner.spellID and SpellName(owner.spellID)
@@ -696,12 +689,6 @@ function BR.SetHidden(value)
         end
     end
     if db and db.hidden and not next(db.hidden) then db.hidden = nil end
-    BR.Update()
-end
-function BR.ShowHidden()
-    local db = GetDb()
-    if db then db.hidden = nil end
-    wipe(dismissed)
     BR.Update()
 end
 
@@ -761,10 +748,6 @@ local function CustomList(create)
         db.custom[class] = db.custom[class] or {}
     end
     return db.custom and db.custom[class]
-end
-function BR.CustomCount()
-    local list = CustomList()
-    return list and #list or 0
 end
 -- "1459, 23028" / "Arcane Intellect" / "item:13452": spells (by ID or name) and items
 function BR.AddCustom(text)
@@ -830,14 +813,6 @@ function BR.SetCustom(value)
     BR.Resolve()
     BR.Update()
 end
-function BR.ClearCustom()
-    local db = GetDb()
-    local _, class = UnitClass("player")
-    for _, c in ipairs(BR.CustomIds(CustomList())) do BR.ForgetCustom(c) end
-    if db and db.custom then db.custom[class] = nil end
-    BR.Resolve()
-    BR.Update()
-end
 local function RemoveCustom(def)
     local list = CustomList()
     if not list then return end
@@ -847,7 +822,7 @@ local function RemoveCustom(def)
     BR.Resolve()
     BR.Update()
 end
--- (11-24) Never Remind Me, Hide Until Reload and Snooze remember a custom reminder by its id, not its place
+-- Never Remind Me, Hide Until Reload and Snooze remember a custom reminder by its id, not its place
 -- in the list: removing one moved them onto the next. Older ones get their place as their id.
 function BR.CustomIds(list)
     list = list or {}
@@ -1306,7 +1281,7 @@ local function PetFix(entry)
         end
         if next(names) and HasBuff("player", names, 0) then return nil end
     end
-    -- the pet picked in the icon's menu (11-21), else the last one summoned
+    -- the pet picked in the icon's menu, else the last one summoned
     local picked = BR.WarlockPick()
     if picked then return picked, "player" end
     local me = ns.CharDB and ns.CharDB()
@@ -1745,9 +1720,9 @@ local function Check(entry, before)
         -- food: the last food you ate that gave the buff is remembered (BR.pendingFood; BR.ConfirmFood)
         if def.key == "food" and fine and BR.ConfirmFood then BR.ConfirmFood() end
         if fine then return 0, 1 end
-        -- food: a click eats that one again while you have it (Bill's and Tride's idea 11-19)
+        -- food: a click eats that one again while you have it
         local food = def.key == "food" and ns.CharDB().buffFood
-        -- (a drink saved as the food, before 11-23: forgotten)
+        -- (a drink saved as the food, in older versions: forgotten)
         if food and BR.IsDrink and BR.IsDrink(food) then food, ns.CharDB().buffFood = nil, nil end
         if food and ItemCount(food) > 0 then
             return 1, 1, "player", nil, ItemIcon(food), running, { item = "item:" .. food, tipItem = food },
@@ -1966,7 +1941,7 @@ function BR.Menu(owner)
             Radio(L["Only Me"], "thorns", "self")
             Radio(L["Everyone"], "thorns", "all")
         elseif entry.def.pet == "WARLOCK" then
-            -- (11-21, Bremerton) which demon a click summons, as the weapon buffs pick theirs
+            -- (Bremerton) which demon a click summons, as the weapon buffs pick theirs
             root:CreateDivider()
             root:CreateTitle(L["Pet to Summon"])
             Radio(L["Last Used"], "warlockPet", "auto")
@@ -1975,7 +1950,7 @@ function BR.Menu(owner)
                 if name and (Known(id) or db.warlockPet == id) then Radio(name, "warlockPet", id) end
             end
         end
-        -- the Buff Reminders page (11-21, Tride)
+        -- the Buff Reminders page
         root:CreateDivider()
         root:CreateButton(L["FlareUI Settings"], function()
             if ns.SettingsPanel then ns.SettingsPanel:Open("br") end
@@ -2295,7 +2270,7 @@ function BR.Update(context)
                     missing = 0
                 end
                 -- its spell on cooldown (Fear Ward): nothing to do yet, back when it's ready (the
-                -- ticker checks again). loraethil's idea 11-19
+                -- ticker checks again).
                 if missing > 0 and BR.OnCooldown(castID or entry.castID) then missing = 0 end
                 if missing > 0 then
                     local s = Entry(#shows + 1)
@@ -2646,7 +2621,7 @@ local function BuildSettings()
     local function SetBool(key)
         return function(_, value) local db = GetDb(); if db then db[key] = value and true or false end; Redraw() end
     end
-    -- Look: Icon Alerts, one dropdown of toggles (11-20, was three switches in an "Alerts" section)
+    -- Look: Icon Alerts, one dropdown of toggles
     local ALERTS = { { "glowMissing", false }, { "glowExpiring", false }, { "timeLeft", true } }
     Section("Look", {
         { name = L["Icon Alerts"], kind = LEM.SettingType.Dropdown, multiple = true,
@@ -2794,7 +2769,7 @@ function BR:Init()
         if drink then return end
         local note = { item = itemID, at = when }
         if drink == false then BR.pendingFood = note return end
-        -- (11-23, Tride) what it does isn't loaded yet: a drink taken for food replaced the food eaten
+        -- what it does isn't loaded yet: a drink taken for food replaced the food eaten
         -- with it. Asked for, and looked at again
         if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(itemID) end
         C_Timer.After(1, function()
@@ -2805,7 +2780,7 @@ function BR:Init()
         end)
     end
     -- A food is noticed as one leaves the bags together with a spell of yours it casts: never by hooking the
-    -- game's own item use (11-23, zbee's blocked armor kit: the game's bag click ran through those hooks and
+    -- game's own item use (zbee's blocked armor kit: the game's bag click ran through those hooks and
     -- the block was put on FlareUI). Counted only as the bags change.
     local eaten = { drops = {}, spells = {}, counts = nil }   -- drops: [item] = when; spells: [spell] = when
     BR.eaten = eaten
@@ -2859,7 +2834,7 @@ function BR:Init()
         if next(eaten.drops) then MatchFood() end
     end
     BR.CountFood()
-    -- the food buff coming in confirms the food, wherever you are (11-20: Check only runs where the
+    -- the food buff coming in confirms the food, wherever you are (Check only runs where the
     -- Consumables choice shows the reminder, so eating in the open world was never remembered)
     function BR.ConfirmFood()
         local pending = BR.pendingFood

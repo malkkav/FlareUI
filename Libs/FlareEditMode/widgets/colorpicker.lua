@@ -98,7 +98,7 @@ function colorPickerMixin:SetEnabled(enabled)
 	self.Label:SetTextColor((enabled and WHITE_FONT_COLOR or DISABLED_FONT_COLOR):GetRGB())
 end
 
--- FlareUI (11-21): in the Gamepad UI Blizzard's colour picker reports itself to the controller's focus
+-- FlareUI: in the Gamepad UI Blizzard's colour picker reports itself to the controller's focus
 -- manager as it shows (GamepadMode.FrameControlsManager:FrameShown); opened from addon code that taints
 -- the manager, and closing Edit Mode later ends in a forbidden SetPreferredGamepadInteractTarget blamed
 -- on FlareUI. A swatch there opens FlareUI's own list (PadNav) of ready colours instead: the setting's

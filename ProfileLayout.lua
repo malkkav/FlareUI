@@ -74,7 +74,7 @@ end
 -- A layout's store (layouts[name], made if missing). What it lacks is read from the first of these that has
 -- it: the home layout, the homes before it (newest first), the fullest other layout. Moving one frame in
 -- a second layout makes it the home, so with the home alone every other frame of a third layout jumped to
--- its default (11-24). Each is read with rawget, so layouts reading each other never loop. Scales
+-- its default. Each is read with rawget, so layouts reading each other never loop. Scales
 -- ("values") stay a layout's own.
 local function Spot(p, layouts, name, key)
     local function From(other)

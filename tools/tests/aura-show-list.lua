@@ -1,27 +1,8 @@
 -- Hide/Show Auras: the Always Show list adds a row of only its spells after the frame's buffs or
 -- debuffs, and the usual rows leave those spells out; the hidden list keeps working; one list per spell.
-local H = dofile("tools/tests/perf-helpers.lua")
-local core = H.read("Core.lua")
-
-local function wipe(t) for k in pairs(t) do t[k] = nil end return t end
-local function CopyTable(t) local c = {} for k, v in pairs(t) do c[k] = v end return c end
 local profile = { auras = { hidden = {}, shown = {} } }
-local ns = {
-    db = { profile = profile },
-    Conditions = { Has = function(list, token) return ("," .. (list or "") .. ","):find("," .. token .. ",", 1, true) ~= nil end },
-}
-local env = setmetatable({ ns = ns, wipe = wipe, CopyTable = CopyTable }, { __index = _G })
-local function run(code)
-    local chunk = assert((loadstring or load)(code))
-    if setfenv then setfenv(chunk, env) end
-    chunk()
-end
-run("local AP = {} ns.AuraPolicy = AP\n"
-    .. H.section(core, "    function AP.ApplyHidden(lanes, place, editing)", "    -- Party, raid, main tank and boss tiles."))
-run("local AP = ns.AuraPolicy\n" .. H.section(core, "    function AP.SplitPlace(lanes)", "    -- A lane's filter for its unit right now"))
-run(H.section(core, "ns.HiddenAuras = { stamp = 0 }", "-- \"Show Speed\" / \"Hide Speed\" choices"))
+local _, ns = dofile("tools/tests/fixtures/core.lua")(profile)
 local HA, AP = ns.HiddenAuras, ns.AuraPolicy
-HA.Refresh = nil
 
 local fails = 0
 local function check(ok, msg) if not ok then fails = fails + 1 print("FAIL: " .. msg) end end

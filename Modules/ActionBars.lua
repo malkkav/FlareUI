@@ -966,7 +966,7 @@ end
 
 -- redraw: the size changed once and back, so the text is drawn anew. The same font again does
 -- nothing, and a key drawn at login before its font file loaded stays blank until a real change
--- (a Button Scale change brought the keys back, TheHusky's report 11-19)
+-- (a Button Scale change brought the keys back)
 local function UpdateButtonText(button, redraw)
     if not button then return end
     local db = GetBarConfig()
@@ -1798,7 +1798,7 @@ function ActionBars:CatchUpRanks()
     if #pendingRanks > 0 then FlushRanks() end
 end
 
--- PET SPELLS (11-22, zbee: a warlock's Torment stayed rank 1 on the bars after the grimoire). The
+-- PET SPELLS (a warlock's Torment stayed rank 1 on the bars after the grimoire). The
 -- pet's ranks are in the pet's own book, which teaches them with no LEARNED_SPELL_IN_SKILL_LINE: so
 -- whenever the pet's book may have changed (a new pet, SPELLS_CHANGED), its ranks above the top one
 -- the bars were brought up to (kept per character as "pet:<name>") move the slots up, by the same
@@ -1898,7 +1898,7 @@ local CLASS_PAGING = {
     -- offDriver: Forever doesn't page Prowl (rogues' Stealth does), so with the toggle off FlareUI
     -- pages it itself: Prowl turns bar 1 to the prowl page (8, bonus bar 2), only from page 1 (page
     -- keys still turn pages). bonusbar:2 held too, should the game's own prowl page come before or
-    -- outlast the stealth (11-23, Ciron)
+    -- outlast the stealth
     DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,bonusbar:2] 7; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default",
               offDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 8; default" },
     WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
@@ -1946,7 +1946,7 @@ local function ApplyClassPaging()
     end
     if not classPager then return end
     -- emptied first, so the state is written to the buttons even when it didn't change: one that another
-    -- addon had written over never came back (11-23, Ciron)
+    -- addon had written over never came back
     classPager:SetAttribute("state-page", nil)
     -- off again: "default" hands the buttons back to their bar's own page
     RegisterStateDriver(classPager, "page", driver or "default")
@@ -2199,7 +2199,7 @@ function ActionBars.TotemSizeSetting()
 end
 
 --------------------------------------------------
--- 13b2. GRYPHON SIZE (Ravenesque 11-20)
+-- 13b2. GRYPHON SIZE
 -- Each gryphon is its own Edit Mode system with no Size of its own: FlareUI adds one to each dialog
 -- (Visibility.lua, above Fading), 50-200%, on top of bar 1's scale (they sit inside it). 100% never
 -- touches a gryphon; out of a fight only.
@@ -2216,7 +2216,7 @@ function ActionBars.ApplyCapScales()
         local cap = caps[field]
         local scale = (sizes[key] or 100) / 100
         if cap and not cap:IsForbidden() and (scale ~= 1 or cap.FlareUI_Scaled) then
-            -- (11-23, gerudoku) its place on screen kept: at login Edit Mode places it before this scale, which
+            -- its place on screen kept: at login Edit Mode places it before this scale, which
             -- then stretched its offsets too
             ns.SetSystemScale(cap, scale)
             cap.FlareUI_Scaled = scale ~= 1 or nil

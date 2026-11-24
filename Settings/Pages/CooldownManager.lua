@@ -25,7 +25,7 @@ S:Module{
 -- COOLDOWN MANAGER: Blizzard's own switch (Options > Advanced, the cooldownViewerEnabled CVar), as
 -- Combined Backpack is Blizzard's bag option. Blizzard turns its viewers on and off live; the rows
 -- below follow (CooldownManager.lua watches CVAR_UPDATE and refreshes the panel). Not in a fight, and the
--- game can keep the manager from a character: both say so (11-24), as Blizzard's own switch's tooltip does.
+-- game can keep the manager from a character: both say so, as Blizzard's own switch's tooltip does.
 local wantedNow
 local function Say(text)
     if type(text) == "string" and text ~= "" and UIErrorsFrame then UIErrorsFrame:AddMessage(text, 1, 0.1, 0.1) end

@@ -11,7 +11,7 @@ local Ring = {}
 ns.UFRing = Ring
 
 -- Both ring styles: Blizzard's gold plate, ring and boss dragon toned down to the bronze of Forever's other
--- frames (the minimap's heavy bronze, the bars' border), so they no longer stand out (11-19, picked in
+-- frames (the minimap's heavy bronze, the bars' border), so they no longer stand out (picked in
 -- game). FlareUI Style's ring had its own darker 0.80, 0.70, 0.56 until then.
 Ring.PLATE_TINT = { 0.88, 0.80, 0.66 }
 function Ring.TintPlateArt(tex)
@@ -104,7 +104,7 @@ BLIZZ.focus = {
     centre = BLIZZ.target.centre, D = BLIZZ.target.D, side = "RIGHT", boss = true,
     level = BLIZZ.target.level, raidIcon = BLIZZ.target.raidIcon,
     classification = BLIZZ.target.classification, readyCheck = BLIZZ.target.readyCheck,
-    -- (11-20) the target's icons, in the same spots
+    -- the target's icons, in the same spots
     pvp = BLIZZ.target.pvp, leader = BLIZZ.target.leader, quest = BLIZZ.target.quest,
 }
 -- The party and boss tiles (f.ringKind): the party as the player frame (role icon at the PvP crest),
@@ -216,7 +216,7 @@ Ring.STRIP_ATLAS = PLATE.strip
 Ring.PLATE_POWER = { default = 9, min = 4, max = 15 }
 PLATE.healthFull = { PLATE.health[1], PLATE.health[2], PLATE.health[3], 53, tex = PLATE.health.tex,
                      mirrored = PLATE.health.mirrored }
--- Mana on Shapeshift (11-23, Malkkav's find): Blizzard's player plate with two power slots, unused on
+-- Mana on Shapeshift: Blizzard's player plate with two power slots, unused on
 -- Forever. Its upper part is the target's plate, mirrored and 4 art pixels lower (measured on the sheet:
 -- x there = 197 - x here), so only what is below the power slot comes from it: the last row, 11 longer.
 -- It hangs below the frame, which can't resize in a fight. Two more pieces carry its corner on under the
@@ -1109,7 +1109,7 @@ function Ring.LayoutLevel(f, g)
     g = g or Geometry(f)
     local e = BLIZZ[Kind(f)].level
     local placed = PlaceRegion(f, g, ring.Disc, e)
-    -- Level Disc Size (11-20: each frame's Edit Mode Text section; unset, the old shared size)
+    -- Level Disc Size (each frame's Edit Mode Text section; unset, the old shared size)
     local db, own = GetDb(), Db(f)
     local size = math.min(1, math.max(0.5, tonumber(own and own.levelSize) or tonumber(db and db.levelSize) or 1))
     -- a little under its atlas size, round the same centre
@@ -1459,7 +1459,7 @@ function Ring.PlatePowerText(f)
 end
 
 -- the name box's glow in the unit's reaction colour; a player character's in their class colour while
--- the frame's Class Colours is on. Your own frame: only that class colour (11-21, Av: as on target and
+-- the frame's Class Colours is on. Your own frame: only that class colour (Av: as on target and
 -- party; Blizzard gives your frame no reaction glow). None on the pet's.
 function Ring.UpdatePlate(f)
     local plate = f.PlateFrame
@@ -1690,7 +1690,7 @@ function Ring.Update(f)
     -- the level disc's skull for a "??" unit (10+ levels higher): target and focus with "High Level
     -- Skull" on; a red "??" everywhere else
     local level = Readable(ns.UnitShownLevel(unit))
-    -- (11-20: the boss tiles too, Boss > Icons > High Level Skull)
+    -- (the boss tiles too, Boss > Icons > High Level Skull)
     local isBoss = type(f.fuiUnit) == "string" and f.fuiUnit:find("^boss") ~= nil
     local skull = exists and level and level <= 0 and (f.fuiUnit == "target" or f.fuiUnit == "focus" or isBoss)
         and IconOn(f, "highSkull", true) or false

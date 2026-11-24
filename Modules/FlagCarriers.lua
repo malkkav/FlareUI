@@ -317,7 +317,7 @@ local function BuildSettings()
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 80, maxValue = 400, valueStep = 1, get = get("width"), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = get("height"), set = set("height"),
           hidden = onPlate },
-        -- Portrait Scale (11-20, FlareUI Style, as on the unit frames): the ring in proportion, apart from the height
+        -- Portrait Scale (FlareUI Style, as on the unit frames): the ring in proportion, apart from the height
         { name = L["Portrait Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 150, valueStep = 5,
           formatter = function(value) return value end,
           get = function() return get("portraitScale")() or 100 end, set = set("portraitScale"),
@@ -333,7 +333,7 @@ local function BuildSettings()
                 db.platePower = value
                 Refresh()
             end, onPlate),
-        -- the unit frames' Left / Middle / Right text slots, with their defaults (tc's report 11-19)
+        -- the unit frames' Left / Middle / Right text slots, with their defaults
         ns.BarText.Setting({ name = L["Health Text"], bar = "health", db = GetDb, changed = Refresh,
             style = function() return onPlate() and "plate" or "plain" end }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", db = GetDb, changed = Refresh,
@@ -345,7 +345,7 @@ local function BuildSettings()
           hidden = function() return not onPlate() end },
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel == true, get = function() return get("showLevel")() == true end, set = set("showLevel") },
         K.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
-        -- Level Disc Size (11-20, per frame): the ring styles' level disc, with Show Level on
+        -- Level Disc Size (per frame): the ring styles' level disc, with Show Level on
         { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
           formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
@@ -382,7 +382,7 @@ local function BuildSettings()
             item.hidden = K.NoBorderOptions
             return item
         end)(),
-        -- (11-20) as on every other player frame; unset, it follows the Unit Frames' Class Colours
+        -- as on every other player frame; unset, it follows the Unit Frames' Class Colours
         K.ClassColorSetting(function() return ns.ClassColorsOn(GetDb()) end, set("classColor")),
         K.SmoothBarsSetting(get("smoothBars"), set("smoothBars")),
         K.BarEdgeGlowSetting(get("barEdgeGlow"), set("barEdgeGlow")),
@@ -406,7 +406,7 @@ local function BuildSettings()
           values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
           get = function() return get("castbarPosition")() or "BOTTOM" end, set = set("castbarPosition"), hidden = noCast },
         (function()
-            -- the cast bar's own Background (11-20, as on the unit frames); unset, the frame's
+            -- the cast bar's own Background (as on the unit frames); unset, the frame's
             local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
                 function() local v = get("castBgOpacity")(); if v == nil then v = get("bgOpacity")() end; if v == nil then return K.BAR_BG_OPACITY end; return v end,
                 set("castBgOpacity"))

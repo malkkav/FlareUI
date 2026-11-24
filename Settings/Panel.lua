@@ -8,7 +8,7 @@ local S = ns.Settings
 -- hovered row's text on the right, the reload bar below. Built on first open.
 --------------------------------------------------
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
--- HEIGHT: the left list holds every page without a scroll bar (11-20: 730 for Cooldown Manager and
+-- HEIGHT: the left list holds every page without a scroll bar (730 for Cooldown Manager and
 -- Nameplates; each page is 30 px, the list has HEIGHT - 88 px)
 local WIDTH, HEIGHT = 1180, 730
 local HEADER_H, FOOTER_H = 46, 34
@@ -24,7 +24,7 @@ local rowInset = 0   -- where rows start: SEC_X inside section boxes, 0 for sear
 -- kinds drawn on a plate (text blocks, legends, style cards and headings are not)
 local PLATED = { toggle = true, choice = true, dropdown = true, range = true, frame = true, button = true,
     keybind = true, buttons = true, editmode = true }
-local INDENT = 0   -- dependent rows sit flush with the rest (Malkkav 11-16: no indented child rows; they grey instead)
+local INDENT = 0   -- dependent rows sit flush with the rest (no indented child rows; they grey instead)
 -- a choice or dropdown box (the choices lost their arrows; one width for both kinds)
 local BOX_W, BOX_HALF_W = 200, 150
 -- the header row's middle: halfway down the band above the boxes, past the border's 4 px line
@@ -2168,7 +2168,7 @@ local function UpdateHeader(module)
     -- (down to TAB_PAD_MIN). A tab's NEW badge sits on its top edge, centred, over the border,
     -- so it takes no width.
     local TAB_PAD, TAB_PAD_MIN, TAB_GAP, TAB_LEFT = 28, 12, 4, 4   -- (TAB_LEFT: the first tab sits 4 in)
-    -- (11-23) tab groups: a tab with groupLabel starts a group, a little apart from the one before,
+    -- tab groups: a tab with groupLabel starts a group, a little apart from the one before,
     -- with its label above it (Nameplates: This Unit Type / All Nameplates)
     local GROUP_GAP, GROUP_LABEL_H = 18, 14
     local shown, textW, isNew = {}, {}, {}
@@ -2196,7 +2196,7 @@ local function UpdateHeader(module)
     if RowWidth(pad) > room and #shown > 0 then
         pad = math.max(TAB_PAD_MIN, TAB_PAD - (RowWidth(TAB_PAD) - room) / #shown)
     end
-    -- (11-24, Archy: Russian) still too wide: the longest names are cut, so the tabs never overlap
+    -- (Russian) still too wide: the longest names are cut, so the tabs never overlap
     local over = RowWidth(pad) - room
     if over > 0 and #shown > 0 then
         local byWidth = {}
@@ -2812,7 +2812,7 @@ function Panel.DressWindow(f)
     if edge then close:SetPoint("TOPRIGHT", edge, "TOPRIGHT", -2, -2) else close:SetPoint("TOPRIGHT", -4, -4) end
     close:SetFrameLevel(f:GetFrameLevel() + 40)
     -- (not the template's own click: the game refuses HideUIPanel to an addon's window in a fight, so the X
-    -- did nothing; 11-23, BearAE)
+    -- did nothing; BearAE)
     close:SetScript("OnClick", function() f:Hide() end)
     return close
 end

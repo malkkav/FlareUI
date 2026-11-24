@@ -44,7 +44,7 @@ local FADE_DELAY = 0.08
 -- 3. ELEMENTS
 --------------------------------------------------
 -- in Edit Mode order, with their Blizzard system and sub-system
--- delay: a Fade Delay row and its default, in seconds (11-23, Malkkav: every frame that is always there
+-- delay: a Fade Delay row and its default, in seconds (every frame that is always there
 -- and fades only by its Visibility; not the frames the game itself shows and hides, as target, focus,
 -- the cast bar, totems, swing, flight, timer and seal bars)
 local ELEMENTS = {
@@ -61,7 +61,7 @@ local ELEMENTS = {
     -- Blizzard's shaman Totem Bar: fade groups, and a Size row (ActionBars.lua)
     { key = "totem", delay = 0, frame = "MultiCastActionBarFrame", system = "TotemActionBar" },
     -- The gryphons: on Forever each is its own Edit Mode system; their Visibility is their own (they
-    -- ignore bar 1's alpha, Refresh). Same as Action Bar 1 was removed 11-20 (Malkkav): a fade group with
+    -- ignore bar 1's alpha, Refresh). Same as Action Bar 1 was removed: a fade group with
     -- bar 1 does the same; saved "bar1" choices were moved once (Visibility.MigrateCapsBar1).
     { key = "capLeft", delay = 0, cap = "LeftEndCap", system = "MainActionBarEndCap", index = "EndCapLeft",
       indices = "EditModeMainActionBarEndCapSystemIndices" },
@@ -72,7 +72,7 @@ local ELEMENTS = {
     { key = "xp", delay = 0 },   -- FlareUI's XP bar, its own Edit Mode frame
     { key = "minimap", delay = 0, frame = "MinimapCluster", needsMinimap = true },   -- with the Minimap module
     -- FlareUI's own Edit Mode frames, each with its module
-    -- (never: Visibility > Never hides them for good, SeanWcom's report 11-19)
+    -- (never: Visibility > Never hides them for good)
     { key = "buffs", delay = 0, module = "auras", never = true },
     { key = "debuffs", delay = 0, module = "auras", never = true },
     { key = "quest", delay = 0, module = "objectivetracker" },
@@ -305,7 +305,7 @@ local function ApplyElementAlpha(frame, key, alpha)
     if key == "uf_totems" and ns.Totems.SetFaded then ns.Totems.SetFaded(alpha <= 0.01) end
 end
 
--- NO CLICKS ON A BAR NOBODY SEES (11-24, Malkkav): an action, pet or stance bar faded to nothing that the
+-- NO CLICKS ON A BAR NOBODY SEES: an action, pet or stance bar faded to nothing that the
 -- pointer doesn't bring back takes no clicks, drags or tooltips; its keys still work. Buttons are secure, so
 -- only out of a fight: as one starts every such bar gets its mouse back for the fight (a condition can show
 -- it there), except one on Never. A bar whose buttons another addon moved is left to that addon.
@@ -517,7 +517,7 @@ function Visibility.MigrateCapsBar1(db)
     end
 end
 
--- NO TOOLTIPS FROM HIDDEN FRAMES (11-20, Malkkav, from a Discord report): a frame on Never is only
+-- NO TOOLTIPS FROM HIDDEN FRAMES (from a Discord report): a frame on Never is only
 -- see-through, so its buttons, auras and icons would still show tooltips under the pointer. Any tooltip
 -- owned by such a frame, or by anything inside it, closes as it opens. Edit Mode still shows them.
 Visibility.neverFrames = {}
@@ -841,7 +841,7 @@ local MANA_SPEC = { exclusive = SHOW_SPEC.exclusive, tokens = MANA_TOKENS, legac
                     rivals = { health = "mana", mana = "health" } }
 -- a swing bar's Only When In Use clears the rest, as Always does
 local INUSE_SPEC = { exclusive = { "always", "inuse", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
--- the gryphons: as every frame (Same as Action Bar 1 removed 11-20)
+-- the gryphons: as every frame
 local CAP_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- Never (the totems) clears the rest too: out for good, outside Edit Mode
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
@@ -879,7 +879,7 @@ local function EvaluateShowRule(show)
     if set.ingroup and IsInGroup() then return true end
     if set.unmounted and not Riding() then return true end
     if set.city and Visibility.InCapital() then return true end
-    -- Not in a Capital City (11-20, Discord): the reverse, for a frame that should fade in capitals
+    -- Not in a Capital City: the reverse, for a frame that should fade in capitals
     if set.notcity and not Visibility.InCapital() then return true end
     -- the meter's and the threat window's: dungeons, raids, battlegrounds and arenas
     if set.instance and IsInInstance() then return true end
@@ -1144,14 +1144,14 @@ local function BuildElementSettings(key)
                 if e and e.health then values[#values + 1] = { text = L["Missing Health"], value = "health", isRadio = true } end
                 if e and e.mana then values[#values + 1] = { text = L["Missing Mana"], value = "mana", isRadio = true } end
                 if e and e.threat then table_insert(values, 1, { text = L["Same as Meter"], value = "meter", isRadio = true }) end
-                -- Never on every Visibility (Malkkav 11-19: hide whatever you like), first (11-20: Off first); Edit Mode still shows it
+                -- Never on every Visibility (hide whatever you like), first (Off first); Edit Mode still shows it
                 if e then table_insert(values, 1, { text = L["Never"], value = "never", isRadio = true }) end
                 -- the chat's New Messages, right under Mouseover
                 if e and e.messages then
                     for i, v in ipairs(values) do
                         if v.value == "mouseover" then
                             table_insert(values, i + 1, { text = L["New Messages"], value = "messages", isRadio = true })
-                            -- (11-20, Discord) only lines people write: loot, skill-ups, XP and system lines don't wake it
+                            -- only lines people write: loot, skill-ups, XP and system lines don't wake it
                             table_insert(values, i + 2, { text = L["Only Chat Messages"], value = "chatonly", isRadio = true })
                             break
                         end
@@ -1206,16 +1206,20 @@ local function BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
     if e and e.delay then
         rows[#rows + 1] = {
-            name = L["Fade Delay"], kind = LEM.SettingType.Slider, default = e.delay, minValue = 0, maxValue = 60, valueStep = 1,   -- up to 1 minute (11-20); longer = Always
+            name = L["Fade Delay"], kind = LEM.SettingType.Slider, default = e.delay, minValue = 0, maxValue = 60, valueStep = 1,   -- up to 1 minute; longer = Always
             -- seconds, short (a word clips the dialog's edge)
             formatter = function(value) return value .. "s" end,   -- 0s, not Off: at 0 it still fades (terminology.md)
             get = function() return Visibility:GetFadeDelay(key) end,
             set = function(_, value) Visibility:SetFadeDelay(key, value) end,
-            hidden = AlwaysShown,
+            -- (Fade Old Lines counts by it too, with Always as well)
+            hidden = function(...)
+                local c = e.chat and ns.db and ns.db.profile.chat
+                return not (c and c.fadeLines) and AlwaysShown(...)
+            end,
             desc = L["How long it stays after it was last needed, in seconds, before it fades."],
         }
     end
-    -- Fade Old Lines (the chat, 11-20, Discord): each line fades on its own, oldest first (Chat.lua
+    -- Fade Old Lines (the chat): each line fades on its own, oldest first (Chat.lua
     -- ApplyLineFade). Off by default; shown with any Visibility, as it works with Always too.
     if e and e.chat then
         rows[#rows + 1] = {
@@ -1229,7 +1233,7 @@ local function BuildElementSettings(key)
             end,
             desc = L["Lines fade one by one, oldest first, Fade Delay seconds after they arrive. Pointing at the chat or typing brings them back."],
         }
-        -- Keep Messages Shown (11-23, Malkkav / Kalahan6; off): only the frame fades (Chat.lua KeepMessages)
+        -- Keep Messages Shown (off): only the frame fades (Chat.lua KeepMessages)
         rows[#rows + 1] = {
             name = L["Keep Messages Shown"], kind = LEM.SettingType.Checkbox, default = false,
             get = function() local c = ns.db and ns.db.profile.chat return c and c.keepMessages or false end,
@@ -1299,7 +1303,7 @@ end
 -- Faded Opacity, hidden with Cinematic (it fades the bar itself)
 function Visibility:PlayerCastSettings()
     local rows = BuildElementSettings("uf_playercastbar")
-    local kept = { rows[2], rows[3], rows[4], rows[5] }   -- Visibility, Show Speed, Hide Speed, Faded Opacity (speeds 11-20)
+    local kept = { rows[2], rows[3], rows[4], rows[5] }   -- Visibility, Show Speed, Hide Speed, Faded Opacity
     for _, row in ipairs(kept) do
         local own = row.hidden
         row.hidden = function(...)
@@ -1700,7 +1704,7 @@ function Visibility:Refresh()
             ns.DamageMeter.AttachThreatWindow(self:GetShow(key) == "meter")
         end
         -- the gryphons are children of bar 1 (MainActionBar.EndCaps) and took its alpha on every choice
-        -- (Kelvan 11-20): they ignore it and fade on their own choice
+        --: they ignore it and fade on their own choice
         if e.cap and frame and frame.SetIgnoreParentAlpha and not frame:IsForbidden() then
             pcall(frame.SetIgnoreParentAlpha, frame, ElementOn(e) and true or false)
         end

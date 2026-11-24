@@ -1,3 +1,57 @@
+# FlareUI 7.0.14
+
+The blocked bag clicks: potions, recipes, crates and gear that the game refused to use after a visit to the bank. It's the worst bug FlareUI ever had.
+
+**A HUGE thank you to parchinskiy,** who hunted it down test after test until it had nowhere left to hide. Awesome work!
+
+**We need your help testing:**
+- **Bags:** use items after you visit the bank, with **Crafting Bag in Backpack** and **Keyring in Backpack** on. If one is still blocked, send us what `/fui errors` shows.
+- **Crafting Bag in Backpack:** move, split, search and use items in its section.
+- **Bank:** buying bank slots, and opening it twice in a row.
+- **Controller:** radials on your bar if you play on two computers.
+- **Nameplates:** combo points with your own plate width.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Nameplates:** combo points follow the plate's width. A width of 150 looks as before. Wider plates get bigger points, narrower ones smaller.
+- **Bags & Looting:** switching **Combined Backpack** in FlareUI's settings asks for a reload.
+- **Dispel icons:** enemies' debuffs no longer show one on the target, focus and boss frames.
+
+## New
+
+### Quality of Life
+- **Nameplate Combo Points** (off): combo points under your target, on Blizzard's own nameplates. It's on the Gameplay tab while FlareUI's Nameplates are off.
+
+### Radial Menu
+- **Pet commands** (Attack, Follow, the stances and the rest of your pet's bar): first under Pet Spells.
+
+## Changed
+
+### Nameplates
+- Bigger maximum sizes: height 50, cast bar 40, buffs and debuffs 50, crowd control and defensives 60.
+- Plates grow and shrink smoothly with **Target Scale**.
+
+### Chat
+- **Fade Delay** shows in Edit Mode with any Visibility while **Fade Old Lines** is on.
+
+## Fixed
+
+### Bags
+- Items blocked after a visit to the bank:
+  - The crafting bag in the backpack no longer opens Blizzard's bag window. By parchinskiy.
+  - Keyring in the backpack: FlareUI cleans up after itself when it opens Blizzard's window.
+  - Bags that open with the character window or the guild bank no longer add to it.
+
+### Radial Menu
+- Radials on the controller bar broke when you played on two computers. They go by the radial's name now: give it the same name on both.
+
+### Auras
+- Dispel icons showed on enemies' debuffs.
+
+### Performance
+- **Minimap:** with the coordinates on the Info Bar, less memory while you stand still.
+- The language files are smaller: phrases nothing uses any more are gone.
+
 # FlareUI 7.0.13
 
 A fix for the battleground errors that came with 7.0.12, and a check of every part of FlareUI, with more than 50 fixes.
@@ -249,82 +303,6 @@ A hotfix for quest clicks that only opened the quest log, plus Smooth Animated B
 - **Quest Tracker:** clicking a quest from another zone, or one with no location like a Craftsman's Writ, often opened only the quest log.
 - **Quest Tracker:** with the map open full size, or with its quest list closed, some quests didn't open.
 
-# FlareUI 7.0.9
-
-A bug-fixing update: we went through the open reports and fixed as many as we could. It also adds sharper outlines for every font.
-
-**We need your help testing.** These were hard to reproduce, so please tell us if they're fixed for you:
-- **Controller:** walking while a radial is open, and placing a radial on a controller button.
-- **Blocked items:** potions, armor kits and quest items that the game blocked. If it happens again, send us what `/fui errors` shows.
-- **Chat:** switching tabs during a fight.
-- **Quest Tracker:** clicking a quest while the map is open on a zone.
-- **Druids:** **Keep Page 1 in Stealth**.
-- **Crafting Bag in Backpack:** if its section stays empty, send us what `/fui errors` shows.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Action Bars:** gryphons with a changed **Scale** may move once, to where Edit Mode has them saved.
-- **Nameplates:** Questie's quest icon sits beside the plate, left of the level box. If you moved it in Questie to make up for our plates, set it again there.
-- **Nameplates:** with **Colour Names by Class**, names on class-coloured bars are a lighter shade.
-- **Nameplates:** bars fill their border, so the whole plate is about 2 pixels smaller. The bar keeps its size.
-- **Chat:** player and link icons are as big as the text.
-- **Chat and Meters:** with **Border** on None and **Background Opacity** at 0%, the line under the header hides too.
-- **Bags & Looting:** Bank Window and Vendor have their own **Bank & Vendor** tab.
-
-## Highlights
-- **Sharp Outline** for every font.
-- **Nameplates:** Name Only has its own font.
-- **Chat:** whispers bring a faded chat back.
-
-## New
-
-### Fonts
-- **Sharp Outline** in every **Outline** list: cleaner edges at any size. Some fonts draw stray lines with it.
-- **Outline** (Each Font's Own) on the General page, under Global Font: one outline for every FlareUI font. Needs a reload.
-
-### Nameplates
-- **Name Only** on the Fonts tab: its own font, size, outline and shadow. It starts as your Names font.
-  - **Name Only Size** is now a % of that font.
-- **Threat Percentage** is a list: Off, In a Group, In an Instance or Always. If you had it on, it's on Always.
-
-### Bags & Looting
-- **Warn Before Selling Set Gear** (off): asks before you sell gear from a saved equipment set. By BillChirico.
-- **Warn Before Selling Quest Items** (off): asks before you sell quest items. By BillChirico.
-
-### Bug reports
-- `/fui errors` says more about blocked items.
-
-## Changed
-- **Radial Menu:** near a screen edge, it moves in so every button fits. Nothing is picked until you move the mouse.
-- **Bags & Looting:** the Tools section is called **Tweaks**.
-- **Chat:** whispers, Battle.net ones too, bring a faded chat back even when another tab is shown.
-- **Chat:** every popped-out window that takes a message comes back, not only the first.
-- **Minimap:** the Info Bar's gold uses the bags' coins, size and gaps.
-- **Bags:** **Auto Open Containers** waits while an armor kit or a spell is waiting for its item.
-- **Nameplates:** fewer updates for the same result. By parchinskiy.
-
-## Fixed
-- **Gamepad UI:**
-  - Another try at walking while a radial is open.
-  - Placing a radial on a controller button could fail with "Failed to pick up an action".
-- **Quest Tracker:** clicking a quest with the map open on a zone didn't open the quest.
-- **Action Bars:** gryphons with a changed **Scale** moved at every login.
-- **Action Bars:** another try at **Keep Page 1 in Stealth** showing the Prowl page (druids).
-- **Nameplates:** there was a dark gap between the bars and their border.
-- **Nameplates:** Questie's quest icon sat over the level box on your target.
-- **Edit Mode:** with Snap on, the minimap and the chat stopped short of the screen edge.
-- **Chat:**
-  - Another try at tabs that don't switch during a fight: they could stay stuck with the **Meter Tab** on.
-  - With **Fade Delay** at 0, new messages never brought the chat back.
-  - In a fade group, changing **Visibility** on another frame could turn off New Messages.
-  - With **Fade Old Lines**, lines could start fading under the mouse.
-- **Bags:** another try at the crafting bag missing from the combined backpack with **Crafting Bag in Backpack** on.
-- **Sync Blizz UI:** other characters were asked to reload when nothing had really changed.
-- **Buff Reminders:** another try at potions and kits blocked by the game.
-- **Raid Frames:** click-casting didn't work on the main tanks' targets.
-- **Meters:** the warning about Blizzard's own Visibility setting could be missed.
-- **Settings:** **Show Item Level** showed a player in its preview.
-
 ---
 
-Older versions (7.0.8 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
+Older versions (7.0.9 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

@@ -456,7 +456,7 @@ local function CreateSection(parent)
     text:SetWordWrap(false)
     section.Text = text
 
-    -- the numbers on mouseover. The tooltip only with Show Tooltip (11-20, Malkkav: off by default, it
+    -- the numbers on mouseover. The tooltip only with Show Tooltip (off by default, it
     -- covered the bar's own text)
     section:SetScript("OnEnter", function(self)
         if not XPB.TextAlways() then self.Text:Show() end
@@ -638,7 +638,7 @@ local function LayoutFlare(target)
     local name = db.border or BORDER_NAME
     if name ~= "None" and not LSM:IsValid("border", name) then name = BORDER_NAME end
     -- the border art's outer pixels are see-through (about 2): the frame may pass the screen edge by
-    -- that much, so the drawn line can touch it (11-21: a small gap stayed at the bottom)
+    -- that much, so the drawn line can touch it (a small gap stayed at the bottom)
     if not flare.fuiSample then
         local m = name == "None" and 0 or 2
         flare:SetClampRectInsets(m, -m, -m, m)
@@ -801,7 +801,7 @@ local function BuildFlare()
           get = function() return GetDb().width or 560 end, set = function(_, value) GetDb().width = value; LayoutFlare() end },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 14, minValue = 6, maxValue = 30, valueStep = 1,
           get = function() return GetDb().height or 14 end, set = function(_, value) GetDb().height = value; LayoutFlare() end },
-        -- (Bar Texture and Border: Settings > Action Bars > XP Bar, 11-20, as every other frame's look)
+        -- (Bar Texture and Border: Settings > Action Bars > XP Bar, as every other frame's look)
     }))
     LEM:RegisterCallback("layout", function(layoutName) PlaceFlare(layoutName) end)
     LEM:RegisterCallback("enter", UpdateFlare)

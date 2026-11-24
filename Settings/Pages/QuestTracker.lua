@@ -27,7 +27,7 @@ end)
 local function Style() return S:GetPath("objectivetracker.frameStyle") or "custom" end
 S:Row{ key = "qt.frameStyle", kind = "choice", path = "objectivetracker.frameStyle",
     choices = { "blizzard", "flareui", "custom" }, apply = Refresh }
--- Colour Scheme (11-20, Malkkav), under Frame Style: FlareUI and Custom only, FlareUI's by default;
+-- Colour Scheme, under Frame Style: FlareUI and Custom only, FlareUI's by default;
 -- the Blizzard style always has Blizzard's (ObjectiveTracker.lua OT.ColorScheme)
 S:Row{ key = "qt.colorScheme", kind = "choice", choices = { "blizzard", "flareui" }, apply = Refresh,
     get = function() return S:GetPath("objectivetracker.colorScheme") or "flareui" end,
@@ -73,10 +73,10 @@ Display("tags", "showTags")
 Display("recipes", "showRecipes")
 -- on by default: off, finished quests look like any other
 Display("completeTag", "showCompleteTag")
--- Header Buttons (11-19, Malkkav): the header's filter, sort and the "!" / "?" for Quality of Life's Auto
+-- Header Buttons: the header's filter, sort and the "!" / "?" for Quality of Life's Auto
 -- Accept / Auto Turn-In Quests, each its own saved switch; above Quest Buttons. Filter unticked shows
 -- every quest again (no button left to switch Zone off).
--- (11-20: Auto Accept and Auto Turn-In each their own; both start from the old shared autoButtons)
+-- (Auto Accept and Auto Turn-In each their own; both start from the old shared autoButtons)
 local HEADER_BUTTONS = { { "filter", "headerFilter" }, { "sort", "headerSort" }, { "accept", "autoAcceptButton" }, { "turnin", "autoTurnInButton" } }
 S:Row{ key = "qt.headerButtons", kind = "dropdown", section = "qt.frame",   -- (in Frame, as on Chat)
     choices = { "none", { divider = true }, "filter", "sort", "accept", "turnin" },
@@ -143,7 +143,7 @@ S:Row{
     get = function() return S:GetPath("objectivetracker.minimizeStyle") == "button" end,
     set = function(on) S:SetPath("objectivetracker.minimizeStyle", on and "button" or "header") end,
 }
--- Auto Minimize (11-20, was three switches): one dropdown of toggles over the same saved values,
+-- Auto Minimize: one dropdown of toggles over the same saved values,
 -- objectivetracker.autoMinimize.<place> = "minimize" / "none"; In Instances sets every instance type
 local MIN_PLACES = { "instances", "combat", "taxi" }
 local MIN_SPEC = { exclusive = { "none" }, tokens = MIN_PLACES, empty = "none" }

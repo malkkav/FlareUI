@@ -21,7 +21,7 @@ LibStub("AceHook-3.0"):Embed(Chat)
 
 -- The header's own frames (the tab bar, the header buttons, the drag marker) over the window: the
 -- chat's strata, high up in it, and the meter's strata while the Meter tab raises it (DamageMeter.lua
--- ApplyChatTabStrata calls Chat.ApplyHeaderStrata). They were DIALOG before 11-21, over every quest,
+-- ApplyChatTabStrata calls Chat.ApplyHeaderStrata). They were DIALOG in older versions, over every quest,
 -- merchant and crafting window (MEDIUM), so those windows' buttons under the chat took no clicks.
 Chat.headerFrames = setmetatable({}, { __mode = "k" })   -- frame -> its level
 function Chat.HeaderStrata()
@@ -369,7 +369,7 @@ local function RepositionScrollToBottomButton(chatFrame)
         local w, h = btn:GetSize()
         if (w or 0) < 10 or (h or 0) < 10 then btn:SetSize(8, 8) end
     end
-    -- MOUSE WHEEL (11-20, Discord): Blizzard gives a chat window wheel scrolling only when the game's
+    -- MOUSE WHEEL: Blizzard gives a chat window wheel scrolling only when the game's
     -- "chatMouseScroll" setting is on as it loads, and Forever's options have no switch for it. A
     -- window left without it scrolls with FlareUI's own: 3 lines a notch, Shift to the top or bottom.
     -- (set before the hooks below, which would be lost under a new script)
@@ -719,7 +719,7 @@ local function ColorCode(r, g, b)
     return string_format("|cff%02x%02x%02x", (r or 1) * 255, (g or 1) * 255, (b or 1) * 255)
 end
 
--- the icons' size: the window's font, drawn 1 px down to sit with the letters (11-23, gerudoku: too small)
+-- the icons' size: the window's font, drawn 1 px down to sit with the letters (too small)
 function Lines.IconSize(chatFrame)
     local ok, _, size = pcall(chatFrame.GetFont, chatFrame)
     size = ok and type(size) == "number" and size or 14
@@ -812,7 +812,7 @@ function Lines.AddSenderIcons(body, icons)
 end
 
 -- Better Player Names and Level Before Names change the name inside the line's player link, once the line
--- is in the window. Not through Blizzard's filter for names (until 11-24): whatever a filter hands back,
+-- is in the window. Not through Blizzard's filter for names: whatever a filter hands back,
 -- Blizzard's handler goes on with, up to the name it keeps to answer a whisper.
 --   Better Player Names   the class-coloured name, without its realm
 --   Level Before Names    "(42)" in front of the name
@@ -1471,7 +1471,7 @@ end
 -- 8. COPY CHAT LINKS
 -- Web addresses in chat become links that open a box to copy them from.
 --------------------------------------------------
--- In the line rewriter (section 5), not a message filter (until 11-24): a filter hands every argument of
+-- In the line rewriter (section 5), not a message filter: a filter hands every argument of
 -- the line back to Blizzard's handler, the whisper's sender among them.
 Lines.URL_TYPES = {}
 for _, kind in ipairs({ "SAY", "YELL", "EMOTE", "PARTY", "PARTY_LEADER", "PARTY_GUIDE", "RAID", "RAID_LEADER",
@@ -2101,7 +2101,7 @@ end
 -- the order. General stays first, as in Blizzard's chat.
 local TAB_MARKER_WIDTH, TAB_MARKER_HEIGHT = 2, 16
 
--- How many windows lead the dock list and stay put: General only. (Until 11-21 the Combat Log was
+-- How many windows lead the dock list and stay put: General only. (Once the Combat Log was
 -- held second too; Blizzard only docks it there on a chat reset and lets it move, and players asked
 -- to move it to the end. KeepCombatLogSecond is a no-op with one fixed window.)
 local function FixedWindowCount()
@@ -2588,7 +2588,7 @@ function TabHit.Under(hit)
     return btn
 end
 
--- (11-23, BearAE) A tab with a box lets the mouse through to it, so it doesn't matter which of the two is
+-- A tab with a box lets the mouse through to it, so it doesn't matter which of the two is
 -- on top: the bar goes up a layer with the Meter tab as a fight starts, where the box can't follow
 TabHit.boxed = {}   -- [Blizzard's tab] = true while a box lies over it
 function TabHit.LetThrough(btn)
@@ -2602,7 +2602,7 @@ local function HitPreClick(self)
     self:SetAttribute("type1", TabSwitchAllowed(btn) and "click" or nil)
 end
 
--- Middle-click on a whisper tab closes it (11-20, Blizzard's own tabs do nothing on it). Out of a fight:
+-- Middle-click on a whisper tab closes it (Blizzard's own tabs do nothing on it). Out of a fight:
 -- the dock's windows can be protected in one
 function TabHit.CloseWhisper(btn)
     local frame = btn and btn.chatFrame
@@ -2683,10 +2683,10 @@ function TabHit.Sync()
                         local bs = btn:GetEffectiveScale()
                         local left, right = math_max(bl * bs, sl * ss), math_min(br * bs, sr * ss)
                         if right - left >= 4 then
-                            -- (11-23, BearAE) over the tab bar's layer as it is now: the bar moves to
+                            -- over the tab bar's layer as it is now: the bar moves to
                             -- the meter's layer with the Meter tab (Chat.ApplyHeaderStrata), and a box
                             -- left under it sent clicks to the FlareUI tab, whose switch waits out a fight
-                            -- (11-23 again) one layer up, at its bottom: a click on the chat raises the whole
+                            -- one layer up, at its bottom: a click on the chat raises the whole
                             -- window (toplevel) over boxes on its own layer, which can't follow in a fight
                             hit:SetFrameStrata(TabHit.StrataOver(scrollFrame:GetFrameStrata()))
                             hit:SetFrameLevel(0)
@@ -3141,7 +3141,7 @@ end
 --------------------------------------------------
 -- 13. EDIT BOX
 -- * Sent history: the last lines sent (all channels, per character). Alt+Up / Alt+Down step through
---   them, as Blizzard's own (11-24: the arrows alone are Blizzard's again); Down past the newest
+--   them, as Blizzard's own (the arrows alone are Blizzard's again); Down past the newest
 --   restores the draft. Blizzard's own list is emptied after each line so it does not fight this one.
 -- * Inside: while the box is open over the chat's last lines, the lines move up above it. The chat
 --   lays its lines out from the bottom up, so only the first is moved.
@@ -3356,9 +3356,9 @@ Chat.EDIT_BOX_ART = {
     FocusMid = "Interface\\ChatFrame\\UI-ChatInputBorderFocus-Mid",
 }
 
--- EDIT BOX STYLE (11-21, Malkkav): FlareUI = Blizzard's own edit box art, always; Modern (default) =
+-- EDIT BOX STYLE: FlareUI = Blizzard's own edit box art, always; Modern (default) =
 -- a dark box with its own Edit Box Border (None, FlareUI Thick, FlareUI Thin; shown with Modern only).
--- Edit Box Opacity fades either. Before 11-21 the box took the chat's Border: a setup that never
+-- Edit Box Opacity fades either. Once the box took the chat's Border: a setup that never
 -- picked an Edit Box Border keeps the edge it had (FlareUI Thick stays Thick, None stays None, any
 -- other border becomes Thin).
 Chat.EDIT_BOX_BORDERS = { none = "None", thick = "FlareUI Thick", thin = "FlareUI Thin" }
@@ -3390,7 +3390,7 @@ function Chat.EditBoxBackdrop(bg, db)
     if edgeFile then bg:SetBackdropBorderColor(ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b, 1) end
 end
 
--- (11-21, Malkkav) Blizzard's silver edit box art in FlareUI's bronze: greyed, then tinted the border
+-- Blizzard's silver edit box art in FlareUI's bronze: greyed, then tinted the border
 -- bronze brightened by a third (a greyed texture at full bronze comes out darker), as the minimap's eye
 function Chat.TintEditArt(tex)
     local c = ns.BORDER_COLOR
@@ -3434,8 +3434,8 @@ function Chat:StyleEditBox(chatFrame, db)
     -- Edit Box Style FlareUI: Blizzard's own art (Edit Box Opacity fades it); Modern: FlareUI's box
     local blizzardArt = Chat.EditBoxStyle(db) == "flareui"
     -- Blizzard colours the inner frame you see while typing by channel (white for Say, blue for
-    -- Party...) on every channel change: in the FlareUI style it goes back to the bronze (11-21,
-    -- Malkkav); the "Say:" text keeps the channel's colour
+    -- Party...) on every channel change: in the FlareUI style it goes back to the bronze;
+    -- the "Say:" text keeps the channel's colour
     if not eb.FlareUI_FocusTintHooked and eb.SetFocusRegionVertexColors then
         eb.FlareUI_FocusTintHooked = true
         hooksecurefunc(eb, "SetFocusRegionVertexColors", function(self)
@@ -3635,18 +3635,18 @@ function Chat.WindowBackdrop(skin, db)
     Chat.ApplyFrameStyleArt(skin, db)
 end
 
--- Frame Style (11-20, Malkkav; chat.frameStyle, Modern by default): FlareUI takes the quest tracker's
+-- Frame Style (chat.frameStyle, Modern by default): FlareUI takes the quest tracker's
 -- FlareUI look: Blizzard's tracker title strip behind the tab row, its bottom line with the knobs along
 -- the bottom border, FlareUI Thick, and no line under the tabs. The strips are the tracker's own
 -- (ObjectiveTracker.lua Build.PlaceStrip), on two bands of the skin.
--- TOP 3.75 and FOOT_Y 2.5: the knobs on the Thick border's curve (Malkkav 11-20, measured in game);
+-- TOP 3.75 and FOOT_Y 2.5: the knobs on the Thick border's curve (measured in game);
 -- the strips skip pixel snapping, though the game still draws whole pixels (steps under ~0.5 do not show)
 -- no frame left to see: no border and a Background Opacity of 0% (Modern; the chat's and the meters' own). The
--- line under the header goes with it (11-23, BorlandC)
+-- line under the header goes with it
 function Chat.NoFrame(db)
     return db ~= nil and db.frameStyle ~= "flareui" and db.borderTexture == "None" and (tonumber(db.opacity) or 1) <= 0
 end
-Chat.FRAME_ART = { INSET = 8, TOP = 3.75, FOOT_Y = 2.5 }   -- the bottom line at 2.5 from the frame's bottom edge, as approved 11-20 (its own number, not the tracker's)
+Chat.FRAME_ART = { INSET = 8, TOP = 3.75, FOOT_Y = 2.5 }   -- the bottom line at 2.5 from the frame's bottom edge, as approved (its own number, not the tracker's)
 -- (also the meters' skins, DamageMeter.PaintSkin; off: none whatever the style, a meter inside the chat)
 function Chat.ApplyFrameStyleArt(skin, db, off)
     local OT = ns.ObjectiveTracker
@@ -3687,7 +3687,7 @@ end
 -- Details! in a chat tab (its "Tab Embed"): it sizes its windows from the window's Background, which
 -- FlareUI hides but which still reaches past FlareUI's panel, and in two-window mode only once, 5 s
 -- after login. With Details loaded, the (hidden) Background is the panel's inside, and Details fits
--- its windows again whenever the window changes size. (valleyheart's report 11-19)
+-- its windows again whenever the window changes size.
 function Chat.FitDetailsEmbed(chatFrame)
     local details = _G.Details
     if not (type(details) == "table" and type(details.chat_embed) == "table") then return end
@@ -3813,7 +3813,7 @@ function Chat:StyleChatFrame(chatFrame, db)
 
     -- (never SetMaxLines, 7.0.12 only: it copies the lines other addons printed into a new history table,
     -- which is theirs from then on. Every line Blizzard adds ran as that addon's: errors every frame in
-    -- battlegrounds, whose join and leave list holds hidden names; highbrowtripod 11-24)
+    -- battlegrounds, whose join and leave list holds hidden names)
 
     -- Blizzard's own alpha changes are overruled by FlareUI's target alpha
     if not chatFrame.FlareUI_AlphaHooked then
@@ -4026,7 +4026,7 @@ function Chat.BoxFocused(box)
     return ChatFrameUtil ~= nil and ChatFrameUtil.GetActiveWindow ~= nil and ChatFrameUtil.GetActiveWindow() == box
 end
 
--- Is any chat window being typed in? The frame with the keyboard says it at once (11-24, Perfy: asking
+-- Is any chat window being typed in? The frame with the keyboard says it at once (asking
 -- every window's box, 20 times a second, was the dearest part of the chat's fading); Blizzard's active
 -- box too, for one whose answer is hidden
 function Chat.Typing()
@@ -4057,7 +4057,7 @@ function Chat.ChatWanted()
     return false
 end
 
--- FADE OLD LINES (11-20, Malkkav, from a Discord request; off): Blizzard's own line fading
+-- FADE OLD LINES (from a Discord request; off): Blizzard's own line fading
 -- (ScrollingMessageFrame: a line stays Time Visible seconds, then fades over Fade Duration), oldest
 -- first. Time Visible is the chat's Fade Delay (at least 3 s, so a line can be read). Lines come back
 -- when the pointer is on the window, when typing, and when scrolling (Blizzard's own). Off gives the
@@ -4065,7 +4065,7 @@ end
 Chat.LINE_FADE_TIME = 3      -- seconds a line takes to fade
 Chat.LINE_MIN_VISIBLE = 3    -- shortest time a line stays
 
--- KEEP MESSAGES SHOWN (11-23, Malkkav / Kalahan6; Edit Mode Fading, beside Fade Old Lines, off): the
+-- KEEP MESSAGES SHOWN (Edit Mode Fading, beside Fade Old Lines, off): the
 -- frame, tabs and buttons follow the chat's Visibility, the lines don't: they ignore the window's fade
 -- (any Visibility). Fade Old Lines still fades each line on its own.
 function Chat.KeepMessages(chatFrame, db)
@@ -4105,7 +4105,7 @@ function Chat.ApplyLineFade()
 end
 
 -- The faded lines come back with the pointer on a window or its edit box in use. A light watcher,
--- ten checks a second, only while Fade Old Lines is on. Only the change counts (11-22): on arrival the
+-- ten checks a second, only while Fade Old Lines is on. Only the change counts: on arrival the
 -- lines come back once and stop fading; on leaving they fade again from then. Resetting them on every
 -- check redrew the lines every time, so a link's tooltip flickered and a click on a name
 -- or a link was lost.
@@ -4139,7 +4139,7 @@ function Chat.WatchLines(on)
     watcher:Show()
 end
 
--- POP-OUT WINDOWS FADE ON THEIR OWN (11-20, Malkkav, from a Discord request): the docked windows share
+-- POP-OUT WINDOWS FADE ON THEIR OWN (from a Discord request): the docked windows share
 -- one timer, each popped-out window has its own. A new line, a tab click or the pointer holds only that
 -- window's timer, so a loot window lights up alone. The chat's shared reasons (its ticked conditions,
 -- typing, the gamepad, the settings page, a fade group) still show every window.
@@ -4499,7 +4499,7 @@ function Chat.OnPeopleLine(_, event, ...)
 end
 
 -- Every shown window that takes the line (the docked ones count once). A whisper comes back for its tab in
--- the dock too, whichever tab is on screen: the chat stayed faded while its tab glowed (11-23, capo)
+-- the dock too, whichever tab is on screen: the chat stayed faded while its tab glowed
 Chat.WAKE_HIDDEN = { CHAT_MSG_WHISPER = true, CHAT_MSG_BN_WHISPER = true }
 function Chat.WakeForLine(db, event, zoneID, name)
     local channel, whisper, dock = Chat.WAKE_CHANNEL[event], Chat.WAKE_HIDDEN[event], false
@@ -4580,8 +4580,8 @@ end
 -- Blizzard's gamepad chat only works in IM style, so the Gamepad UI switches to it; the player's
 -- style comes back in keyboard mode. The CVar is account-wide, so the saved style is too.
 -- A change while you play runs Blizzard's chat code inside this call, and what that writes (the last active
--- edit box) stays tainted: the controller was dead after the next tab switch until a /reload (11-23,
--- minizuka). So it's set as the session ends, when the next one is known to be a Gamepad one (switching
+-- edit box) stays tainted: the controller was dead after the next tab switch until a /reload.
+-- So it's set as the session ends, when the next one is known to be a Gamepad one (switching
 -- reloads); at login only if that didn't happen.
 function Chat:ApplyGamepadChatStyle()
     local global = ns.db.global
@@ -4661,7 +4661,7 @@ function Chat:ShouldLoad()
     return not other
 end
 
--- Whisper Sound (Tweaks): a sound as a whisper comes in, the Buff Reminders' choices (Bill's idea 11-18)
+-- Whisper Sound (Tweaks): a sound as a whisper comes in, the Buff Reminders' choices
 Chat.WHISPER_SOUNDS = { raidwarning = "RAID_WARNING", alarm = "ALARM_CLOCK_WARNING_3", whisper = "TELL_MESSAGE" }
 function Chat.PlayWhisperSound(always)
     local db = GetDb()
@@ -5077,7 +5077,7 @@ function Chat:RestoreHistory()
             for j = #msgs, 1, -1 do
                 local line = msgs[j]
                 if type(line) == "table" and type(line[1]) == "string" then
-                    -- (lines saved before 11-24 still have their session's links)
+                    -- (lines saved by older versions still have their session's links)
                     local raw, at = SettleLinks(line[1]), tonumber(line[6])
                     local text = raw
                     if at then

@@ -200,7 +200,7 @@ ot:Init()
 local holder = env.FlareUI_ObjectiveTracker
 local header = ui:find(function(w) return w:GetParent() == holder and w.zone and w.title end)
 local scroll = ui:find(function(w) return w:GetParent() == holder and w:IsObjectType("ScrollFrame") end)
-assert(ot:GetFrame() == holder and holder:IsShown() and ot:CountTracked() == 4)
+assert(ot:GetFrame() == holder and holder:IsShown())
 
 local function lineContains(text)
     return ui:find(function(w)

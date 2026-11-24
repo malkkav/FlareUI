@@ -90,8 +90,8 @@ S:Row{ key = "ab.xpBar", tab = "xp", kind = "choice", lead = true, choices = { "
         S:TrackReload("ab.xpBar", v == "off", xpStartOff)
         if v ~= "off" then XPRefresh() end
     end }
--- Order (11-20, Malkkav): Bar Style, Bar Texture, Border, Separators, then the text rows
--- Bar Texture and Border (11-20, from its Edit Mode dialog): the bar's fill and its frame
+-- Order: Bar Style, Bar Texture, Border, Separators, then the text rows
+-- Bar Texture and Border (from its Edit Mode dialog): the bar's fill and its frame
 S:Row{ key = "ab.xpTexture", tab = "xp", kind = "choice", path = "actionbars.xpbar.texture", disabled = XPOff,
     choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("texture") or {} end,
     resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_TEXTURE end,
@@ -112,7 +112,7 @@ S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10
     resetValue = function() return "off" end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
 -- every colour the XP bar paints, in the colour window
-S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 1,   -- (11-20: after Separators, with the other look rows; a button would sink to the end)
+S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 1,   -- (after Separators, with the other look rows; a button would sink to the end)
     buttonText = L["Pick Your Colours"], disabled = XPOff,
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
 
@@ -138,7 +138,7 @@ S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "all"
         if v ~= "off" then S:SetPath("actionbars.xpbar.questXPMode", v) end
     end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
--- Show Tooltip (11-20, Malkkav: back as a switch, off): the XP, rested and quest details on mouseover
+-- Show Tooltip (back as a switch, off): the XP, rested and quest details on mouseover
 S:Row{ key = "ab.xpTooltip", tab = "xp", path = "actionbars.xpbar.tooltip", disabled = XPOff }
 
 -- Hide Blizzard elements (also removed from Edit Mode)
@@ -162,7 +162,7 @@ end
 S:Row{
     -- toggles as on the bars (ns.Conditions), Mouseover one of them: nothing ticked is Always
     key = "ab.fcmShow", kind = "dropdown", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
-    -- (In an Instance was missing here, so the names after In a Group were one off until 11-20)
+    -- (In an Instance was missing here, so the names after In a Group were one off)
     choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }, apply = Refresh,
     toggles = { exclusive = { "always" }, tokens = ns.Conditions.MOUSE_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
     -- above the bar switches: as a dropdown it leads, the bars and Setup Mode follow

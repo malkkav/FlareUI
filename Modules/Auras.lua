@@ -37,7 +37,7 @@ local SQUARE_BORDER = MEDIA .. "IconBorder"
 local SQUARE_INSET  = 6 / 128     -- the icon starts this far in, under the bevel's inner line
 local SQUARE_MASK   = MEDIA .. "IconMask"   -- the icon clipped to the bevel's 45 degree corners
 -- bronze, lifted as the tint multiplies the grey art
-local SQUARE_TINT   = { 0.80, 0.60, 0.34 }   -- palette bronze4 (11-20, Malkkav; was 0.72, 0.56, 0.38)
+local SQUARE_TINT   = { 0.80, 0.60, 0.34 }   -- palette bronze4 (was 0.72, 0.56, 0.38)
 local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
 local ROUND_TINT    = { 0.80, 0.60, 0.34 }   -- palette bronze4
@@ -402,15 +402,34 @@ function AU.StyleDispelIcon(button, look, area, size)
         return
     end
     if not typeIcon then
-        -- on the text overlay: above the icon, its border and the cooldown swipe in every swipe style
-        typeIcon = button.FlareUI_Overlay:CreateTexture(nil, "OVERLAY", nil, 1)
+        -- on the text overlay: above the icon, its border and the cooldown swipe in every swipe style. In a
+        -- frame of its own, which the unit's side hides: Blizzard shows and hides the icon itself
+        local holder = CreateFrame("Frame", nil, button.FlareUI_Overlay)
+        holder:SetAllPoints()
+        typeIcon = holder:CreateTexture(nil, "OVERLAY", nil, 1)
         typeIcon:Hide()   -- until Blizzard shows it for a typed debuff
-        button.FlareUI_DispelIcon = typeIcon
+        button.FlareUI_DispelIcon, button.FlareUI_DispelHolder = typeIcon, holder
+    end
+    local owner, holder = button.FlareUI_AuraOwner, button.FlareUI_DispelHolder
+    if owner and holder then
+        owner.FlareUI_DispelHolders = owner.FlareUI_DispelHolders or setmetatable({}, { __mode = "k" })
+        owner.FlareUI_DispelHolders[holder] = true
+        holder:SetAlpha(owner.FlareUI_DispelEnemy and 0 or 1)
     end
     local side = math_max(8, math_floor(size * 0.38 + 0.5))
     pcall(typeIcon.ClearAllPoints, typeIcon)
     pcall(typeIcon.SetPoint, typeIcon, "TOPRIGHT", area, "TOPRIGHT", 1, 1)
     pcall(typeIcon.SetSize, typeIcon, side, side)
+end
+
+-- DISPELLABLE ONLY: nobody on your side takes a debuff off an enemy, so a unit frame whose
+-- unit is one shows no type icons (the target and focus change sides: AP.UpdateSide, Core.lua). Nameplates and
+-- boss tiles know their side: look.noTypeIcon.
+function AU.DispelSide(f, enemy)
+    enemy = enemy and true or false
+    if f.FlareUI_DispelEnemy == enemy then return end
+    f.FlareUI_DispelEnemy = enemy
+    for holder in pairs(f.FlareUI_DispelHolders or {}) do holder:SetAlpha(enemy and 0 or 1) end
 end
 
 -- An Edit Mode or settings sample: the icon of the given type ("None": no icon)
@@ -543,6 +562,7 @@ end
 -- The same buttons for unit, party and raid frame auras (with or without this module), in the
 -- unit frame fonts: Aura timers and Aura stacks, each sized to the icon on Auto (size 0)
 ns.AuraLook = {
+    DispelSide = AU.DispelSide,
     Style = StyleButton,
     Hook = HookButton,
     -- fontKey: whose Aura Timers and Aura Stacks fonts (UnitFrames.lua UF.Font), player's by default
@@ -1038,7 +1058,7 @@ local function BuildSettings(kind)
           get = get("grow"), set = set("grow") },
         { name = L["Wrap"], kind = LEM.SettingType.Dropdown, default = defaults.wrap or "DOWN", values = WRAP_VALUES,
           get = get("wrap"), set = set("wrap") },
-        -- (Aura Swipe and Aura Timer: Settings > Buffs & Debuffs only, 11-20)
+        -- (Aura Swipe and Aura Timer: Settings > Buffs & Debuffs only)
     })
     return settings
 end

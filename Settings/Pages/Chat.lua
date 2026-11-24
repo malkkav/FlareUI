@@ -27,7 +27,7 @@ S:On("PageShown", function(key)
     if ns.Chat and ns.Chat.SetSettingsPreview then ns.Chat:SetSettingsPreview(key == "ch") end
 end)
 
--- Frame Style (11-20, Malkkav): Modern (default) or FlareUI, the quest tracker's look (Chat.lua
+-- Frame Style: Modern (default) or FlareUI, the quest tracker's look (Chat.lua
 -- Chat.ApplyFrameStyleArt); first in Frame. FlareUI brings its own border, so Border hides
 S:Row{ key = "ch.frameStyle", kind = "choice", path = "chat.frameStyle", choices = { "flareui", "modern" },
     apply = Refresh, section = "ch.frame" }
@@ -35,7 +35,7 @@ S:Row{ key = "ch.opacity", kind = "range", path = "chat.opacity", choices = S:Op
 -- (the chat's fading is set in its Edit Mode dialog)
 S:Row{ key = "ch.border", kind = "choice", path = "chat.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "ch.frame", hidden = function() return S:GetPath("chat.frameStyle") == "flareui" end }
--- Header Buttons (11-19, Malkkav: one dropdown under Border): Social, Chat Channels and Chat Menu are
+-- Header Buttons (one dropdown under Border): Social, Chat Channels and Chat Menu are
 -- saved as hide flags, Volume as a show flag; each its own saved switch
 local HEADER_BUTTONS = { { "social", "chat.socialHide", true }, { "channels", "chat.channelHide", true },
                          { "menu", "chat.menuHide", true }, { "volume", "chat.showVolume" } }
@@ -62,7 +62,7 @@ S:Row{ key = "ch.headerButtons", kind = "dropdown", section = "ch.frame", apply 
 -- type in (Modules/Chat.lua TAB SETS CHANNEL). Read on each tab pick, so no apply needed.
 
 S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", choices = S:OpacityChoices(), apply = Refresh, section = "ch.editBoxSection" }
--- Edit Box Style (11-21, Malkkav): FlareUI (Blizzard's own art, always) or Modern (default, a dark
+-- Edit Box Style: FlareUI (Blizzard's own art, always) or Modern (default, a dark
 -- box). Edit Box Border: Modern's edge only, hidden with FlareUI; unset, it reads the edge the box had
 -- from the chat's Border (Chat.lua Chat.EditBoxBorder)
 S:Row{ key = "ch.editBoxStyle", kind = "choice", path = "chat.editBoxStyle", choices = { "flareui", "modern" },
@@ -74,7 +74,7 @@ S:Row{ key = "ch.editBoxBorder", kind = "choice", choices = { "none", "thick", "
     hidden = function() return S:GetPath("chat.editBoxStyle") == "flareui" end }
 S:Row{ key = "ch.editBox", kind = "choice", path = "chat.editBoxPosition",
     choices = { "inside", "below", "above" }, apply = Refresh, section = "ch.editBoxSection" }
--- Notifications (11-20, Malkkav): Tab Glow and Whisper Sound, a section of their own below Edit Box
+-- Notifications: Tab Glow and Whisper Sound, a section of their own below Edit Box
 -- Tab Glow: which kinds of lines light an unseen tab; None (or nothing ticked) lights
 -- none. Mute Tab on a tab's right click keeps one tab dark (Modules/Chat.lua TAB GLOW).
 S:Row{ key = "ch.unreadGlow", kind = "dropdown", path = "chat.unreadGlow", apply = Refresh, section = "ch.notifications",
@@ -113,7 +113,7 @@ S:Row{ key = "ch.channelNames", kind = "choice", tab = "tweaks", section = "ch.f
         S:SetPath("chat.shortChannels", mode ~= "full")
     end,
     apply = Refresh }
--- Icons (11-20, was three switches): one dropdown of toggles over chat.linkIcons / raceIcons / classIcons
+-- Icons: one dropdown of toggles over chat.linkIcons / raceIcons / classIcons
 local CHAT_ICONS = { "linkIcons", "raceIcons", "classIcons" }
 local ICON_SPEC = { exclusive = { "none" }, tokens = CHAT_ICONS, empty = "none" }
 S:Row{ key = "ch.icons", kind = "dropdown", tab = "tweaks", section = "ch.formatting", toggles = ICON_SPEC, apply = Refresh,

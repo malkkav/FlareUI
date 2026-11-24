@@ -35,7 +35,7 @@ S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", section = "qol.mapMai
 S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mailBook", apply = Refresh }
 S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.taxiMap" }
 S:Row{ key = "qol.zoneLevels", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.zoneLevels" }
--- (11-23, Malkkav) the flight list (PR #154, parchinskiy) took the place of Coordinates on the World
+-- the flight list (PR #154, parchinskiy) took the place of Coordinates on the World
 -- Map, which only switched Blizzard's own two map options (still in its Interface settings)
 S:Row{ key = "qol.flightDestinations", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.flightDestinations",
     apply = function() if ns.FlightDestinations then ns.FlightDestinations:Refresh() end end }
@@ -48,6 +48,12 @@ S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", section = "qol.other
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.deleteJunkWhenFull" }
 S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.alertSounds" }
+-- the one exception to "nameplates only on the Nameplates page": combo points under
+-- Blizzard's plates, for those who keep the module off. Gone while it's on: it has its own (np.comboPoints).
+S:Row{ key = "qol.plateCombo", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.plateCombo",
+    apply = function() if ns.Nameplates and ns.Nameplates.ApplyCombo then ns.Nameplates.ApplyCombo() end end,
+    hidden = function() return S:GetPath("nameplates.enabled") and true or false end,
+    disabled = function() return ns.Nameplates and ns.Nameplates.OtherAddon and ns.Nameplates.OtherAddon() and true or false end }
 -- The camera: two sliders. Each starts at Blizzard's own value; back on it,
 -- FlareUI leaves the game's setting alone (nil). Better Camera's old switch carried over as 2.6 and 50.
 local function CameraSlider(key, path, cvar, choices)

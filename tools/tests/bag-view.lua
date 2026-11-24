@@ -2,16 +2,11 @@
 -- Bag View (Bags.lua, 11-20): one dropdown for All Items, Category Filters, Category Rows and Category
 -- Rows + Sets. The older Category Filters dropdown (Off / Drawer / Buttons, or the switch's true) is
 -- carried over once: any filter becomes Category Filters; Off leaves All Items.
-local H = dofile("tools/tests/perf-helpers.lua")
-local source = H.read("Modules/Bags.lua")
-local s = assert(source:find("function Bags.View(db)", 1, true))
-local e = assert(source:find("\nlocal function CategoryRows", s, true))
-local loader = loadstring or load
-local env = setmetatable({ Bags = {}, GetDb = function() return nil end }, { __index = _G })
-local chunk = assert(loader(source:sub(s, e)))
-setfenv(chunk, env)
-chunk()
-local View = env.Bags.View
+local ui = dofile("tools/tests/fixtures/settings-ui.lua").new()
+local ns = { L = setmetatable({}, { __index = function(_, key) return key end }), modules = {} }
+ui.env.Enum = { ItemBind = {}, ItemClass = {} }
+ui:load("Modules/Bags.lua", ns)
+local View = assert(ns.Bags.View)
 
 local function check(ok, message) assert(ok, message) end
 

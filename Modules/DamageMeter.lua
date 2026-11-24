@@ -272,7 +272,7 @@ function DamageMeter.PaintSkin(skin, db, inChat)
     skin.FlareUI_InChat = inChat
     skin:SetBackdropColor(1, 1, 1, inChat and 0 or db.opacity or 0.85)
     skin:SetBackdropBorderColor(BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b, inChat and 0 or BORDER_TINT.a)
-    -- Frame Style FlareUI (11-20): the chat's FlareUI strips (same 24 px header), none inside the chat
+    -- Frame Style FlareUI: the chat's FlareUI strips (same 24 px header), none inside the chat
     -- (the chat's skin is the frame there)
     if ns.Chat and ns.Chat.ApplyFrameStyleArt then ns.Chat.ApplyFrameStyleArt(skin, db, inChat) end
 end
@@ -793,7 +793,7 @@ local function ApplyBarFont(entry, db)
     -- a family: other players' names keep their Cyrillic and Chinese / Korean letters. A row reads
     -- "1. Имя": the "1." makes the game pick the Latin member, so a row whose name has Russian letters
     -- takes the font's Cyrillic twin (ns.CyrillicTwin, Core.lua), which has both alphabets.
-    -- (11-23, #163 ambonif) only those rows: the twin draws Latin letters a little differently, so
+    -- (#163 ambonif) only those rows: the twin draws Latin letters a little differently, so
     -- every other row and the values keep the chosen font. Rows are reused for other players, so
     -- the name's own SetText picks again (DamageMeter.RowNameFont).
     if nameFs and nameFs.SetFont then
@@ -1311,7 +1311,7 @@ local function UpdateThreatView(window, view)
         end
         if data.isPlayer then me = data end
     end
-    -- (11-24, Malkkav: one number everywhere) the game's own lead, as on the plates and unit frames
+    -- (one number everywhere) the game's own lead, as on the plates and unit frames
     -- (ns.ThreatPercent); from the list's values when it gives none
     if db.threatTankLead and tank then
         local lead
@@ -3673,7 +3673,7 @@ local function TrimMeterDialog(dialog)
     local db = GetDb()
     if not (db and db.enabled) then return end
     local setting = Enum.EditModeDamageMeterSetting
-    -- (11-22) Blizzard's own Visibility stays in view while it is Hidden or In a Group: Blizzard
+    -- Blizzard's own Visibility stays in view while it is Hidden or In a Group: Blizzard
     -- applies it again as a fight starts and the meter can't come back until the fight ends, so the
     -- settings banner sends the player here to set it to Always (it was hidden, and they couldn't)
     local kinds, meter = Enum.DamageMeterVisibility, _G.DamageMeter
@@ -3709,7 +3709,7 @@ end
 --------------------------------------------------
 -- 24. INIT
 --------------------------------------------------
--- BLIZZARD'S OWN VISIBILITY CHECK (11-22, Malkkav): Blizzard's meter Visibility on Hidden or In a
+-- BLIZZARD'S OWN VISIBILITY CHECK: Blizzard's meter Visibility on Hidden or In a
 -- Group hides the meter as a fight starts, and no addon may show it again until the fight ends (nor
 -- change Edit Mode's value: that taints Blizzard's meter). So once per session, out of a fight, a
 -- small window says so and opens Edit Mode, where the row shows while it's wrong (TrimMeterDialog).
@@ -3787,7 +3787,7 @@ function DamageMeter:Init()
             SafeCall(Dock.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
             -- Report to Chat
             SafeCall(DamageMeter.Report.ModifyWindowMenu, owner, rootDescription, GetWindowSettingsDropdown)
-            -- Hide Until Next Group (11-22, Malkkav, xjsc16x's idea): the meter away for this group
+            -- Hide Until Next Group (xjsc16x's idea): the meter away for this group
             -- (not in the chat, where it is a tab); it comes back when you join another group, or after
             -- a reload. Its Visibility stays as set.
             if not DamageMeter:ChatTabAvailable() then

@@ -279,7 +279,7 @@ local function StartRoll(rollID, rollTimeMs)
     local since = C_LootHistory.GetLootHistoryTime and Safe(C_LootHistory.GetLootHistoryTime())
     s.since = type(since) == "number" and since or nil
     -- the roll's end event can be missed (a loading screen): closed after its time anyway. Not while the
-    -- game still lists it (11-24): the server can keep a roll open past its time, and it can be answered.
+    -- game still lists it: the server can keep a roll open past its time, and it can be answered.
     local function CloseLate()
         if sessions[rollID] ~= s or s.status ~= "rolling" then return end
         if StillOpen(rollID) and GetTime() < s.t0 + s.duration + OPEN_LATE then
@@ -455,7 +455,7 @@ local function Panel(frame)
         shade:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.45), CreateColor(0, 0, 0, 0))
         frame.skin = { rock, wash, glow, shade }
     end
-    -- (11-23, Malkkav: always full strength; Background Opacity removed, see-through read badly)
+    -- (always full strength; Background Opacity removed, see-through read badly)
 end
 
 local function Box(frame)
@@ -1319,7 +1319,7 @@ local function ScaleSetting()
 end
 
 --------------------------------------------------
--- 7b. FADE IN COMBAT (Edit Mode's Fading, off; 11-24, Aethamus). Not a Visibility element: those say when
+-- 7b. FADE IN COMBAT (Edit Mode's Fading, off; Aethamus). Not a Visibility element: those say when
 -- a frame shows, and this window shows only while something is rolled. Pointing at it brings it back, and
 -- so do the last seconds (URGENT) of a roll you have not chosen on; after the fight it is back at once.
 --------------------------------------------------

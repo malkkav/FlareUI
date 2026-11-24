@@ -21,7 +21,7 @@ local AceDB = LibStub("AceDB-3.0")
 -- Bronze tint of every FlareUI frame border
 ns.BORDER_COLOR = { r = 0.65, g = 0.49, b = 0.27, a = 1 }   -- #A67D45
 
--- FlareUI's palette (colour audit 11-19): one bronze hue in even lightness steps, two golds, a warm
+-- FlareUI's palette (colour audit): one bronze hue in even lightness steps, two golds, a warm
 -- grey, one warm ground and one blue. New colours come from here; the older constants move onto it
 -- module by module. Not for Blizzard's font colours, bar colours or class colours (Blizzard's own).
 ns.PALETTE = {
@@ -59,7 +59,7 @@ ns.WINDOW_STYLE = {
 -- Blizzard's health green and mana blue, toned down; other powers keep Blizzard's colours
 ns.HEALTH_GREEN = { 0.15, 0.82, 0.15 }
 -- The dot between parts of a line ("Chest · Cloth"): the Russian client's fonts have no middle dot and
--- draw a box, so a dash there (11-21, Archy)
+-- draw a box, so a dash there
 ns.DOT = (GetLocale and GetLocale() == "ruRU") and "-" or "\194\183"
 ns.MANA_BLUE = { 0.18, 0.48, 1.00 }   -- bright, to stand out from the deep blue of shaman health bars
 
@@ -985,7 +985,7 @@ local defaults = {
             showTags = true,
             showRecipes = true,
             showCompleteTag = true,     -- Show Complete Tag: green title + "(Complete)" on finished quests
-            frameStyle = "custom",      -- Frame Style: blizzard | flareui | custom (Modern; the default since 11-20, older setups keep FlareUI: Core.lua audit1120) (ObjectiveTracker.lua Build.FrameStyle)
+            frameStyle = "custom",      -- Frame Style: blizzard | flareui | custom (Modern; the default, older setups keep FlareUI: Core.lua audit1120) (ObjectiveTracker.lua Build.FrameStyle)
             hideScrollBar = false,      -- Hide Scroll Bar (FlareUI and Custom styles): no thumb; the mouse wheel still scrolls
             questIcons = false,         -- Quest Buttons > Quest Icon: Blizzard's round quest button before each title; click focuses
             focusButtons = false,       -- Quest Buttons > Focus Button: a dot before each title; click focuses
@@ -1138,6 +1138,7 @@ local defaults = {
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
             lootWindow = false,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
             lootWindowFreeSlots = false, -- Show Free Bag Slots at the loot window's foot
+            plateCombo = false,         -- Nameplate Combo Points: under Blizzard's plates, with the Nameplates module off (NameplateExtras.lua)
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
@@ -1174,7 +1175,7 @@ local defaults = {
 -- (Libs/FlareEditMode/widgets/extension.lua PlaceSaved; global.editDialogPos)
 LibStub("FlareEditMode").GetDialogStore = function() return ns.db and ns.db.global end
 
--- (11-24) the same error again in a session raises the count on its line, so one broken part can't push
+-- the same error again in a session raises the count on its line, so one broken part can't push
 -- every other entry out (ns.errorSeen: place and text -> its line)
 ns.ERRORS_KEPT = 20
 ns.errorSeen = {}
@@ -1245,7 +1246,7 @@ function ns.ErrorsCommand(args)
     ns.Perf.ShowText(L["FlareUI caught errors"], head .. "\n\n" .. table.concat(list, "\n"))
 end
 
--- BLOCKED ACTIONS (11-23): what the game refused in FlareUI's name (its "Disable / Ignore" popup, or the red
+-- BLOCKED ACTIONS: what the game refused in FlareUI's name (its "Disable / Ignore" popup, or the red
 -- "blocked" line) goes in the same log, which had nothing about them: the function, where you were, and
 -- the calls that led there. The events come inside the refused call, so the stack is that call's. One
 -- entry per function, kind and fight in a session, with a count.
@@ -1261,8 +1262,17 @@ function ns.BlockedLog.Insecure()
     if type(ContainerFrameSettingsManager) == "table" then
         Look("bagSetupDirty", ContainerFrameSettingsManager, "bagSetupDirty")
         Look("isUsingCombinedBags", ContainerFrameSettingsManager, "isUsingCombinedBags")
+        Look("bagsShown", ContainerFrameSettingsManager, "bagsShown")
     end
-    -- (11-24) the bank's type goes with every item use; the bag menu's own fields travel the same way
+    -- (what opening a bag window leaves on it)
+    for _, name in ipairs({ "ContainerFrameCombinedBags", "ContainerFrame1", "ContainerFrame2", "ContainerFrame6" }) do
+        local frame = _G[name]
+        if type(frame) == "table" then
+            Look(name .. " Items", frame, "Items")
+            Look(name .. " size", frame, "size")
+        end
+    end
+    -- the bank's type goes with every item use; the bag menu's own fields travel the same way
     local panel = _G.BankPanel or (_G.BankFrame and _G.BankFrame.BankPanel)
     if type(panel) == "table" then Look("bankType", panel, "bankType") end
     pcall(function()
@@ -1296,6 +1306,20 @@ function ns.BlockedLog.Insecure()
     end)
     return table.concat(found, ", ")
 end
+-- Empties a field of one of Blizzard's tables and makes it Blizzard's again: the game keeps the mark on the
+-- emptied slot until the table is rebuilt, which enough other empty writes bring about (foxlit's way, as in
+-- OPie and ConsolePort). Only for a field Blizzard writes anew before it needs it. True when it is clean.
+function ns.CleanField(t, key)
+    if type(t) ~= "table" or not issecurevariable then return false end
+    if issecurevariable(t, key) then return true end
+    t[key] = nil
+    for probe = 42, 8000 do
+        if t[probe] == nil then t[probe] = nil end
+        if issecurevariable(t, key) then return true end
+    end
+    return false
+end
+
 function ns.BlockedLog.OnEvent(_, event, addon, func)
     if not canaccessvalue(addon) or addon ~= "FlareUI" then return end
     local log, list = ns.BlockedLog, nil
@@ -1342,7 +1366,7 @@ local AURA_TIME_BANDS = {
 }
 
 -- Bags & Looting's switch. Until it is set, it follows Quality of Life's, where these options lived:
--- once per profile (bagModuleSeeded). (11-22) Switched off it is saved as false, the default, which the
+-- once per profile (bagModuleSeeded). Switched off it is saved as false, the default, which the
 -- saved settings drop at logout: read as unset, it copied Quality of Life's switch again at every
 -- login and came back on by itself.
 function ns.BagModuleOn()
@@ -1355,7 +1379,7 @@ function ns.BagModuleOn()
     return tweaks.bagModule == true
 end
 
--- CAST BAR EDGE GLOW (11-22, Malkkav, Kelvan's idea): Blizzard's bright edge at the cast's front, on
+-- CAST BAR EDGE GLOW (Kelvan's idea): Blizzard's bright edge at the cast's front, on
 -- every cast bar (each frame's Cast Bar section; the Player Cast Bar's Look). On for new players only:
 -- decided once per profile (castGlowNew), on when FlareUI has never shown its What's New (a fresh
 -- install), so existing players' cast bars stay as they were. Each bar's own switch (castGlow), never
@@ -1470,7 +1494,7 @@ function ns.BorderEdgeSize(edgeFile, size)
     return size
 end
 
--- (11-22, Aleksandr Vasinskyi) Blizzard's Latin-only fonts have Cyrillic twins: the same Latin letters
+-- (Aleksandr Vasinskyi) Blizzard's Latin-only fonts have Cyrillic twins: the same Latin letters
 -- plus Russian. The game draws a whole string with one font, so a meter row like "1. Имя" (a Russian
 -- name on an English client) took the Latin-only font and drew boxes; the twin draws both. Only where
 -- the client has the file. (7.0.3 swapped every font: the twin looks crisper and has no "·", so
@@ -1536,7 +1560,7 @@ end
 -- and reads back the old font (a new font string has none, and any text on it throws), and the string
 -- switches once the file is in. So a string gets the base font at the right size and asks again until
 -- the client says yes. A blank or hidden string's request doesn't load the file: never test a font on one.
--- REDRAW (11-20, every font option at once; Ciron's blank Info Bar, TheHusky's blank keybinds): text
+-- REDRAW (every font option at once; Ciron's blank Info Bar, TheHusky's blank keybinds): text
 -- drawn before its font file loaded can stay blank after the file is in, and the same font set again
 -- does nothing. A size change and back draws it anew. So every string styled here (and every font
 -- object) is remembered, and redrawn: the moment its file answers yes, and 2 and 10 s after each
@@ -1661,7 +1685,7 @@ function ns.FontFamiliesAlways()
     return ns.fontFamiliesAlways
 end
 
--- Global Font > Outline (11-23): one outline over every FlareUI font's own; "" keeps each font's. Read as a font
+-- Global Font > Outline: one outline over every FlareUI font's own; "" keeps each font's. Read as a font
 -- is set (a change asks for a reload). The settings window's own text is left out (ns.SetFontUnscaled).
 function ns.OutlineFlags(flags)
     local fonts = ns.db and ns.db.profile and ns.db.profile.fonts
@@ -1734,7 +1758,7 @@ function ns.SetFontFamily(fontString, path, size, flags)
     F.Apply(fontString, path, size, flags)
 end
 
--- A string's family, with the shadow it was last given (ns.ApplyShadow). (11-23, sadisticseagull)
+-- A string's family, with the shadow it was last given (ns.ApplyShadow).
 -- A family's text draws with its members' shadow, so the string's own showed nothing: each shadow has its
 -- own family, set on it and on every member. The shadow is remembered per string, so styling a string
 -- again lands on the same family at once (a change of font object drops its colour and alignment).
@@ -2208,7 +2232,7 @@ do
         return policy
     end
 
-    -- A place whose lanes need both kinds of rules (11-24): Blizzard's raid rules drop, for the whole
+    -- A place whose lanes need both kinds of rules: Blizzard's raid rules drop, for the whole
     -- container, every aura they don't count, before a row's own filters (Always Show, everyone's
     -- buffs beside the debuffs). So the lanes are split: the first lane's kind, then the other kind in a
     -- container of its own. The second answer is nil when one container will do; the third: whether
@@ -2279,8 +2303,9 @@ do
 
     function AP.UpdateSide(f, unit)
         local live = f.auraLive
-        if not (live and #live.enemy > 0) then return end
         local enemy = AP.IsEnemy(unit)
+        if ns.AuraLook and ns.AuraLook.DispelSide then ns.AuraLook.DispelSide(f, enemy) end
+        if not (live and #live.enemy > 0) then return end
         if live.isEnemy == enemy then return end
         live.isEnemy = enemy
         for _, rec in ipairs(live.enemy) do
@@ -2528,7 +2553,7 @@ do
 end
 
 -- YOUR THREAT ON A MOB AS ONE NUMBER, for the unit frames' Threat Text and the nameplates' Threat Percentage
--- (the meter's tank row follows: DamageMeter.lua). 11-24, a tank's report: plates stuck at 100%.
+-- (the meter's tank row follows: DamageMeter.lua).
 --   Not holding it: the scaled percent, 100 is where you pull it.
 --   Holding it: your threat against the next in line, as Blizzard's target frame (and Plater, Platynator,
 --   ClassicUI): 260 is 2.6 times theirs, under 100 it goes. The game's scaled percent is 100 for whoever holds
@@ -2702,7 +2727,7 @@ do
     local PARTS = {
         size = { "Scale", "Width", "Height", "Portrait Scale", "Power Height", "Size",
                  "Power Bar for Mana Users Only", "Only Mana Power Bars" },
-        -- the frame's look picks (11-20): first in its Look section (ns.EditSections takes them there)
+        -- the frame's look picks: first in its Look section (ns.EditSections takes them there)
         look = { "Portrait", "Flip Portrait", "Mirror Bars" },
         text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
                  "Threat Text", "Bar Text", "Show Timer", "Level Disc Size", "Values on Mouseover" },
@@ -2811,7 +2836,7 @@ do
     -- The bars' conditions (action bars and the frames faded with them, Fake CM, resource bars). The
     -- single choices from before the toggles each meant "in combat, or ...".
     -- In an Instance on every Visibility list, under In a Group
-    -- In a Capital City last on every list (11-20), under Not Mounted
+    -- In a Capital City last on every list, under Not Mounted
     C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
     -- the faded elements' and Fake CM's: Mouseover is a condition ticked with the others
     C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
@@ -2953,7 +2978,7 @@ function ns.Fade(frame, inset, top, bottom)
 end
 
 -- Header icons in struck bronze: a metal gradient over a dark copy 1 px down-right and a faint light
--- copy 1 px up; hovering lightens the gradient. (11-19: darker, TOP 1.38 -> 1.12 and BOTTOM 0.80 ->
+-- copy 1 px up; hovering lightens the gradient. (darker, TOP 1.38 -> 1.12 and BOTTOM 0.80 ->
 -- 0.68, to sit with the rest of the bronze; the chat, meter and loot roll icons alike)
 ns.BronzeIcon = {
     TOP = 1.12,           -- colour multiplier at the top
@@ -3053,7 +3078,7 @@ function ns.FitEditModeBox(system, bounds)
         left, right = (ref:GetLeft() + left) * scale - self:GetLeft(), (ref:GetRight() + right) * scale - self:GetRight()
         top, bottom = (ref:GetTop() + top) * scale - self:GetTop(), (ref:GetBottom() + bottom) * scale - self:GetBottom()
         -- on the system itself: Edit Mode's Snap reads these two points' offsets as its distance from the
-        -- system's own edges (11-23, ravenesque: on the art, a snapped minimap stopped short of the screen edge)
+        -- system's own edges (on the art, a snapped minimap stopped short of the screen edge)
         selection:ClearAllPoints()
         selection:SetPoint("TOPLEFT", self, "TOPLEFT", left * k, top * k)
         selection:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", right * k, bottom * k)
@@ -3534,7 +3559,7 @@ f:SetScript("OnEvent", function(self, event, ...)
         ns.defaults = defaults
         ns.CastGlowDefault()   -- (decided before What's New marks this install as seen)
 
-        -- 11-19: the bar textures FlareUI Forever and FlareUI Forever (Light) became FlareUI Dark and
+        -- the bar textures FlareUI Forever and FlareUI Forever (Light) became FlareUI Dark and
         -- FlareUI Light: saved values in every profile are renamed once
         if not db.global.barNames2 then
             local RENAME = { ["FlareUI Forever"] = "FlareUI Dark", ["FlareUI Forever (Light)"] = "FlareUI Light" }
@@ -3551,7 +3576,7 @@ f:SetScript("OnEvent", function(self, event, ...)
             db.global.barNames2 = true
         end
 
-        -- 11-20 (settings audit), once for setups made before it; a new install or a full reset
+        -- once for setups made before it; a new install or a full reset
         -- starts with the flag unset and empty profiles, so it gets the new defaults:
         -- * Quest Tracker Frame Style default became Modern ("custom"): a profile that never picked
         --   one keeps FlareUI

@@ -50,7 +50,7 @@ Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.rem
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
     -- (with Those in Your Bags the ticks don't count)
     disabled = function() return not ConsumablesOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
--- Upkeep (11-20, was six switches): one dropdown of toggles over auras.reminder.<key>
+-- Upkeep: one dropdown of toggles over auras.reminder.<key>
 local UPKEEP = { "weaponOil", "supplies", "durability", "trinkets", "camping", "gathering" }
 local UPKEEP_SPEC = { exclusive = { "none" }, tokens = UPKEEP, empty = "none" }
 local function UpkeepValue(read)

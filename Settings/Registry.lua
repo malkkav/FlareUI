@@ -75,6 +75,7 @@ Settings.NEW = {
     ["np.showTitles"] = "7.0",
     ["np.threatPercent"] = "7.0",
     ["qol.flightDestinations"] = "7.0",
+    ["qol.plateCombo"] = "7.0",
     ["rm.spellRank"] = "7.0",
     ["tt.healingDamage"] = "7.0",
 }
@@ -479,7 +480,7 @@ end
 -- Frame Border choices: None, FlareUI's border, then other addons' borders; rebuilt on each open
 function Settings:BorderChoices()
     -- (Chat, Damage Meter and Quest Tracker only) FlareUI Frames and the Thick art share 16 px corners:
-    -- shown as FlareUI Thin / Thick (11-20, were "FlareUI Frames Thin / Thick"); "FlareUI Frames" stays the saved name
+    -- shown as FlareUI Thin / Thick; "FlareUI Frames" stays the saved name
     local list = { { "None", L["None"] }, { "FlareUI Frames", "FlareUI Thin" }, { "FlareUI Thick", "FlareUI Thick" } }
     local others = ns.AddonMedia("border")
     if #others > 0 then
@@ -956,7 +957,7 @@ function Settings:LinkEditMode()
             LEM:AddFrameSettingsButton(frame, {
                 text = backText,
                 click = function()
-                    -- (11-24) closing Edit Mode from here never asks, and Blizzard then throws away every
+                    -- closing Edit Mode from here never asks, and Blizzard then throws away every
                     -- change not saved yet. Its own question isn't opened from here: its Save would run
                     -- as FlareUI's.
                     local manager = EditModeManagerFrame

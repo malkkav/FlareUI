@@ -29,7 +29,7 @@ local InCombatLockdown = InCombatLockdown
 local C = {
     DEFAULT_POSITION = { point = "TOPLEFT", x = 2, y = -2 },
     DEFAULT_BORDER = "FlareUI Frames",
-    FLAREUI_BORDER = "FlareUI Thick",   -- Frame Style FlareUI's own border (FlareUI Frames Thick, 11-18)
+    FLAREUI_BORDER = "FlareUI Thick",   -- Frame Style FlareUI's own border (FlareUI Frames Thick)
     WIDTH = 250, MAX_HEIGHT = 300,
     HEADER = 30,            -- header band
     HEADER_INSET = 8,       -- header contents from the frame edges
@@ -64,7 +64,7 @@ local C = {
     UNTRACKED_ALPHA = 0.55, -- Show Untracked Quests: how bright an untracked quest's text is
     -- Quest animations: px a quest slides, seconds for it to move, leave, and for a sheen to cross
     SLIDE = 24, MOVE_TIME = 0.25, LEAVE_TIME = 0.3, SHEEN_TIME = 0.6, SHEEN_WIDTH = 36,
-    -- the header, zone headings and quest titles in Blizzard's yellow (NORMAL_FONT_COLOR); 11-18 Marcus:
+    -- the header, zone headings and quest titles in Blizzard's yellow (NORMAL_FONT_COLOR):
     -- not the tracker's darker title gold (OBJECTIVE_TRACKER_BLOCK_HEADER_COLOR), it looked dull
     HEADING = { 1, 0.82, 0 },
     ZONE = { 1, 0.82, 0 },
@@ -83,7 +83,7 @@ local C = {
     NO_FONT = {},           -- a font setting with nothing set (only ever read)
 }
 
--- Colour Scheme (11-20, Malkkav): Blizzard's colours, or FlareUI's: the header and zone headings in light
+-- Colour Scheme: Blizzard's colours, or FlareUI's: the header and zone headings in light
 -- bronze, quest titles in the accent bronze, every other colour (complete, focus, objectives, timers,
 -- difficulty) in a softer tone of its own (ns.SoftColor). The C tables change in place, so every
 -- holder of one follows. Blizzard frame style always takes Blizzard's; FlareUI and Custom default to
@@ -696,7 +696,7 @@ local function OpenQuest(questID)
     elseif QuestMapFrame_OpenToQuestDetails then
         -- Blizzard's own tracker opens the map and details untainted where it can (OT.ShowSecureClick, a
         -- plain left click). Its parked tracker only builds the quests that fit in its height, so most
-        -- have no header to click: those open from here, as before 7.0.1 (11-22: 7.0.1 only showed
+        -- have no header to click: those open from here, as before 7.0.1 (7.0.1 only showed
         -- "Open your quest log" for them, and the click did nothing)
         QuestMapFrame_OpenToQuestDetails(questID)
     end
@@ -890,7 +890,7 @@ local function ShowQuestMenu(owner, questID)
         root:CreateTitle(C_QuestLog.GetTitleForQuestID(questID) or "?")
         local focused = C_SuperTrack.GetSuperTrackedQuestID() == questID
         root:CreateButton(focused and TEXT.unfocus or TEXT.focus, function() ToggleFocus(questID) end)
-        -- (no Open Quest Log or Show on Map since 11-21: from a menu they would taint the map's pins;
+        -- (no Open Quest Log or Show on Map: from a menu they would taint the map's pins;
         -- a left click on the quest opens both through Blizzard's own tracker)
         root:CreateButton(TEXT.linkChat, function() LinkToChat(questID) end)
         local share = root:CreateButton(TEXT.share, function()
@@ -1190,10 +1190,10 @@ function Build.LineLook(line, text, kind, cfg, color, w, wrap)
     return h
 end
 
--- SECURE CLICK INTO BLIZZARD'S TRACKER (11-21). Opening the map or a quest's details from addon code
+-- SECURE CLICK INTO BLIZZARD'S TRACKER. Opening the map or a quest's details from addon code
 -- builds the map's quest pins under FlareUI's taint, and pins made that way stay tainted: in a fight
 -- the game then blocks them (SetPassThroughButtons) even when the map is opened by its key. Even
--- C_Map.OpenWorldMap runs Blizzard's opener tainted on Forever (tested 11-21). So one secure button
+-- C_Map.OpenWorldMap runs Blizzard's opener tainted on Forever (tested). So one secure button
 -- covers the quest line under the mouse and clicks that quest's header in Blizzard's parked tracker:
 -- Blizzard's own code opens the map and the details (or completes an auto-complete quest), untainted.
 -- Only a plain left click goes there; every other click reaches the line's own handler (PostClick).
@@ -1215,18 +1215,18 @@ function OT.HideSecureClick()
     local o = OT.secureClick
     if o and o:IsShown() and not InCombatLockdown() then o:Hide() end
 end
--- QUESTS BLIZZARD'S TRACKER HAS NO HEADER FOR (11-22, GitHub #141): it builds only the quests that fit
+-- QUESTS BLIZZARD'S TRACKER HAS NO HEADER FOR (GitHub #141): it builds only the quests that fit
 -- its height. For those the overlay runs a macro instead: Blizzard's own quest log button opens the
 -- map (untainted, as a click on it), then a secure button clicks that quest's title in the log, which
 -- Blizzard's code opens (QuestMapLogTitleButton_OnClick). The picker aims at its target in its
 -- PreClick, out of a fight: the details' Back button when another quest's details are open (the
 -- macro clicks it four times: back, the quest's folded heading, the list again, the quest), else the
 -- quest's title. With the map on a zone Blizzard folds every heading that isn't on it, often all of them,
--- so the title isn't there until its heading is clicked (11-23, AstroFox: from a zone map only the log
+-- so the title isn't there until its heading is clicked (AstroFox: from a zone map only the log
 -- opened). The heading's click alone was not enough (7.0.9): Blizzard draws the list again on
 -- QUEST_LOG_UPDATE, which comes a frame later (UniqueEvent), after the whole macro. The details' Back
 -- button draws it at once (QuestMapFrame_CloseQuestDetails), with no details open too. If the log's search
--- hides the quest, the map and log still open. Idea from the tracker research (11-22).
+-- hides the quest, the map and log still open. Idea from the tracker research.
 -- the heading in Blizzard's log that hides this quest, if it is folded
 function OT.FoldedHeading(questID)
     local index = C_QuestLog.GetHeaderIndexForQuest and C_QuestLog.GetHeaderIndexForQuest(questID)
@@ -1251,7 +1251,7 @@ function OT.QuestPicker()
     if picker then return picker end
     picker = CreateFrame("Button", "FlareUIQuestPick", UIParent, "SecureActionButtonTemplate")
     picker:SetAttribute("type", "click")
-    -- (11-23, Erik) the macro's /click is a release: with the game's Cast on Key Down (on by default) the
+    -- (Erik) the macro's /click is a release: with the game's Cast on Key Down (on by default) the
     -- template waited for a press, so the log opened and the quest didn't
     picker:SetAttribute("useOnKeyDown", false)
     picker:SetAttribute("pressAndHoldAction", false)
@@ -1689,7 +1689,7 @@ function Build.FoldIcon(line, show, folded, cfg)
 end
 
 -- Voice lines from the Spoken addon's quest part, when it is installed, switched on and has this quest;
--- or (11-21, Archy) from Wayfarer, the Russian voice-over (global WayfarerRU), through the calls its
+-- or from Wayfarer, the Russian voice-over (global WayfarerRU), through the calls its
 -- player described: Core:QuestVoice, QuestLog:Play, Queue.items / Queue:RemoveWhere, UI:Refresh. Every
 -- one guarded: Wayfarer isn't installed here, so a change on its side only hides the button.
 local function SpokenReady()
@@ -2212,7 +2212,7 @@ C.ART_TITLE_RIGHT = 8   -- the title strip's art sits off its centre: its right 
 C.ART_TITLE_LEFT = 1    -- and the whole title strip one pixel to the left, to sit centred on the border
 C.ART_FOOT_BAND = { 31 / 40, 38 / 40 }   -- the title strip's bottom line with its knobs, for the frame's foot
 C.ART_FOOT_Y = 2.5      -- that line's middle, up from the frame's bottom edge (on the border, as the knobs at the top;
-                        -- 2.5 and ART_TITLE_DOWN -0.5 (up) fitted to the Thick border's curve in game, Malkkav 11-20)
+                        -- 2.5 and ART_TITLE_DOWN -0.5 (up) fitted to the Thick border's curve in game)
 C.ART_TITLE_DOWN = -0.5 -- the title strip this far below the header's middle
 C.ART_KNOB_IN = 2       -- the title strip's end knobs sit on the frame border, half of each knob outside it
 C.ART_HEADING_IN = 5    -- a zone heading's strip stays this far inside the frame border and the scroll bar
@@ -2602,7 +2602,7 @@ function OT:Render()
                     end
                     if not collapsed then
                         if complete then
-                            -- the plain "Ready for turn-in" line in Blizzard's grey (11-20: 6.13 only did it in the sample)
+                            -- the plain "Ready for turn-in" line in Blizzard's grey (6.13 only did it in the sample)
                             local doneText = CompleteText(q)
                             local ready = AddLine(doneText, "objective", doneText == TEXT.ready and C.READY or Build.DoneColor(db), objectiveIndent)
                             ready.questID = q.questID
@@ -2968,10 +2968,6 @@ function Build.PlaceScrollBar(thumb, list, window, contentHeight, listHeight, of
     thumb:SetSize(px * 3, thumbHeight)
 end
 
-function OT:CountTracked()
-    ReadLog()
-    return state.logTracked
-end
 
 -- Quest log events come in bursts: one redraw for each burst
 function OT:RequestRender()
@@ -3114,7 +3110,7 @@ local INSTANCE_CONTEXT = { party = "dungeon", raid = "raid", pvp = "pvp", arena 
 local function CurrentContext(rules)
     -- lockdown only begins after PLAYER_REGEN_DISABLED, where this runs; the player is in combat already
     if rules.combat == "minimize" and UnitAffectingCombat("player") then return "combat" end
-    -- Auto Minimize on Flight Paths (11-19)
+    -- Auto Minimize on Flight Paths
     if rules.taxi == "minimize" and UnitOnTaxi("player") then return "taxi" end
     local _, instanceType = IsInInstance()
     return INSTANCE_CONTEXT[instanceType] or "world"
@@ -3375,7 +3371,7 @@ end
 
 Build.GLYPHS = { funnel = "QTFilter", exclaim = "QTExclaim", question = "QTQuestion", sort = "QTSort" }
 
--- THE HEADER ICONS' COLOURS (PR #159 by GregDuhamel; 11-23 Malkkav: they follow the Colour Scheme).
+-- THE HEADER ICONS' COLOURS (PR #159 by GregDuhamel; they follow the Colour Scheme).
 -- FlareUI: the box's bronze at rest, a switch that is on in the header's light bronze, the fold arrows
 -- tinted to it. Blizzard: Blizzard's header gold, dimmer at rest, and its own gold fold arrows.
 C.ICON_DIM = 0.75   -- Blizzard's gold at rest, against a switch that is on
@@ -3454,7 +3450,7 @@ function Build.LayoutAutoButtons(head, db)
     if not (accept and turnIn) then return end
     local tweaksModule = ns.modules and ns.modules["Tweaks"]
     local can = tweaksModule and tweaksModule.initialized and not ns.IsGamepadUI() or false
-    -- each its own switch (11-20); a setup from before the split keeps its shared autoButtons
+    -- each its own switch; a setup from before the split keeps its shared autoButtons
     local function On(key)
         local v = db[key]
         if v == nil then v = db.autoButtons end
@@ -3635,7 +3631,7 @@ local function CreateFrames()
     end
 
     -- Sort: a click the next way (Zone, Distance, Level, Progress), a right-click the one before; the
-    -- same four settings as Quest Tracker > Sort (AstroFox's idea 11-18)
+    -- same four settings as Quest Tracker > Sort
     local sort = header.sort
     sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     sort:SetScript("OnClick", function(self, mouse)
@@ -3675,7 +3671,7 @@ local function CreateFrames()
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(_, delta) OT.ScrollBy(delta) end)
     scroll:SetScript("OnVerticalScroll", function()
-        -- (11-24) the secure click lies on the screen where its quest was: without this a wheel step and a
+        -- the secure click lies on the screen where its quest was: without this a wheel step and a
         -- click opened the quest that had been under the mouse. The line there now gets its own OnEnter.
         OT.HideSecureClick()
         OT:UpdateScrollBar()

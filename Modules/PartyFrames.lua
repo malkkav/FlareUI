@@ -95,7 +95,7 @@ local function PlacesClash(a, b)
     if a == b then return true end
     return PLACE_EDGE[a] ~= nil and PLACE_EDGE[a] == PLACE_EDGE[b] and (WIDE_PLACES[a] or WIDE_PLACES[b]) or false
 end
--- STACKED AURAS (11-22, Malkkav; as the unit frames' AURA.Stack): Buffs and Debuffs may pick clashing
+-- STACKED AURAS (as the unit frames' AURA.Stack): Buffs and Debuffs may pick clashing
 -- places and stack; the one placed first stays nearer, the later pick (st.auraOuter) goes one row
 -- further. Dispel Icons still never share a place. Returns the nearer and the further kind, or nil.
 function PF.AuraStack(st)
@@ -548,7 +548,7 @@ end
 
 -- Power Text: the raid's (and raid-style tiles') default is None, the party's Value
 local function TilePowerMode(f, st)
-    -- (11-23) raid tiles: their Centre slot ("mid", PF.FillMid), or none
+    -- raid tiles: their Centre slot ("mid", PF.FillMid), or none
     if PF.MidOn(f) then return ns.BarText.HasNumbers(PF.MidSet(f, "power")) and "mid" or "none" end
     if RaidTile(f) then
         local v = st and st.powerText
@@ -870,7 +870,7 @@ local function UpdateTarget(f)
     -- the border's bright copy, or on the plate the name box's glow (the frame's alpha drives both)
     local plate = OnPlate(f) and f.PlateFrame and f.PlateFrame.Strip
     -- the Gamepad UI: a second copy on top, twice as bright, to spot the target picked with the
-    -- D-pad (11-23, copycatgirl)
+    -- D-pad
     local boost = PF.TargetBoost()
     hl.Border:SetShown(not plate)
     if hl.Border2 then hl.Border2:SetShown(not plate and boost) end
@@ -1089,7 +1089,7 @@ local function UpdatePet(p, glide)
     p.Name:SetText(SafeName(ns.UnitDisplayName(unit)))
 end
 
--- Show Target Markers (11-23, s.kud; off): the raid marker of what each member is targeting, on the tile's
+-- Show Target Markers (off): the raid marker of what each member is targeting, on the tile's
 -- right border. Read as the members' own (a secret index goes to the texture unread).
 function PF.UpdateTargetMarker(t)
     local icon = t.RaidIcon
@@ -1547,6 +1547,7 @@ local function ConfigurePosition(f, pos, lanes, extra)
         local size = portrait and size or ns.AuraSize(st, isDebuff, 18)
         local look = kind ~= "dispels" and LaneLook(size, isDebuff, inside, f) or nil
         if look and lane.stealable then look.stealable = true end   -- Highlight Purgeable Buffs (boss tiles)
+        if look and f.ctx and f.ctx.hostile then look.noTypeIcon = true end   -- (a boss's debuffs: nothing to dispel)
         local lookSig = ns.AuraGroups.Sig(kind, size, isDebuff, inside, font, showTimer, look)
         local key, err = ns.AuraGroups.Add(container, entry, lane.key, lookSig, lane.filter, {
             maxFrameCount = kind == "dispels" and not portrait and math_min(max, 3) or (lane.fillCount or max),
@@ -1681,7 +1682,7 @@ end
 -- Blizzard's aura button and every frame inside it have secret aspects (no scripts, so no animation
 -- restart on show): one driver of FlareUI's own sets the alpha of the highlight's pieces, ~30 times a
 -- second, skipping tiles that are not on screen. frame: a piece; tile: its tile (nil: always).
--- (11-24, Perfy) which tiles show is looked up four times a second, once per tile, not for every piece
+-- which tiles show is looked up four times a second, once per tile, not for every piece
 -- on every beat.
 PF.DISPEL_PULSE = { 0.3, 1, 0.2 }   -- low alpha, high alpha, seconds each way
 PF.dispelPulsing = {}
@@ -1993,7 +1994,7 @@ local function CastStyle(st, f)
         height = st.castHeight or 14,
         icon = st.castIcon ~= false, timer = st.castTimer ~= false, name = true,
         texture = castTexture, border = true, borderTexture = PF.TileBorder(f, castBorder),
-        -- (11-20) the cast bar's own Background, as on the unit frames; unset, the frame's
+        -- the cast bar's own Background, as on the unit frames; unset, the frame's
         bgOpacity = st.castBgOpacity or st.bgOpacity,
         glow = ns.CastGlowOn(st.castGlow),   -- Edge Glow (Core.lua ns.CastGlowOn)
     }
@@ -2068,7 +2069,7 @@ local function LayoutTexts(f)
         f.PowerText:SetJustifyH("CENTER")
     end
     if PF.SlotOn(f) then PF.LayoutSlotTexts(f) end
-    -- Values on Mouseover (11-20): the old texts, and the slots' on slot tiles
+    -- Values on Mouseover: the old texts, and the slots' on slot tiles
     local list = { f.HealthText, f.PowerText }
     if PF.SlotOn(f) then
         for _, bar in ipairs({ "health", "power" }) do
@@ -2083,7 +2084,7 @@ end
 -- ctx.TextDb(): the stored table (BT.Slots converts an old Health / Power Text choice into it once).
 -- The Right slot is the old HealthText / PowerText; Left and Middle are made here.
 PF.SLOT_RIGHT = { health = "HealthText", power = "PowerText" }
--- (11-20: the party's Classic tiles too, with no ctx; 11-23, Malkkav: and its Raid Style, whose name stays
+-- (the party's Classic tiles too, with no ctx; and its Raid Style, whose name stays
 -- on top of the tile)
 -- the table holding a tile's Name Above Frames pick: its Bar Text's
 function PF.NameAboveDb(f) return f.ctx and f.ctx.TextDb and f.ctx.TextDb() or TS(f) end
@@ -2092,7 +2093,7 @@ function PF.SlotOn(f)
     if f.ctx then return f.ctx.barText and true or false end
     return f.index ~= nil   -- (the party's own tiles: live and samples)
 end
--- RAID FRAMES (11-23, Malkkav): the same picker with the
+-- RAID FRAMES: the same picker with the
 -- Centre slot only (BarText.lua style "tile"); the old Health / Power Text choice converts once. The
 -- tile's own HealthText / PowerText show it, where they always sat.
 PF.MID_DESC = L["What the middle of the bar shows. Several numbers show together, split by /."]
@@ -2195,7 +2196,7 @@ function PF.LayoutSlotTexts(f)
     end
     f.btFullName = BT.FullOf(pick or "fullname")
     local levelOnRing = f.ringKind ~= nil
-    f.Name:SetShown(nameSlot and true or false)   -- (off the plate the slot alone decides, 11-20)
+    f.Name:SetShown(nameSlot and true or false)   -- (off the plate the slot alone decides)
     if not levelOnRing then f.Level:SetShown((nameSlot and st.showLevel) and true or false) end
     if not nameSlot then return end
     local at = side[nameSlot]
@@ -2272,7 +2273,7 @@ function PF.LayoutPetHappiness(f)
     local place = UFM.PetHappinessPlace and UFM.PetHappinessPlace() or "RIGHT"
     local height = p:GetHeight() or 0
     local size = place == "CENTER" and math_max(12, math_min(20, height + 4))
-        or math_max(20, p.Health:GetHeight() or 0)   -- (11-24) beside it: as tall as the health bar
+        or math_max(20, p.Health:GetHeight() or 0)   -- beside it: as tall as the health bar
     face:ClearAllPoints()
     face:SetSize(size, size)
     if place == "LEFT" then
@@ -2456,7 +2457,7 @@ local function LayoutMember(f)
         end
         local castStyle = CastStyle(st, f)
         castStyle.fontKey = PF.FontKey(f)
-        -- (11-20) Above on the boss and flag carrier frames (their Cast Bar > Position); the party's is always below
+        -- Above on the boss and flag carrier frames (their Cast Bar > Position); the party's is always below
         K.LayoutCastBar(f.Cast, castStyle, f, st.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
         -- the auras below move down while it shows (in a fight too: they are not protected)
         f.Cast.onShownChanged = f.Cast.onShownChanged or function()
@@ -3651,7 +3652,7 @@ local function BuildSettings()
         { name = L["Width"], kind = LEM.SettingType.Slider, default = D.width, minValue = 60, maxValue = 400, valueStep = 1, get = getS("width"), set = setS("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = D.height, minValue = 20, maxValue = 120, valueStep = 1, get = getS("height"), set = setS("height"),
           hidden = onPlate },
-        -- Portrait Scale (11-20, FlareUI Style, as on the unit frames): the ring in proportion, apart from the height
+        -- Portrait Scale (FlareUI Style, as on the unit frames): the ring in proportion, apart from the height
         { name = L["Portrait Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 150, valueStep = 5,
           formatter = function(value) return value end,
           get = function() return getS("portraitScale")() or 100 end, set = setS("portraitScale"),
@@ -3685,7 +3686,7 @@ local function BuildSettings()
               return v
           end,
           set = setS("portrait"), hidden = classicOnly },
-        -- the unit frames' Left / Middle / Right slots, in both styles (11-20, 11-23; an old choice converts
+        -- the unit frames' Left / Middle / Right slots, in both styles (an old choice converts
         -- once, BarText.lua BT.Slots). Raid Style's hold no name: it sits on top of the tile.
         ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "party", db = function() return (S()) end,
             changed = function() Refresh() end, style = textStyle }),
@@ -3702,7 +3703,7 @@ local function BuildSettings()
             hidden = function() return not IsRaidStyle() end, first = ns.BarText.OldFirstOnly }),
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
         K.ValuesOnHoverSetting(getS("valuesOnHover"), setS("valuesOnHover")),
-        -- Level Disc Size (11-20, per frame): the ring styles' level disc, with Show Level on
+        -- Level Disc Size (per frame): the ring styles' level disc, with Show Level on
         { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
           formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local v = getS("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
@@ -3790,7 +3791,7 @@ local function BuildSettings()
         { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 40, valueStep = 1,
           get = getS("castHeight"), set = setS("castHeight"), hidden = noCast },
         (function()
-            -- the cast bar's own Background (11-20, as on the unit frames); unset, the frame's
+            -- the cast bar's own Background (as on the unit frames); unset, the frame's
             local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,
                 function() local v = getS("castBgOpacity")(); if v == nil then v = getS("bgOpacity")() end; if v == nil then return K.BAR_BG_OPACITY end; return v end,
                 setS("castBgOpacity"))

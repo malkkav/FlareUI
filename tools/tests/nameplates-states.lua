@@ -607,6 +607,29 @@ units[secondToken], aliases[secondToken], native[2] = nil, nil, nil
 aliases.target = gamePlate
 send("PLAYER_TARGET_CHANGED")
 nextFrame()
+-- Target Scale grows over a moment (11-24), slowing down; a threat change and a plate just taken jump
+do
+    local glide = plates.Glide
+    assert(live.targetTint:IsShown() and live.root:GetScale() == 1 and glide.driver:IsShown())
+    glide.driver:RunScript("OnUpdate", 0.075)
+    local half = live.root:GetScale()
+    assert(half > 1.15 and half < 1.25, half)
+    glide.driver:RunScript("OnUpdate", 0.1)
+    assert(live.root:GetScale() == 1.25 and not glide.driver:IsShown() and not next(glide.plates))
+    local shown = live.targetShown
+    live.targetShown = false
+    plates.ApplyScale(live)
+    assert(glide.plates[live], "back to its size the same way")
+    local threat = live.threatKey
+    live.threatKey, live.targetShown = "test", shown
+    plates.ApplyScale(live)
+    assert(live.root:GetScale() == 1.25 and not glide.plates[live], "a threat change jumps")
+    live.targetShown, live.scaleFresh = false, true
+    plates.ApplyScale(live)
+    assert(live.root:GetScale() ~= 1.25 and not glide.plates[live], "a plate just taken jumps")
+    live.threatKey, live.targetShown, live.scaleFresh = threat, shown, true
+    plates.ApplyScale(live)
+end
 assert(live.targetTint:IsShown() and live.root:GetScale() == 1.25)
 aliases.target = env.CreateFrame("Frame", nil, env.UIParent)
 send("PLAYER_TARGET_CHANGED")
@@ -651,11 +674,13 @@ do
     send("PLAYER_TARGET_CHANGED")
     plates.RangeTick()
     nextFrame()
+    plates.Glide.driver:RunScript("OnUpdate", 1)
     assert(live.root:GetScale() == 1.25 and live.holder:GetAlpha() == 0.35)
     aliases.target, testMob.inRange = otherTarget, true
     send("PLAYER_TARGET_CHANGED")
     plates.RangeTick()
     nextFrame()
+    plates.Glide.driver:RunScript("OnUpdate", 1)
     assert(live.root:GetScale() == 0.88 and live.root:GetAlpha() == 0.55 and live.holder:GetAlpha() == 1)
     plates.PresetOf, plates.PresetValue = presetOf, presetValue
     restoreQuest()

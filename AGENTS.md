@@ -43,6 +43,6 @@ for t in tools/tests/*.lua; do [ "$t" = tools/tests/perf-helpers.lua ] || luajit
 ```
 
 - `tools/tests/syntax.lua` loads every Lua file, so it catches syntax errors and the 200-locals limit.
-- When you fix a bug that can be reproduced outside the game, add a small test for it in `tools/tests/`, using the mock helpers in `perf-helpers.lua`.
+- When you fix a bug that can be reproduced outside the game, add a small test for it in `tools/tests/`, using the fixtures in `tools/tests/fixtures/` (`settings-ui.lua` loads a whole module with WoW API doubles).
 - Do not extract and execute fragments of production Lua in tests. Tests must not depend on declaration order, nearby comments, spacing, line endings, or other source-text markers. Load the actual module with WoW API doubles and exercise its normal entry points. If logic needs isolation, load a small real module as a whole. Apply this rule to new tests and migrate existing source-slicing tests when changing them.
 - Secret values, taint and Blizzard's locked frames can't be tested outside the game. Say in the PR that it needs an in-game test.

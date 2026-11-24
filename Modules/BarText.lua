@@ -24,7 +24,7 @@ BT.BARS = { "health", "power", "mana" }
 BT.SEPARATOR = " / "
 -- the order of items without a ticked place (defaults, older saves)
 BT.ORDER = { "firstname", "lastname", "fullname", "percent", "value", "max", "lost" }
--- (11-24, Malkkav: the most asked-for pick) Last Name: the surname alone
+-- (the most asked-for pick) Last Name: the surname alone
 BT.NAMES = { firstname = true, fullname = true, lastname = true }
 BT.ITEMS = {
     health = { "firstname", "lastname", "fullname", "percent", "value", "max", "lost" },
@@ -51,7 +51,7 @@ BT.DEFAULTS = {
         health = { middle = { value = true, max = true } },
         power = { middle = { value = true, max = true } },
     },
-    -- (11-23, Malkkav) raid frames: the Centre slot only, no name (it sits on top of the tile); the
+    -- raid frames: the Centre slot only, no name (it sits on top of the tile); the
     -- party's Raid Style: all three, no name. Both start empty, as their old Health / Power Text did
     tile = { health = {}, power = {} },
     partytile = { health = {}, power = {} },
@@ -63,7 +63,7 @@ BT.stamp = 0
 
 -- a frame's own starting slots over its style's, in every style: no power text on the
 -- pet and the target-of frames (mana as power). A frame's "plain" / "plate" table holds slots for
--- that style only (11-20: the party and boss frames start as their old Health Text: Percent, Power Value)
+-- that style only (the party and boss frames start as their old Health Text: Percent, Power Value)
 BT.UNIT_DEFAULTS = {
     pet = { power = {} }, targettarget = { power = {} }, focustarget = { power = {} },
     party = { plain = { health = { left = { name = true }, right = { percent = true } }, power = { right = { value = true } } } },
@@ -262,7 +262,7 @@ end
 
 -- Show Name on the raid tiles (raid frames, the party's Raid Style), whose name sits on top: one dropdown, Off
 -- and which name (the old switch's off stays Off). Saved as showName (false: off) and nameShown. Not Forever
--- Style's name box: its name is fixed (Malkkav 11-24).
+-- Style's name box: its name is fixed.
 --   o: db(), changed(), hidden, first() (true: First Name until picked)
 function BT.ShowNameSetting(o)
     local LEM = LibStub("FlareEditMode")
@@ -434,7 +434,7 @@ function BT.Setting(o)
 end
 
 --------------------------------------------------
--- NAME ABOVE PLATES (11-20, Malkkav, the most asked-for change): the unit's name above the frame, so the
+-- NAME ABOVE PLATES (the most asked-for change): the unit's name above the frame, so the
 -- bars can stay clean. One Edit Mode dropdown in each frame's Text section: Off, then Left, Centre and
 -- Right, each with First, Full and Last Name. One pick in all: a new pick replaces the old one. Stored
 -- per frame as udb.nameAbove = "<slot>:<firstname|fullname|lastname>". The spot is the frame's own left, centre
@@ -514,7 +514,7 @@ function NA.Layout(f, udb, anchor, font)
         fs:SetWordWrap(false)
         f.NameAboveText = fs
     end
-    -- over the portrait ring and the elite dragon (11-24, nehcro), as the auras are (f.auraLift)
+    -- over the portrait ring and the elite dragon, as the auras are (f.auraLift)
     f.NameAboveHolder:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6))
     if font and font.GetFont then
         local face, size, flags = font:GetFont()
@@ -540,7 +540,7 @@ function NA.Layout(f, udb, anchor, font)
     return f.nameAboveLift
 end
 
--- The level in front of the name (11-24, Thinkysaurus / Malkkav): Show Level off the ring styles, whose
+-- The level in front of the name: Show Level off the ring styles, whose
 -- disc has it; with the name in the bar too, the level is in both. The bar level's colours and marks;
 -- icons: the frame's (High Level Skull); ranked: + and R, as in the bar. nil: none to show.
 function NA.LevelText(level, color, icons, ranked)

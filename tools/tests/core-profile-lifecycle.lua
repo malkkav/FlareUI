@@ -168,6 +168,24 @@ do
     end
     env.issecurevariable, env.ContainerFrameSettingsManager, env.ContainerFrameCombinedBags, env.BankFrame = secure, nil, nil, nil
 end
+-- (11-24) a field is emptied and made Blizzard's again: the mark goes once the table is rebuilt
+do
+    local secure, writes, marked = env.issecurevariable, 0, true
+    local t = setmetatable({}, { __newindex = function(_, key) if key ~= "bankType" then writes = writes + 1 end end })
+    rawset(t, "bankType", 1)
+    env.issecurevariable = function(target, key)
+        assert(target == t and key == "bankType")
+        if writes >= 20 and rawget(t, "bankType") == nil then marked = false end
+        return not marked
+    end
+    assert(ns.CleanField(t, "bankType") and rawget(t, "bankType") == nil and writes == 20)
+    rawset(t, "bankType", 2)
+    assert(ns.CleanField(t, "bankType") and rawget(t, "bankType") == 2, "clean: left alone")
+    -- a mark that never goes: gives up; not a table: nothing
+    env.issecurevariable = function() return false end
+    assert(ns.CleanField({}, "x") == false and ns.CleanField(nil, "x") == false)
+    env.issecurevariable = secure
+end
 -- an error that comes again raises its own line's count, and pushes nothing out
 do
     ns.db.global.errors = nil

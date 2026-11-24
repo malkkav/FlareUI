@@ -76,7 +76,7 @@ local function NewLine(parent)
     line.icon:SetSize(ICON, ICON)
     line.icon:SetPoint("LEFT")
     line.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    -- (11-20) a border in the item's quality colour, square or round as the auras' (Loot Feed: Square
+    -- a border in the item's quality colour, square or round as the auras' (Loot Feed: Square
     -- Icons / Round Icons); the icon clipped to its shape
     line.mask = line:CreateMaskTexture()
     line.mask:SetAllPoints(line.icon)
@@ -475,7 +475,7 @@ function LF:Init()
     holder:SetClampedToScreen(true)
     ApplyPosition()
     LEM:AddFrame(holder, OnMoved, DEFAULTS, L["FlareUI Loot Feed"])
-    -- Scale (11-20), as Loot Rolls and Toasts: tweaks.lootFeedScale, 1 unset; at the cursor too
+    -- Scale, as Loot Rolls and Toasts: tweaks.lootFeedScale, 1 unset; at the cursor too
     local function ApplyScale()
         local db = GetDb()
         holder:SetScale(db and tonumber(db.lootFeedScale) or 1)

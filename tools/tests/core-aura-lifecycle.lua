@@ -175,4 +175,16 @@ assert(existing.enabled and not container.groups[keys.purge].enabled and contain
 
 ns.db.profile.auras = { hidden = { [99] = "target" } }
 assert(hidden.For("target")[99] and not hidden.For("target")[11] and hidden.ShownFor("target") == nil)
+do   -- (11-24) the dispel type icons follow the unit's side, with or without side filters
+    local sides, attack, exists = {}, env.UnitCanAttack, env.UnitExists
+    env.UnitExists = function() return true end
+    ns.AuraLook = { DispelSide = function(_, side) sides[#sides + 1] = side end }
+    env.UnitCanAttack = function() return true end
+    aura.UpdateSide({}, "target")
+    env.UnitCanAttack = function() return false end
+    aura.UpdateSide({}, "target")
+    assert(#sides == 2 and sides[1] == true and sides[2] == false)
+    ns.AuraLook, env.UnitCanAttack, env.UnitExists = nil, attack, exists
+end
+
 print("PASS: aura filters, target changes, layout reuse and locked-button restyling")

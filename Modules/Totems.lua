@@ -347,7 +347,7 @@ local function BuildSettings()
           get = get("size", size), set = set("size") },
         { name = L["Totems per Row"], kind = LEM.SettingType.Slider, default = perRow, minValue = 1, maxValue = MAX, valueStep = 1,
           get = get("perRow", perRow), set = set("perRow") },
-        -- (Aura Swipe and Aura Timer: Settings > Buffs & Debuffs > Totems, 11-20)
+        -- (Aura Swipe and Aura Timer: Settings > Buffs & Debuffs > Totems)
     })
 end
 

@@ -49,7 +49,7 @@ S:On("PageShown", function(key)
     if ns.DamageMeter and ns.DamageMeter.SetSettingsPreview then ns.DamageMeter:SetSettingsPreview(key == "dm") end
 end)
 
--- Frame Style (11-20, Malkkav): Modern (default) or FlareUI, as the chat's; first in Frame, Border hides with FlareUI
+-- Frame Style: Modern (default) or FlareUI, as the chat's; first in Frame, Border hides with FlareUI
 S:Row{ key = "dm.frameStyle", kind = "choice", path = "damagemeter.frameStyle", choices = { "flareui", "modern" },
     apply = Refresh, section = "dm.frame" }
 S:Row{ key = "dm.opacity", kind = "range", path = "damagemeter.opacity", choices = S:OpacityChoices(), apply = Refresh, section = "dm.frame" }
@@ -66,7 +66,7 @@ local function NotInChat() return not InChat() end
 -- (the meter's and the threat window's fading is set in their Edit Mode dialogs)
 S:Row{ key = "dm.border", kind = "choice", path = "damagemeter.borderTexture", choices = S.BorderChoices,
     apply = Refresh, section = "dm.frame", hidden = function() return S:GetPath("damagemeter.frameStyle") == "flareui" end }
--- Bar Texture: Blizzard's own bar first (the default), then the unit frames' list (Shuuberg's idea 11-19)
+-- Bar Texture: Blizzard's own bar first (the default), then the unit frames' list
 local function BarTextures()
     local list = { { "", L["Blizzard"] }, { divider = true } }
     local values = ns.UnitFrames and ns.UnitFrames.Kit and ns.UnitFrames.Kit.BuildTextureValues
@@ -118,7 +118,7 @@ end
 -- of their own: Tank's Lead | Pull Warning, Pull Aggro Line
 S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
     choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
--- Threat Window (11-20, was two switches that turned each other off): one choice over
+-- Threat Window: one choice over
 -- damagemeter.threatWindow and damagemeter.autoThreat. Separate Window appears right above or below
 -- the meter (DamageMeter.PlaceThreatWindow)
 S:Row{ key = "dm.threatMode", kind = "choice", tab = "threat", section = "dm.threat", choices = { "off", "window", "combat" },

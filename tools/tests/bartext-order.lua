@@ -100,11 +100,10 @@ ns.db.profile.unitframes.fullNames = nil
 assert(not BT.OldFirstOnly())
 -- the unit's own name (Core.lua)
 do
-    local H = dofile("tools/tests/perf-helpers.lua")
     local units = { player = { "Juniper", "Vale" }, wolf = { "Wolf" }, hidden = { "Secret", "Hush" } }
-    local env = setmetatable({ ns = ns, UnitName = function(u) return units[u][1], units[u][2] end,
-        canaccessvalue = function(v) return v ~= "Hush" end }, { __index = _G })
-    H.loadSections("Core.lua", { { "function ns.UnitDisplayName(", "-- Class colours on a frame's health bar" } }, env)
+    local ui, ns = dofile("tools/tests/fixtures/core.lua")()
+    ui.env.UnitName = function(u) return units[u][1], units[u][2] end
+    ui.env.canaccessvalue = function(v) return v ~= "Hush" end
     assert(ns.UnitDisplayName("player", nil, "lastname") == "Vale" and ns.UnitDisplayName("player", nil, true) == "Juniper Vale")
     assert(ns.UnitDisplayName("player", nil, false) == "Juniper" and ns.UnitDisplayName("player", "targetof", "lastname") == "Juniper")
     assert(ns.UnitDisplayName("wolf", nil, "lastname") == "Wolf", "no surname: the name")

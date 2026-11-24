@@ -157,7 +157,7 @@ end
 -- (FlareUI) an Edit Mode dialog next to the frame it belongs to: to its right when there is
 -- room, else to its left, else above or below it; its top level with the frame's; the whole of it on
 -- screen. below: screen pixels that hang under the dialog (FlareUI's box under Blizzard's).
--- (FlareUI 11-20) One spot for every settings dialog, FlareUI's and Blizzard's: a fixed start at the
+-- One spot for every settings dialog, FlareUI's and Blizzard's: a fixed start at the
 -- top right, then wherever the player last dragged one. Kept in screen pixels (each dialog has its own
 -- scale) in the table lib.GetDialogStore() hands over (FlareUI: the account-wide saved variables).
 -- Dialogs used to open beside the selected frame, so a dialog dragged away came back each time.

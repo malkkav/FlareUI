@@ -81,6 +81,26 @@ local function Combined()
     return _G.ContainerFrameCombinedBags
 end
 
+-- Blizzard's bag windows opened and closed from here leave its setup flag ours, and the bank reads that
+-- flag as it opens: its whole opening then ran as FlareUI. Both fields are only notes Blizzard
+-- makes again (no flag: nothing to set up), so they are emptied; a flag that is up stays.
+function Bags.CleanFlags()
+    local manager = _G.ContainerFrameSettingsManager
+    if type(manager) ~= "table" or not ns.CleanField then return end
+    if not manager.bagSetupDirty then ns.CleanField(manager, "bagSetupDirty") end
+    ns.CleanField(manager, "bagsShown")
+end
+
+function Bags.OpenWindow(id, force)
+    OpenBag(id, force)
+    Bags.CleanFlags()
+end
+
+function Bags.CloseWindow(id)
+    CloseBag(id)
+    Bags.CleanFlags()
+end
+
 local function GamepadUI()
     return InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled() or false
 end
@@ -204,6 +224,30 @@ function Bags.WarmReagentProbe(e, frame, bagID)
     end
 end
 
+-- Looks like the other slots: what Blizzard's own update draws on a slot (ContainerFrameMixin:UpdateItems:
+-- quality, quest mark, new item glow, cooldown), then FlareUI's overlay (borders, fonts, the category filter).
+-- These buttons are in no window's list, so neither reaches them otherwise.
+function Bags.DressReagentProbe(button, bagID, slot, info)
+    -- (a value the game hides in a fight, or a part this client lacks: the slot goes without that part)
+    local function Draw(method, ...)
+        local f = button[method]
+        if f then pcall(f, button, ...) end
+    end
+    local texture = info and info.iconFileID
+    local quality = info and info.quality
+    Draw("SyncAppearanceWithHasItem")
+    if SetItemButtonQuality then pcall(SetItemButtonQuality, button, quality, info and info.hyperlink, false, info and info.isBound) end
+    Draw("UpdateExtended")
+    local quest = C_Container.GetContainerItemQuestInfo and C_Container.GetContainerItemQuestInfo(bagID, slot)
+    if quest then Draw("UpdateQuestItem", quest.isQuestItem, quest.questID, quest.isActive) end
+    Draw("UpdateNewItem", quality)
+    Draw("UpdateJunkItem", quality, info and info.hasNoValue)
+    Draw("UpdateCooldown", texture)
+    Draw("SetReadable", info and info.isReadable)
+    local db = GetDb()
+    if db and not Bags:GetOtherBagAddon() then Bags.DecorateButton(button, db, info, bagID, slot) end
+end
+
 function Bags.UpdateReagentProbe(button, bagID, slot)
     local info = C_Container.GetContainerItemInfo(bagID, slot)
     if canaccessvalue and not canaccessvalue(info) then return end
@@ -214,12 +258,13 @@ function Bags.UpdateReagentProbe(button, bagID, slot)
     SetItemButtonTexture(button, texture)
     SetItemButtonCount(button, count or 0)
     SetItemButtonDesaturated(button, locked == true)
+    Bags.DressReagentProbe(button, bagID, slot, info)
     if button.SetMatchesSearch then button:SetMatchesSearch(not filtered) end
 end
 
 -- a slot's place in the combined backpack: filled from the bottom right, right to left, upwards
 -- extra: more height below this row (By Category's section titles)
--- REVERSE BAG FILL (11-22, Malkkav, from zbee's idea; tweaks.bagReverse, off): the plain grid turned
+-- REVERSE BAG FILL (from zbee's idea; tweaks.bagReverse, off): the plain grid turned
 -- round, so it starts at the top left and reads left to right, downwards; the Combine Empty Slots
 -- slot ends it, at the bottom. Same order, same rows and gaps: each slot's spot is mirrored once the
 -- grid is laid out (Bags.placedSlots, reused). Not with Category Rows, whose headers sit above their
@@ -261,6 +306,9 @@ local function ClearExtraNewItems()
     for bagID, e in pairs(extras) do
         if e.holder:IsShown() then
             for slot, b in pairs(e.buttons) do
+                if b:IsShown() then C_NewItems.RemoveNewItem(bagID, slot) end
+            end
+            for slot, b in pairs(e.probe or {}) do
                 if b:IsShown() then C_NewItems.RemoveNewItem(bagID, slot) end
             end
         end
@@ -371,7 +419,7 @@ local function ParkExtraWindows()
     for i = 1, (NUM_CONTAINER_FRAMES or 13) do
         local frame = _G["ContainerFrame" .. i]
         if type(frame) == "table" and frame.GetID then
-            -- (one window that fails never keeps the next from its section: 11-23, suorat4an's crafting bag)
+            -- (one window that fails never keeps the next from its section)
             local ok, err = pcall(ParkOne, frame)
             if not ok then ns.LogError("Bags extra window " .. i, err) end
         end
@@ -381,7 +429,7 @@ end
 local function CloseParkedReagentWindow()
     local reagentID = ReagentID()
     local reagent = reagentID and ContainerFrameUtil_GetShownFrameForID(reagentID)
-    if reagent and parked[reagent] ~= nil and ReagentWanted() then CloseBag(reagentID) end
+    if reagent and parked[reagent] ~= nil and ReagentWanted() then Bags.CloseWindow(reagentID) end
 end
 
 -- A native backpack click opens only the combined frame. With bag 5 equipped,
@@ -593,7 +641,7 @@ local function SyncBackpackExtras()
     if InCombatLockdown() or not backpack then return end
     local active = backpack:IsShown() and ns.BagModuleOn() and Bags:IsCombined() and LayoutWanted()
     for id, owned in pairs(openedForBackpack) do
-        if not (active and ExtraWanted(id)) and ContainerFrameUtil_GetShownFrameForID(id) == owned then CloseBag(id) end
+        if not (active and ExtraWanted(id)) and ContainerFrameUtil_GetShownFrameForID(id) == owned then Bags.CloseWindow(id) end
     end
     if not active then return end
     local folded = CategoryRows(GetDb()) and GetCollapsedSections()
@@ -603,7 +651,7 @@ local function SyncBackpackExtras()
         local native = ContainerFrameUtil_GetShownFrameForID(id)
         if native then
             if id == KeyringID() and native:GetBagSize() ~= GetKeyRingSize() then
-                OpenBag(id, true)
+                Bags.OpenWindow(id, true)
             elseif parked[native] == nil or not (extras[id] and extras[id].window == native) then
                 -- (also one kept off screen whose buttons went back to it: its section stayed empty)
                 ParkExtraWindows()
@@ -613,7 +661,7 @@ local function SyncBackpackExtras()
         -- The combined backpack instead uses its own template buttons until Blizzard opens bag 5.
         elseif id ~= ReagentID() and not (folded and folded[id]) then
             openingForBackpack = id
-            OpenBag(id)
+            Bags.OpenWindow(id)
             openingForBackpack = nil
             openedForBackpack[id] = ContainerFrameUtil_GetShownFrameForID(id)
         end
@@ -1173,7 +1221,7 @@ function Bags.CombineEmpty(items, combine)
         for button in pairs(Bags.combinedEmpty) do SetFreeCount(button, nil) end
         return items
     end
-    -- (11-24, aiurjordan) one slot per kind of bag: a soul, herb or other special bag's free slots take only
+    -- one slot per kind of bag: a soul, herb or other special bag's free slots take only
     -- its own items, so they are counted apart (with them in one count, the slot shown could be one nothing
     -- else fits in). The padlocked slots of an account without an authenticator are no free slots.
     local kept, spares, families = {}, {}, {}
@@ -1550,7 +1598,7 @@ end
 
 local function UpdateItemBorder(ov, db, quality, dimmed)
     local style = db.bagThickBorders and "thick" or "thin"
-    -- Colour by Rarity (11-20, in Skin Item Slots; tweaks.bagRarity, on): off, every border bronze
+    -- Colour by Rarity (in Skin Item Slots; tweaks.bagRarity, on): off, every border bronze
     if quality and not dimmed and db.bagRarity ~= false then
         local r, g, b = C_Item.GetItemQualityColor(quality)
         ShowBorder(ov, style, r, g, b)
@@ -1834,7 +1882,7 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.ilvl:Hide()
     ov.eye:Hide()
     ov.boe:Hide()
-    -- (the padlock of an account without an authenticator stays: Archy 11-24)
+    -- (the padlock of an account without an authenticator stays)
     local locked = not info and button.IsExtended and button:IsExtended() and IsAccountSecured and not IsAccountSecured()
     ov.plain:SetShown(db.bagPlainEmpty and not info and not locked or false)
 
@@ -2328,7 +2376,7 @@ function Bags:Init()
             local id = KeyringID()
             local keys = openedForBackpack[id]
             if not combined:IsShown() and keys and keys:IsShown() and keys:GetID() == id
-                and not InCombatLockdown() then CloseBag(id) end
+                and not InCombatLockdown() then Bags.CloseWindow(id) end
             if next(openedForBackpack) then QueueBackpackExtraSync() end
         end)
     end
@@ -2360,6 +2408,8 @@ function Bags:Init()
     bagEvents:RegisterEvent("GAME_PAD_ACTIVE_CHANGED")
     bagEvents:RegisterEvent("ITEM_LOCK_CHANGED")
     bagEvents:RegisterEvent("INVENTORY_SEARCH_UPDATE")
+    -- (the crafting bag's own slots: the cooldowns and new item glows Blizzard's windows follow)
+    for _, event in ipairs({ "BAG_UPDATE_COOLDOWN", "BAG_NEW_ITEMS_UPDATED" }) do pcall(bagEvents.RegisterEvent, bagEvents, event) end
     if useFilterButtons then bagEvents:RegisterEvent("QUEST_LOG_UPDATE") end
     for _, event in ipairs({ "BAG_UPDATE_DELAYED", "BAG_CONTAINER_UPDATE", "PLAYER_REGEN_ENABLED", "EQUIPMENT_SETS_CHANGED" }) do
         pcall(bagEvents.RegisterEvent, bagEvents, event)
@@ -2369,11 +2419,18 @@ function Bags:Init()
             RefreshBagClickProxies()
             return
         end
-        if event == "ITEM_LOCK_CHANGED" or event == "INVENTORY_SEARCH_UPDATE" then
+        if event == "ITEM_LOCK_CHANGED" or event == "INVENTORY_SEARCH_UPDATE"
+            or event == "BAG_UPDATE_COOLDOWN" or event == "BAG_NEW_ITEMS_UPDATED" then
             local id = ReagentID()
             local e = id and extras[id]
             if e and e.probe and next(e.probe) and not e.window and e.holder:IsVisible() then
-                if event == "INVENTORY_SEARCH_UPDATE" then
+                if event == "BAG_UPDATE_COOLDOWN" then   -- (often in a fight: the cooldowns alone)
+                    for slot, b in pairs(e.probe) do
+                        if b:IsShown() and b.UpdateCooldown then
+                            pcall(b.UpdateCooldown, b, C_Container.HasContainerItem and C_Container.HasContainerItem(id, slot))
+                        end
+                    end
+                elseif event ~= "ITEM_LOCK_CHANGED" then
                     for slot, b in pairs(e.probe) do
                         if b:IsShown() then Bags.UpdateReagentProbe(b, id, slot) end
                     end
@@ -2473,20 +2530,32 @@ end
 --------------------------------------------------
 -- 4c. BAGS WITH OTHER WINDOWS
 -- The personal bank already opens and closes bags through Blizzard's own handlers.
--- FlareUI uses the same APIs for the guild bank and, optionally, the character window.
--- Bags opened by the player stay open when the window closes.
+-- FlareUI opens them for the guild bank and, optionally, the character window; bags opened by the player
+-- stay open when the window closes. Which window opened them is kept here, not in Blizzard's
+-- FRAME_THAT_OPENED_BAGS: the bank reads that one too (see Bags.CleanFlags).
 -- Not in the Gamepad UI, whose bags are its own.
 --------------------------------------------------
 local function OpenWith(frame)
     if GamepadUI() or not OpenAllBags then return end
     -- after the window's own OnShow (the panel manager may still be placing it)
     C_Timer.After(0, function()
-        if frame:IsShown() then OpenAllBags(frame) end
+        if not frame:IsShown() or (IsAnyBagOpen and IsAnyBagOpen()) then return end
+        Bags.openedWith = frame
+        OpenAllBags()
+        Bags.CleanFlags()
     end)
 end
 
+-- CloseAllBags without its own note: the backpack, every bag, the keyring
 local function CloseWith(frame)
-    if CloseAllBags and not GamepadUI() then CloseAllBags(frame) end
+    if Bags.openedWith ~= frame then return end
+    Bags.openedWith = nil
+    if GamepadUI() or not CloseBackpack then return end
+    CloseBackpack()
+    for i = 1, NUM_TOTAL_BAG_FRAMES or 5 do CloseBag(i) end
+    local keyring = KeyringID()
+    if keyring and C_ActionBar and C_ActionBar.ShouldShowKeyring and C_ActionBar.ShouldShowKeyring() then CloseBag(keyring) end
+    Bags.CleanFlags()
 end
 
 local function Follow(frame, wanted)
@@ -3020,7 +3089,7 @@ do
         if frame and frame:IsShown() then Bags.UpdateCharacterLevels() end
     end)
 
-    -- THE INSPECT WINDOW (11-22, Malkkav, Ryder's idea): Item Level puts each item's level on the
+    -- THE INSPECT WINDOW (Ryder's idea): Item Level puts each item's level on the
     -- inspected player's slots too, and their average under the level line (Forever's inspect window
     -- shows none). The game sends another player's gear only after INSPECT_READY; an item not in the
     -- cache yet is asked again once it loads.

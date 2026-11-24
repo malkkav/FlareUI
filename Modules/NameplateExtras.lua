@@ -2,7 +2,7 @@ local _, ns = ...
 
 --------------------------------------------------
 -- NAMEPLATE EXTRAS
--- The parts of the Nameplates module that came out of Quality of Life (11-23, Malkkav: nothing in
+-- The parts of the Nameplates module that came out of Quality of Life (nothing in
 -- Quality of Life may decide what plates show): the In Combat choice of Show Enemy Plates and Show
 -- Friendly Plates, and the combo points under your target's plate.
 --------------------------------------------------
@@ -30,7 +30,7 @@ local function SetEnemyPlates(on)
     pcall(SetCVar, "nameplateShowEnemies", on and 1 or 0)
 end
 
--- Forever has no master switch for friendly plates (no nameplateShowFriends, 11-21): only the three
+-- Forever has no master switch for friendly plates (no nameplateShowFriends): only the three
 -- type switches, so those are held at 0 out of combat and the player's picks are kept as a 3-character
 -- string ("101" = players on, NPCs off, minions on)
 NP.FRIENDLY_CVARS = { "nameplateShowFriendlyPlayers", "nameplateShowFriendlyNpcs", "nameplateShowFriendlyPlayerMinions" }
@@ -53,7 +53,7 @@ function NP.SetFriendlyPicks(picks)
 end
 
 -- the held picks while In Combat holds the switches, else nil (a 1-character value is the old
--- master-switch memory, from before 11-21: that CVar never existed, so it is dropped)
+-- master-switch memory of older versions: that CVar never existed, so it is dropped)
 function NP.FriendlyHeld()
     local forced = Forced("combatFriendly")
     local held = forced.combatFriendly
@@ -101,7 +101,9 @@ end
 --------------------------------------------------
 -- 2. COMBO POINTS
 -- Combo points (Core.lua: Blizzard's points, or FlareUI's gem while the count is secret) under the
--- target's FlareUI plate. A readable count hides the row at zero.
+-- target's plate. A readable count hides the row at zero.
+-- FlareUI's plates: the Nameplates page's Combo Points. Blizzard's: Quality of Life's Nameplate Combo Points
+-- (tweaks.plateCombo), for those who keep Nameplates off.
 --------------------------------------------------
 local SIZE     = 14   -- the point's side
 local SPACING  = ns.ComboPointStep(SIZE)   -- Blizzard's art never touches its neighbour
@@ -111,6 +113,35 @@ local MAX      = 10
 local FALLBACK = 5
 
 local row, events
+
+-- the points keep their share of the plate: as much bigger or smaller as the plate is wider or narrower than
+-- the default one
+NP.COMBO_WIDTH = 150   -- (enemies' own default: Nameplates.lua C.ENEMY_BASE)
+function NP.ComboScale(width)
+    if type(width) ~= "number" then return 1 end
+    return math.max(0.6, math_min(2, width / NP.COMBO_WIDTH))
+end
+
+-- "flare", "blizzard" or nil: whose plates carry the points
+function NP.ComboMode()
+    local db = DB()
+    if NP.ready and not NP.standDown then return db and db.comboPoints and "flare" or nil end
+    local tw = ns.db and ns.db.profile and ns.db.profile.tweaks
+    if not (tw and tw.enabled and tw.plateCombo) or (db and db.enabled) then return nil end
+    if NP.OtherAddon and NP.OtherAddon() then return nil end
+    return "blizzard"
+end
+
+-- Under Blizzard's plate: below its cast bar's slot, which stays under the health bar whether the unit casts
+-- or not, so the points never jump; else the health bar
+function NP.BlizzardComboAnchor(plate)
+    local unitFrame = plate.UnitFrame
+    if not unitFrame or unitFrame:IsForbidden() then return nil end
+    local casts = unitFrame.CastBarsContainer
+    if casts and not casts:IsForbidden() then return casts end
+    local bar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
+    if bar and not bar:IsForbidden() then return bar end
+end
 
 local function Layout(count)
     for i = 1, count do
@@ -145,14 +176,16 @@ local function UpdateCombo(_, event, _, powerToken)
     -- energy ticks are not combo point changes
     if event == "UNIT_POWER_FREQUENT" and canaccessvalue(powerToken) and powerToken ~= "COMBO_POINTS" then return end
     local plate = C_NamePlate.GetNamePlateForUnit("target")
-    local p = plate and NP.PartsFor(plate)
+    local mode = NP.ComboMode()
+    local p = plate and mode == "flare" and NP.PartsFor(plate)
+    local anchor = p and (p.below or p.box) or (plate and mode == "blizzard" and NP.BlizzardComboAnchor(plate)) or nil
     local points = GetComboPoints("player", "target")
     -- the points the shine compares against: none known after a target change or while secret
     local last = row.lastPoints
     if event == "PLAYER_TARGET_CHANGED" then last = nil end
     row.lastPoints = canaccessvalue(points) and points or nil
     -- (the target's unit type may have Combo Points off)
-    local show = p and PlayerBuildsComboPoints() and NP.ComboAllowed("target")
+    local show = anchor and PlayerBuildsComboPoints() and (mode == "blizzard" or NP.ComboAllowed("target"))
     if show and canaccessvalue(points) and points == 0 then show = false end
     if not show then
         row:Hide()
@@ -166,11 +199,16 @@ local function UpdateCombo(_, event, _, powerToken)
 
     if row:GetParent() ~= plate or not row:IsShown() then
         -- centred under the plate, below its cast bar while one shows (NP.PlaceBelow)
-        local anchor = p.below or p.box
         row:SetParent(plate)
         row:ClearAllPoints()
         row:SetPoint("TOP", anchor, "BOTTOM", 0, OFFSET_Y)
         row:SetFrameLevel(anchor:GetFrameLevel() + 5)
+    end
+    local tdb = p and p.kind and NP.TypeDB and NP.TypeDB(p.kind, true)
+    local scale = SCALE * NP.ComboScale(tdb and tdb.width)
+    if row.scaleNow ~= scale then
+        row.scaleNow = scale
+        row:SetScale(scale)
     end
     -- Blizzard's points (Core.lua), animated except right after a target change
     for i = 1, max do ns.SetComboPoint(row.gems[i], points, last ~= nil) end
@@ -179,8 +217,7 @@ end
 
 -- Switched on and off live from the options (Nameplates.lua NP:Init and NP:Refresh)
 function NP.ApplyCombo()
-    local db = DB()
-    if not (NP.ready and not NP.standDown and db and db.comboPoints) then
+    if not NP.ComboMode() then
         if events then events:UnregisterAllEvents() end
         if row then row:Hide() end
         return
@@ -207,14 +244,13 @@ end
 -- The module took a plate or gave it back: the points follow (they may have been placed before the
 -- module's own handler ran)
 function NP.ComboPlateChanged()
-    local db = DB()
-    if not (row and db and db.comboPoints) then return end
+    if not (row and NP.ComboMode()) then return end
     row:Hide()
     UpdateCombo()
 end
 
 --------------------------------------------------
--- 3. SMOOTH ANIMATED BARS (11-24, Malkkav; exillix3)
+-- 3. SMOOTH ANIMATED BARS
 -- Its liquid on our plates' health, as on the unit frames (UnitFrames.lua ns.SAB). No option of ours: its own
 -- Nameplates switches decide (enemy and friendly plates, off by default there), with its Other Addons' Bars on and
 -- as many plates as it takes itself. Its settings are only read (it has no function for these two).
@@ -407,4 +443,5 @@ function Extras:Init()
         end
     end
     NP.ApplyCombatShow()
+    NP.ApplyCombo()
 end

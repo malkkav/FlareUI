@@ -120,7 +120,7 @@ function dropdownMixin:Setup(data)
 	end
 end
 
--- FlareUI (11-21): in the Gamepad UI a Blizzard menu opened from these boxes hands the controller's
+-- FlareUI: in the Gamepad UI a Blizzard menu opened from these boxes hands the controller's
 -- focus manager an addon call; closing Edit Mode later ends in a forbidden SetPreferredGamepadInteractTarget
 -- blamed on FlareUI. Every box opens FlareUI's own list instead (PadNav, as the settings panel does),
 -- built from the same choices. A box that builds its own menu (data.generator) runs it against a

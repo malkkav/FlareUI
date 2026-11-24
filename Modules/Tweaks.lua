@@ -375,7 +375,7 @@ local function ScanUIPanels()
     SetupLFGPages()
 end
 
--- A bag's title only drags (11-24, Malkkav): Blizzard's button over it opens the bag's menu on the press, so
+-- A bag's title only drags: Blizzard's button over it opens the bag's menu on the press, so
 -- every drag would open it too. It takes no mouse; the title bar under it is the drag handle. The bag's icon
 -- keeps that menu (left-click), all Blizzard's: never opened or closed from here, as whatever is picked in
 -- a menu FlareUI opened counts as FlareUI's, and item clicks are then blocked after a bank visit.
@@ -502,7 +502,7 @@ Tweaks.SYNC_NO_RELOAD = {
     soulbindsLandingPageTutorial = true, soulbindsViewedTutorial = true, guildNewsFilter = true,
     guildRewardsCategory = true, guildRewardsUsable = true, auctionSortByBuyoutPrice = true,
     auctionSortByUnitPrice = true, raidOptionIsShown = true, showBattlefieldMinimap = true,
-    -- flipped with a key or a click while playing, and shown at once (11-23, Shweep)
+    -- flipped with a key or a click while playing, and shown at once (Shweep)
     nameplateShowAll = true, nameplateShowEnemies = true, nameplateShowFriendlyPlayers = true,
     nameplateShowFriendlyNpcs = true, nameplateShowFriendlyPlayerMinions = true, nameplateShowEnemyMinions = true,
     nameplateShowEnemyMinus = true, nameplateShowEnemyGuardians = true, nameplateShowEnemyPets = true,
@@ -1999,7 +1999,7 @@ Tweaks.ZONE_LEVELS = {
     [2482] = { 60, 60 },                                              -- Mount Hyjal
 }
 
--- " (10-20)" for a zone, in the colour Blizzard's map gives it for your level, or nil
+-- "" for a zone, in the colour Blizzard's map gives it for your level, or nil
 function Tweaks.ZoneLevelText(mapID)
     local ok, low, high = pcall(C_Map.GetMapLevels, mapID)
     if not (ok and low and high and low > 0 and high > 0) then
@@ -2106,7 +2106,7 @@ local function MailMenu(owner)
             local text = color and color:WrapTextInColorCode(char.mailName) or char.mailName
             root:CreateButton(text, Pick(char.mailName))
         end
-        -- (11-24) a deleted character, or an old last recipient
+        -- a deleted character, or an old last recipient
         if #list == 0 and not me.lastMailTo then return end
         root:CreateDivider()
         local remove = root:CreateButton(L["Remove from the List"])
@@ -2712,7 +2712,7 @@ end
 -- small window says where to and counts for you: Go Now takes it at once, Cancel leaves Blizzard's own
 -- pop-up to answer. Never in a fight or where you can't teleport (Blizzard greys Accept then too): it
 -- waits for that to end. Answering Blizzard's pop-up, or the summon running out, closes the window and
--- ends the wait; a new summon counts its own 10 seconds (11-24).
+-- ends the wait; a new summon counts its own 10 seconds.
 Tweaks.SUMMON_SECONDS = 10
 function Tweaks.InitAcceptSummon()
     local S = { listener = CreateFrame("Frame") }
