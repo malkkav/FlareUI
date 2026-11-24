@@ -63,9 +63,10 @@ Frame("flagCarriers", "unitframes.flagCarriers.enabled", "FlareUI_FlagCarriers")
 S:Row{
     -- (hideLabel: the row has a section of its own, Frame Style)
     key = "uf.frameStyle", kind = "styles", reload = true, hideLabel = true, choices = { "flareui", "forever", "addon" },
-    get = function() return ns.UFRing and ns.UFRing.Style() or "addon" end,
+    -- (the pick waits for the reload: Ring.ChooseStyle)
+    get = function() return ns.UFRing and ns.UFRing.ChosenStyle() or "addon" end,
     set = function(value)
-        if ns.UFRing then ns.UFRing.SetStyle(value) end
+        if ns.UFRing then ns.UFRing.ChooseStyle(value) end
     end,
 }
 -- the row is only Pick Your Colours, always shown; the

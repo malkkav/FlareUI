@@ -990,7 +990,7 @@ local function StartChoices()
             c[key] = S.modules[key] and S.modules[key]:IsOn() or false
         end
     end
-    c.style = ns.UFRing and ns.UFRing.Style() or "addon"
+    c.style = ns.UFRing and ns.UFRing.ChosenStyle() or "addon"   -- (a pick waiting for the reload too)
     c.move = S.rows["qol.move"]:Get() and true or false
     c.sync = S.rows["qol.sync"]:Get() and true or false
     tour.choices = c
