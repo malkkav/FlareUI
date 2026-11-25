@@ -685,14 +685,14 @@ ns.Copy = {
             desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
             label = L["Crafting Bag in Backpack"],
             section = "bl.bagWindow",
-            tip = L["Needs Combined Backpack on."],
+            tip = L["Needs Combined Backpack on. Soul bags in your other bag slots get a section of their own too."],
         },
         ["bl.bagReverse"] = {
             desc = L["The backpack starts at the top left and fills left to right, downwards. Combine Empty Slots' slot comes last, at the bottom."],
             label = L["Reverse Bag Fill"],
             section = "bl.bagWindow",
             tags = { "reverse bags", "fill from top", "bag order", "sort direction" },
-            tip = L["Not with Category Rows, whose headers sit above their sections."],
+            tip = L["With Category Rows, each section fills this way under its header."],
         },
         ["bl.bagSkinSlots"] = {
             choices = { L["Off"], L["Thin Borders"], L["Thick Borders"], L["Colour by Rarity"] },
@@ -700,7 +700,7 @@ ns.Copy = {
             label = L["Skin Item Slots"],
             section = "bl.itemSlots",
             tags = { "rarity colours", "quality colours", "thicker borders", "slot border" },
-            tip = L["Empty slots stay bronze, and every border is bronze with Colour by Rarity off."],
+            tip = L["Colour by Rarity starts at green: grey and white items and empty slots stay bronze."],
         },
         ["bl.bagUncollected"] = {
             desc = L["An eye in the top right corner marks gear whose appearance you haven't collected yet and can learn."],
@@ -853,6 +853,18 @@ ns.Copy = {
             label = L["Show Free Bag Slots"],
             section = "bl.lootWindowSection",
         },
+        ["bl.lootWindowGrowth"] = {
+            choices = { L["Down"], L["Up"] },
+            desc = L["Which way the loot window grows from its spot:\n* Down: its top edge stays put\n* Up: its bottom edge stays put"],
+            label = L["Growth"],
+            section = "bl.lootWindowSection",
+        },
+        ["bl.lootWindowOrder"] = {
+            choices = { L["Top to Bottom"], L["Bottom to Top"] },
+            desc = L["Where the loot starts:\n* Top to Bottom: the first item at the top, the next below it\n* Bottom to Top: the first item at the bottom, the next above it"],
+            label = L["Row Order"],
+            section = "bl.lootWindowSection",
+        },
         ["bl.petFood"] = {
             desc = L["A paw marks the food your hunter pet eats."],
             label = L["Pet Food Marker"],
@@ -966,7 +978,7 @@ ns.Copy = {
         },
         ["br.petScope"] = {
             choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["Mouseover"] },
-            desc = L["Where reminders show for a missing, dead or hurt pet."],
+            desc = L["Where reminders show for a missing or dead pet."],
             label = L["Pets"],
             section = "br.where",
         },
@@ -1544,11 +1556,11 @@ ns.Copy = {
             tags = { "info bar border", "info bar background", "data panel box" },
         },
         ["mm.barCenter"] = {
-            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["FPS"], L["Latency"], L["Coords (Decimals)"], L["Coords (Simple)"], L["Experience"] },
+            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["FPS"], L["Latency"], L["Coords (Decimals)"], L["Coords (Simple)"], L["Experience"], L["Friends"], L["Guild"] },
             desc = L["What the middle of the Info Bar shows."],
             label = L["Centre"],
             section = "mm.infoBar",
-            tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1."],
+            tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1. Friends and Guild count who is online: point at them to see who."],
         },
         ["mm.barHover"] = {
             desc = L["The Info Bar shows only while you point at the minimap."],
@@ -1557,19 +1569,19 @@ ns.Copy = {
             tags = { "info bar on hover", "hide info bar", "data panel mouseover" },
         },
         ["mm.barLeft"] = {
-            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["FPS"], L["Latency"], L["Coords (Decimals)"], L["Coords (Simple)"], L["Experience"] },
+            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["FPS"], L["Latency"], L["Coords (Decimals)"], L["Coords (Simple)"], L["Experience"], L["Friends"], L["Guild"] },
             desc = L["What the left side of the Info Bar shows."],
             label = L["Left"],
             section = "mm.infoBar",
             tags = { "info bar data panel gold bags durability coordinates whole numbers decimals" },
-            tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1."],
+            tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1. Friends and Guild count who is online: point at them to see who."],
         },
         ["mm.barRight"] = {
-            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["FPS"], L["Latency"], L["Coords (Decimals)"], L["Coords (Simple)"], L["Experience"] },
+            choices = { L["None"], L["Gold"], L["Bags"], L["Durability"], L["FPS"], L["Latency"], L["Coords (Decimals)"], L["Coords (Simple)"], L["Experience"], L["Friends"], L["Guild"] },
             desc = L["What the right side of the Info Bar shows."],
             label = L["Right"],
             section = "mm.infoBar",
-            tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1."],
+            tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1. Friends and Guild count who is online: point at them to see who."],
         },
         ["mm.clockStats"] = {
             desc = L["Your framerate and latency in the clock's tooltip."],
@@ -1815,6 +1827,24 @@ ns.Copy = {
         ["np.ccSize"] = {
             desc = L["How big the crowd control icon is."],
             label = L["Crowd Control Size"],
+            section = "np.ccSection",
+        },
+        ["np.ccStyle"] = {
+            choices = { L["Square"], L["Round"] },
+            desc = L["The shape of the crowd control and defensive icons."],
+            label = L["Aura Icon Shape"],
+            section = "np.ccSection",
+        },
+        ["np.ccSwipe"] = {
+            choices = { L["Off"], L["Over the Icon"], L["Around the Border"], L["Both"] },
+            desc = L["How the crowd control and defensive icons show their time left."],
+            label = L["Aura Swipe"],
+            section = "np.ccSection",
+        },
+        ["np.ccTimer"] = {
+            choices = { L["Off"], L["Under the Icon"], L["Bottom of the Icon"], L["Centre of the Icon"] },
+            desc = L["Where the time left shows on the crowd control and defensive icons."],
+            label = L["Aura Timer"],
             section = "np.ccSection",
         },
         ["np.clampTarget"] = {
@@ -2220,7 +2250,7 @@ ns.Copy = {
         },
         ["np.threatPercent"] = {
             choices = { L["Off"], L["In a Group"], L["In an Instance"], L["Always"] },
-            desc = L["When your threat on the unit shows as a number, in a small box beside the plate:\n* In a Group: only in a party or raid\n* In an Instance: only in dungeons, raids, battlegrounds and arenas\n* Always: solo too\nIt shows only while you have threat. The box sits on the side away from the level, or on the right with no level. Coloured as the unit frames' Threat Text."],
+            desc = L["When your threat on the unit shows as a number, in a small box beside the plate:\n* In a Group: only in a party or raid\n* In an Instance: only in dungeons, raids, battlegrounds and arenas\n* Always: solo too\nIt shows only while you have threat. The box sits on the side away from the level, or on the right with no level. The colours follow Role:\n* Tank: green while you hold the mob, orange when you're losing it, red when you lost it\n* Damage & Healer: green while you're safe, red when it's on you"],
             label = L["Threat Percentage"],
             section = "np.threatSection",
             tags = { "threat percent", "threat number", "aggro percent" },
@@ -2661,6 +2691,7 @@ ns.Copy = {
             label = L["Sort By"],
             section = "qt.quests",
             tags = { "objective sorting" },
+            tip = L["By Level and By Progress mix the zones, so Zone Headings are off with them."],
         },
         ["qt.spacing"] = {
             desc = L["The tracker's size:\n* Width\n* Max Height: how tall it grows before it scrolls\n* Quest Spacing: the gap between quests"],

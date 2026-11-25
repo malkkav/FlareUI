@@ -390,6 +390,11 @@ ns.OnEditFight(function() for button in pairs(styledButtons) do ApplyPreviewTime
 
 -- The dispel type icon on debuffs of 18 px and up (smaller ones would be all icon)
 AU.DISPEL_ICON_MIN = 18
+-- Blizzard's icons of the types that can be dispelled
+AU.DISPEL_ASSETS = {}
+for _, kind in ipairs({ "Magic", "Curse", "Disease", "Poison" }) do
+    AU.DISPEL_ASSETS[kind] = { asset = "RaidFrame-Icon-Debuff" .. kind }
+end
 function AU.DispelIconWanted(look)
     return look.isDebuff and not look.noTypeIcon and (look.size or 0) >= AU.DISPEL_ICON_MIN or false
 end
@@ -415,9 +420,9 @@ function AU.StyleDispelIcon(button, look, area, size)
     pcall(typeIcon.SetSize, typeIcon, side, side)
 end
 
--- DISPELLABLE ONLY: nobody on your side takes a debuff off an enemy, so a unit frame whose
--- unit is one shows no type icons (the target and focus change sides: AP.UpdateSide, Core.lua). Nameplates and
--- boss tiles know their side: look.noTypeIcon.
+-- DISPELLABLE ONLY: the type icons show on yourself and on units you can help (AP.CanDispelOn, Core.lua), so a unit
+-- frame, group tile or nameplate whose unit is neither shows none (sides change: AP.UpdateSide). Enemy plates and
+-- boss tiles never make them: look.noTypeIcon.
 -- A button that holds an aura is forbidden, with all that is in it (7.0.14: "SetAlpha on bad self" at each new target
 -- in a fight), so nothing in it can change. Every icon carries one mask that belongs to the unit frame, and the side
 -- changes only that mask: white cuts nothing, the empty one cuts the icons away.
@@ -436,7 +441,7 @@ function AU.DispelMask(f)
     end
     return f.FlareUI_DispelMask
 end
-function AU.DispelSide(f, enemy)
+function AU.DispelSide(f, enemy)   -- enemy: a unit you can't take a debuff off
     enemy = enemy and true or false
     if f.FlareUI_DispelEnemy == enemy then return end
     f.FlareUI_DispelEnemy = enemy
@@ -447,7 +452,7 @@ end
 function AU.SampleDispelIcon(sample, dispelType)
     local typeIcon = sample.FlareUI_DispelIcon
     if not typeIcon then return end
-    if dispelType and dispelType ~= "None" and AuraUtil and AuraUtil.SetAuraDispelTypeIcon then
+    if dispelType and AU.DISPEL_ASSETS[dispelType] and AuraUtil and AuraUtil.SetAuraDispelTypeIcon then
         AuraUtil.SetAuraDispelTypeIcon(typeIcon, dispelType)
         typeIcon:Show()
     else
@@ -481,7 +486,9 @@ local function HookButton(button, look)
         local typeIcon = button.FlareUI_DispelIcon
         if typeIcon and AU.DispelIconWanted(look) then
             pcall(button.AddDispelTypeTexture, button, typeIcon, {
-                style = Enum.CustomAuraButtonDispelTypeTextureStyle.Icon,
+                -- (not style Icon: that has one for bleeds too, which nothing dispels)
+                style = Enum.CustomAuraButtonDispelTypeTextureStyle.CustomAsset,
+                customDispelAssetMap = AU.DISPEL_ASSETS,
                 showWhenHarmful = true, showWhenHelpful = false, showWithoutDispelType = false,
             })
         end

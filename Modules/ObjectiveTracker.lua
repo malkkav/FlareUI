@@ -894,9 +894,10 @@ local function ShowQuestMenu(owner, questID)
         -- a left click on the quest opens both through Blizzard's own tracker)
         root:CreateButton(TEXT.linkChat, function() LinkToChat(questID) end)
         local share = root:CreateButton(TEXT.share, function()
-            QuestUtil.ShareQuest(questID)
+            -- (a fight can start with the menu open: the game blocks it then)
+            if not InCombatLockdown() then QuestUtil.ShareQuest(questID) end
         end)
-        share:SetEnabled(IsInGroup() and C_QuestLog.IsPushableQuest(questID))
+        share:SetEnabled(IsInGroup() and C_QuestLog.IsPushableQuest(questID) and not InCombatLockdown())
         root:CreateButton(IsCollapsed(questID) and L["Expand"] or L["Collapse"], function() ToggleCollapsed(questID) end)
         local pins = Char().pinned
         root:CreateButton(pins[questID] and L["Unpin"] or L["Pin to Top"], function()
@@ -1941,9 +1942,10 @@ local function GetItemButton(i)
     b.count = texts:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     b.count:SetPoint("BOTTOMRIGHT", -2, 2)
     b:SetScript("OnEnter", function(self)
-        if not self.logIndex then return end
+        local index = OT.ItemIndex(self)
+        if not index then return end
         ns.OwnGameTooltip(self, "ANCHOR_LEFT")
-        GameTooltip:SetQuestLogSpecialItem(self.logIndex)
+        GameTooltip:SetQuestLogSpecialItem(index)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1953,11 +1955,17 @@ local function GetItemButton(i)
     return b
 end
 
+-- The button's quest in the log now: indexes move when a quest is turned in, also in a fight
+function OT.ItemIndex(b)
+    if b.questID then return C_QuestLog.GetLogIndexForQuestID(b.questID) end
+    return b.logIndex
+end
 local function UpdateItemRanges()
     for _, b in ipairs(itemButtons) do
-        if b:IsShown() and b.logIndex then
+        local index = b:IsShown() and OT.ItemIndex(b)
+        if index then
             -- 0 = out of range, 1 = in range, nil = no range for this item
-            local range = IsQuestLogSpecialItemInRange(b.logIndex)
+            local range = IsQuestLogSpecialItemInRange(index)
             local out = canaccessvalue(range) and range == 0
             if b.out ~= out then
                 b.out = out
@@ -1981,11 +1989,24 @@ end
 
 function OT:UpdateItemCooldowns()
     for _, b in ipairs(itemButtons) do
-        if b:IsShown() and b.logIndex then
-            local start, duration, enable = GetQuestLogSpecialItemCooldown(b.logIndex)
+        local index = b:IsShown() and OT.ItemIndex(b)
+        if index then
+            local start, duration, enable = GetQuestLogSpecialItemCooldown(index)
             if canaccessallvalues(start, duration, enable) and start then CooldownFrame_Set(b.cooldown, start, duration, enable) end
         end
     end
+end
+
+-- the charges and cooldowns of the buttons on screen (in a fight too: texts and cooldowns aren't protected)
+function OT:UpdateItemCounts()
+    for _, b in ipairs(itemButtons) do
+        local index = b:IsShown() and b.questID and OT.ItemIndex(b)
+        if index then
+            local _, _, charges = GetQuestLogSpecialItemInfo(index)
+            b.count:SetText((charges and charges > 1) and tostring(charges) or "")
+        end
+    end
+    self:UpdateItemCooldowns()
 end
 
 -- Minimized or hidden in combat the buttons cannot hide (they are protected) and stay where they are,
@@ -2022,7 +2043,7 @@ function OT:UpdateItemButtons()
                     b:SetAttribute("item", (not line.sampleItem) and ("item:" .. itemID) or nil)
                     b.icon:SetTexture(texture)
                 end
-                b.logIndex = line.logIndex
+                b.logIndex, b.questID = line.logIndex, not line.sampleItem and line.questID or nil
                 b.count:SetText((charges and charges > 1) and tostring(charges) or "")
                 b:ClearAllPoints()
                 if right then
@@ -2036,6 +2057,7 @@ function OT:UpdateItemButtons()
     end
     for i = used + 1, #itemButtons do itemButtons[i]:Hide() end
     state.itemsShown = used
+    OT.ItemMouse()
     self:UpdateItemCooldowns()
     UpdateRangeTicker()
     -- the controller's place in the list follows (PadTracker.lua)
@@ -3067,6 +3089,20 @@ function OT:SetFadeAlpha(alpha)
     self.fadeAlpha = alpha
     if miniButton then miniButton:SetAlpha(alpha) end
     for _, b in ipairs(itemButtons) do b:SetAlpha(alpha) end
+    OT.ItemMouse()
+end
+
+-- Faded right out, an item button takes no clicks. They are protected: it changes out of a fight only, and they get
+-- their mouse back as one starts (fighting: PLAYER_REGEN_DISABLED, before lockdown).
+function OT.ItemMouse(fighting)
+    if InCombatLockdown() then return end
+    local on = fighting or (OT.fadeAlpha or 1) > 0.01
+    for _, b in ipairs(itemButtons) do
+        if b.mouseOn ~= on then
+            b.mouseOn = on
+            b:EnableMouse(on)
+        end
+    end
 end
 
 function OT:IsMouseOverExtras()
@@ -3757,10 +3793,12 @@ function OT:Init()
             local wasFrozen = state.frozenOrder ~= nil
             state.frozenOrder, state.frozenCollapsed, state.frozenZones = nil, nil, nil
             OT:CheckContext()
+            OT.ItemMouse()
             if wasFrozen then OT:Render() end
             if state.itemsDirty then OT:UpdateItemButtons() end
             return
         elseif event == "PLAYER_REGEN_DISABLED" then
+            OT.ItemMouse(true)
             -- (the secure click over a quest line: hidden while it still can be)
             OT.HideSecureClick()
             OT:CheckContext()
@@ -3778,6 +3816,7 @@ function OT:Init()
             UpdateRangeTicker()
             return
         elseif (event == "BAG_UPDATE_DELAYED" or event == "GET_ITEM_INFO_RECEIVED") and state.recipes == 0 then
+            if event == "BAG_UPDATE_DELAYED" and state.itemsShown > 0 then OT:UpdateItemCounts() end
             return
         elseif event == "PLAYER_MONEY" and not state.watchMoney then
             return

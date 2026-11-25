@@ -267,8 +267,8 @@ end
 -- REVERSE BAG FILL (from zbee's idea; tweaks.bagReverse, off): the plain grid turned
 -- round, so it starts at the top left and reads left to right, downwards; the Combine Empty Slots
 -- slot ends it, at the bottom. Same order, same rows and gaps: each slot's spot is mirrored once the
--- grid is laid out (Bags.placedSlots, reused). Not with Category Rows, whose headers sit above their
--- sections.
+-- grid is laid out (Bags.placedSlots, reused). With Category Rows each section is turned round on its own,
+-- under its header: its last row is the short one, so an item that goes moves only the ones after it.
 Bags.placedSlots = {}
 function Bags.ReverseOn(db)
     return db and db.bagReverse == true or false
@@ -282,6 +282,20 @@ function Bags.Reverse(placed, count, anchor, stepX, h, columns)
         if not (InCombatLockdown() and b:IsProtected()) then
             b:ClearAllPoints()
             b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -(columns - 1 - spot.col) * stepX, 4 + top - (spot.y + h))
+        end
+        spot.button = nil
+    end
+end
+function Bags.ReverseSection(placed, from, to, anchor, stepX, columns)
+    if to < from then return end
+    local low, high = math.huge, -math.huge
+    for i = from, to do low, high = math.min(low, placed[i].y), math_max(high, placed[i].y) end
+    for i = from, to do
+        local spot = placed[i]
+        local b = spot.button
+        if not (InCombatLockdown() and b:IsProtected()) then
+            b:ClearAllPoints()
+            b:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", -(columns - 1 - spot.col) * stepX, low + high - spot.y)
         end
         spot.button = nil
     end
@@ -747,6 +761,43 @@ local function ItemCategory(button, setOf)
     return "other"
 end
 
+-- SOUL BAGS (with Crafting Bag in Backpack): a soul bag in one of the four bag slots gets a section of its own too, at
+-- the bottom above the crafting bag. Its buttons are the backpack's own already: only their place changes.
+Bags.SoulBags = { SUBCLASS = 1 }
+function Bags.SoulBags.Is(bagID)
+    if not (bagID and bagID >= 1 and bagID <= (_G.NUM_BAG_SLOTS or 4)) then return false end
+    local toSlot = C_Container.ContainerIDToInventoryID
+    local slot = toSlot and toSlot(bagID)
+    local itemID = slot and GetInventoryItemID("player", slot)
+    if not itemID then return false end
+    local classID, subclassID = select(6, C_Item.GetItemInfoInstant(itemID))
+    local container = Enum.ItemClass and Enum.ItemClass.Container or 1
+    return classID == container and subclassID == Bags.SoulBags.SUBCLASS
+end
+-- items split: the rest, and { bag, label, items } per soul bag (the last bag first, as the grid fills)
+function Bags.SoulBags.Split(items, db)
+    if not (db and db.bagReagent) then return items, {} end
+    local rest, list, of, is = {}, {}, {}, {}
+    for _, button in ipairs(items) do
+        local bag = button:GetBagID()
+        if is[bag] == nil then is[bag] = Bags.SoulBags.Is(bag) end
+        if is[bag] then
+            local section = of[bag]
+            if not section then
+                local name = C_Container.GetBagName and C_Container.GetBagName(bag)
+                section = { bag = bag, key = "soul" .. bag, label = name or L["Soul Bag"], items = {} }
+                of[bag], list[#list + 1] = section, section
+            end
+            section.items[#section.items + 1] = button
+        else
+            rest[#rest + 1] = button
+        end
+    end
+    -- (nothing but soul bags: the plain grid)
+    if #rest == 0 then return items, {} end
+    return rest, list
+end
+
 local function ExtraSectionLabel(bagID)
     return bagID == KeyringID() and L["Keyring"] or L["Crafting Bag"]
 end
@@ -869,6 +920,9 @@ local function Relayout(frame)
     layingOut = false
     if #items == 0 then return end
 
+    local soulBags
+    items, soulBags = Bags.SoulBags.Split(items, db)
+
     local groups, order, setNames
     if categorized then
         local sets, setOf = {}, nil
@@ -911,7 +965,10 @@ local function Relayout(frame)
         col = col + 1
         if col == columns then col, row = 0, row + 1 end
     end
+    local reverse, sectionFrom = Bags.ReverseOn(db), 1
     local function PlaceHeader(key, label)
+        if reverse then Bags.ReverseSection(placed, sectionFrom, placedCount, anchor, stepX, columns) end
+        sectionFrom = placedCount + 1
         local header = categoryHeaders[key]
         if not header then
             header = CreateCategoryHeader(frame, function()
@@ -981,6 +1038,13 @@ local function Relayout(frame)
         shownBags[bagID] = true
     end
     HideExtras(shownBags)
+    for _, section in ipairs(soulBags) do
+        for _, button in ipairs(section.items) do
+            if not SetCategorySlotCollapsed(button, categorized and collapsedSections[section.key]) then PlaceSlot(button) end
+        end
+        FinishRow()
+        if categorized then PlaceHeader(section.key, section.label) else gapCount = gapCount + 1 end
+    end
     if categorized then
         for _, key in ipairs(order) do
             local group = groups[key]
@@ -1008,7 +1072,7 @@ local function Relayout(frame)
     end
     for key, header in pairs(categoryHeaders) do if not visibleHeaders[key] then header:Hide() end end
     local rows = row + (col > 0 and 1 or 0)
-    if Bags.ReverseOn(db) and not categorized then Bags.Reverse(placed, placedCount, anchor, stepX, h, columns) end
+    if reverse and not categorized then Bags.Reverse(placed, placedCount, anchor, stepX, h, columns) end
 
     local width = gridWidth + frame:GetPaddingWidth()
     local height = rows * h + math_max(0, rows - 1) * ITEM_SPACING + gapCount * BAG_GAP + headerSpace
@@ -1595,10 +1659,11 @@ local function ShowBorder(ov, style, r, g, b)
     ov.border:Show()
 end
 
+Bags.RARITY_FROM = Enum.ItemQuality and Enum.ItemQuality.Uncommon or 2
 local function UpdateItemBorder(ov, db, quality, dimmed)
     local style = db.bagThickBorders and "thick" or "thin"
-    -- Colour by Rarity (in Skin Item Slots; tweaks.bagRarity, on): off, every border bronze
-    if quality and not dimmed and db.bagRarity ~= false then
+    -- Colour by Rarity (in Skin Item Slots; tweaks.bagRarity, on): green and better; off, every border bronze
+    if quality and quality >= Bags.RARITY_FROM and not dimmed and db.bagRarity ~= false then
         local r, g, b = C_Item.GetItemQualityColor(quality)
         ShowBorder(ov, style, r, g, b)
     else

@@ -208,6 +208,26 @@ local function overlay(slot)
 end
 local weapon, junk, empty = overlay(1), overlay(2), overlay(5)
 assert(weapon.ilvl:GetText() == "39" and weapon.ilvl:IsShown() and weapon.eye:IsShown() and weapon.boe:IsShown())
+-- Reverse Bag Fill in a category section: the rows turned round, the short one at the bottom, left to right
+do
+    local placed, spots = {}, {}
+    local function at(n, col, y)
+        local b = env.CreateFrame("Frame", nil, env.UIParent)
+        placed[n] = { button = b, col = col, y = y }
+        spots[n] = function() local _, _, _, x, py = b:GetPoint(1) return x, py end
+    end
+    at(1, 0, 100) at(2, 1, 100) at(3, 2, 100) at(4, 0, 140)
+    at(5, 0, 300)
+    bags.ReverseSection(placed, 1, 4, env.UIParent, 40, 3)
+    local x, y = spots[1]()
+    assert(x == -80 and y == 140, "the first one top left")
+    x, y = spots[4]()
+    assert(x == -80 and y == 100, "the short row at the bottom, from the left")
+    assert(placed[5].button and not placed[1].button, "other sections stay")
+    bags.ReverseSection(placed, 6, 5, env.UIParent, 40, 3)
+end
+-- Colour by Rarity starts at green
+assert(bags.RARITY_FROM == 2)
 -- the BoE mark takes the Item Level font and stays green, Blizzard's font back on Default
 do
     local green = function() local r, g, b = weapon.boe:GetTextColor() return r == 0.12 and g == 1 and b == 0.12 end

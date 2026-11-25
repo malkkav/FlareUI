@@ -40,6 +40,16 @@ assert(not player.Border:IsShown() and not player.RingFrame.artMasked)
 assert(player.Name:GetPoint() == "LEFT" and player.btStyle == "plate")
 assert(player.HealthTextMid:GetText():find("24000", 1, true), "Forever preview puts the maximum in the central health text")
 assert(#player.PlateFrame.pieces == 28 and not player.PlateFrame.Strip:IsShown())
+-- (11-25) your own name box has no glow, with Class Colours on too
+do
+    local on, sample, unit = ns.ClassColorsOn, player.fuiSample, player.fuiUnit
+    ns.ClassColorsOn = function() return true end
+    player.fuiSample, player.fuiUnit = nil, "player"
+    player.PlateFrame.Strip:Show()
+    ns.UFRing.UpdatePlate(player)
+    assert(not player.PlateFrame.Strip:IsShown())
+    ns.ClassColorsOn, player.fuiSample, player.fuiUnit = on, sample, unit
+end
 assert(not db.units.player.plateScale and not db.units.player.classColor and not ns.UFSample)
 
 assert(UF.DrawSample(player, "addon").width == 240)

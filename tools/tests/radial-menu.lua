@@ -271,6 +271,37 @@ assert(#questItems.children == 2 and questItems.children[1].name == "Beacon" and
 local party = rm:ResolveEntry({ kind = "partycast", id = 201 })
 assert(#party.spread == 2 and party.spread[2].name == "Aria" and party.spread[2].attributes.unit == "party1")
 assert(party.spread[1].attributes.unit == "player", "in a group your own button is you")
+-- the person's name is read from the unit as it is now; a party spell in a sub-radial is a step per person
+do
+    assert(party.spread[2].person and party.spread[1].person)
+    local oldName = env.UnitName
+    env.UnitName = function(unit) return unit == "party1" and "Bryn" or oldName(unit) end
+    assert(rm.PersonName("party1"):find("Bryn", 1, true))
+    env.UnitName = oldName
+    local get, available = rm.GetRadial, rm.IsRadialAvailable
+    rm.GetRadial = function(_, id) return id == "kids" and { name = "Kids", buttons = { { kind = "partycast", id = 201 } } } or get(rm, id) end
+    rm.IsRadialAvailable = function() return true end
+    local sub = rm:ResolveEntry({ kind = "subradial", radial = "kids" })
+    assert(#sub.children == 2 and sub.children[2].attributes.unit == "party1")
+    rm.GetRadial, rm.IsRadialAvailable = get, available
+end
+-- ranks whose words aren't loaded yet: asked for, and nothing is settled on them
+do
+    local subtext, load, asked = env.C_Spell.GetSpellSubtext, env.C_Spell.RequestLoadSpellData, {}
+    local late = true
+    env.C_Spell.GetSpellSubtext = function(id) if late then return "" end return subtext(id) end
+    env.C_Spell.RequestLoadSpellData = function(id) asked[id] = true end
+    rm.ForgetRanks()
+    rm.BestRank("Frostbolt")
+    assert(rm.ranksLate.Frostbolt and next(asked) and rm.LowRank(101) == nil)
+    local entry = { kind = "spell", id = 101 }
+    rm.MarkRank(entry, true)
+    assert(not entry.rankChecked and not entry.pinned)
+    late = false
+    rm.OnSpellText()
+    assert(rm.BestRank("Frostbolt") == 103 and not rm.ranksLate.Frostbolt)
+    env.C_Spell.GetSpellSubtext, env.C_Spell.RequestLoadSpellData = subtext, load
+end
 -- alone: the friendly target first, else yourself (11-24)
 do
     local exists = env.UnitExists

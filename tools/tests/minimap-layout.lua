@@ -284,6 +284,45 @@ db.infoBar.left, db.infoBar.center, db.infoBar.right = "coords", "coordsSimple",
 minimap:Refresh()
 assert(bar:GetPoint() == "TOPLEFT" and not bar.Plates[1]:IsShown())
 assert(square:barText("45.3, 62.1") and square:barText("45, 62") and square:barText("XP 50% |cff4d85e6+10%"))
+-- Friends and Guild: how many are online, and who while you point at the cell
+do
+    local saved = { db.infoBar.left, db.infoBar.center, db.infoBar.right }
+    env.BNGetNumFriends = function() return 2, 1 end
+    env.C_BattleNet = { GetFriendAccountInfo = function(i)
+        return { accountName = "Ann" .. i, gameAccountInfo = { isOnline = i == 1, characterName = "Fern", areaName = "Duskwood" } }
+    end }
+    env.C_FriendList = { GetNumOnlineFriends = function() return 1 end, GetNumFriends = function() return 2 end,
+        GetFriendInfoByIndex = function(i) return { connected = i == 2, name = "Bo" .. i, area = "Westfall" } end }
+    local inGuild = true
+    env.IsInGuild = function() return inGuild end
+    env.GetNumGuildMembers = function() return 3, 2 end
+    env.GetGuildRosterInfo = function(i) return "Cy" .. i, nil, nil, 20, nil, "Loch Modan", nil, nil, i ~= 2, nil, "MAGE" end
+    env.RAID_CLASS_COLORS = env.RAID_CLASS_COLORS or { MAGE = { r = 0.2, g = 0.7, b = 0.9 } }
+    db.infoBar.left, db.infoBar.center, db.infoBar.right = "friends", "guild", "xp"
+    minimap:Refresh()
+    assert(square:barText("Friends 2") and square:barText("Guild 2"))
+    assert(bar.Hovers[1]:IsShown() and bar.Hovers[2]:IsShown() and not bar.Hovers[3])
+    local lines, title = {}, nil
+    local tip = env.GameTooltip
+    local old = { tip.AddLine, tip.AddDoubleLine }
+    tip.AddLine = function(_, text) title = title or text end
+    tip.AddDoubleLine = function(_, left, right) lines[#lines + 1] = left .. "=" .. right end
+    local own = square.ns.OwnGameTooltip
+    square.ns.OwnGameTooltip = function() end
+    bar.Hovers[1]:RunScript("OnEnter")
+    assert(title == "Friends" and table.concat(lines, ";") == "Ann1 (Fern)=Duskwood;Bo2=Westfall", table.concat(lines, ";"))
+    lines, title = {}, nil
+    bar.Hovers[2]:RunScript("OnEnter")
+    assert(table.concat(lines, ";") == "Cy1=Loch Modan;Cy3=Loch Modan")
+    inGuild, lines = false, {}
+    bar.Hovers[2]:RunScript("OnEnter")
+    ui:emit("PLAYER_GUILD_UPDATE")
+    assert(#lines == 0 and square:barText("Guild -"))
+    tip.AddLine, tip.AddDoubleLine, square.ns.OwnGameTooltip = old[1], old[2], own
+    db.infoBar.left, db.infoBar.center, db.infoBar.right = unpack(saved)
+    minimap:Refresh()
+    assert(not bar.Hovers[1]:IsShown())
+end
 -- standing still, the position is read again only twice a second; moving, on each draw
 do
     local reads, speed, at, position, time = 0, 0, 0.453, env.C_Map.GetPlayerMapPosition, env.GetTime
@@ -399,6 +438,20 @@ ui:flushTimers()
 assert(minimap.MapAway())
 map:SetMaskTexture("FarmHud")
 assert(map.mask == "FarmHud", "the HUD keeps its own terrain while borrowing the map")
+do
+    -- our click area and fades stay off the HUD's map
+    local scale
+    local meta = getmetatable(map).__index
+    local old = meta.SetIconScale
+    meta.SetIconScale = function(_, value) scale = value end
+    minimap:SetIconsFaded(true)
+    assert(scale ~= 0, "its dots show whatever our fade is")
+    minimap:SetMapFaded(true)
+    assert(map.mask == "FarmHud")
+    minimap:SetMapFaded(false)
+    minimap:SetIconsFaded(false)
+    meta.SetIconScale = old
+end
 map:SetParent(home)
 ui:flushTimers()
 ui:flushTimers()

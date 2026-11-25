@@ -147,4 +147,17 @@ c:SetPoint("TOPLEFT", viewer, "TOPLEFT", 100, 0)
 grow.buffs = "blizzard"
 ns.CooldownManager:Refresh()
 at(c, "TOPLEFT", 100, "Blizzard's newer place kept")
+
+-- Essential and Utility: lines of Blizzard's length, each line that isn't full centred
+local function line(args, point, x, y)
+    local p, gx, gy = ns.CooldownManager.LinePoint(unpack(args))
+    assert(p == point and math.abs(gx - x) < 0.001 and math.abs(gy - y) < 0.001, table.concat({ p, gx, gy }, " "))
+end
+-- five icons, four to a line: the fifth alone in the middle under them
+line({ 1, 5, 4, 44, 44, true, false }, "TOP", -66, 0)
+line({ 4, 5, 4, 44, 44, true, false }, "TOP", 66, 0)
+line({ 5, 5, 4, 44, 44, true, false }, "TOP", 0, -44)
+line({ 1, 4, 4, 44, 44, true, true }, "TOP", 66, 0)
+-- columns: the next one to the right, centred in height
+line({ 5, 6, 4, 44, 50, false, false }, "LEFT", 50, -22)
 print("PASS: Cooldown Manager Grow From")

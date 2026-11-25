@@ -41,6 +41,7 @@ env.UnitGroupRolesAssigned = function(token) return unit[token] and unit[token].
 env.UnitLevel = function(token) return unit[token] and unit[token].level end
 env.UnitIsFriend = function(_, token) return unit[token] and not unit[token].hostile end
 env.UnitCanAttack = function(_, token) return unit[token] and unit[token].hostile end
+env.UnitCanAssist = function(_, token) return unit[token] and not unit[token].hostile or false end
 env.UnitReaction = function() return 2 end
 env.UnitIsConnected = function(token) return unit[token] and not unit[token].offline end
 env.UnitInRange = function(token) return unit[token] and not unit[token].far, true end

@@ -971,11 +971,23 @@ Row{ key = "np.debuffMax", kind = "range", path = "debuffMax", choices = Steps(1
 Row{ key = "np.auraRows", kind = "choice", path = "auraRows", choices = { "one", "buffsTop", "debuffsTop" },
     tab = "auras", section = "np.auraRowsSection",
     hidden = function() return TV("buffs") == "off" or TV("debuffs") == "off" end }
--- (defensives first: they sit left of the plate, crowd control right)
-Row{ key = "np.defensives", path = "defensives", tab = "auras", section = "np.ccSection", half = true }
-Row{ key = "np.cc", path = "cc", tab = "auras", section = "np.ccSection", half = true }
+-- (lead: the two switches everything else in the section needs. Defensives first: they sit left of the plate,
+-- crowd control right)
+Row{ key = "np.defensives", path = "defensives", tab = "auras", section = "np.ccSection", half = true, lead = true }
+Row{ key = "np.cc", path = "cc", tab = "auras", section = "np.ccSection", half = true, lead = true }
+local function NoBigAuras() return not (TV("cc") or TV("defensives")) end
+-- their own shape, swipe and timer; until picked they follow the Auras section's
+local function BigAuraRow(key, path, follows, default, choices)
+    Row{ key = key, kind = "choice", tab = "auras", section = "np.ccSection", choices = choices, disabled = NoBigAuras,
+        get = function() return TV(path) or TV(follows) or default end,
+        set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, path, v) end end,
+        resetValue = function() return TV(follows) or default end }
+end
+BigAuraRow("np.ccStyle", "ccStyle", "auraStyle", "square", { "square", "round" })
+BigAuraRow("np.ccSwipe", "ccSwipe", "auraSwipe", "both", { "none", "icon", "border", "both" })
+BigAuraRow("np.ccTimer", "ccTimer", "auraTimer", "none", { "none", "below", "bottom", "middle" })
 Row{ key = "np.ccSize", kind = "range", path = "ccSize", choices = Steps(16, 60, 2), tab = "auras", section = "np.ccSection",
-    disabled = function() return not (TV("cc") or TV("defensives")) end }
+    disabled = NoBigAuras }
 
 -- VISIBILITY: Blizzard's own nameplate and name settings (the game saves them; not in a fight), in
 -- three sections: which plates show and when, how they behave, and the names over heads

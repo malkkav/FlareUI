@@ -9,6 +9,7 @@ local NP = { ready = true }
 local queue = { plates = {}, processing = {} }
 function NP.ClearAuras() end
 function NP.QueueAuras() end
+function NP.DispelSide() end
 function NP.ResetPendingCast(p) p.pendingCast, p.castEventGUID = nil, nil end
 local byPlate, spare, state, stats, retries = {}, {}, {}, { secret=0, forbidden=0, given=0, claimed=0, failed=0 }, {}
 local hidden = F.frame(); hidden:Hide()

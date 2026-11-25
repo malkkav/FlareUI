@@ -852,6 +852,18 @@ function DamageMeter.ApplyBarTexture(bar, db)
     bar.fuiBarTexture = want
 end
 
+-- A row whose fill is Blizzard's atlas again gets the chosen texture back (a report: it went after a while;
+-- nothing in Blizzard's code sets it again, so whatever did is undone here)
+function DamageMeter.KeepBarTexture(entry)
+    local bar = entry and not entry:IsForbidden() and (entry.GetStatusBar and entry:GetStatusBar() or entry.StatusBar)
+    local want = bar and bar.fuiBarTexture
+    if not want or want == "" then return end
+    local fill = bar:GetStatusBarTexture()
+    if not (fill and fill.GetAtlas and fill:GetAtlas()) then return end
+    bar.fuiBarTexture = nil
+    DamageMeter.ApplyBarTexture(bar, GetDb())
+end
+
 -- Blizzard calls SetTextScale on every row it sets up, so the bar font is re-applied there: hooked
 -- on the row mixin (rows made later) and on each row styled before.
 local function RestyleEntry(entry)
@@ -864,6 +876,11 @@ local function HookEntryFonts()
     if mixin and not DamageMeter.FlareUI_EntryHooked and type(mixin.SetTextScale) == "function" then
         DamageMeter.FlareUI_EntryHooked = true
         hooksecurefunc(mixin, "SetTextScale", RestyleEntry)
+        -- (each update of a row)
+        for _, name in ipairs({ "DamageMeterSourceEntryMixin", "DamageMeterSpellEntryMixin" }) do
+            local own = _G[name]
+            if own and type(own.Init) == "function" then hooksecurefunc(own, "Init", DamageMeter.KeepBarTexture) end
+        end
     end
 end
 
@@ -873,6 +890,7 @@ local function HookEntry(entry)
     if entry and not entry.FlareUI_FontHooked and type(entry.SetTextScale) == "function" then
         entry.FlareUI_FontHooked = true
         hooksecurefunc(entry, "SetTextScale", RestyleEntry)
+        if type(entry.Init) == "function" then hooksecurefunc(entry, "Init", DamageMeter.KeepBarTexture) end
     end
 end
 
@@ -1912,6 +1930,23 @@ do
         ns.SetFont(f.title, path, size, flags)
         ApplyFontEffects(f.title, fontDb)
         for _, row in ipairs(Solo.view.rows) do ApplyBarFont(row, db) end
+        Solo.Opacity()
+    end
+
+    -- The meter's own Opacity (its Edit Mode dialog): Blizzard sets it on each of its windows, so the threat window
+    -- takes it too. On its parts, not on the window: that alpha belongs to its Visibility.
+    function Solo.Opacity()
+        local f, meter = Solo.frame, _G.DamageMeter
+        if not (f and meter and meter.GetWindowAlpha) then return end
+        local alpha = meter:GetWindowAlpha()
+        if not (canaccessvalue(alpha) and type(alpha) == "number") then return end
+        f.skin:SetAlpha(alpha)
+        f.title:SetAlpha(alpha)
+        Solo.view.frame:SetAlpha(alpha)
+        if not Solo.opacityHooked and meter.OnWindowAlphaChanged then
+            Solo.opacityHooked = true
+            hooksecurefunc(meter, "OnWindowAlphaChanged", Solo.Opacity)
+        end
     end
 
     local function Settings()
@@ -2389,6 +2424,9 @@ local function CheckWindowMouse(window) if window:IsShown() and window:IsMouseOv
 
 local function MeterUnderMouse(meter)
     if meter:IsMouseOver() then return true end
+    -- the separate threat window while it shows and fades with the meter (Visibility Same as Meter)
+    local threat = Solo.frame
+    if threat and threat:IsShown() and Solo.holder:GetParent() == meter and threat:IsMouseOver() then return true end
     mouseOverWindow = false
     if type(meter.ForEachSessionWindow) == "function" then
         meter:ForEachSessionWindow(CheckWindowMouse)
@@ -3068,17 +3106,26 @@ function Dock.PlaceTitle(window, dd, ref, textX)
     end
 end
 
+-- "Show New Window" reads Create a New Tab: that is what it makes here. Only its drawn text, through the menu's own
+-- initializers (each runs on its own): the entry, its stored text and its click stay Blizzard's.
+function Dock.TabText(button)
+    local fs = button and button.fontString
+    if not fs then return end
+    fs:SetText(L["Create a New Tab"])
+    fs:SetWidth(math.ceil(fs:GetUnboundedStringWidth() or 0))
+end
 -- the gear menu: "Show New Window" greyed out at two windows (Blizzard's entry, only disabled)
 function Dock.LimitMenu(rootDescription)
-    if Dock.Count() < Dock.MAX then return end
     local label = _G.DAMAGE_METER_SHOW_NEW_WINDOW
     if not label then return end
+    local full = Dock.Count() >= Dock.MAX
     for _, desc in rootDescription:EnumerateElementDescriptions() do
         if MenuUtil.GetElementText(desc) == label then
-            desc:SetEnabled(false)
-            if desc.SetTooltip then
+            if desc.AddInitializer then desc:AddInitializer(Dock.TabText) end
+            if full then desc:SetEnabled(false) end
+            if full and desc.SetTooltip then
                 desc:SetTooltip(function(tooltip)
-                    GameTooltip_SetTitle(tooltip, label)
+                    GameTooltip_SetTitle(tooltip, L["Create a New Tab"])
                     GameTooltip_AddNormalLine(tooltip, L["You can have two meter windows. Close one to open another."])
                 end)
             end

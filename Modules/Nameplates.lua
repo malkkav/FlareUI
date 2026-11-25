@@ -200,6 +200,7 @@ C.TYPE_KEYS = {
     plate = true, width = true, height = true, level = true, levelSide = true, barText = true, hideTextAtFull = true,
     healthColor = true, castbar = true, castHeight = true, debuffs = true, debuffSize = true, debuffMax = true,
     buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true, clickThrough = true,
+    ccStyle = true, ccSwipe = true, ccTimer = true,
     -- (every row on the Style tab is the type's own) the look rows and Name Only Size
     texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true,
     -- (every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
@@ -496,19 +497,6 @@ local function ReactionRGB(unit)
     if not canaccessvalue(reaction) or type(reaction) ~= "number" then return nil end
     local c = NP.Color(reaction <= 3 and "hostile" or reaction == 4 and "neutral" or "friendly")
     return c[1], c[2], c[3]
-end
-
--- A Name Only name's: the colour Blizzard gives the unit's name in the world, unless the player picked one for
--- its reaction. Can be secret: only for SetTextColor.
-function NP.NameRGB(unit)
-    local reaction = UnitReaction(unit, "player")
-    if canaccessvalue(reaction) and type(reaction) == "number" then
-        local key = reaction <= 3 and "hostile" or reaction == 4 and "neutral" or "friendly"
-        local c = NP.Color(key)
-        if c ~= C.COLORS[key] then return c[1], c[2], c[3] end
-    end
-    if UnitSelectionColor then return UnitSelectionColor(unit) end
-    return ReactionRGB(unit)
 end
 
 -- Pulses on one shared clock (Flash When Targeted, Highlight Important Casts, Threat Glow): every
@@ -1065,8 +1053,17 @@ function NP.AuraStack(db)
     local v = db.auraRows
     if v == "buffsTop" or v == "debuffsTop" then return v end
 end
+-- The rows' room: Width and 4 px on each side, whatever the border takes (7.0.9 fitted the plate closer to its border
+-- and a row lost an icon for 2 px). They hang out past the plate by what it is narrower (NP.AuraOverhang).
+C.AURA_ROOM = 4
+function NP.AuraRoom(p, db)
+    return math_max(p.plateW or db.width, db.width + 2 * C.AURA_ROOM)
+end
+function NP.AuraOverhang(p, db)
+    return (NP.AuraRoom(p, db) - (p.plateW or db.width)) / 2
+end
 function NP.AuraRowWidth(p, db)
-    local w = p.plateW or db.width
+    local w = NP.AuraRoom(p, db)
     if db.debuffs ~= "off" and db.buffs ~= "off" and not NP.AuraStack(db) then return math_floor((w - C.AURA_GAP) / 2) end
     return w
 end
@@ -1091,7 +1088,8 @@ end
 --   the quest mark on the side away from the level (the right with no level beside the bar), its
 --   progress outside it; crowd control on the right and defensives on the left, the same distance
 --   out, past the quest mark on its side; the raid marker on the left, past the defensives.
--- Target Highlight arrows sit right against the plate; everything here draws above them.
+-- Target Highlight arrows sit right against the plate; while one shows, everything on its side makes
+-- room for it (p.sideRoom). NP.UpdateTargetLook asks for a new layout when they come and go.
 function NP.PlaceSides(p, iconOn, textOn)
     -- (the threat box sits on the side away from the level: NP.LayoutThreat)
     local threatShown = p.threatBoxShown
@@ -1102,6 +1100,9 @@ function NP.PlaceSides(p, iconOn, textOn)
     p.leftOf = leftOf
     if p.questie then pcall(NP.FixQuestie, p) end
     local gap = C.SIDE_GAP
+    local roomLeft, roomRight = NP.ArrowRoom(p, "left"), NP.ArrowRoom(p, "right")
+    p.sideRoom = p.sideRoom or {}
+    p.sideRoom.left, p.sideRoom.right = roomLeft, roomRight
     p.quest:ClearAllPoints()
     p.questText:ClearAllPoints()
     p.raid:ClearAllPoints()
@@ -1112,11 +1113,13 @@ function NP.PlaceSides(p, iconOn, textOn)
     -- (the progress beside the icon, or in its place with Objective Icon off)
     if iconOn == nil then iconOn, textOn = p.quest:IsShown(), p.questText:IsShown() end
     if questRight then
-        p.quest:SetPoint("LEFT", p.rightOf, "RIGHT", gap, 0)
-        if iconOn then p.questText:SetPoint("LEFT", p.quest, "RIGHT", 1, 0) else p.questText:SetPoint("LEFT", p.rightOf, "RIGHT", gap + 1, 0) end
+        p.quest:SetPoint("LEFT", p.rightOf, "RIGHT", gap + roomRight, 0)
+        if iconOn then p.questText:SetPoint("LEFT", p.quest, "RIGHT", 1, 0)
+        else p.questText:SetPoint("LEFT", p.rightOf, "RIGHT", gap + 1 + roomRight, 0) end
     else
-        p.quest:SetPoint("RIGHT", leftOf, "LEFT", -gap, 0)
-        if iconOn then p.questText:SetPoint("RIGHT", p.quest, "LEFT", -1, 0) else p.questText:SetPoint("RIGHT", leftOf, "LEFT", -gap - 1, 0) end
+        p.quest:SetPoint("RIGHT", leftOf, "LEFT", -gap - roomLeft, 0)
+        if iconOn then p.questText:SetPoint("RIGHT", p.quest, "LEFT", -1, 0)
+        else p.questText:SetPoint("RIGHT", leftOf, "LEFT", -gap - 1 - roomLeft, 0) end
     end
     p.questText:SetJustifyH(questRight and "LEFT" or "RIGHT")
     if textOn then outer[p.questSide] = p.questText
@@ -1132,10 +1135,13 @@ function NP.PlaceSides(p, iconOn, textOn)
     if p.nameOnly then
         p.raid:SetPoint("BOTTOM", p.name, "TOP", 0, 2)
     elseif markerSide == "left" then
-        p.raid:SetPoint("RIGHT", leftOf, "LEFT", -gap, 0)
+        p.raid:SetPoint("RIGHT", leftOf, "LEFT", -gap - roomLeft, 0)
     else
-        p.raid:SetPoint("LEFT", p.rightOf, "RIGHT", gap, 0)
+        p.raid:SetPoint("LEFT", p.rightOf, "RIGHT", gap + roomRight, 0)
     end
+    -- (past the quest mark or the marker the room is already in)
+    local ccRoom = outer.right == p.rightOf and roomRight or 0
+    local defRoom = outer.left == leftOf and roomLeft or 0
     local auras = p.auras
     if auras then
         if auras.cc then
@@ -1143,7 +1149,7 @@ function NP.PlaceSides(p, iconOn, textOn)
             if markerSide == "right" then
                 auras.cc.container:SetPoint("LEFT", p.raid, "RIGHT", gap, 0)
             else
-                auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", gap - pad.right, 0)
+                auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", gap - pad.right + ccRoom, 0)
             end
         end
         if auras.defensives then
@@ -1151,10 +1157,11 @@ function NP.PlaceSides(p, iconOn, textOn)
             if markerSide == "left" then
                 auras.defensives.container:SetPoint("RIGHT", p.raid, "LEFT", -gap, 0)
             else
-                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left, 0)
+                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left - defRoom, 0)
             end
         end
     end
+    pad.left, pad.right = pad.left - defRoom, pad.right - ccRoom   -- (the preview's icons: what their side comes in by)
     p.sideLeft, p.sideRight, p.sidePad = outer.left, outer.right, pad
     local arrows = p.arrows
     if arrows then
@@ -1167,6 +1174,12 @@ function NP.PlaceSides(p, iconOn, textOn)
         top:SetPoint("BOTTOM", p.box, "TOP", 0, p.arrowTop or 2)
         for _, a in pairs(arrows) do a:SetSize(a.w or 16, a.h or 16) end
     end
+end
+
+-- the room a shown arrow takes on its side of the plate
+function NP.ArrowRoom(p, side)
+    local a = p.arrows and p.arrows[side]
+    return a and a:IsShown() and (a.w or 16) + 1 or 0
 end
 
 local function RequestSideLayout(p, iconOn, textOn)
@@ -1207,11 +1220,15 @@ function NP.UpdateTargetLook(p)
     local where = db.targetArrowSide or "both"
     local want = { left = where == "both" or where == "left", right = where == "both" or where == "right", top = where == "top" }
     -- Layout positions even the hidden arrows. Selecting a target only toggles them.
+    local moved = false
     for side, a in pairs(p.arrows) do
         local show = (on or (p.sample and p.sampleTarget)) and art and want[side] or false
         if show and not a:IsShown() then a.time = 0 end
         a:SetShown(show and true or false)
+        if side ~= "top" and NP.ArrowRoom(p, side) ~= (p.sideRoom and p.sideRoom[side] or 0) then moved = true end
     end
+    -- (what sits beside the plate makes room for the arrows, or comes back)
+    if moved and p.quest then RequestSideLayout(p) end
 end
 
 -- The soft glow's eight pieces round a frame (to), gw x gh in size: four rounded corners, four
@@ -1310,9 +1327,13 @@ end
 -- The Auras section (per type, as every Auras tab row): Aura Icon Shape, Aura Swipe,
 -- Aura Timer and Timer Colour, the unit frames' four, saved on the nameplates' own (auraStyle,
 -- auraSwipe, auraTimer, auraTimerColor). Defaults are the look the plates had: square, both, none.
-local function AuraLook(size, isDebuff, db)
-    local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, db.auraStyle or "square", nil,
-        db.auraTimer or "none", "target", { swipe = db.auraSwipe or "both", timerColor = db.auraTimerColor ~= false })
+-- big: Crowd Control and Defensives, which have the first three of their own (ccStyle, ccSwipe, ccTimer; never
+-- set, they follow the plate's)
+local function AuraLook(size, isDebuff, db, big)
+    local style, swipe, timer = db.auraStyle, db.auraSwipe, db.auraTimer
+    if big then style, swipe, timer = db.ccStyle or style, db.ccSwipe or swipe, db.ccTimer or timer end
+    local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, style or "square", nil,
+        timer or "none", "target", { swipe = swipe or "both", timerColor = db.auraTimerColor ~= false })
     -- the debuff's type icon is for what you could dispel: not on an enemy's plate
     if look and not C.FRIENDLY[db.kind] then look.noTypeIcon = true end
     return look
@@ -1330,6 +1351,13 @@ function NP.AuraLift(db, place)
     return (look and look.cellHeight or size) + C.AURA_GAP
 end
 
+-- The dispel type icons only on units you can help. The look already leaves them out on enemy types, but a plate
+-- reused in a fight can keep its earlier type's buttons (Blizzard locks them), so the unit is asked too.
+function NP.DispelSide(p)
+    local AP, look = ns.AuraPolicy, ns.AuraLook
+    if not (p.auras and p.unit and AP and look and look.DispelSide) then return end
+    look.DispelSide(p.root, not (C.FRIENDLY[p.kind] and AP.CanDispelOn(p.unit)))
+end
 -- the lanes of each aura place, with Aura Filters' Hide / Show lists for "nameplates"
 -- a filter string: base and the words of the ticked toggles (each word once), then rest
 function NP.FilterFor(base, set, tokens, rest)
@@ -1446,7 +1474,7 @@ local function LayoutAuras(p, db)
         local size = (place == "cc" or place == "defensives") and db.ccSize or (place == "buffs" and db.buffSize or db.debuffSize)
         local max = (place == "cc" and 1) or (place == "defensives" and 2) or NP.AuraCount(p, db, size, place == "buffs" and db.buffMax or db.debuffMax)
         for index, lane in ipairs(list) do
-            local look = AuraLook(size, lane.isDebuff, db)
+            local look = AuraLook(size, lane.isDebuff, db, place == "cc" or place == "defensives")
             if look and lane.stealable then look.stealable = true end
             local key
             for _, filter in ipairs(lane.filters) do
@@ -1455,7 +1483,10 @@ local function LayoutAuras(p, db)
                     maxFrameCount = max,
                     candidateFilters = lane.candidates,
                     sortMethod = sortMethod, sortDirection = sortDirection,
-                    initializeFrame = function(button) K.InitAuraButton(button, size, lane.isDebuff, "target", nil, false, look) end,
+                    initializeFrame = function(button)
+                        button.FlareUI_AuraOwner = p.root   -- (its side hides the dispel type icons: NP.DispelSide)
+                        K.InitAuraButton(button, size, lane.isDebuff, "target", nil, false, look)
+                    end,
                     layout = {
                         elementWidth = size, elementHeight = look and look.cellHeight or size,
                         elementSpacing = C.AURA_GAP, lineSpacing = C.AURA_GAP,
@@ -1474,7 +1505,8 @@ local function LayoutAuras(p, db)
         if row then
             container:ClearAllPoints()
             local point = (row == "left" and "BOTTOMLEFT") or (row == "right" and "BOTTOMRIGHT") or "BOTTOM"
-            container:SetPoint(point, p.box, (row == "left" and "TOPLEFT") or (row == "right" and "TOPRIGHT") or "TOP", 0,
+            container:SetPoint(point, p.box, (row == "left" and "TOPLEFT") or (row == "right" and "TOPRIGHT") or "TOP",
+                (row == "left" and -1 or row == "right" and 1 or 0) * NP.AuraOverhang(p, db),
                 C.AURA_GAP + NP.AuraLift(db, place) + (p.nameAboveLift or 0))
         end
         -- (crowd control and defensives beside the plate: NP.PlaceSides)
@@ -1950,6 +1982,16 @@ function NP.PetHolds(unit)
     return type(pet) == "number" and pet >= 2
 end
 
+-- Another tank of the group has it, or your pet
+function NP.OtherTankHolds(unit)
+    if NP.PetHolds(unit) then return true end
+    for _, tank in ipairs(state.tanks) do
+        local other = Readable(UnitThreatSituation(tank, unit))
+        if type(other) == "number" and other >= 2 then return true end
+    end
+    return false
+end
+
 -- the threat colour, or nil for the plate's own colour
 local function ThreatRGB(unit, db)
     local mode = db.threat
@@ -1971,13 +2013,7 @@ local function ThreatRGB(unit, db)
         if status == 3 then key = "holding"
         elseif status == 2 then key = "losing"
         else
-            key = "lost"
-            if NP.PetHolds(unit) then key = "offtank" end
-            for _, tank in ipairs(state.tanks) do
-                if key == "offtank" then break end
-                local other = Readable(UnitThreatSituation(tank, unit))
-                if type(other) == "number" and other >= 2 then key = "offtank" end
-            end
+            key = NP.OtherTankHolds(unit) and "offtank" or "lost"
         end
     else
         if status == 1 then key = "gaining" elseif status >= 2 then key = "aggro"
@@ -2073,9 +2109,22 @@ function NP.PaintGlow(p)
     for _, t in ipairs(p.discGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
 end
 
--- THREAT PERCENTAGE (Extras > Threat, off): your threat on the unit as a number, in
--- the colours of the unit frames' Threat Text (Blizzard's threat status colours). 100% is where you
--- pull it; a tank holding it reads its lead over the next. Shown in a fight with threat on it, and on
+-- The number's colour, by Role (chriiiiiiiiisss): Blizzard's threat colours. Damage and healers: yellow, orange and red
+-- as they pull it. A tank the other way round: orange losing it, red lost. All is well (a tank holding it, or another
+-- tank or your pet; no threat as damage or healer): the bar's You Hold It green (or your pick). White: not readable.
+function NP.ThreatTextRGB(unit, status)
+    if not GetThreatStatusColor or type(status) ~= "number" then return 1, 1, 1 end
+    local safe = NP.Color("holding")
+    if state.role == "tank" then
+        if status == 2 then return GetThreatStatusColor(2) end
+        if status < 2 and not (unit and NP.OtherTankHolds(unit)) then return GetThreatStatusColor(3) end
+    elseif status >= 1 then
+        return GetThreatStatusColor(status)
+    end
+    return safe[1], safe[2], safe[3]
+end
+-- THREAT PERCENTAGE (Extras > Threat, off): your threat on the unit as a number, in NP.ThreatTextRGB's colours.
+-- 100% is where you pull it; a tank holding it reads its lead over the next. Shown in a fight with threat on it, and on
 -- the Test plates; never on Name Only plates. A threat the game keeps hidden shows nothing.
 -- Off, In a Group ("groups"), In an Instance ("instances") or Always (saved true / false while it
 -- was a switch, and still for Always and Off)
@@ -2113,25 +2162,19 @@ function NP.UpdateThreatText(p, db)
             -- the numbers are read whenever the game hands them over; before, the text gave up
             -- whenever ShouldUnitThreatStateBeSecret said yes, so it never showed in a fight. A secret
             -- percent goes into the text unread (ns.ThreatPercent, ns.ThreatPercentText).
-            local secret
-            display, status, secret = ns.ThreatPercent(unit)
+            local secret, isLead
+            display, status, secret, isLead = ns.ThreatPercent(unit)
             if secret then
-                local text = ns.ThreatPercentText(display)
-                if not (text and pcall(fs.SetFormattedText, fs, "%s%%", text)) then Place(false) return end
-                if status and status >= 1 and GetThreatStatusColor then
-                    fs:SetTextColor(GetThreatStatusColor(status))
-                else
-                    fs:SetTextColor(1, 1, 1)
-                end
+                local text, percent = ns.ThreatPercentText(display, isLead)
+                if not (text and pcall(fs.SetFormattedText, fs, percent, text)) then Place(false) return end
+                fs:SetTextColor(NP.ThreatTextRGB(unit, status))
                 Place(true)
                 return
             end
         end
     end
     if type(display) ~= "number" or display <= 0 then Place(false) return end
-    local r, g, b = 1, 1, 1
-    if status and status >= 1 and GetThreatStatusColor then r, g, b = GetThreatStatusColor(status) end
-    fs:SetTextColor(r, g, b)
+    fs:SetTextColor(NP.ThreatTextRGB(unit, status))
     fs:SetFormattedText("%.0f%%", display)
     Place(true)
 end
@@ -2339,13 +2382,6 @@ end
 function NP.UpdateName(p)
     NP.UpdateBarName(p)
     NP.UpdateNameAbove(p)
-    NP.ColorLines(p)
-end
--- the title and the guild take the name's colour, as in Blizzard's own names
-function NP.ColorLines(p)
-    local title, guild = p.npcTitle, p.guildName
-    if title and title:IsShown() then title:SetTextColor(p.name:GetTextColor()) end
-    if guild and guild:IsShown() then guild:SetTextColor(p.name:GetTextColor()) end
 end
 function NP.UpdateBarName(p)
     local db, unit = PDB(p), p.unit
@@ -2410,9 +2446,9 @@ function NP.UpdateBarName(p)
             return
         end
     end
-    -- a name with no bar under it carries the reaction colour itself: Blizzard's, or yours (Pick Your Colours)
+    -- a name with no bar under it carries the reaction colour itself
     if p.nameOnly then
-        local r, g, b = NP.NameRGB(unit)
+        local r, g, b = ReactionRGB(unit)
         if r then p.name:SetTextColor(r, g, b) return end
     end
     p.name:SetTextColor(1, 1, 1)
@@ -2479,6 +2515,8 @@ function NP.UpdateGuild(p)
     end
     if not guild then fs:Hide() return end
     fs:SetText("<" .. guild .. ">")
+    local c = ns.PALETTE.parchment
+    fs:SetTextColor(c[1], c[2], c[3], 1)
     fs:ClearAllPoints()
     fs:SetPoint("TOP", (p.npcTitle and p.npcTitle:IsShown()) and p.npcTitle or p.name, "BOTTOM", 0, -1)
     fs:Show()
@@ -2487,7 +2525,6 @@ end
 function NP.UpdateTitle(p)
     NP.UpdateTitleLine(p)
     NP.UpdateGuild(p)
-    NP.ColorLines(p)
 end
 function NP.UpdateTitleLine(p)
     local fs = p.npcTitle
@@ -2499,6 +2536,9 @@ function NP.UpdateTitleLine(p)
     end
     if not title then fs:Hide() return end
     fs:SetText(title)
+    -- its own colour, apart from the name's: a light parchment, clear of the warrior brown
+    local c = ns.PALETTE.parchment
+    fs:SetTextColor(c[1], c[2], c[3], 1)
     fs:Show()
 end
 
@@ -3123,7 +3163,31 @@ local function QueueWorld(mask)
     queue.world = bor(queue.world, mask)
     WakeQueue()
 end
-local function OnUnitEvent(self, event)
+-- A plate's unit, or you, changed sides (a duel, a PvP flag): claimed again as the new type, or back to Blizzard
+function NP.CheckSide(p)
+    if not p.unit then return end
+    local want, kind = NP.WantsPlate(p.unit)
+    if not want or kind ~= p.kind then
+        local unit = p.unit
+        NP.ReleasePlate(p)
+        if want then NP.Claim(unit) end
+        return
+    end
+    NP.DispelSide(p)
+    NP.QueuePlate(p, bor(D.COLOR, D.LEVEL))
+end
+-- yours: every plate hears it, so one pass a frame later
+function NP.CheckSides()
+    if NP.sidesQueued then return end
+    NP.sidesQueued = true
+    C_Timer.After(0, function()
+        NP.sidesQueued = nil
+        local held = {}
+        for _, p in pairs(NP.HeldPlates()) do held[#held + 1] = p end
+        for _, p in ipairs(held) do ns.SafeCall("Nameplates Side", NP.CheckSide, p) end
+    end)
+end
+local function OnUnitEvent(self, event, unit)
     local p = self.plate
     if not p.unit then return end
     if event == "UNIT_HEALTH" then
@@ -3137,15 +3201,7 @@ local function OnUnitEvent(self, event)
     elseif event == "UNIT_HEAL_ABSORB_AMOUNT_CHANGED" then
         NP.QueuePlate(p, bor(D.HEALS, D.ABSORB))
     elseif event == "UNIT_FACTION" then
-        -- its type changed (turned friendly or hostile): claimed again as the new type, or back to Blizzard
-        local want, kind = NP.WantsPlate(p.unit)
-        if not want or kind ~= p.kind then
-            local unit = p.unit
-            NP.ReleasePlate(p)
-            if want then NP.Claim(unit) end
-            return
-        end
-        NP.QueuePlate(p, D.COLOR)
+        if unit == "player" then NP.CheckSides() else NP.CheckSide(p) end
     elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_FLAGS" then
         -- Name Only While Unattackable: it became attackable (or stopped being): laid out again
         if event == "UNIT_FLAGS" and not NP.testKind and NP.Peaceful(p.unit, p.kind) ~= (p.layKind == "peaceful") then
@@ -3154,6 +3210,7 @@ local function OnUnitEvent(self, event)
             NP.Claim(unit)
             return
         end
+        if event == "UNIT_FLAGS" and C.FRIENDLY[p.kind] then NP.DispelSide(p) end
         -- a pull sends many of these per mob in one frame: one repaint per frame
         NP.QueuePlate(p, D.COLOR)
     elseif event == "UNIT_NAME_UPDATE" then
@@ -3333,7 +3390,10 @@ end
 local function RegisterUnit(p, unit)
     local ev = p.events
     ev:UnregisterAllEvents()
-    for _, event in ipairs(UNIT_EVENTS) do ev:RegisterUnitEvent(event, unit) end
+    for _, event in ipairs(UNIT_EVENTS) do
+        -- (your own side counts too, as on Blizzard's plates)
+        if event == "UNIT_FACTION" then ev:RegisterUnitEvent(event, unit, "player") else ev:RegisterUnitEvent(event, unit) end
+    end
     if PDB(p).castbar then
         for _, event in ipairs(CAST_EVENTS) do ev:RegisterUnitEvent(event, unit) end
     end
@@ -3522,6 +3582,7 @@ function NP.Claim(unit)
         if C_NamePlateManager and C_NamePlateManager.SetNamePlateSimplified then
             pcall(C_NamePlateManager.SetNamePlateSimplified, unit, false)
         end
+        NP.DispelSide(p)
         NP.QueueAuras(p)
         RegisterUnit(p, unit)
         p.targetShown = nil
@@ -4166,7 +4227,7 @@ function NP.DrawSample(f, kind)
     local icons = p.sampleIcons
     for _, t in ipairs(icons) do t:Hide() end
     local n = 0
-    local function Icon(path, size, isDebuff, dispelType, point, rel, relPoint, x, y)
+    local function Icon(path, size, isDebuff, dispelType, point, rel, relPoint, x, y, big)
         n = n + 1
         local b = icons[n]
         if not b then
@@ -4174,7 +4235,7 @@ function NP.DrawSample(f, kind)
             b:SetFrameLevel(p.root:GetFrameLevel() + 12)
             icons[n] = b
         end
-        local look = AuraLook(size, isDebuff, db)
+        local look = AuraLook(size, isDebuff, db, big)
         if look and ns.AuraLook and ns.AuraLook.Style then
             look.preview = true
             ns.AuraLook.Style(b, look)
@@ -4241,13 +4302,13 @@ function NP.DrawSample(f, kind)
     end
     if db.cc then
         Icon("Spell_Nature_Polymorph", db.ccSize, true, "Magic", "LEFT", p.sideRight or p.rightOf or p.box, "RIGHT",
-            C.SIDE_GAP - (p.sidePad and p.sidePad.right or 0), 0)
+            C.SIDE_GAP - (p.sidePad and p.sidePad.right or 0), 0, true)
         p.ccIcon = icons[n]
     end
     p.defIcon = nil
     if db.defensives then
         Icon("Spell_Holy_DivineIntervention", db.ccSize, false, "None", "RIGHT", p.sideLeft or p.box, "LEFT",
-            -C.SIDE_GAP + (p.sidePad and p.sidePad.left or 0), 0)
+            -C.SIDE_GAP + (p.sidePad and p.sidePad.left or 0), 0, true)
         p.defIcon = icons[n]
     end
     if f.clickable then PlaceHits(p) end

@@ -8,7 +8,7 @@ local L = ns.L
 -- only: the row hides itself as a fight starts (a state driver), and it reads auras only while the
 -- game lets addons read them. Known spells only, at your highest rank. Also: paladin blessings, picked per member (Blessing: Automatic gives warriors,
 -- rogues and hunters Might and everyone else Wisdom, or one for all); a hunter's or warlock's pet
--- missing, dead or hurt (Pet Reminders, on); food, flask and elixir buffs (Consumables: off, in dungeons
+-- missing or dead (Pet Reminders, on); food, flask and elixir buffs (Consumables: off, in dungeons
 -- and raids, or always; Food and Flask each with a box; the elixirs ticked or those in your bags, each
 -- or any one of them; a click drinks what you carry). When It Shows: Solo / Party / Raid, Hide in Rested
 -- Areas, Only When You're the Only Provider (a group buff no one else of your class gives). Alerts: a
@@ -227,9 +227,8 @@ local BLESSING_ORDER = { "might", "wisdom", "kings", "salvation", "light", "sanc
 -- Automatic: the fighters without much use for mana get Might
 local MIGHT_CLASSES = { WARRIOR = true, ROGUE = true, HUNTER = true }
 -- pets: hunters call, revive and mend; warlocks summon (the last one they summoned, else the first known)
-local CALL_PET, REVIVE_PET, MEND_PET = 883, 982, 136
+local CALL_PET, REVIVE_PET = 883, 982
 local WARLOCK_SUMMONS = { 691, 697, 712, 688 }   -- Felhunter, Voidwalker, Succubus, Imp
-local MEND_BELOW = 0.5
 local GLOW_MISSING, GLOW_EXPIRING = { 1, 0.82, 0.25 }, { 1, 0.45, 0.1 }
 
 -- classes that never use mana
@@ -1065,6 +1064,13 @@ local function Mine(a)
     local ok, same = pcall(UnitIsUnit, source, "player")
     return not ok or not Readable(same) or same
 end
+-- "Running out" comes late on a short buff: in its last quarter at the earliest (a 2-minute Battle Shout would remind
+-- from its cast on)
+function BR.Before(aura, before)
+    local duration = aura and aura.duration
+    if Readable(duration) and type(duration) == "number" and duration > 0 then return math.min(before, duration / 4) end
+    return before
+end
 local function HasBuff(unit, names, before, own)
     local now = scan.active and scan.now or GetTime()
     local aura
@@ -1091,7 +1097,7 @@ local function HasBuff(unit, names, before, own)
     if not aura then return false, false end
     local expires = aura.expirationTime
     if not Readable(expires) or not expires or expires == 0 then return true, false end
-    local fine = expires - now > before
+    local fine = expires - now > BR.Before(aura, before)
     return fine, not fine, expires - now
 end
 
@@ -1128,7 +1134,7 @@ local function HasBuffByID(ids, before)
         if a then
             local expires = a.expirationTime
             if not Readable(expires) or not expires or expires == 0 then return true, false end
-            local fine = expires - now > before
+            local fine = expires - now > BR.Before(a, before)
             return fine, not fine, expires - now
         end
     end
@@ -1263,10 +1269,6 @@ local function PetFix(entry)
     if entry.def.pet == "HUNTER" then
         if exists and UnitIsDead("pet") then return Known(REVIVE_PET) and REVIVE_PET, "player" end
         if not exists then return Known(CALL_PET) and CALL_PET, "player" end
-        local ok, health, max = pcall(function() return UnitHealth("pet"), UnitHealthMax("pet") end)
-        if ok and Readable2(health, max) and max and max > 0 and health / max < MEND_BELOW and Known(MEND_PET) then
-            return MEND_PET, "pet"
-        end
         return nil
     end
     if exists then return nil end
@@ -2749,7 +2751,6 @@ function BR:Init()
     -- (only the player's own gear matters: a group member's would run a full check for nothing)
     pcall(events.RegisterUnitEvent, events, "UNIT_INVENTORY_CHANGED", "player")
     pcall(events.RegisterUnitEvent, events, "UNIT_PET", "player")
-    pcall(events.RegisterUnitEvent, events, "UNIT_HEALTH", "pet")
     pcall(events.RegisterUnitEvent, events, "UNIT_SPELLCAST_SUCCEEDED", "player")
     events:RegisterEvent("UNIT_AURA")
     -- food eaten, however it was used: held for 90 s; if the food buff comes in that time, the food

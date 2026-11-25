@@ -330,6 +330,22 @@ vis:SetShow("bar2", "always")
 assert(bButton:IsMouseEnabled())
 ns.ActionBars = nil
 
+-- Sharp Outline's texts go with a bar faded right out, and come back with it; other outlines are left alone
+do
+    local function Text(flags)
+        local fs = { alpha = 1, GetFont = function() return "font", 12, flags end }
+        function fs:SetAlpha(alpha) self.alpha = alpha end
+        return fs
+    end
+    local sharp, plain, timer = Text("OUTLINE, SLUG"), Text("OUTLINE"), Text("OUTLINE, SLUG")
+    local bar = { actionButtons = { { HotKey = sharp, Count = plain, cooldown = { GetCountdownFontString = function() return timer end } } } }
+    vis.SetBarTexts(bar, 0.5)
+    assert(sharp.alpha == 1)
+    vis.SetBarTexts(bar, 0)
+    assert(sharp.alpha == 0 and timer.alpha == 0 and plain.alpha == 1)
+    vis.SetBarTexts(bar, 0.02)
+    assert(sharp.alpha == 1 and timer.alpha == 1)
+end
 -- the Raid Manager switch is Quality of Life's: it works with Action Bars, and every other module, off
 local manager = frame("CompactRaidFrameManager")
 db.hideRaidManager, db.hidePetBar = true, true

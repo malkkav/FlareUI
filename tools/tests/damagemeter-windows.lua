@@ -99,6 +99,7 @@ local function menu()
         local button = { label = label, action = action }
         function button:SetEnabled(enabled) self.disabled = not enabled end
         function button:SetTooltip(callback) self.tooltip = callback end
+        function button:AddInitializer(callback) self.initializer = callback end
         self.entries[label] = button
         return button
     end
@@ -266,6 +267,43 @@ meterUI:PLAYER_REGEN_ENABLED()
 ui:flushTimers()
 local solo = assert(env.FlareUI_ThreatMeter)
 assert(solo:IsShown() and solo:GetWidth() == 320 and solo:GetPoint() == "BOTTOMLEFT")
+-- the meter's own Opacity reaches the separate threat window's parts (its own alpha is its Visibility's)
+do
+    local threat, meter = env.FlareUI_ThreatMeter, env.DamageMeter
+    local opacity, get, was = 0.4, meter.GetWindowAlpha, meter.windowAlpha
+    meter.GetWindowAlpha = function() return opacity end
+    meterUI.ApplyThreatWindow()
+    assert(threat.skin:GetAlpha() == 0.4 and threat.title:GetAlpha() == 0.4 and threat:GetAlpha() == 1)
+    opacity = 0.9
+    meter:OnWindowAlphaChanged(opacity)
+    assert(threat.skin:GetAlpha() == 0.9)
+    meter.GetWindowAlpha = get
+    meter:OnWindowAlphaChanged(was or 1)
+    meter.windowAlpha = was
+end
+-- a row whose fill is Blizzard's atlas again gets the chosen Bar Texture back
+do
+    local bar = row:GetStatusBar()
+    local fill = bar:GetStatusBarTexture()
+    assert(bar.fuiBarTexture == "Custom" or bar.fuiBarTexture ~= "")
+    fill:SetAtlas("UI-HUD-CoolDownManager-Bar")
+    fill:SetTexture(nil)
+    fill.atlas = "UI-HUD-CoolDownManager-Bar"
+    local set = fill.SetTexture
+    fill.SetTexture = function(self, path) self.atlas = nil return set(self, path) end
+    meterUI.KeepBarTexture(row)
+    assert(not fill:GetAtlas() and fill:GetTexture() == "Bars/Custom")
+end
+-- pointing at the threat window counts as pointing at the meter while it shows and fades with it, and only then
+do
+    local was, over = meter.mouseOver, solo.mouseOver
+    meterUI.AttachThreatWindow(true)
+    meter.mouseOver, solo.mouseOver = false, true
+    assert(meterUI.FadeMouse(), "with the meter: it brings the meter back")
+    meterUI.AttachThreatWindow(false)
+    assert(not meterUI.FadeMouse(), "on its own: it shows itself only")
+    meter.mouseOver, solo.mouseOver = was, over
+end
 meterUI.AttachThreatWindow(false)
 assert(solo:GetParent():GetParent() == env.UIParent)
 -- (11-24) on its own it is drawn whatever the meter's alpha, and held back only by its own
@@ -315,6 +353,13 @@ assert(window:GetAlpha() == 0.8 and second:GetAlpha() == 0)
 local gearMenu = menu()
 local newWindow = gearMenu:CreateButton("Show New Window")
 menuHooks.MENU_DAMAGE_METER_WINDOW_SETTINGS(second.SettingsDropdown, gearMenu)
+-- Blizzard's entry reads Create a New Tab: only its drawn text, its own text and click stay
+do
+    local drawn = { SetText = function(self, text) self.text = text end, SetWidth = function(self, w) self.width = w end,
+        GetUnboundedStringWidth = function() return 80.2 end }
+    newWindow.initializer({ fontString = drawn })
+    assert(drawn.text == "Create a New Tab" and drawn.width == 81 and newWindow.label == "Show New Window" and newWindow.action == nil)
+end
 assert(newWindow.disabled and newWindow.tooltip, "the gear menu enforces the window limit")
 ns.IsGamepadUI = function() return true end
 secondTab:Click("RightButton")

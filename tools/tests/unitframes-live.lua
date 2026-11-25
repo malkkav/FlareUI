@@ -45,6 +45,7 @@ local functions = {
     UnitHealthPercent = function(unit) return state[unit].health end,
     UnitHealthMissing = function(unit) return 100 - state[unit].health end,
     UnitCanAttack = function(_, unit) return state[unit] and state[unit].hostile end,
+    UnitCanAssist = function(_, unit) return state[unit] and not state[unit].hostile and not state[unit].unflagged or false end,
     UnitIsTapDenied = function(unit) return state[unit] and state[unit].tapped end,
     UnitReaction = function() return 2 end,
     UnitIsUnit = function(a, b) return a == b end,
@@ -192,6 +193,36 @@ local targetBuffs, targetDebuffs = target.Auras.TOP.container, target.Auras.TOPL
 local purge, normal = target.Auras.TOP.lanes.purge.key, target.Auras.TOP.lanes.buffs.key
 local harm = target.Auras.TOPLEFT.lanes.debuffs.key
 assert(targetBuffs:IsShown() and targetDebuffs:IsShown() and target.AuraStackStrip)
+-- Center Spell Name: the name's two ends stand equally far from the bar's
+do
+    local cast = target.Cast
+    cast.Text.SetJustifyH = function(self, h) self.centred = h == "CENTER" end
+    local function ends()
+        local _, _, _, left = cast.Text:GetPoint(1)
+        local _, relative, _, right = cast.Text:GetPoint(2)
+        return left, relative, right
+    end
+    local left, relative = ends()
+    assert(not cast.Text.centred)
+    targetDb.castCenter = true
+    UF.Redraw(target)
+    local l, rel, r = ends()
+    assert(cast.Text.centred and rel == cast and l == -r and l > left)
+    targetDb.castCenter = nil
+    UF.Redraw(target)
+    assert(not cast.Text.centred and select(2, ends()) == relative)
+end
+-- what is anchored to an aura container must be made with Blizzard's template for it, or its SetPoint errors
+assert(target.AuraStackStrip.template == "DisableUntrustedLayoutScriptsTemplate")
+do
+    local AP, outer = ns.AuraPolicy, env.CreateFrame("Frame", nil, target)
+    local strip = target.AuraStackStrip
+    strip.SetPoint = function() error("Anchoring disallowed as dependent object would inherit forbidden aspects") end
+    AP.HangPast(target, outer, targetBuffs, target, true, "LEFT", 3, 2)
+    local point, relative, relativePoint, _, y = outer:GetPoint(1)
+    assert(point == "BOTTOMLEFT" and relative == targetBuffs and relativePoint == "TOPLEFT" and y == 2, "refused: straight past the nearer one")
+    strip.SetPoint = nil
+end
 assert(targetDebuffs.groups[harm].filter == "HARMFUL|PLAYER" and targetBuffs.groups[purge].enabled)
 assert(targetBuffs.groups[normal].filter == "HELPFUL|!RAID_PLAYER_DISPELLABLE")
 assert(targetBuffs.groups[normal].candidates.maxDuration == 999999)
@@ -365,6 +396,41 @@ assert(targetDebuffs.groups[harm].maxFrameCount == 4 and target.Auras.TOPLEFT.la
 ui.editing = false
 callbacks.exit()
 assert(not cast:IsShown() and not targetDebuffs.editPreview and targetDebuffs.groups[harm].maxFrameCount == 9)
+-- (11-25, synx1z) a corner wraps at the frame's middle only while the edge's other corner is in use
+do
+    local buffs, debuffs = targetDb.buffs, targetDb.debuffs
+    targetDb.buffs, targetDb.debuffs = "BOTTOMLEFT", "BOTTOMRIGHT"
+    UF:Refresh()
+    local function Value(corner)
+        local v = target.Auras[corner].container.lineSize
+        return type(v) == "table" and v[1] or v
+    end
+    local half = Value("BOTTOMLEFT")
+    assert(half < target:GetWidth() / 2 and Value("BOTTOMRIGHT") == half, "both corners used: half each")
+    targetDb.buffs = "TOPLEFT"
+    UF:Refresh()
+    assert(Value("BOTTOMRIGHT") > target:GetWidth() / 2, "alone on its edge: past the middle")
+    assert(Value("TOPLEFT") > target:GetWidth() / 2)
+    targetDb.buffs = "OFF"
+    UF:Refresh()
+    assert(Value("BOTTOMRIGHT") > target:GetWidth() / 2)
+    -- Above the Frame: as many as Max Buffs says, on lines the frame's width long
+    local amount, width = targetDb.buffAmount, targetDb.width
+    local function Max()
+        local entry = target.Auras.TOP
+        return entry.container.groups[entry.lanes.buffs.key].maxFrameCount
+    end
+    targetDb.buffs, targetDb.debuffs, targetDb.buffAmount = "TOP", "BOTTOMRIGHT", 3
+    UF:Refresh()
+    local narrow = Value("TOP")
+    assert(Max() == 3 and narrow > target:GetWidth() / 2, "Max Buffs, on the whole width")
+    targetDb.width, targetDb.buffAmount = target:GetWidth() + 120, 12
+    UF:Refresh()
+    assert(Max() == 12 and Value("TOP") == narrow + 120, "a wider frame, a longer line")
+    targetDb.buffAmount, targetDb.width = amount, width
+    targetDb.buffs, targetDb.debuffs = buffs, debuffs
+    UF:Refresh()
+end
 -- (11-23, Kelvan) Values on Mouseover keeps each text on a layer of its own bar: a hidden druid mana bar
 -- (caster form) no longer hides the health numbers with it
 do
@@ -443,6 +509,21 @@ do
     env.C_SpellBook.IsSpellKnown = function(id) return id == 2139 end
     KICK.Learn()
     assert(KICK.Active() == 2139 and KICK.IsReady() == true)
+    -- a warrior: only the one the stance (and a shield) allows counts; low rage alone doesn't matter
+    env.C_SpellBook.IsSpellKnown = function(id) return id == 6552 or id == 72 end
+    local usable = { [6552] = false, [72] = true }
+    local noRage = {}
+    names[6552], names[72] = "Pummel", "Shield Bash"
+    env.C_Spell = setmetatable({ IsSpellUsable = function(id) return usable[id], noRage[id] or false end }, { __index = env.C_Spell })
+    KICK.Learn()
+    assert(KICK.Active() == 72 and KICK.IsReady() == true, "Defensive Stance: Shield Bash")
+    cooling = true
+    KICK.known[72] = false
+    assert(KICK.IsReady() == false, "Pummel is off cooldown but can't be pressed here")
+    usable[6552], usable[72], noRage[6552] = false, false, true
+    assert(KICK.IsReady() == true and KICK.Active() == 6552, "no rage for it yet")
+    assert(KICK.events:IsEventRegistered("UPDATE_SHAPESHIFT_FORM"))
+    cooling = false
     env.C_SpellBook.IsSpellKnown = function() return false end
     KICK.Learn()
     assert(KICK.Active() == nil and KICK.IsReady() == nil)

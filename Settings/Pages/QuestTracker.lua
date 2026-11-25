@@ -60,13 +60,16 @@ S:Row{
 }
 
 -- invert: a Show switch over a saved "hide" value (Show Quest Level)
-local function Display(key, path, invert)
-    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.display", half = true }
+local function Display(key, path, invert, disabled)
+    S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.display", half = true,
+        disabled = disabled }
 end
+-- (by level or progress the zones are mixed: no headings then)
+local function MixedZones() return S:GetPath("objectivetracker.sortByLevel") or S:GetPath("objectivetracker.sortByProgress") or false end
 -- in pairs:
 -- Zone Headings | Show Quest Level, Colour by Difficulty | Quest Tags, Tracked Recipes | Show Complete
 -- Tag; then Quest Buttons on its own row
-Display("zoneHeaders", "zoneHeaders")
+Display("zoneHeaders", "zoneHeaders", nil, MixedZones)
 Display("hideLevel", "hideLevel", true)
 Display("colorNames", "colorNames")
 Display("tags", "showTags")

@@ -517,8 +517,14 @@ function NA.Layout(f, udb, anchor, font)
     -- over the portrait ring and the elite dragon, as the auras are (f.auraLift)
     f.NameAboveHolder:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6))
     if font and font.GetFont then
-        local face, size, flags = font:GetFont()
-        if face then fs:SetFont(face, size, flags) end
+        -- the font object, not its file: a family draws names in other alphabets, a plain file shows them as boxes
+        local object = font.GetFontObject and font:GetFontObject()
+        if object then
+            fs:SetFontObject(object)
+        else
+            local face, size, flags = font:GetFont()
+            if face then fs:SetFont(face, size, flags) end
+        end
         if font.GetShadowOffset then
             local sx, sy = font:GetShadowOffset()
             fs:SetShadowOffset(sx or 1, sy or -1)

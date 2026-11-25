@@ -744,6 +744,111 @@ Bar.sources = {
         return text
     end, events = { "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION" }, sample = "XP 88% +88%" },
 }
+-- Friends and Guild: how many are online, and who while you point at the cell (tip). Names and zones that can't be
+-- read are left out.
+Bar.TIP_MAX = 25
+local function Plain(v) return canaccessvalue(v) and type(v) == "string" and v ~= "" and v or nil end
+function Bar.FriendCount()
+    local _, online = 0, 0
+    if BNGetNumFriends then _, online = BNGetNumFriends() end
+    local mine = C_FriendList and C_FriendList.GetNumOnlineFriends and C_FriendList.GetNumOnlineFriends() or 0
+    online = canaccessvalue(online) and tonumber(online) or 0
+    return online + (canaccessvalue(mine) and tonumber(mine) or 0)
+end
+function Bar.GuildCount()
+    if not (IsInGuild and IsInGuild()) then return nil end
+    local _, online = GetNumGuildMembers()
+    return canaccessvalue(online) and tonumber(online) or 0
+end
+-- { name, where, class file } of everyone online
+function Bar.FriendList()
+    local list = {}
+    for i = 1, BNGetNumFriends and (BNGetNumFriends()) or 0 do
+        local info = C_BattleNet and C_BattleNet.GetFriendAccountInfo(i)
+        local game = info and info.gameAccountInfo
+        if game and game.isOnline then
+            local name, char = Plain(info.accountName), Plain(game.characterName)
+            if name then
+                list[#list + 1] = { name = char and (name .. " (" .. char .. ")") or name,
+                    where = Plain(game.areaName) or Plain(game.richPresence) }
+            end
+        end
+    end
+    for i = 1, C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetNumFriends() or 0 do
+        local info = C_FriendList.GetFriendInfoByIndex(i)
+        if info and info.connected and Plain(info.name) then
+            list[#list + 1] = { name = info.name, where = Plain(info.area) }
+        end
+    end
+    return list
+end
+function Bar.GuildList()
+    local list = {}
+    for i = 1, (GetNumGuildMembers()) or 0 do
+        local name, _, _, _, _, zone, _, _, online, _, class = GetGuildRosterInfo(i)
+        if online and Plain(name) then
+            list[#list + 1] = { name = Ambiguate and Ambiguate(name, "guild") or name, where = Plain(zone), class = Plain(class) }
+        end
+    end
+    return list
+end
+function Bar.ListTip(owner, title, list)
+    ns.OwnGameTooltip(owner, "ANCHOR_BOTTOMLEFT")
+    GameTooltip:AddLine(title)
+    table.sort(list, function(a, b) return a.name < b.name end)
+    for i = 1, math.min(#list, Bar.TIP_MAX) do
+        local entry = list[i]
+        local color = entry.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[entry.class]
+        local r, g, b = 1, 1, 1
+        if color then r, g, b = color.r, color.g, color.b end
+        GameTooltip:AddDoubleLine(entry.name, entry.where or "", r, g, b, 0.7, 0.7, 0.7)
+    end
+    if #list > Bar.TIP_MAX then GameTooltip:AddLine(L["and %d more"]:format(#list - Bar.TIP_MAX), 0.7, 0.7, 0.7) end
+    if #list == 0 then GameTooltip:AddLine(L["Nobody is online."], 0.7, 0.7, 0.7) end
+    GameTooltip:Show()
+end
+Bar.sources.friends = {
+    text = function() return (_G.FRIENDS or "Friends") .. " " .. Bar.FriendCount() end,
+    sample = function() return (_G.FRIENDS or "Friends") .. " 88" end,
+    events = { "FRIENDLIST_UPDATE", "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE", "BN_FRIEND_LIST_SIZE_CHANGED", "BN_CONNECTED" },
+    tip = function(owner) Bar.ListTip(owner, _G.FRIENDS or "Friends", Bar.FriendList()) end,
+}
+Bar.sources.guild = {
+    text = function() return (_G.GUILD or "Guild") .. " " .. (Bar.GuildCount() or "-") end,
+    sample = function() return (_G.GUILD or "Guild") .. " 88" end,
+    events = { "GUILD_ROSTER_UPDATE", "PLAYER_GUILD_UPDATE" },
+    tip = function(owner)
+        if not Bar.GuildCount() then return end
+        if C_GuildInfo and C_GuildInfo.GuildRoster then C_GuildInfo.GuildRoster() end
+        Bar.ListTip(owner, _G.GUILD or "Guild", Bar.GuildList())
+    end,
+}
+-- The cell's hover, for a source with a tip: it takes no clicks, so the map below keeps them
+function Bar.PlaceHover(i, centre, width)
+    local source = Bar.sources[Bar.picks[Bar.SIDES[i]]]
+    local f = Bar.frame
+    f.Hovers = f.Hovers or {}
+    local hover = f.Hovers[i]
+    if not (source and source.tip) then
+        if hover then hover:Hide() end
+        return
+    end
+    if not hover then
+        hover = CreateFrame("Frame", nil, f)
+        f.Hovers[i] = hover
+        hover:EnableMouse(true)
+        if hover.SetMouseClickEnabled then hover:SetMouseClickEnabled(false) end
+        -- (the map's own hover goes on under it; the engine refuses this call in a fight)
+        if hover.SetPropagateMouseMotion and not InCombatLockdown() then pcall(hover.SetPropagateMouseMotion, hover, true) end
+        hover:SetScript("OnEnter", function(self) if self.tip then self.tip(self) end end)
+        hover:SetScript("OnLeave", GameTooltip_Hide)
+    end
+    hover.tip = source.tip
+    hover:ClearAllPoints()
+    hover:SetPoint("CENTER", f, "LEFT", centre, 0)
+    hover:SetSize(math.max(1, width), Bar.height or HEADER_HEIGHT)
+    hover:Show()
+end
 Bar.PAD = 8   -- a cell's room around its widest text
 
 -- Below the Map (minimap.infoBarBelow, off; over the map it covered the quest arrow,
@@ -915,6 +1020,7 @@ function Bar.Place()
         fs:ClearAllPoints()
         fs:SetPoint("CENTER", f, "LEFT", center[i], 0)
         fs:SetWidth(math.max(1, width[i] - 4))
+        Bar.PlaceHover(i, center[i], width[i])
     end
     -- a divider only between two cells in use (they share a plate). Show Box off (minimap.infoBarBox):
     -- no plates or dividers, the text alone
@@ -1792,6 +1898,8 @@ end
 -- (SetPassThroughButtons can't change in a fight: the last setting stays until it ends.)
 function MM.UpdateMapMouse()
     if not surface then return end
+    -- a HUD has the map: no click area over it
+    surface:SetShown(not MM.MapAway())
     local db = GetDb()
     local menuOn = db and db.microMenu and true or false
     local ownPings = squareStyle and not InBattleground()
@@ -1833,6 +1941,7 @@ local function CreateMapSurface()
         end)
     end
     surface:SetScript("OnMouseUp", function(_, button)
+        if MM.MapAway() then return end
         local db = GetDb()
         if button == "MiddleButton" then
             if db and db.microMenu then ToggleMenu() end
@@ -1875,9 +1984,10 @@ local function OnZoom(_, level)
     if zoomTimer then zoomTimer:Cancel() zoomTimer = nil end
     local db = GetDb()
     local delay = db and db.autoZoom or 0
-    if level ~= 0 and delay > 0 then
+    if level ~= 0 and delay > 0 and not MM.MapAway() then   -- (a HUD zooms its map itself)
         -- not in the middle of a node addon's scan (a new zoom would end it): once the map is home
         zoomTimer = C_Timer.NewTimer(delay, function()
+            if MM.MapAway() then return end
             if Scan.Busy() then Scan.Later("zoom", function() MinimapFrame:SetZoom(0) end) else MinimapFrame:SetZoom(0) end
         end)
     end
@@ -1892,6 +2002,7 @@ local function WantedMask()
     return MM.roundMask or MASKS.FOREVER
 end
 local function SetMask()
+    if MM.MapAway() then return end   -- (a HUD's mask is its own; MM.HomeAgain)
     maskGuard = true
     MinimapFrame:SetMaskTexture(WantedMask())
     maskGuard = false
@@ -1926,7 +2037,7 @@ local function SetIcons()
     local meta = getmetatable(MinimapFrame)
     local set = meta and meta.__index and meta.__index.SetIconScale or MinimapFrame.SetIconScale
     if not set then return end
-    if not MM.iconsFaded then pcall(set, MinimapFrame, MM.EditModeIconSize()) return end
+    if not MM.iconsFaded or MM.MapAway() then pcall(set, MinimapFrame, MM.EditModeIconSize()) return end
     for _, scale in ipairs(MM.ICONS_FADED) do
         if pcall(set, MinimapFrame, scale) then return end
     end
@@ -2473,11 +2584,22 @@ local function WatchMapHome()
     local wasAway, pending = false, false
     local function Check()
         pending = false
-        if MM.MapAway() then wasAway = true return end
+        if MM.MapAway() then
+            if not wasAway then
+                wasAway = true
+                MM.UpdateMapMouse()
+                if MM.iconsFaded then SetIcons() end   -- (the HUD's dots show whatever our fade is)
+            end
+            return
+        end
         if not wasAway then return end
         wasAway = false
         local function Home()
             if MM.MapAway() then return end
+            MM.UpdateMapMouse()
+            if MM.iconsFaded then SetIcons() end
+            if MM.mapFaded or squareStyle then SetMask() end
+            if not squareStyle then MM:Refresh() return end
             KeepMapUnrotated()
             -- a HUD shows again what it hid (ForeverFarmHUD: Forever's compass ring among them)
             ParkRoundArt()
@@ -2503,7 +2625,6 @@ local function WatchMapHome()
 end
 
 local function InitSquare()
-    WatchMapHome()
     KeepMapSquare()
     RemoveEditModeSettings()
     KeepMapUnrotated()
@@ -2753,6 +2874,7 @@ function MM:Init()
         if not squareStyle then self:ApplyFonts() end
     end)
 
+    WatchMapHome()
     if squareStyle then
         InitSquare()
     else

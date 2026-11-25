@@ -1,3 +1,119 @@
+# FlareUI 7.0.16
+
+Aura corners that use the whole frame, a threat number that knows you're the tank, and a long list of fixes.
+
+**We need your help testing:**
+- **Dispel icons:** a friend with a Magic, Curse, Disease or Poison debuff shows the icon. Enemies never do.
+- **Threat Percentage:** tank a few mobs in a group. The ones you hold are green, the ones you lost are red.
+- **Buffs and debuffs Above or Below the Frame, or in one corner only:** smaller icons or a wider frame fit more on a line.
+- **Meter:** use Create a New Tab, then check the new tab's list in a fight.
+- **Loot window:** Growth on Up, then drag the window and loot again.
+
+## Heads up
+Some things look different even if you change nothing:
+- **Buffs and debuffs in a corner:** with nothing in the corner across from them, they use the whole width of the frame.
+- **Cooldown Manager:** the Essential and Utility icons and Tracked Buffs fill from the middle. Pick another **Growth** in Edit Mode to change it.
+- **Name Only Mode:** the name colours from before 7.0.15 are back.
+- **Skin Item Slots:** Colour by Rarity starts at green. Grey and white items have the bronze border.
+- **Threat Percentage:** its colours follow your Role.
+- **Loot Feed and loot rolls:** they show above the bags and other windows.
+
+## New
+
+### Unit Frames
+- **Center Spell Name** (off): the spell's name in the middle of the cast bar.
+  - In Edit Mode, in every frame's Cast Bar section
+  - For the Player Cast Bar, in its Look section
+
+### Nameplates
+- Crowd control and defensive icons have their own **Aura Icon Shape**, **Aura Swipe** and **Aura Timer**. Until you pick something, they follow the other auras.
+
+### Bags & Looting
+- **Loot Window:** **Growth** (Down) and **Row Order** (Top to Bottom). By Xentinus.
+- **Crafting Bag in Backpack:** each soul bag in your bag slots gets its own section.
+
+### Cooldown Manager
+- **Growth** (From the Middle) for the Essential and Utility icons, in Edit Mode.
+
+### Minimap
+- **Info Bar:** Friends and Guild. They count who is online. Point at them to see who.
+
+## Changed
+
+### Nameplates
+- **Threat Percentage** colours:
+  - Tank: green while you hold the mob, orange when you're losing it, red when you lost it
+  - Damage & Healer: green while you're safe, red when it's on you
+  - The green is your **You Hold It** colour
+- **Name Only Mode:** names have FlareUI's colours again, and titles and guilds have a colour of their own.
+- The target arrows push the quest mark and the other marks beside the plate out of the way.
+
+### Unit Frames
+- **Show Spell Pushback** comes after Edge Glow.
+
+### Bags & Looting
+- **Reverse Bag Fill** works with Category Rows. Each section fills that way under its header.
+
+### Meters
+- The gear menu's Show New Window is now called **Create a New Tab**, because that's what it does.
+
+### Quest Tracker
+- **Zone Headings** greys out with Sort By on By Level or By Progress, where there are no headings.
+
+### Buff Reminders
+- Pet Reminders are for a missing or dead pet. The one for a hurt pet never showed, so it's gone.
+
+## Fixed
+
+### Unit Frames
+- A Lua error with buffs and debuffs in places that share an edge, such as Above the Frame and Above the Frame, Left.
+- Buffs and debuffs in a corner wrapped at the middle of the frame, even with nothing in the other corner.
+- Dispel icons showed where you can't dispel:
+  - Players of the other faction who aren't flagged for PvP
+  - Bleeds
+  - Party and raid members under Mind Control
+- **Threat Text:** 0% on a mob only you have threat on, where the game hides the numbers.
+- The interrupt colour counted an interrupt your stance or shield didn't allow.
+- "Interrupted by" stayed on the cast bar for your next target.
+- **Name Above Frames:** names in other alphabets showed as boxes.
+
+### Nameplates
+- Rows of buffs and debuffs fit one icon less since 7.0.9.
+- **Threat Percentage:** a red 0% on a mob only you have threat on, where the game hides the numbers.
+- A plate reused in a fight could show dispel icons on an enemy.
+- Plates kept the wrong type when you changed sides, as in a duel.
+
+### Action Bars
+- **Update Spell Ranks** left out the controller bars.
+- The range colours also changed buttons that aren't FlareUI's.
+- **Sharp Outline:** text that stayed on screen after its bar faded out should go now. We couldn't see it ourselves, so tell us if it stays.
+
+### Radial Menu
+- Party buttons kept old names after the group changed in a fight.
+- Some spell ranks were wrong right after logging in.
+- Party spells in a sub-radial now spread over your group.
+
+### Meters
+- The separate threat window didn't follow the meter's Opacity.
+- Pointing at the separate threat window didn't bring back a faded meter.
+- **Bar Texture:** it could go back to Blizzard's after a while. We couldn't find the cause, but it now puts itself right.
+
+### Quest Tracker
+- Share Quest could be blocked when a fight started with the menu open.
+- Item buttons could use the wrong quest's item, and took clicks while faded out.
+
+### Minimap
+- A farming HUD that takes the map no longer gets our click area, fading and hidden dots.
+
+### Buff Reminders
+- Short buffs counted as running out too early, such as Battle Shout.
+
+### Quality of Life
+- Accept Summons no longer takes a summons out of the starting area or into a scenario. You answer those.
+
+### Languages
+- **Hungarian:** two lines had wrong letters. By Xentinus.
+
 # FlareUI 7.0.15
 
 A hotfix for the Lua error when you change target in a fight (our own doing, from 7.0.14), plus a few fixes and small additions.
@@ -271,70 +387,6 @@ Some things look or work differently even if you change nothing:
 - **Radial Menu:** with nothing targeted, a party spell you use alone goes to you. It went to the NPC in front of you.
 - **Unit Frames:** **Name Above Frames** shows over the elite dragon in FlareUI Style.
 
-# FlareUI 7.0.11
-
-Surnames on their own, spell ranks in a drawer, smarter party spells on the radials, and threat numbers that agree with each other.
-
-**We need your help testing:**
-- **Threat numbers** as a tank in a dungeon: nameplates, target frame and meter.
-- **Nameplates** in big pulls: their auras, and how smooth it feels.
-- **Radial Menu:** the new rank drawer, and party spells while you're alone.
-- **Loot Roll Window:** **Fade in Combat**, with a real roll during a fight.
-- **Nameplates** with **Smooth Animated Bars**: its colours on our plates.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Bags & Looting:** **Warn Before Selling Set Gear** and **Warn Before Selling Quest Items** are gone for now. They may have caused items to be blocked by the game.
-- **Meters:** with **Tank's Lead** on, the tank's percent is now their threat against second place, like "125%". It used to show "100% (+25%)".
-- **Party and Raid Frames:** **Show Name** is now a list on raid frames and the party's Raid Style: Off, First Name, Last Name or Full Name. Your choice is kept.
-- **Nameplates:** **Show Full Name** for Name Only plates is now **Show Name**: First Name, Last Name or Full Name. Your choice is kept.
-- **Radial Menu:** a party spell you use alone goes to your friendly target first.
-- **Nameplates** with **Smooth Animated Bars**: a theme picked for nameplates there now colours our plates.
-
-## Highlights
-- **Last Name** on unit frames and nameplates.
-- **Radial Menu:** one entry per spell, with every rank in a drawer.
-- **Threat numbers** are the same on nameplates, unit frames and the meter.
-
-## New
-
-### Names
-- **Last Name** in every name list:
-  - Health Text and Name Above Frames on unit frames
-  - Show Name on raid frames and the party's Raid Style
-  - Health Text, Names Above Plate and Name Only on nameplates
-- Someone without a surname shows their name.
-- Forever Style keeps its own name.
-
-### Radial Menu
-- **Spell ranks:** the Catalog shows each spell once. Adding it gives you your best rank.
-  - The small arrow on its icon opens every rank.
-  - Search still finds single ranks, like "rank 3".
-  - With a controller, the Catalog still lists every rank.
-- **Party spells:** alone, they go to your friendly target, and to you when you have none. The button shows your target's name.
-- **Uses left:** spells that need a reagent show how many uses you have, like the action bars.
-
-### Loot Rolls
-- **Fade in Combat** (off) in Edit Mode, for the Loot Roll Window. These bring it back:
-  - Pointing at it
-  - The last 5 seconds of a roll you haven't decided on
-  - The end of the fight
-- **Faded Opacity** (30): how see-through it gets.
-
-## Changed
-- **Setup tour** (`/fui tour`): new pages for Nameplates, for Bags & Looting, and for Buffs and Reminders. The Cooldown Manager is now part of the Bars page.
-- **Nameplates** with **Smooth Animated Bars**:
-  - A theme picked under its Nameplates shows on our plates.
-  - With its **Your Colours on Their Bars** on, plates and your target's DoT marker work again, if plates and target both have a theme. Game Colour and Class Color keep FlareUI's fill.
-- **Performance:**
-  - Less work each frame on nameplates, the dispel glow and the chat.
-  - New nameplates load their buffs and debuffs a few plates at a time, for smaller spikes in big pulls.
-
-## Fixed
-- **Threat:** as a tank in a dungeon, nameplates could stay at 100%, and unit frames could show no number.
-- **Threat:** nameplates, unit frames and the meter could show different numbers for the same mob.
-- **Radial Menu:** a lower rank of a party spell could turn into your best rank. It now stays, and its rank shows in the list.
-
 ---
 
-Older versions (7.0.10 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
+Older versions (7.0.11 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

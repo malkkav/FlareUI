@@ -570,6 +570,25 @@ assert(item.cooldown.cooldown[2] == 5 and item.out)
 itemRange = 1
 ui:emit("PLAYER_TARGET_CHANGED")
 assert(not item.out)
+-- the log's order moves: the button follows its quest, and its charges follow the bags
+do
+    local index, info = env.C_QuestLog.GetLogIndexForQuestID, env.GetQuestLogSpecialItemInfo
+    assert(item.questID)
+    env.C_QuestLog.GetLogIndexForQuestID = function(id) return id == item.questID and 7 or index(id) end
+    assert(ot.ItemIndex(item) == 7)
+    env.GetQuestLogSpecialItemInfo = function(logIndex) if logIndex == 7 then return "|Hitem:99|h[Beacon]|h", 2000, 5 end end
+    ot:UpdateItemCounts()
+    assert(item.count:GetText() == "5")
+    env.C_QuestLog.GetLogIndexForQuestID, env.GetQuestLogSpecialItemInfo = index, info
+    ot:UpdateItemCounts()
+end
+-- faded right out, its button takes no clicks; a fight's start gives them back
+ot:SetFadeAlpha(0)
+assert(not item:IsMouseEnabled())
+ot.ItemMouse(true)
+assert(item:IsMouseEnabled())
+ot:SetFadeAlpha(1)
+assert(item:IsMouseEnabled())
 item.mouseOver = true
 assert(ot:IsMouseOverExtras())
 item.mouseOver = false

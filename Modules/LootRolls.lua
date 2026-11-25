@@ -1496,7 +1496,8 @@ function LR:Init()
     win = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     win:SetWidth(W)
     win:SetPoint("TOPLEFT", holder, "TOPLEFT")
-    win:SetFrameStrata("HIGH")
+    -- above every window, level with Blizzard's popups: they come to the front when clicked (a bind question)
+    win:SetFrameStrata("DIALOG")
     win:SetClampedToScreen(true)
     Panel(win)
     win:Hide()
@@ -1558,7 +1559,7 @@ function LR:Init()
     LEM:AddFrame(holder, OnMoved, DEFAULTS, L["FlareUI Loot Rolls"])
     local selection = LEM.frameSelections and LEM.frameSelections[holder]
     if selection then
-        selection:SetFrameStrata("HIGH")
+        selection:SetFrameStrata("DIALOG")
         selection:SetFrameLevel(win:GetFrameLevel() + 20)
     end
     win.fader = CreateFrame("Frame", nil, win)

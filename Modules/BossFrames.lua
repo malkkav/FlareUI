@@ -475,6 +475,7 @@ local function BuildSettings()
           set = function(layoutName, value) set("castTimer")(layoutName, value and true or false) end,
           hidden = noCast,
           desc = L["The time left, at the right end of the bar."] },
+        ns.UnitFrames.CastCenterSetting(function() return { castCenter = get("castCenter")() } end, set("castCenter"), noCast),
         { name = L["Edge Glow"], kind = LEM.SettingType.Checkbox, default = ns.CastGlowDefault(),
           get = function() return ns.CastGlowOn(get("castGlow")()) end,
           set = function(layoutName, value) set("castGlow")(layoutName, value and true or false) end,

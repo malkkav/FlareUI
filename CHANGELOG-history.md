@@ -1,6 +1,70 @@
 # FlareUI changelog history
 
-Versions 7.0.10 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.11 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.11
+
+Surnames on their own, spell ranks in a drawer, smarter party spells on the radials, and threat numbers that agree with each other.
+
+**We need your help testing:**
+- **Threat numbers** as a tank in a dungeon: nameplates, target frame and meter.
+- **Nameplates** in big pulls: their auras, and how smooth it feels.
+- **Radial Menu:** the new rank drawer, and party spells while you're alone.
+- **Loot Roll Window:** **Fade in Combat**, with a real roll during a fight.
+- **Nameplates** with **Smooth Animated Bars**: its colours on our plates.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Bags & Looting:** **Warn Before Selling Set Gear** and **Warn Before Selling Quest Items** are gone for now. They may have caused items to be blocked by the game.
+- **Meters:** with **Tank's Lead** on, the tank's percent is now their threat against second place, like "125%". It used to show "100% (+25%)".
+- **Party and Raid Frames:** **Show Name** is now a list on raid frames and the party's Raid Style: Off, First Name, Last Name or Full Name. Your choice is kept.
+- **Nameplates:** **Show Full Name** for Name Only plates is now **Show Name**: First Name, Last Name or Full Name. Your choice is kept.
+- **Radial Menu:** a party spell you use alone goes to your friendly target first.
+- **Nameplates** with **Smooth Animated Bars**: a theme picked for nameplates there now colours our plates.
+
+## Highlights
+- **Last Name** on unit frames and nameplates.
+- **Radial Menu:** one entry per spell, with every rank in a drawer.
+- **Threat numbers** are the same on nameplates, unit frames and the meter.
+
+## New
+
+### Names
+- **Last Name** in every name list:
+  - Health Text and Name Above Frames on unit frames
+  - Show Name on raid frames and the party's Raid Style
+  - Health Text, Names Above Plate and Name Only on nameplates
+- Someone without a surname shows their name.
+- Forever Style keeps its own name.
+
+### Radial Menu
+- **Spell ranks:** the Catalog shows each spell once. Adding it gives you your best rank.
+  - The small arrow on its icon opens every rank.
+  - Search still finds single ranks, like "rank 3".
+  - With a controller, the Catalog still lists every rank.
+- **Party spells:** alone, they go to your friendly target, and to you when you have none. The button shows your target's name.
+- **Uses left:** spells that need a reagent show how many uses you have, like the action bars.
+
+### Loot Rolls
+- **Fade in Combat** (off) in Edit Mode, for the Loot Roll Window. These bring it back:
+  - Pointing at it
+  - The last 5 seconds of a roll you haven't decided on
+  - The end of the fight
+- **Faded Opacity** (30): how see-through it gets.
+
+## Changed
+- **Setup tour** (`/fui tour`): new pages for Nameplates, for Bags & Looting, and for Buffs and Reminders. The Cooldown Manager is now part of the Bars page.
+- **Nameplates** with **Smooth Animated Bars**:
+  - A theme picked under its Nameplates shows on our plates.
+  - With its **Your Colours on Their Bars** on, plates and your target's DoT marker work again, if plates and target both have a theme. Game Colour and Class Color keep FlareUI's fill.
+- **Performance:**
+  - Less work each frame on nameplates, the dispel glow and the chat.
+  - New nameplates load their buffs and debuffs a few plates at a time, for smaller spikes in big pulls.
+
+## Fixed
+- **Threat:** as a tank in a dungeon, nameplates could stay at 100%, and unit frames could show no number.
+- **Threat:** nameplates, unit frames and the meter could show different numbers for the same mob.
+- **Radial Menu:** a lower rank of a party spell could turn into your best rank. It now stays, and its rank shows in the list.
 
 # FlareUI 7.0.10
 

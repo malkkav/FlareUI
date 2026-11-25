@@ -2742,8 +2742,13 @@ function Tweaks.InitAcceptSummon()
     }
     S.listener:RegisterEvent("CONFIRM_SUMMON")
     pcall(S.listener.RegisterEvent, S.listener, "CANCEL_SUMMON")
-    S.listener:SetScript("OnEvent", function(_, event)
+    S.listener:SetScript("OnEvent", function(_, event, reason, skipsStart)
         if event == "CANCEL_SUMMON" then Stop() return end
+        -- two the player answers: out of the starting area (it has its own warning) and into a scenario
+        local reasons = _G.Enum and _G.Enum.SummonReason
+        local scenario = reasons and reasons.Scenario
+        if canaccessvalue(skipsStart) and skipsStart then Stop() return end
+        if scenario and canaccessvalue(reason) and reason == scenario then Stop() return end
         local db = GetDb()
         if not (db and db.acceptSummon) or not C_SummonInfo then return end
         Stop()

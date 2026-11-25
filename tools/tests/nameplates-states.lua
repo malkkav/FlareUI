@@ -4,7 +4,7 @@ local ui, ns = dofile("tools/tests/fixtures/unitframes-ui.lua")({
     frameFontsSeeded = true, castTimeSeeded = true,
 })
 local env = ui.env
-ns.PALETTE = { bronze5 = { 0.85, 0.68, 0.47 } }
+ns.PALETTE = { bronze5 = { 0.85, 0.68, 0.47 }, parchment = { 0.93, 0.85, 0.68 } }
 local db = {
     enabled = true,
     types = {
@@ -119,6 +119,34 @@ assert(width == f:GetWidth() and height == f:GetHeight() and p.root:IsVisible())
 assert(p.health:GetValue() == 0.15 and p.execMark:IsShown() and p.execTint:GetAlpha() == 1)
 assert(p.targetTint:IsShown() and p.targetGlow:IsShown() and p.discGlow:IsShown())
 assert(p.arrows.left:IsShown() and p.arrows.right:IsShown() and not p.arrows.top:IsShown())
+-- the arrows push what sits beside the plate away, and only while they show
+do
+    local a, room = p.arrows.right, plates.ArrowRoom(p, "right")
+    assert(room > 1 and p.sideRoom.right == room)
+    local function x() return (select(4, p.quest:GetPoint(1))) end
+    local shownAt = x()
+    a:Hide() p.arrows.left:Hide()
+    plates.PlaceSides(p)
+    assert(math.abs(shownAt) > math.abs(x()), "the quest mark stands past the arrow")
+    assert(p.sideRoom.left == 0 and p.sideRoom.right == 0)
+    a:Show() p.arrows.left:Show()
+    plates.PlaceSides(p)
+    assert(x() == shownAt)
+end
+-- Crowd Control and Defensives: their own shape, swipe and timer once picked, the plate's until then
+do
+    local old = ns.AuraLook
+    ns.AuraLook = { ForUnit = function(_, _, _, style, _, timer, _, opts) return { style = style, timer = timer, swipe = opts.swipe } end }
+    local db = plates.TypeDB("enemyNpc")
+    local base = plates.AuraLook(24, true, db)
+    local same = plates.AuraLook(24, true, db, true)
+    assert(same.timer == base.timer and same.swipe == base.swipe)
+    plates.TypeSet("enemyNpc", "ccTimer", "middle")
+    plates.TypeSet("enemyNpc", "ccSwipe", "icon")
+    local big, small = plates.AuraLook(24, true, db, true), plates.AuraLook(24, true, db)
+    assert(big.timer == "middle" and big.swipe == "icon" and small.timer == base.timer and small.swipe == base.swipe)
+    ns.AuraLook = old
+end
 -- the arrow's bounce: from rest, 3 px towards the plate half way, back at rest after both ways
 do
     local a = p.arrows.right
@@ -376,6 +404,41 @@ do
     local value, status, isSecret = ns.ThreatPercent(live.unit)
     assert(value == secret and status == 3 and isSecret)
     assert(text() == "260%" and asked == 1, "hidden values: the lead, rounded by the client")
+    -- (11-25) a hidden lead of 0: with nobody else on the mob it's 100, and a 0 that still comes is no text
+    local alone, groupNow = ns.ThreatAlone, env.IsInGroup
+    ns.ThreatAlone = function() return true end
+    value, status, isSecret = ns.ThreatPercent(live.unit)
+    assert(value == 100 and status == 3 and not isSecret and text() == "100%")
+    ns.ThreatAlone = alone
+    env.C_StringUtil.TruncateWhenZero = function(v) assert(v == secret) return "" end
+    env.C_StringUtil.WrapString = function(infix, _, suffix) return infix == "" and "" or infix .. suffix end
+    assert(text() == "", "no 0%")
+    env.C_StringUtil.TruncateWhenZero = function() return "260" end
+    assert(text() == "260%")
+    env.C_StringUtil.TruncateWhenZero, env.C_StringUtil.WrapString = nil, nil
+    -- who else is on its list: the group and the pets; a state that can't be read counts
+    local exists, others = env.UnitExists, {}
+    env.IsInGroup, env.IsInRaid = function() return true end, function() return false end
+    env.UnitExists = function(token) return token == "party1" or token == "partypet1" or token == "pet" end
+    env.UnitThreatSituation = function(token) if token == "player" then return state end return others[token] end
+    assert(ns.ThreatAlone(live.unit))
+    for _, token in ipairs({ "party1", "partypet1", "pet" }) do
+        others = { [token] = 0 }
+        assert(not ns.ThreatAlone(live.unit), token)
+    end
+    others = { party1 = secret }
+    assert(not ns.ThreatAlone(live.unit))
+    -- (a raid: you are one of its members)
+    local raid, members, same = env.IsInRaid, env.GetNumGroupMembers, env.UnitIsUnit
+    env.IsInRaid, env.GetNumGroupMembers = function() return true end, function() return 2 end
+    env.UnitIsUnit = function(token) return token == "raid1" end
+    env.UnitExists = function(token) return token == "raid1" or token == "raid2" end
+    others = { raid1 = 3 }
+    assert(ns.ThreatAlone(live.unit))
+    others.raid2 = 1
+    assert(not ns.ThreatAlone(live.unit))
+    env.IsInRaid, env.GetNumGroupMembers, env.UnitIsUnit = raid, members, same
+    env.UnitExists, env.IsInGroup = exists, groupNow
     env.UnitThreatSituation = function() return secret end
     value, status, isSecret = ns.ThreatPercent(live.unit)
     assert(value == secret and status == nil and isSecret and text() == "260%", "a hidden state: the number, uncoloured")
@@ -427,6 +490,31 @@ do
     assert(one.auras.cc.set[3] == "none" and one.auras.debuffs.set[4] == "none")
     plates.QueueAuras({})
     assert(#queue.list == 0, "a client without aura rows")
+end
+-- (11-25) a row's room is Width and 4 px on each side whatever the border takes: 8 icons of 18 in a width of 150
+do
+    local view = { width = 150, debuffs = "mine", buffs = "off" }
+    assert(plates.AuraPerLine({ plateW = 156 }, view, 18) == 8 and plates.AuraOverhang({ plateW = 156 }, view) == 1)
+    assert(plates.AuraOverhang({ plateW = 160 }, view) == 0 and plates.AuraRowWidth({ plateW = 160 }, view) == 160, "never less than the plate")
+    view.buffs, view.auraRows = "all", "one"
+    assert(plates.AuraPerLine({ plateW = 156 }, view, 18) == 4, "half each")
+end
+-- (11-25) the dispel type icons: only on friendly plates you can help, a plate reused in a fight included
+do
+    local AP, look, seen = ns.AuraPolicy, ns.AuraLook, nil
+    local help = true
+    ns.AuraPolicy = { CanDispelOn = function() return help end }
+    ns.AuraLook = { DispelSide = function(_, hidden) seen = hidden end }
+    local plate = { root = {}, auras = {}, unit = "nameplate14", kind = "friendlyPlayer" }
+    plates.DispelSide(plate)
+    assert(seen == false)
+    help = false
+    plates.DispelSide(plate)
+    assert(seen == true, "under Mind Control")
+    help, plate.kind = true, "enemyNpc"
+    plates.DispelSide(plate)
+    assert(seen == true)
+    ns.AuraPolicy, ns.AuraLook = AP, look
 end
 assert(live.threatSide == (live.levelAnchor and live.levelSide == "right" and "left" or "right"))
 assert(live.health:GetValue() == 100 and live.textHolder:GetAlpha() == 0 and live.holder:GetAlpha() == 0.35)
@@ -618,6 +706,19 @@ units[secondToken], aliases[secondToken], native[2] = nil, nil, nil
 aliases.target = gamePlate
 send("PLAYER_TARGET_CHANGED")
 nextFrame()
+-- your own side changed (a duel, a PvP flag): every plate is checked once, a frame later
+do
+    local check, checked = plates.CheckSide, 0
+    plates.CheckSide = function() checked = checked + 1 end
+    plates.CheckSides()
+    plates.CheckSides()
+    assert(checked == 0)
+    ui:flushTimers()
+    local held = 0
+    for _ in pairs(plates.HeldPlates()) do held = held + 1 end
+    assert(held > 0 and checked == held, checked .. " of " .. held)
+    plates.CheckSide = check
+end
 -- Target Scale grows over a moment (11-24), slowing down; a threat change and a plate just taken jump
 do
     local glide = plates.Glide
@@ -1064,9 +1165,25 @@ petThreat = 1
 assert(not plates.PetHolds(token))
 plates.UpdateColor(live)
 assert(live.threatKey == "lost", "tank: nobody of ours holds it -> " .. tostring(live.threatKey))
+-- (11-25) Threat Percentage's colour by Role
+local function ThreatTextRed(status, held)
+    local colour, holds = env.GetThreatStatusColor, plates.OtherTankHolds
+    env.GetThreatStatusColor = function(n) return n * 10, 0, 0 end
+    plates.OtherTankHolds = function() return held or false end
+    local red = plates.ThreatTextRGB(token, status)
+    env.GetThreatStatusColor, plates.OtherTankHolds = colour, holds
+    return red
+end
+local safeRed = plates.Color("holding")[1]
+assert(ThreatTextRed(3) == safeRed and ThreatTextRed(2) == 20 and ThreatTextRed(1) == 30 and ThreatTextRed(0) == 30,
+    "tank: holding green, losing orange, lost red")
+assert(ThreatTextRed(0, true) == safeRed and ThreatTextRed(1, true) == safeRed, "another tank has it")
+assert(ThreatTextRed(nil) == 1, "not readable: white")
 units.pet, petThreat = nil, nil
 db.role = "damage"
 plates:Refresh()
+plates.UpdateRole()
+assert(ThreatTextRed(3) == 30 and ThreatTextRed(2) == 20 and ThreatTextRed(0) == safeRed, "damage: red when it's on you")
 live = assert(plates.PartsFor(gamePlate))
 plates.UpdateRole()
 
@@ -1116,12 +1233,10 @@ do
     assert(shown(true) and p.guildName:GetText() == "<Emerald Circle>" and select(2, p.guildName:GetPoint()) == p.name)
     p.npcTitle:Show()
     assert(shown(true) and select(2, p.guildName:GetPoint()) == p.npcTitle, "under the title")
-    -- the title and the guild take the name's colour, as in Blizzard's own names
-    p.name:SetTextColor(0.1, 0.2, 0.3)
-    plates.ColorLines(p)
-    for _, fs in ipairs({ p.npcTitle, p.guildName }) do
-        local r, g, b = fs:GetTextColor()
-        assert(r == 0.1 and g == 0.2 and b == 0.3)
+    -- its own colour, clear of the warrior brown (0.78, 0.61, 0.43)
+    do
+        local r, g, b = p.guildName:GetTextColor()
+        assert(r == 0.93 and g == 0.85 and b == 0.68)
     end
     guild = nil
     assert(not shown(true), "no guild")
@@ -1135,23 +1250,6 @@ do
     p.nameOnly, p.kind = true, "friendlyNpc"
     assert(not shown(true), "players only")
     env.GetGuildInfo = oldGuild
-end
--- a Name Only name: Blizzard's own colour for the unit, or the one picked for its reaction
-do
-    local selection, reaction = env.UnitSelectionColor, env.UnitReaction
-    env.UnitSelectionColor = function() return 0, 0.5, 1 end
-    env.UnitReaction = function() return 5 end
-    local r, g, b = plates.NameRGB("nameplate9")
-    assert(r == 0 and g == 0.5 and b == 1)
-    local color = plates.Color
-    plates.Color = function(key) return key == "friendly" and { 0.7, 0.8, 0.9 } or color(key) end
-    r, g, b = plates.NameRGB("nameplate9")
-    assert(r == 0.7 and g == 0.8 and b == 0.9, "the player's own friendly colour")
-    plates.Color = color
-    env.UnitSelectionColor = nil
-    r = plates.NameRGB("nameplate9")
-    assert(r == color("friendly")[1])
-    env.UnitSelectionColor, env.UnitReaction = selection, reaction
 end
 -- Copy From: every one of the type's settings, the other type left alone, later changes apart
 do

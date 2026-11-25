@@ -276,4 +276,20 @@ assert(not a.SlotArt:IsShown() and a.SlotBackground:IsShown() and a.cooldown:Get
 assert(a.HotKey:GetText() == "<Pad>" and not a.FlareUI_Active:IsShown() and not b.FlareUI_EquipGlow:IsShown())
 assert(cvar == "1" and not ns.db.global.autoPushSet)
 assert(dbCallbacks.OnDatabaseReset)
+-- Update Spell Ranks walks the controller bars' slots too, and only those that exist
+do
+    local seen = {}
+    local pad = env.C_GamepadUI
+    env.C_GamepadUI = nil
+    bars.EachActionSlot(function(i) seen[#seen + 1] = i end)
+    assert(#seen == 180)
+    seen, env.C_GamepadUI = {}, { GetFirstGamepadActionStorageSlotIndex = function() return 181 end,
+        IsValidGamepadActionStorageSlotIndex = function(i) return i <= 183 end }
+    bars.EachActionSlot(function(i) seen[#seen + 1] = i end)
+    assert(#seen == 183 and seen[183] == 183)
+    env.C_GamepadUI = pad
+end
+-- range colours: only on the bars' own buttons
+assert(bars.IsOurs(a) and not bars.IsOurs(env.CreateFrame("CheckButton", "GamepadActionButton1", env.UIParent)))
+
 print("PASS: action bar skins, bindings, status, cooldowns, click-through, deferred settings and spell ranks")

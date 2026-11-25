@@ -316,9 +316,12 @@ assert(iconFor("pet"):GetAttribute("spell") == "Call Pet" and iconFor("aspect"):
 pet, petDead = true, true
 br.Update()
 assert(iconFor("pet"):GetAttribute("spell") == "Revive Pet")
+-- (a hurt pet can't be told: its health is hidden from addons)
 petDead, petHealth = false, 20
 br.Update()
-assert(iconFor("pet"):GetAttribute("spell") == "Mend Pet" and iconFor("pet"):GetAttribute("unit") == "pet")
+assert(not iconFor("pet"))
+-- a short buff runs out in its last quarter at the earliest
+assert(br.Before({ duration = 120 }, 120) == 30 and br.Before({ duration = 1800 }, 120) == 120 and br.Before({}, 60) == 60)
 passive = true
 br.Update()
 assert(iconFor("pet"):GetAttribute("macrotext") == "/petdefensive")

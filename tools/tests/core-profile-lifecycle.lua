@@ -82,6 +82,8 @@ assert(imported.objectivetracker.frameStyle == "flareui")
 assert(saved.profiles.Another.chat.visibility == "interactions")
 assert(saved.profiles.Another.chat.fadeSpeed == "slow" and saved.profiles.Another.chat.autoHideDelay == 30)
 assert(ns.db.global.language == "frFR" and ns.TEXT_SCALE == 1.5)
+-- the loot window as it was: grows down, the first item on top (PR #181)
+assert(ns.db.profile.tweaks.lootWindowGrowth == "down" and ns.db.profile.tweaks.lootWindowOrder == "top")
 assert(#errors == 1 and errors[1]:find("font load failed", 1, true))
 assert(ns.CastGlowDefault() == false and ns.CastGlowOn(true) and not ns.CastGlowOn(false))
 

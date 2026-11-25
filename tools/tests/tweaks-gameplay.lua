@@ -248,7 +248,17 @@ assert(not countdown.cancelled and summoned == 0, "a fight: it asks again every 
 combatUnits.player = false
 countdown.callback()
 assert(countdown.cancelled and summoned == 1 and hidden[#hidden] == "CONFIRM_SUMMON" and not tweaks.summon.pending)
-ui:emit("CONFIRM_SUMMON")
+-- out of the starting area, and into a scenario: the player's to answer
+do
+    local had = env.Enum
+    env.Enum = setmetatable({ SummonReason = { Spell = 0, Scenario = 1 } }, { __index = had })
+    ui:emit("CONFIRM_SUMMON", 0, true)
+    assert(not tweaks.summon.pending)
+    ui:emit("CONFIRM_SUMMON", 1, false)
+    assert(not tweaks.summon.pending)
+    env.Enum = had
+end
+ui:emit("CONFIRM_SUMMON", 0, false)
 ns.CancelDialog("FLAREUI_ACCEPT_SUMMON")
 assert(not tweaks.summon.pending and summoned == 1)
 -- (11-24) declined on Blizzard's pop-up while it waits for a fight: the wait ends, and a later summon counts anew

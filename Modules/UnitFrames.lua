@@ -1610,15 +1610,25 @@ local KICK = {
     best = {},        -- a spell of the list -> its best known rank
     known = {},       -- spellID (best rank) -> true while ready, false while cooling
     timers = {},      -- spellID -> Cooldown frame
+    STANCE = { [6552] = true, [72] = true },   -- Pummel and Shield Bash: only in their stances (and with a shield)
+    stance = {},      -- the best known ranks of those
 }
 
 UF.KICK = KICK   -- (the Nameplates module's Kick Ready colour reads it: UF.onKickChanged)
 
+-- Can be pressed now as far as stance and shield go (low rage alone doesn't count: it would flicker)
+function KICK.Usable(spellID)
+    if not KICK.stance[spellID] then return true end
+    local usable, noPower = C_Spell.IsSpellUsable(spellID)
+    if not (canaccessvalue(usable) and canaccessvalue(noPower)) then return true end
+    return usable or noPower or false
+end
+
 -- nil when the player has no interrupt, else whether one is ready
 function KICK.IsReady()
     local any
-    for _, ready in pairs(KICK.known) do
-        if ready then return true end
+    for spellID, ready in pairs(KICK.known) do
+        if ready and KICK.Usable(spellID) then return true end
         any = false
     end
     return any
@@ -1658,7 +1668,7 @@ local function GetCastStyle(udb, standalone, plate)
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = true,
             -- (its own border in every style, Forever Style too)
             texture = udb.texture, border = true, borderTexture = udb.borderTexture,
-            bgOpacity = udb.bgOpacity, glow = ns.CastGlowOn(udb.castGlow),
+            bgOpacity = udb.bgOpacity, glow = ns.CastGlowOn(udb.castGlow), center = udb.castCenter,
         }
     end
     local castTexture = udb.castTexture
@@ -1674,6 +1684,7 @@ local function GetCastStyle(udb, standalone, plate)
         -- but the cast bar hangs outside the plate: its own Background there (the Cast Bar section)
         bgOpacity = udb.castBgOpacity or (plate and UF.BAR_BG_OPACITY) or udb.bgOpacity,
         glow = ns.CastGlowOn(udb.castGlow),   -- Edge Glow (Core.lua ns.CastGlowOn)
+        center = udb.castCenter,              -- Center Spell Name
     }
 end
 
@@ -1731,6 +1742,7 @@ local function SetCastTimer(cast, duration)
     end
 end
 
+UF.CAST_TIMER_ROOM = 2.4   -- Center Spell Name: the timer's room, in its font's size
 -- mode "TOP" / "BOTTOM" hangs the bar off a unit frame; "FILL" fills the standalone holder. The
 -- icon sits left of the bar; the border wraps both.
 -- leftExtra / rightExtra: more room from the anchor's edges (the ring)
@@ -1799,8 +1811,16 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     cast.Time:SetShown(style.timer)
     cast.timerShown = style.timer and true or false   -- Hide Spell Timer: the end of a cast brings it back only if wanted
     cast.Text:ClearAllPoints()
-    cast.Text:SetPoint("LEFT", cast, "LEFT", TEXT_INSET, 0)
-    if style.timer then
+    -- Center Spell Name: the same room on both ends (the timer's, from its font size: its width can be secret),
+    -- so the name sits in the middle of the bar
+    local center = style.center and true or false
+    cast.Text:SetJustifyH(center and "CENTER" or "LEFT")
+    local timeFont = center and style.timer and UF.Font(style.fontKey or "player", "castTime")
+    local room = timeFont and math.ceil((timeFont.size or 12) * UF.CAST_TIMER_ROOM) or 0
+    cast.Text:SetPoint("LEFT", cast, "LEFT", TEXT_INSET + room, 0)
+    if center then
+        cast.Text:SetPoint("RIGHT", cast, "RIGHT", -TEXT_INSET - room, 0)
+    elseif style.timer then
         cast.Text:SetPoint("RIGHT", cast.Time, "LEFT", -4, 0)
     else
         cast.Text:SetPoint("RIGHT", cast, "RIGHT", -TEXT_INSET, 0)
@@ -2224,10 +2244,15 @@ end
 -- Shown only while the kick cools and the cast can be interrupted; both may be secret, so frame
 -- alphas follow them (a texture's boolean alpha draws nothing on this client).
 function KICK.Active()
+    local first
     for _, spellID in ipairs(KICK.spells) do
         spellID = KICK.best[spellID] or spellID
-        if KICK.known[spellID] ~= nil then return spellID end
+        if KICK.known[spellID] ~= nil then
+            if KICK.Usable(spellID) then return spellID end
+            first = first or spellID
+        end
     end
+    return first
 end
 
 function UF.NoSnap(bar)
@@ -2505,6 +2530,7 @@ end
 function KICK.Learn()
     wipe(KICK.known)
     wipe(KICK.best)
+    wipe(KICK.stance)
     local book = UF.BookByName()
     for _, spellID in ipairs(KICK.spells) do
         local name = C_Spell.GetSpellName(spellID)
@@ -2513,7 +2539,12 @@ function KICK.Learn()
         if best then
             KICK.best[spellID] = best
             KICK.known[best] = true
+            if KICK.STANCE[spellID] then KICK.stance[best] = true end
         end
+    end
+    if next(KICK.stance) then
+        KICK.events:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+        KICK.events:RegisterUnitEvent("UNIT_INVENTORY_CHANGED", "player")
     end
     KICK.Refresh(false)
     KICK.UpdateBars()
@@ -2526,6 +2557,8 @@ KICK.events:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 KICK.events:SetScript("OnEvent", function(_, event)
     if event == "SPELL_UPDATE_COOLDOWN" then
         if (castBars[1] or UF.onKickChanged) and next(KICK.known) then KICK.Refresh(true) end
+    elseif event == "UPDATE_SHAPESHIFT_FORM" or event == "UNIT_INVENTORY_CHANGED" then
+        KICK.UpdateBars()
     else
         KICK.Learn()
     end
@@ -2727,6 +2760,8 @@ local function OnUnitEvent(f, event, arg1, arg2, _, arg4, arg5)
         UpdateCast(f, event, arg4, arg5)
     else
         f.lastReady = nil   -- the unit behind the token changed: the last one's ready check goes
+        -- (and its "Interrupted by", which stayed on the next target)
+        if f.Cast and event ~= "UNIT_TARGET" then UF.EndCastFlash(f.Cast) end
         UpdateAll(f)
         -- the auras rebuild for the new unit, and Only My Debuffs follows its side (ns.AuraPolicy)
         if f.Auras then ns.AuraPolicy.UnitChanged(f, f.fuiUnit) end
@@ -2872,6 +2907,12 @@ function UF.AuraAmount(udb, isDebuff, unit)
     return math.max(UF.AURA_AMOUNT.min, math.min(UF.AURA_AMOUNT.max, math_floor(v + 0.5)))
 end
 
+-- A whole-width line's room
+function UF.AuraLine(f)
+    local clear = (ns.UFRing and ns.UFRing.Applies(f)) and ns.UFRing.Clearance(f, AURA_GAP) or 0
+    return f:GetWidth() - 2 * INSET - clear
+end
+
 -- Blizzard's sample auras are a fixed
 -- set: 7 helpful, 4 harmful. In Edit Mode a lane is followed by copies of itself, on the same rows, until
 -- the samples reach Buff / Debuff Amount; each copy shows the same samples again.
@@ -2894,8 +2935,9 @@ function UF.PreviewFillLanes(list, lane, amount)
     if n > 0 then lane.fillCount = per end
 end
 
--- corner: TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT; lanes: ns.AuraPolicy lanes
-local function ConfigureAuraCorner(f, corner, lanes)
+-- corner: TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT; lanes: ns.AuraPolicy lanes; alone: nothing in the
+-- edge's other corner
+local function ConfigureAuraCorner(f, corner, lanes, alone)
     local entry = f.Auras and f.Auras[corner]
     if not entry then return end
     local container = entry.container
@@ -2914,12 +2956,11 @@ local function ConfigureAuraCorner(f, corner, lanes)
     -- Buffs Size and Debuffs Size: each lane its own; the line holds the larger of the corner's lanes
     local largest = 0
     for _, lane in ipairs(lanes) do largest = math.max(largest, ns.AuraSize(udb, lane.isDebuff, 20)) end
-    -- a corner wraps before the frame's middle, in as many rows as Buff / Debuff Amount needs; Top / Bottom:
-    -- the whole width less the ring's room
+    -- a corner wraps before the frame's middle while the edge's other corner is in use, in as many rows as
+    -- Buff / Debuff Amount needs; Top / Bottom and a corner on its own: the whole width less the ring's room
     local lineSize
-    if AURA.FULL[corner] then
-        local clear = (ns.UFRing and ns.UFRing.Applies(f)) and ns.UFRing.Clearance(f, AURA_GAP) or 0
-        lineSize = math.max(largest, f:GetWidth() - 2 * INSET - clear)
+    if AURA.FULL[corner] or alone then
+        lineSize = math.max(largest, UF.AuraLine(f))
     else
         lineSize = math.max(largest, math_floor(f:GetWidth() / 2) - INSET - 4)
     end
@@ -3125,6 +3166,7 @@ function UF.UpdateEnchants()
     end
 end
 
+AURA.OPPOSITE = { TOPLEFT = "TOPRIGHT", TOPRIGHT = "TOPLEFT", BOTTOMLEFT = "BOTTOMRIGHT", BOTTOMRIGHT = "BOTTOMLEFT" }
 -- A container's spot: a few px out from its corner, past the cast bar while it shows on that side,
 -- and past the ring at that height on the ring's side
 function AURA.Placement(f, corner)
@@ -3225,19 +3267,7 @@ local function PositionAuraContainers(f)
     if near and nearCorner ~= farCorner and f.Auras[nearCorner] and f.Auras[farCorner] then
         local inner, outer = f.Auras[nearCorner].container, f.Auras[farCorner].container
         local isTop, isLeft, x = AURA.Placement(f, farCorner)
-        local strip = f.AuraStackStrip
-        if not strip then
-            strip = CreateFrame("Frame", nil, f)
-            f.AuraStackStrip = strip
-        end
-        strip:ClearAllPoints()
-        strip:SetHeight(1)
-        strip:SetPoint("LEFT", f, "LEFT")
-        strip:SetPoint("RIGHT", f, "RIGHT")
-        strip:SetPoint(isTop and "BOTTOM" or "TOP", inner, isTop and "TOP" or "BOTTOM", 0, isTop and AURA_SPACING or -AURA_SPACING)
-        local side = isLeft and "LEFT" or "RIGHT"
-        outer:ClearAllPoints()
-        outer:SetPoint((isTop and "BOTTOM" or "TOP") .. side, strip, (isTop and "BOTTOM" or "TOP") .. side, x, 0)
+        ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, isLeft and "LEFT" or "RIGHT", x, AURA_SPACING)
     end
     if f.enchantLead then UF.PlaceEnchants(f) end
 end
@@ -3277,7 +3307,8 @@ LayoutAuras = function(f)
     UF.LeadBuffs(f, perCorner, editing)
     ns.AuraPolicy.Begin(f)
     for _, corner in ipairs(AURA_CORNERS) do
-        ConfigureAuraCorner(f, corner, perCorner[corner])
+        local other = AURA.OPPOSITE[corner]
+        ConfigureAuraCorner(f, corner, perCorner[corner], other and #perCorner[other] == 0)
     end
     PositionAuraContainers(f)
     UF.UpdateEnchants()
@@ -4362,6 +4393,13 @@ function UF.BarLook(bar, mirror, on)
     look.edgeClip:SetShown(edgeOn)
 end
 
+-- Center Spell Name, left of Edge Glow on every frame's cast bar (and the player cast bar's Look)
+function UF.CastCenterSetting(db, set, hidden)
+    return { name = L["Center Spell Name"], kind = LEM.SettingType.Checkbox, default = false,
+        get = function() local u = db() return u and u.castCenter and true or false end,
+        set = function(layoutName, value) set(layoutName, value and true or false) end, hidden = hidden,
+        desc = L["The spell's name in the middle of the bar, instead of at its left end."] }
+end
 -- Edge Glow in a frame's Cast Bar section (unit, party, boss and flag carrier frames): db() the
 -- frame's saved table, set its castGlow setter, hidden the section's own (no cast bar)
 function UF.CastGlowSetting(db, set, hidden)
@@ -4750,27 +4788,28 @@ function UF.UpdateThreatPercent(f)
         end
     end
     text:Show()
-    local display, status, secret
+    local display, status, secret, isLead
     -- Edit Mode shows a sample whatever is targeted
     if ns.EditPreviewing() then
         display, status = 75, 1
     else
-        display, status, secret = ns.ThreatPercent(unit)
+        display, status, secret, isLead = ns.ThreatPercent(unit)
         local class = UnitClassification(unit)
         if canaccessvalue(class) and class == "minus" then display, secret = nil, nil end
     end
     -- (a hidden number is drawn unread, rounded by the client)
-    local shown = secret and ns.ThreatPercentText(display)
-    if not secret and display and display ~= 0 then shown = ("%.0f"):format(display) end
+    local shown, percent
+    if secret then shown, percent = ns.ThreatPercentText(display, isLead) end
+    if not secret and display and display ~= 0 then shown, percent = ("%.0f"):format(display), "%s%%" end
     if not shown then text:SetText("") return end
     local r, g, b = 1, 1, 1
     if status and status >= 1 and GetThreatStatusColor then r, g, b = GetThreatStatusColor(status) end
     if ring then
         text:SetTextColor(r, g, b)
-        text:SetFormattedText("%s%%", shown)
+        text:SetFormattedText(percent, shown)
     else
         text:SetTextColor(f.HealthText:GetTextColor())
-        text:SetFormattedText(" | |cff%02x%02x%02x%s%%|r", r * 255, g * 255, b * 255, shown)
+        text:SetFormattedText(" | |cff%02x%02x%02x" .. percent .. "|r", r * 255, g * 255, b * 255, shown)
     end
 end
 
@@ -6452,6 +6491,7 @@ local function BuildPlayerCastSettings()
         { name = L["Border"], kind = LEM.SettingType.Dropdown, default = "FlareUI Thin", values = BuildBorderValues(false), get = get("borderTexture", "FlareUI Thin"), set = set("borderTexture") },
         UF.BgOpacitySetting(UF.BAR_BG_OPACITY, get("bgOpacity", UF.BAR_BG_OPACITY), set("bgOpacity")),
         -- (here under Look; on the frames, in their Cast Bar section)
+        UF.CastCenterSetting(GetPlayerCastDb, set("castCenter")),
         UF.CastGlowSetting(GetPlayerCastDb, set("castGlow")),
     })
     -- the bar is the frame here: no Cast Bar section, its rows are Behaviour
@@ -6854,6 +6894,7 @@ local function BuildSettings(unit)
               set = set("castTimer"),
               hidden = noCast,
               desc = L["The time left, at the right end of the bar."] },
+            UF.CastCenterSetting(function() return GetUnitDb(unit) end, set("castCenter"), noCast),
             UF.CastGlowSetting(function() return GetUnitDb(unit) end, set("castGlow"), noCast),
         }
         if unit == "player" then

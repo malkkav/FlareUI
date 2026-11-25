@@ -57,7 +57,7 @@ S:Row{ key = "mm.squareBorder", kind = "choice", section = "mm.styleSection",
     end }
 -- the Info Bar
 -- (the Info Bar shows under the round map too)
-local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords", "coordsSimple", "xp" }
+local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords", "coordsSimple", "xp", "friends", "guild" }
 -- the three cells on one line with no labels, laid out as the bar itself; pointing at
 -- one shows its Left / Center / Right text
 -- the round map shows the Center cell only, inside the circle: Left and Right greyed there

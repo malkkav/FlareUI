@@ -267,15 +267,26 @@ end
 
 -- The best rank of each spell in the player's book, by name; read again after the book changes
 local bestByName
+-- (late: its words aren't loaded yet, which reads the same as a spell without ranks)
 local function RankOf(spellID)
     local subtext = C_Spell.GetSpellSubtext(spellID)
-    return type(subtext) == "string" and tonumber(subtext:match("(%d+)")) or 0
+    local late = subtext == nil or subtext == ""
+    return not late and type(subtext) == "string" and tonumber(subtext:match("(%d+)")) or 0, late
+end
+-- names with more than one spell in the book, one of whose words weren't loaded: their best rank is a guess until
+-- SPELL_TEXT_UPDATE brings them (asked for; RM.OnSpellText)
+RM.ranksLate = {}
+function RM.OnSpellText()
+    if not next(RM.ranksLate) then return end
+    RM.ForgetRanks()
+    RM.MarkDirty()
 end
 function RM.BestRank(name)
     if not name then return nil end
     if not bestByName then
         bestByName = {}
-        local rankOf = {}
+        local rankOf, lateOf = {}, {}
+        wipe(RM.ranksLate)
         local bank = Enum.SpellBookSpellBank.Player
         for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
             local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(line)
@@ -285,11 +296,21 @@ function RM.BestRank(name)
                 local id = item and item.spellID
                 local spellName = id and not item.isPassive and ns.IsPlayerSpell(id) and C_Spell.GetSpellName(id)
                 if spellName then
-                    local rank = RankOf(id)
+                    local rank, late = RankOf(id)
+                    if late then
+                        lateOf[spellName] = lateOf[spellName] or {}
+                        table.insert(lateOf[spellName], id)
+                    end
+                    if lateOf[spellName] and (rankOf[spellName] or lateOf[spellName][2]) then RM.ranksLate[spellName] = true end
                     if not rankOf[spellName] or rank > rankOf[spellName] then
                         bestByName[spellName], rankOf[spellName] = id, rank
                     end
                 end
+            end
+        end
+        for spellName in pairs(RM.ranksLate) do
+            for _, id in ipairs(lateOf[spellName]) do
+                if C_Spell.RequestLoadSpellData then C_Spell.RequestLoadSpellData(id) end
             end
         end
     end
@@ -307,7 +328,7 @@ function RM.LowRank(spellID)
         local name, rank = C_Spell.GetSpellName(spellID), RankOf(spellID)
         local best = name and RM.BestRank(name)
         -- (no rank read: none, or its words aren't loaded yet; not remembered)
-        if not best or rank == 0 then return nil end
+        if not best or rank == 0 or RM.ranksLate[name] then return nil end
         low = rank < RankOf(best) and { rank, C_Spell.GetSpellSubtext(spellID) } or false
         RM.lowRanks[spellID] = low
     end
@@ -346,8 +367,8 @@ function RM.MarkRank(entry, added)
     if not (entry and entry.id and (entry.kind == "spell" or (added and entry.kind == "partycast"))) then return end
     local name = C_Spell.GetSpellName(entry.id)
     local best = name and RM.BestRank(name)
-    -- the book isn't read yet: asked again later
-    if not best then return end
+    -- the book isn't read yet, or its ranks' words aren't there: asked again later
+    if not best or RM.ranksLate[name] then return end
     entry.pinned = (best ~= entry.id and Known(entry.id) and RankOf(entry.id) < RankOf(best)) or nil
     entry.rankChecked = true
 end
@@ -957,7 +978,15 @@ ACTIONS.subradial = function(entry, depth, seen)
     for i = 1, #data.buttons do
         if #children >= MAX_BUTTONS then break end
         local child = ResolveEntry(data.buttons[i], depth + 1, seen)
-        if child then children[#children + 1] = child end
+        -- (a party spell: a step per person, as it is a button per person on its own radial)
+        if child and child.spread then
+            for _, person in ipairs(child.spread) do
+                if #children >= MAX_BUTTONS then break end
+                children[#children + 1] = person
+            end
+        elseif child then
+            children[#children + 1] = child
+        end
     end
     seen[id] = nil
     if #children == 0 then return nil end
@@ -1008,20 +1037,22 @@ function RM.HelpUnit() return UnitExists("target") and SecureCmdOptionParse(RM.H
 
 -- Party spell: one helpful spell spread over the group, a button for you and each party member
 -- (party1-4; in a raid, your own group), so you aim at a person and cast on them without changing
--- your target. Units, not names, sit in the secure attributes; names are only drawn. The buttons
--- follow the group out of combat (a change in a fight shows after it).
+-- your target. Units, not names, sit in the secure attributes; names are only drawn, and read again while the
+-- radial is up (RM.PersonLabel): who a unit is can change in a fight, when the buttons can't.
+function RM.PersonName(unit)
+    local who = UnitName(unit)
+    local _, class = UnitClass(unit)
+    local color = canaccessvalue(class) and class and C_ClassColor.GetClassColor(class)
+    local label = (canaccessvalue(who) and who) or unit
+    return color and color:WrapTextInColorCode(label) or label
+end
 ACTIONS.partycast = function(entry)
     local name, icon, attributes = ACTIONS.spell(entry)
     if not attributes then return nil end
     local spread = {}
     for _, unit in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
         if UnitExists(unit) then
-            local who = UnitName(unit)
-            local _, class = UnitClass(unit)
-            local color = canaccessvalue(class) and class and C_ClassColor.GetClassColor(class)
-            local label = (canaccessvalue(who) and who) or unit
-            if color then label = color:WrapTextInColorCode(label) end
-            spread[#spread + 1] = { name = label, icon = icon, entry = { kind = "spell", id = entry.id },
+            spread[#spread + 1] = { name = RM.PersonName(unit), icon = icon, person = true, entry = { kind = "spell", id = entry.id },
                 attributes = { type = "spell", spell = attributes.spell, unit = unit } }
         end
     end
@@ -1029,7 +1060,7 @@ ACTIONS.partycast = function(entry)
     -- alone there is no one to aim at: the spell's own name, not yours, and it goes to your friendly target
     -- first. Not in a group: your own button is you, whoever is targeted.
     if #spread == 1 then
-        spread[1].name = name
+        spread[1].name, spread[1].person = name, nil
         spread[1].attributes.unit = RM.HELP
     end
     local first = spread[1]
@@ -1318,6 +1349,18 @@ local function ApplyButtonState(button, info)
     local usable, noMana = true, false
     local unit = attributes and attributes.unit
     if unit == RM.HELP then unit = HelpUnit(button, info) end
+    -- a party spell's person: whoever the unit is now
+    local gone = false
+    if action.person and unit then
+        gone = not UnitExists(unit)
+        local text = gone and "" or RM.PersonName(unit)
+        if button.personText ~= text then
+            button.personText = text
+            SetLabelText(button, text)
+        end
+    else
+        button.personText = nil
+    end
 
     -- a macro shows what it would cast now (RM.MacroAction), with that one's icon
     local kind, id
@@ -1384,6 +1427,7 @@ local function ApplyButtonState(button, info)
         button.Count:Hide()
     end
 
+    if gone then usable, noMana = false, false end
     local rank = kind == "spell" and RM.ShowsRank("icon") and RM.LowRank(id) or nil
     button.Rank:SetText(rank or "")
     button.Rank:SetShown(rank ~= nil)
@@ -1407,7 +1451,7 @@ stateEvents:SetScript("OnEvent", RefreshButtonStates)
 -- (a modifier, target, focus or macro edit can change what a macro casts)
 local STATE_EVENTS = { "SPELL_UPDATE_COOLDOWN", "SPELL_UPDATE_USABLE", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_UPDATE_USABLE",
                        "MODIFIER_STATE_CHANGED", "PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UPDATE_MACROS",
-                       "BAG_UPDATE_DELAYED", "SPELL_UPDATE_CHARGES", "RAID_TARGET_UPDATE" }
+                       "BAG_UPDATE_DELAYED", "SPELL_UPDATE_CHARGES", "RAID_TARGET_UPDATE", "GROUP_ROSTER_UPDATE" }
 
 -- range has no event: read every 0.2 s while the radial is up
 local stateTicker
@@ -1514,7 +1558,7 @@ function RM.PlaceRadialButtons(frame, list, entries)
                 ApplyButtonShape(button)
                 SetButtonIcon(button, entry.icon)
                 SetLabelText(button, RM.ButtonName(entry))
-                button.helpText = nil
+                button.helpText, button.personText = nil, nil
                 -- one button alone has no neighbour: the side width
                 PlaceLabel(button, angle, count > 1 and 2 * radius * math_sin(interval / 2) or PING.SIDE_WIDTH)
                 SetPageDots(button, entry.children and #entry.children, entry.childIndex or 1)
@@ -4072,6 +4116,7 @@ function RM:Init()
     self:RegisterEvent("PLAYER_REGEN_DISABLED")
     -- the spellbook changed: each spell's best rank is read again
     self:RegisterEvent("SPELLS_CHANGED", RM.ForgetRanks)
+    self:RegisterEvent("SPELL_TEXT_UPDATE", RM.OnSpellText)
     -- a loading screen during a hold: the key's release never comes
     self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
         if isOpen and openMode == "hold" then

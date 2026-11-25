@@ -27,7 +27,7 @@ env.C_AddOns.DoesAddOnExist = function() return true end
 env.C_AddOns.IsAddOnLoaded = function() return ui.auraLoaded == true end
 env.C_AddOns.LoadAddOn = function(name) assert(name == "Blizzard_AuraContainer"); ui.auraLoaded = true end
 env.C_StringUtil = { CreateNumericRuleFormatter = function() end }
-env.Enum = { CustomAuraButtonDispelTypeTextureStyle = { PreserveAsset = 1, Icon = 2 } }
+env.Enum = { CustomAuraButtonDispelTypeTextureStyle = { PreserveAsset = 1, Icon = 2, CustomAsset = 3 } }
 env.AuraUtil = { SetAuraDispelTypeIcon = function(texture, kind) texture:SetAtlas("Dispel/" .. kind) end }
 local editMode = { SettingType = { Dropdown = 1, Slider = 2, Expander = 3 }, callbacks = {} }
 function editMode:AddFrame(holder, moved) holder.moved = moved end
@@ -96,7 +96,13 @@ end
 local buff, debuff = auraButton(buffs), auraButton(debuffs)
 assert(buff.auraIcon == buff.FlareUI_Icon and buff.auraCooldown == buff.FlareUI_Cooldown)
 assert(buff.arrival and buff.cancelClick == "RightButtonUp" and not debuff.cancelClick)
-assert(debuff.dispelTextures[debuff.FlareUI_DispelIcon].style == env.Enum.CustomAuraButtonDispelTypeTextureStyle.Icon)
+do
+    local options = debuff.dispelTextures[debuff.FlareUI_DispelIcon]
+    local assets = options.customDispelAssetMap
+    assert(options.style == env.Enum.CustomAuraButtonDispelTypeTextureStyle.CustomAsset and not options.showWhenHelpful)
+    assert(assets.Magic.asset == "RaidFrame-Icon-DebuffMagic" and assets.Curse and assets.Disease and assets.Poison)
+    assert(not assets.Bleed and not assets.None, "nothing dispels a bleed")
+end
 -- (11-24) a unit frame's type icons go while its unit is an enemy: Blizzard shows the icon, the frame's own mask
 -- cuts it. A button that holds an aura is forbidden: nothing in it may be touched when the target changes
 do

@@ -471,7 +471,7 @@ function LF:Init()
     if holder then return end
     holder = CreateFrame("Frame", "FlareUI_LootFeed", UIParent)
     holder:SetSize(WIDTH, HEIGHT)
-    holder:SetFrameStrata("HIGH")
+    holder:SetFrameStrata("FULLSCREEN_DIALOG")   -- above every window (bag addons draw theirs high)
     holder:SetClampedToScreen(true)
     ApplyPosition()
     LEM:AddFrame(holder, OnMoved, DEFAULTS, L["FlareUI Loot Feed"])

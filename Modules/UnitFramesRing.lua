@@ -1461,19 +1461,13 @@ function Ring.PlatePowerText(f)
 end
 
 -- the name box's glow in the unit's reaction colour; a player character's in their class colour while
--- the frame's Class Colours is on. Your own frame: only that class colour (Av: as on target and
--- party; Blizzard gives your frame no reaction glow). None on the pet's.
+-- the frame's Class Colours is on. None on your own frame, as Blizzard's (7.0.1 to 7.0.15 had the class colour there),
+-- nor on the pet's.
 function Ring.UpdatePlate(f)
     local plate = f.PlateFrame
     if not (plate and plate:IsShown()) then return end
     local unit = f.fuiUnit
     local K = ns.UnitFrames and ns.UnitFrames.Kit
-    if unit == "player" and not f.fuiSample and K and K.GetHealthColor and ns.ClassColorsOn(Db(f)) then
-        local r, g, b = K.GetHealthColor(unit, true)
-        plate.Strip:SetVertexColor(r, g, b, 1)
-        plate.Strip:Show()
-        return
-    end
     if unit == "player" or unit == "pet" or f.fuiSample or not UnitExists(unit) then
         plate.Strip:Hide()
         return

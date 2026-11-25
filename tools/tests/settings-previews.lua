@@ -172,7 +172,21 @@ assert(text(o.lootWinName3, "(4)"), "the owned count always shows")
 profile.tweaks.lootWindowFreeSlots = true
 draw("lootWindow", "bl.lootWindowFreeSlots")
 assert(shown(o.lootWinFree) and not text(o.lootWinName1, "Silver"), "the footer takes the money row's room")
-profile.tweaks.lootWindow, profile.tweaks.lootWindowFreeSlots = nil, nil
+profile.tweaks.lootWindowFreeSlots = nil
+-- Row Order: Bottom to Top puts the first row (the money) at the bottom
+draw("lootWindow", "bl.lootWindowOrder", "bottom", "tweaks.lootWindowOrder")
+assert(text(o.lootWinName4, "Silver") and text(o.lootWinName1, "Large Bear Tooth"), "Bottom to Top: the first row at the bottom")
+draw("lootWindow", "bl.lootWindowOrder", "top", "tweaks.lootWindowOrder")
+assert(text(o.lootWinName1, "Silver") and text(o.lootWinName4, "Large Bear Tooth"), "Top to Bottom: the first row on top")
+-- Growth: a short loot hanging from the top, or standing on the picture's bottom with room above
+draw("lootWindow", "bl.lootWindowGrowth", "down", "tweaks.lootWindowGrowth")
+local _, _, downY = o.lootWinPanel:GetPoint()
+assert(downY == -30 and shown(o.lootWinName2) and not shown(o.lootWinName3), "Down: two rows at the top")
+draw("lootWindow", "bl.lootWindowGrowth", "up", "tweaks.lootWindowGrowth")
+local _, _, upY = o.lootWinPanel:GetPoint()
+assert(upY < downY and upY - o.lootWinPanel:GetHeight() >= -c.height, "Up: at the bottom, inside the picture: " .. tostring(upY))
+assert(c.used == -upY + o.lootWinPanel:GetHeight(), "the picture takes the window's bottom")
+profile.tweaks.lootWindow = nil
 -- (11-23) the Buff Reminders page's own rows route to its preview (they kept old au.* keys before)
 for _, key in ipairs({ "br.group", "br.before", "br.consumables", "br.upkeepPick" }) do
     local spec = P.Resolve({ key = key, Get = function() return nil end })

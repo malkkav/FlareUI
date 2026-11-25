@@ -159,7 +159,8 @@ local function ByLeft(a, b) return (a.frame:GetLeft() or 0) < (b.frame:GetLeft()
 function PT.ItemOf(line, itemButtons)
     if not line.logIndex then return end
     for _, b in ipairs(itemButtons) do
-        if b:IsShown() and b.logIndex == line.logIndex then return b end
+        local same = b.questID and b.questID == line.questID or not b.questID and b.logIndex == line.logIndex
+        if b:IsShown() and same then return b end
     end
 end
 

@@ -156,6 +156,16 @@ side.undo:Click()
 assert(NP.PresetOf("enemyNpc") == "full" and NP.TypeDB("enemyNpc").width ~= 170)
 NP.TypeStore("minor").preset, NP.TypeStore("minor").custom = nil, nil
 
+-- Crowd Control: the two switches lead the section, and the rest grey out with both off
+do
+    for _, key in ipairs({ "cc", "defensives" }) do NP.TypeSet("enemyNpc", key, false) end
+    for _, key in ipairs({ "ccStyle", "ccSwipe", "ccTimer", "ccSize" }) do assert(row(key):IsDisabled(), key) end
+    NP.TypeSet("enemyNpc", "cc", true)
+    assert(not row("ccTimer"):IsDisabled() and row("ccTimer"):Get() == (NP.TypeDB("enemyNpc").auraTimer or "none"), "follows Auras")
+    set("ccTimer", "middle")
+    assert(row("ccTimer"):Get() == "middle" and NP.TypeDB("enemyNpc").auraTimer ~= "middle")
+    NP.TypeStore("enemyNpc").preset, NP.TypeStore("enemyNpc").custom = nil, nil
+end
 P:Open("np", "extras")
 assert(not row("questMarks"):IsHidden() and row("mobTypesWhere"):IsDisabled())
 widgetFor("questMarks").control:Click()

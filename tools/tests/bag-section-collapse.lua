@@ -250,6 +250,44 @@ for _, view in ipairs({'filters', 'all'}) do
     end
     assert(slotsVisible(0) == 3 and slotsVisible(-1) == 2 and slotsVisible(5) == 2, 'uncategorized items restored')
 end
+-- soul bags in the bag slots: a section each, with Crafting Bag in Backpack on
+do
+    local kinds = {[1] = {1, 1}, [2] = {1, 0}, [3] = {1, 1}}
+    local container, item = env.C_Container, env.C_Item
+    env.C_Container = setmetatable({ContainerIDToInventoryID = function(bag) return 30 + bag end,
+        GetBagName = function(bag) return 'Pouch ' .. bag end}, {__index = container})
+    env.GetInventoryItemID = function(_, slot) return kinds[slot - 30] and slot end
+    env.C_Item = setmetatable({GetItemInfoInstant = function(id)
+        local kind = kinds[id - 30]
+        if not kind then return item.GetItemInfoInstant(id) end
+        return id, nil, nil, nil, nil, kind[1], kind[2]
+    end}, {__index = item})
+    local function slot(bag) return {GetBagID = function() return bag end} end
+    local list = {slot(3), slot(3), slot(2), slot(1), slot(0)}
+    local left, sections = Bags.SoulBags.Split(list, {bagReagent = true})
+    assert(#left == 2 and #sections == 2 and sections[1].bag == 3 and #sections[1].items == 2 and sections[2].label == 'Pouch 1')
+    left, sections = Bags.SoulBags.Split(list, {})
+    assert(left == list and #sections == 0, 'only with the option on')
+    left, sections = Bags.SoulBags.Split({slot(1)}, {bagReagent = true})
+    assert(#left == 1 and #sections == 0, 'nothing else in the backpack: the plain grid')
+    assert(not Bags.SoulBags.Is(0) and not Bags.SoulBags.Is(5) and not Bags.SoulBags.Is(2))
+    -- laid out: their own header, folded with a click
+    local moved = {}
+    for i = 3, 4 do moved[i], items[i].bagID = items[i].bagID, 1 end
+    db.bagView, db.bagCombineEmpty = 'rows', false
+    layout()
+    assert(visibleHeader('Pouch 1'), 'a header of its own')
+    local before = combined:GetHeight()
+    click('Pouch 1')
+    assert(not items[3]:IsShown() and not items[4]:IsShown() and combined:GetHeight() < before)
+    click('Pouch 1')
+    assert(items[3]:IsShown())
+    db.bagView = 'all'
+    layout()
+    assert(not visibleHeader('Pouch 1') and items[3]:IsShown())
+    for i, bag in pairs(moved) do items[i].bagID = bag end
+    env.C_Container, env.C_Item = container, item
+end
 db.bagView, db.bagCombineEmpty, db.bagKeyring, db.bagReagent = 'rows', false, false, false
 layout()
 if items[2]:IsShown() then click('Materials') end

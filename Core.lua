@@ -30,6 +30,7 @@ ns.PALETTE = {
     bronze3 = { 0.65, 0.49, 0.27 },   -- #A67D45 frame: every border (= ns.BORDER_COLOR)
     bronze4 = { 0.80, 0.60, 0.34 },   -- #CC9957 accent: active tab, window titles, hovered chrome
     bronze5 = { 0.85, 0.68, 0.47 },   -- #D9AD78 light: hovered accent text
+    parchment = { 0.93, 0.85, 0.68 },    -- #EDD9AD titles and guilds under a nameplate's name (clear of the warrior brown)
     goldHighlight = { 1, 0.84, 0.50 },   -- #FFD680 hover rims, selected outlines
     goldOn = { 1, 0.82, 0.25 },          -- #FFD140 switched-on states (Blizzard's yellow eased to bronze)
     warmGrey = { 0.56, 0.51, 0.46 },     -- #8F8275 inactive tabs, disabled or lost things
@@ -833,8 +834,9 @@ local defaults = {
             press = false,              -- Show Button Presses: an icon lights up while its spell's key is held
             -- Icon Shape in each icon viewer's Edit Mode dialog: blizzard | rect
             shape = { essential = "blizzard", utility = "blizzard", buffs = "blizzard" },
-            -- Grow From in the Tracked Buffs' and Tracked Bars' Edit Mode dialogs: blizzard | CENTER | START | END
-            grow = { buffs = "blizzard", bars = "blizzard" },
+            -- Growth in the viewers' Edit Mode dialogs: blizzard | CENTER, and START | END for the tracked buffs and bars
+            -- (the icons fill from the middle unless the player picks otherwise)
+            grow = { buffs = "CENTER", bars = "blizzard", essential = "CENTER", utility = "CENTER" },
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
@@ -1139,6 +1141,8 @@ local defaults = {
             lootWindow = false,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
             lootWindowFreeSlots = false, -- Show Free Bag Slots at the loot window's foot
             plateCombo = false,         -- Nameplate Combo Points: under Blizzard's plates, with the Nameplates module off (NameplateExtras.lua)
+            lootWindowGrowth = "down",  -- Growth: "down" (the top edge at the Edit Mode spot) or "up" (the bottom edge)
+            lootWindowOrder = "top",    -- Row Order: the first item in the "top" or the "bottom" row
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
@@ -2065,6 +2069,14 @@ do
         return canaccessvalue(enemy) and enemy == true
     end
 
+    -- Can a debuff be taken off it: yourself, or a unit you can help. An enemy, a player of the other side who isn't
+    -- flagged and a group member under Mind Control can't be helped. (No unit, as in Edit Mode: nothing to hide.)
+    function AP.CanDispelOn(unit)
+        if unit == "player" or not unit or not UnitExists(unit) then return true end
+        local help = UnitCanAssist("player", unit)
+        return canaccessvalue(help) and help == true
+    end
+
     -- Player, target, focus, pet. udb: the unit's settings. Debuffs first: nearest the frame when both
     -- share a corner.
     function AP.UnitLanes(unit, udb, editing)
@@ -2304,7 +2316,7 @@ do
     function AP.UpdateSide(f, unit)
         local live = f.auraLive
         local enemy = AP.IsEnemy(unit)
-        if ns.AuraLook and ns.AuraLook.DispelSide then ns.AuraLook.DispelSide(f, enemy) end
+        if ns.AuraLook and ns.AuraLook.DispelSide then ns.AuraLook.DispelSide(f, not AP.CanDispelOn(unit)) end
         if not (live and #live.enemy > 0) then return end
         if live.isEnemy == enemy then return end
         live.isEnemy = enemy
@@ -2315,6 +2327,39 @@ do
                 pcall(rec.container.SetAuraGroupFilterString, rec.container, rec.key, enemy and rec.lane.enemyFilter or rec.lane.filter)
             end
         end
+    end
+
+    -- Anything anchored to an aura container with groups must be made with Blizzard's template for it (its
+    -- Blizzard_CustomAuraContainer.lua says so): a plain frame's SetPoint errors ("would inherit forbidden
+    -- aspects"), and so does a container's until its first group.
+    AP.LAYOUT_TEMPLATE = "DisableUntrustedLayoutScriptsTemplate"
+    function AP.LayoutFrame(kind, parent, template)
+        local ok, frame = pcall(CreateFrame, kind, nil, parent, template and (template .. "," .. AP.LAYOUT_TEMPLATE) or AP.LAYOUT_TEMPLATE)
+        if ok and frame then return frame end
+        ok, frame = pcall(CreateFrame, kind, nil, parent, template)
+        return ok and frame or nil
+    end
+    -- Stacked auras: outer hangs past inner, through a strip as wide as rel, so it keeps its own side. Refused
+    -- (or no strip): straight past inner.
+    function AP.HangPast(f, outer, inner, rel, up, side, x, gap)
+        local near, far = up and "BOTTOM" or "TOP", up and "TOP" or "BOTTOM"
+        local dy = up and gap or -gap
+        f.AuraStackStrip = f.AuraStackStrip or AP.LayoutFrame("Frame", f)
+        local strip = f.AuraStackStrip
+        local ok = strip and pcall(function()
+            strip:ClearAllPoints()
+            strip:SetHeight(1)
+            strip:SetPoint("LEFT", rel, "LEFT")
+            strip:SetPoint("RIGHT", rel, "RIGHT")
+            strip:SetPoint(near, inner, far, 0, dy)
+            outer:ClearAllPoints()
+            outer:SetPoint(near .. side, strip, near .. side, x, 0)
+        end)
+        if ok then return end
+        pcall(function()
+            outer:ClearAllPoints()
+            outer:SetPoint(near .. side, inner, far .. side, 0, dy)
+        end)
     end
 
     -- noReach: enemy tiles and the player (always visible)
@@ -2560,8 +2605,31 @@ end
 --   the mob, however far ahead. With nobody else on the list there is no lead: 100.
 -- Where the game hides threat values (instances) the number is secret: the state (UnitThreatSituation), which
 -- is often readable there, says whether you hold it, and the number is drawn unread (ns.ThreatPercentText).
--- Returns the percent, the threat state (nil: not readable) and true for a secret percent; nil for no threat.
+-- A hidden lead can't be asked whether it is 0 (nobody else on the list): the group's threat states say it instead
+-- (ns.ThreatAlone), and a 0 that still comes is drawn as nothing.
+-- Returns the percent, the threat state (nil: not readable), true for a secret percent and true for a lead; nil for
+-- no threat.
 ns.THREAT_MAX = 999   -- (a readable number is never longer)
+-- Is nobody else of the group, nor a pet of theirs or yours, on the mob's threat list? A state that can't be read
+-- counts as on it.
+local function OnThreatList(token, unit)
+    if not UnitExists(token) then return false end
+    local ok, state = pcall(UnitThreatSituation, token, unit)
+    return not ok or not canaccessvalue(state) or state ~= nil
+end
+function ns.ThreatAlone(unit)
+    if OnThreatList("pet", unit) then return false end
+    local raid = IsInRaid()
+    local prefix, count = raid and "raid" or "party", raid and GetNumGroupMembers() or IsInGroup() and 4 or 0
+    for i = 1, count do
+        local token = prefix .. i
+        local me = raid and UnitIsUnit(token, "player")
+        if not (canaccessvalue(me) and me) then
+            if OnThreatList(token, unit) or OnThreatList(prefix .. "pet" .. i, unit) then return false end
+        end
+    end
+    return true
+end
 function ns.ThreatPercent(unit)
     local ok, tanking, status, scaled = pcall(UnitDetailedThreatSituation, "player", unit)
     if not ok or (canaccessvalue(scaled) and type(scaled) ~= "number") then return nil end
@@ -2571,19 +2639,29 @@ function ns.ThreatPercent(unit)
         if not canaccessvalue(status) then status = state end
         if not canaccessvalue(tanking) then tanking = state ~= nil and state >= 2 end
     end
-    local value = scaled
+    local value, isLead = scaled, false
     if tanking then
         local okL, lead = pcall(UnitThreatPercentageOfLead, "player", unit)
-        if okL and (not canaccessvalue(lead) or (type(lead) == "number" and lead > 0)) then value = lead end
+        if okL and (not canaccessvalue(lead) or (type(lead) == "number" and lead > 0)) then value, isLead = lead, true end
+        if isLead and not canaccessvalue(value) and ns.ThreatAlone(unit) then return 100, status, false end
     end
-    if not canaccessvalue(value) then return value, status, true end
+    if not canaccessvalue(value) then return value, status, true, isLead end
     return math.min(value, ns.THREAT_MAX), status, false
 end
--- a secret percent as text (secret too), rounded by the client; nil where it can't
-function ns.ThreatPercentText(value)
-    if not (C_StringUtil and C_StringUtil.RoundToNearestString) then return nil end
-    local ok, text = pcall(C_StringUtil.RoundToNearestString, value)
-    return ok and text or nil
+-- a secret percent as text (secret too: only for SetFormattedText), rounded by the client, and the format that draws
+-- it; nil where it can't. A lead of 0 is no text at all, its "%" included.
+function ns.ThreatPercentText(value, isLead)
+    local SU = C_StringUtil
+    if not SU then return nil end
+    local ok, text
+    if isLead and SU.TruncateWhenZero and SU.WrapString then
+        ok, text = pcall(function() return SU.WrapString(SU.TruncateWhenZero(value), "", "%") end)
+        if ok and text then return text, "%s" end
+    end
+    if not SU.RoundToNearestString then return nil end
+    ok, text = pcall(SU.RoundToNearestString, value)
+    if ok and text then return text, "%s%%" end
+    return nil
 end
 
 -- Edit Mode rows in one order everywhere (12-terminology.md, Ordering): within a section, dropdowns,
@@ -2619,7 +2697,7 @@ do
         "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid", "Show Target Markers",
         "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Show Icon", "Show Spell Timer", "Show Spell Pushback", "Edge Glow",
+        "Show Icon", "Show Spell Timer", "Center Spell Name", "Edge Glow", "Show Spell Pushback",
         "Class Colours", "Threat Glow", "Combat Glow", "Bar Animations", "Bar Edge Glow", "Damage Trail",
         -- the aura filters together, then the sort switches
         "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Dispellable Debuffs Only", "Show Weapon Enchants",

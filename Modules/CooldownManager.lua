@@ -309,7 +309,11 @@ end
 -- frames' points change: the viewer and its Edit Mode box stay Blizzard's. Default leaves all of it
 -- alone; back on Default, each frame gets the point Blizzard gave it.
 --------------------------------------------------
-local GROW_KEYS = { BuffIconCooldownViewer = "buffs", BuffBarCooldownViewer = "bars" }
+-- The Essential and Utility icons stand in lines of Blizzard's own length (Columns / Rows): From the Middle centres
+-- each line that isn't full.
+local GROW_KEYS = { BuffIconCooldownViewer = "buffs", BuffBarCooldownViewer = "bars",
+                    EssentialCooldownViewer = "essential", UtilityCooldownViewer = "utility" }
+local GROW_LINES = { essential = true, utility = true }
 local showing, arranged = {}, {}
 
 local function Number(v) return Readable(v) and type(v) == "number" and v or nil end
@@ -340,6 +344,17 @@ function CM.GrowPoint(grow, i, count, step, horizontal, reversed)
         point, offset = "TOPLEFT", -(count - 1 - slot) * step
     end
     return point, horizontal and offset or 0, horizontal and 0 or offset
+end
+
+-- The i-th of count shown frames in lines of stride: its line centred, the lines from the top (columns: from the left)
+function CM.LinePoint(i, count, stride, step, lineStep, horizontal, reversed)
+    local line = math_floor((i - 1) / stride)
+    local inLine = math.min(stride, count - line * stride)
+    local slot = (i - 1) % stride
+    if reversed then slot = inLine - 1 - slot end
+    local along, across = (slot - (inLine - 1) / 2) * step, line * lineStep
+    if horizontal then return "TOP", along, -across end
+    return "LEFT", across, along
 end
 
 -- Is the frame still where FlareUI put it (Blizzard's layout has not placed it since)?
@@ -405,6 +420,14 @@ local function Arrange(name)
     local reversed = viewer.iconDirection ~= nil and viewer.iconDirection ~= 1
     if bars then reversed = grow == "START" end
     arranged[name] = true
+    if GROW_LINES[GROW_KEYS[name]] then
+        local stride = Number(viewer.stride) or Number(viewer.iconLimit) or count
+        local lineStep = (horizontal and height or width) + (Number(horizontal and viewer.childYPadding or viewer.childXPadding) or 0)
+        for i, item in ipairs(showing) do
+            Move(item, viewer, CM.LinePoint(i, count, math.max(1, stride), step, lineStep, horizontal, reversed))
+        end
+        return
+    end
     for i, item in ipairs(showing) do
         Move(item, viewer, CM.GrowPoint(grow, i, count, step, horizontal, reversed))
     end
@@ -435,13 +458,18 @@ end
 -- Reminders' Growth: the way the row grows (START packs at the left or top, so it grows right or down)
 function CM.GrowSetting(key)
     local LEM = LibStub("FlareEditMode")
-    local name = key == "buffs" and "BuffIconCooldownViewer" or "BuffBarCooldownViewer"
+    local name
+    for viewerName, growKey in pairs(GROW_KEYS) do if growKey == key then name = viewerName end end
     return {
-        name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "blizzard",
+        name = L["Growth"], kind = LEM.SettingType.Dropdown, default = key == "bars" and "blizzard" or "CENTER",
         values = function()
             local viewer = _G[name]
-            local horizontal = key == "buffs" and not (viewer and viewer.isHorizontal == false)
+            local horizontal = key ~= "bars" and not (viewer and viewer.isHorizontal == false)
             local values = { { text = L["Blizzard"], value = "blizzard", isRadio = true } }
+            if GROW_LINES[key] then
+                values[2] = { text = L["From the Middle"], value = "CENTER", isRadio = true }
+                return values
+            end
             values[#values + 1] = { text = horizontal and L["Right"] or L["Down"], value = "START", isRadio = true }
             values[#values + 1] = { text = horizontal and L["Left"] or L["Up"], value = "END", isRadio = true }
             if key == "buffs" then values[#values + 1] = { text = L["From the Middle"], value = "CENTER", isRadio = true } end

@@ -130,10 +130,10 @@ local ELEMENTS = {
     -- section (CooldownManager.ShapeSetting); both above Fading
     { key = "cdm_essential", delay = 0, page = "cdm", frame = "EssentialCooldownViewer", system = "CooldownViewer", index = "Essential",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
-      cdmShape = "essential" },
+      cdmShape = "essential", cdmGrow = "essential" },
     { key = "cdm_utility", delay = 0, page = "cdm", frame = "UtilityCooldownViewer", system = "CooldownViewer", index = "Utility",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
-      cdmShape = "utility" },
+      cdmShape = "utility", cdmGrow = "utility" },
     { key = "cdm_buffs", delay = 0, page = "cdm", frame = "BuffIconCooldownViewer", system = "CooldownViewer", index = "BuffIcon",
       indices = "EditModeCooldownViewerSystemIndices", keepAlpha = true,
       cdmShape = "buffs", cdmGrow = "buffs" },
@@ -262,6 +262,39 @@ local function SetBarBling(frame, alpha)
     end
 end
 
+-- Sharp Outline's letters (the SLUG flag) can stay faintly on screen with their bar faded right out (a report): the
+-- keybind, count, name and timer of each button go with it, and come back with the bar
+local textsGone = setmetatable({}, { __mode = "k" })
+local goneText = setmetatable({}, { __mode = "k" })
+local function FadeText(fs, gone)
+    if not (fs and fs.GetFont and fs.SetAlpha) then return end
+    if gone then
+        local _, _, flags = fs:GetFont()
+        if type(flags) ~= "string" or not flags:find("SLUG", 1, true) then return end
+        goneText[fs] = true
+        fs:SetAlpha(0)
+    elseif goneText[fs] then
+        goneText[fs] = nil
+        fs:SetAlpha(1)
+    end
+end
+local function SetBarTexts(frame, alpha)
+    local gone = alpha <= 0.01
+    if (textsGone[frame] or false) == gone then return end
+    textsGone[frame] = gone
+    for _, button in ipairs(frame.actionButtons or {}) do
+        FadeText(button.HotKey, gone)
+        FadeText(button.Count, gone)
+        FadeText(button.Name, gone)
+        local cd = button.cooldown
+        if cd and cd.GetCountdownFontString then
+            local ok, fs = pcall(cd.GetCountdownFontString, cd)
+            if ok then FadeText(fs, gone) end
+        end
+    end
+end
+Visibility.SetBarTexts = SetBarTexts
+
 -- ClassicUI Forever moves each bar's buttons out of the bar into its own
 -- holder frames, and copies the bar's alpha onto the holder only now and then (its layout and fade
 -- passes). A faded bar then showed whatever alpha was copied last: bars 4 and 5 popped up on a stance
@@ -297,7 +330,10 @@ local function ApplyElementAlpha(frame, key, alpha)
         end
         frame:SetAlpha(alpha)
     end
-    if frame.actionButtons then SetBarBling(frame, alpha) end
+    if frame.actionButtons then
+        SetBarBling(frame, alpha)
+        SetBarTexts(frame, alpha)
+    end
     if key == "minimap" then SetMinimapDrawn(alpha) end
     -- the tracker's lone "+" and its quest item buttons sit on UIParent, outside its frame
     if key == "quest" and ns.ObjectiveTracker.SetFadeAlpha then ns.ObjectiveTracker:SetFadeAlpha(alpha) end

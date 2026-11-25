@@ -21,6 +21,7 @@ env.CustomAuraContainerGroupDefaultOptions = { maxFrameCount = 16, sortMethod = 
 local enemy, visible, guid = true, true, "Creature-A"
 env.UnitExists = function(unit) return unit ~= "missing" end
 env.UnitCanAttack = function() return enemy end
+env.UnitCanAssist = function() return not enemy end
 env.UnitIsVisible = function() return visible end
 env.UnitGUID = function() return guid end
 env.canaccessvalue = function(value) return value ~= "hidden" end
@@ -176,15 +177,22 @@ assert(existing.enabled and not container.groups[keys.purge].enabled and contain
 ns.db.profile.auras = { hidden = { [99] = "target" } }
 assert(hidden.For("target")[99] and not hidden.For("target")[11] and hidden.ShownFor("target") == nil)
 do   -- (11-24) the dispel type icons follow the unit's side, with or without side filters
-    local sides, attack, exists = {}, env.UnitCanAttack, env.UnitExists
+    local sides, assist, exists = {}, env.UnitCanAssist, env.UnitExists
     env.UnitExists = function() return true end
     ns.AuraLook = { DispelSide = function(_, side) sides[#sides + 1] = side end }
-    env.UnitCanAttack = function() return true end
+    env.UnitCanAssist = function() return false end   -- an enemy, or a player of the other side who isn't flagged
     aura.UpdateSide({}, "target")
-    env.UnitCanAttack = function() return false end
+    aura.UpdateSide({}, "player")
+    env.UnitCanAssist = function() return true end
     aura.UpdateSide({}, "target")
-    assert(#sides == 2 and sides[1] == true and sides[2] == false)
-    ns.AuraLook, env.UnitCanAttack, env.UnitExists = nil, attack, exists
+    assert(#sides == 3 and sides[1] == true and sides[2] == false and sides[3] == false)
+    local secret = env.canaccessvalue
+    env.canaccessvalue = function() return false end
+    assert(not aura.CanDispelOn("target") and aura.CanDispelOn("player"), "unknown: no icons, yourself always")
+    env.canaccessvalue = secret
+    env.UnitExists = function() return false end
+    assert(aura.CanDispelOn("target"), "no unit (Edit Mode): nothing hidden")
+    ns.AuraLook, env.UnitCanAssist, env.UnitExists = nil, assist, exists
 end
 
 print("PASS: aura filters, target changes, layout reuse and locked-button restyling")

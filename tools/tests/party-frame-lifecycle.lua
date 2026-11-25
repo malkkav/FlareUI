@@ -85,11 +85,55 @@ do
     assert(a.AuraPos["ABOVE_WIDE+"].lineOwn)
     local _, under = a.AuraStackStrip:GetPoint(3)
     assert(under == a.AuraPos["ABOVE_WIDE+"].container)
+    assert(a.AuraStackStrip.template == "DisableUntrustedLayoutScriptsTemplate"
+        and under.template:find("DisableUntrustedLayoutScriptsTemplate", 1, true), "both may be anchored to a container")
     party.classic.buffs, party.classic.debuffs, party.classic.auraOuter = buffs, debuffs, outer
     HA.Remove(1243, "shown")
     pf:Refresh()
     assert(not extra:IsShown() and not always.enabled)
     ns.db.profile.auras = oldAuras
+end
+-- (11-25) a member under Mind Control: no dispel type icons until they are back
+do
+    local look = ns.AuraLook
+    local seen
+    ns.AuraLook = { DispelSide = function(f, hidden) if f == a then seen = hidden end end }
+    unit.party1.hostile = true
+    a:RunScript("OnEvent", "UNIT_FACTION", "party1")
+    assert(seen == true)
+    unit.party1.hostile = nil
+    a:RunScript("OnEvent", "UNIT_FLAGS", "party1")
+    assert(seen == false)
+    ns.AuraLook = look
+end
+-- (11-25) a side on its own takes the tile's whole width; both sides used, half each
+do
+    local function Line(pos)
+        local v = a.AuraPos[pos].container.lineSize
+        return type(v) == "table" and v[1] or v
+    end
+    party.classic.buffs, party.classic.debuffs = "ABOVE", "ABOVE_RIGHT"
+    pf:Refresh()
+    local half = Line("ABOVE")
+    party.classic.debuffs = "BELOW"
+    pf:Refresh()
+    assert(Line("ABOVE") > half and Line("BELOW") == Line("ABOVE"), "nothing beside it")
+    -- Above the Frame: as many as Max Buffs says, on lines the tile's width long
+    local function Max(pos)
+        for _, group in pairs(a.AuraPos[pos].container.groups) do
+            if group.enabled and group.maxFrameCount > 0 then return group.maxFrameCount end
+        end
+    end
+    local amount, width = party.classic.buffAmount, party.classic.width
+    party.classic.buffs, party.classic.debuffs, party.classic.buffAmount = "ABOVE_WIDE", "BELOW", 2
+    pf:Refresh()
+    local narrow = Line("ABOVE_WIDE")
+    assert(Max("ABOVE_WIDE") == 2, "Max Buffs")
+    party.classic.width, party.classic.buffAmount = (width or 200) + 120, 9
+    pf:Refresh()
+    assert(Max("ABOVE_WIDE") == 9 and Line("ABOVE_WIDE") > narrow, "a wider tile, a longer line")
+    party.classic.buffAmount, party.classic.width = amount, width
+    pf:Refresh()
 end
 party.classic.buffs, party.classic.debuffs, party.classic.auraOuter = "ABOVE_WIDE", "ABOVE", "buffs"
 pf:Refresh()

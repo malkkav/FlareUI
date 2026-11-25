@@ -1369,6 +1369,7 @@ local function OnUpdateAction(button)
 end
 
 local function OnUpdateRangeIndicator(button, checksRange, inRange)
+    if not ActionBars.IsOurs(button) then return end   -- (controller, vehicle and extra buttons keep Blizzard's look)
     if canaccessvalue(checksRange) and canaccessvalue(inRange) then
         button.FlareUI_OutOfRange = (checksRange and not inRange) or false
         RefreshButtonColor(button)
@@ -1405,6 +1406,18 @@ local function UpdatePetColors()
             RefreshButtonColor(button)
         end
     end
+end
+
+-- one of the bars' own buttons (kept in a set)
+function ActionBars.IsOurs(button)
+    local set = ActionBars.ourButtons
+    if not set then
+        set = setmetatable({}, { __mode = "k" })
+        for _, own in ipairs(GetAllActionButtons()) do set[own] = true end
+        if not next(set) then return true end
+        ActionBars.ourButtons = set
+    end
+    return set[button] or false
 end
 
 local function SetupRangeColors()
@@ -1649,6 +1662,17 @@ end
 -- purpose stay. Out of combat, with nothing on the cursor.
 --------------------------------------------------
 local MAX_ACTION_SLOT = 180
+-- every slot the bars store an action in: the game's own, then the controller bars' (as the radial menu walks them)
+function ActionBars.EachActionSlot(callback)
+    for slot = 1, MAX_ACTION_SLOT do callback(slot) end
+    local ui = _G.C_GamepadUI
+    if not (ui and ui.GetFirstGamepadActionStorageSlotIndex and ui.IsValidGamepadActionStorageSlotIndex) then return end
+    local slot = ui.GetFirstGamepadActionStorageSlotIndex()
+    while slot and ui.IsValidGamepadActionStorageSlotIndex(slot) do
+        if slot > MAX_ACTION_SLOT then callback(slot) end
+        slot = slot + 1
+    end
+end
 local pendingRanks = {}
 
 local function RankOf(spellID)
@@ -1759,7 +1783,7 @@ function FlushRanks()
         ordered[name] = list
     end
 
-    for slot = 1, MAX_ACTION_SLOT do
+    ActionBars.EachActionSlot(function(slot)
         local kind, id = GetActionInfo(slot)
         local name = kind == "spell" and id and C_Spell.GetSpellName(id)
         local rank = name and ordered[name] and RankOf(id)
@@ -1772,7 +1796,7 @@ function FlushRanks()
                 ClearCursor()
             end
         end
-    end
+    end)
 end
 
 function ActionBars:OnSpellLearned(_, spellID)
@@ -1789,8 +1813,12 @@ function ActionBars:CatchUpRanks()
     local db = GetBarConfig()
     if not (db and db.enabled and db.autoRanks) then return end
     local tops = TopRanks()
+    -- (once per character: the controller bars were left out until now, so every rank counts as new)
+    local char = ns.CharDB()
+    local all = _G.C_GamepadUI and not char.padRanksDone
+    if all then char.padRanksDone = true end
     for name, ranks in pairs(KnownRanks(true)) do
-        local top = tops[name] or 0
+        local top = all and 0 or tops[name] or 0
         for rank, spellID in pairs(ranks) do
             if rank > top then pendingRanks[#pendingRanks + 1] = spellID end
         end
@@ -1839,7 +1867,7 @@ function ActionBars.PetRanks.Scan()
         end
     end
     if not next(ordered) then return end
-    for slot = 1, MAX_ACTION_SLOT do
+    ActionBars.EachActionSlot(function(slot)
         local kind, id = GetActionInfo(slot)
         local name = kind == "spell" and id and C_Spell.GetSpellName(id)
         local entry = name and ordered[name]
@@ -1852,7 +1880,7 @@ function ActionBars.PetRanks.Scan()
                 ClearCursor()
             end
         end
-    end
+    end)
 end
 function ActionBars.PetRanks.Soon()
     local P = ActionBars.PetRanks

@@ -307,6 +307,8 @@ function PF.AmountSetting(getS, setS, isDebuff)
                  or L["How many buffs show. They take as many rows as they need."] }
 end
 
+PF.OTHER_SIDE = { ABOVE = "ABOVE_RIGHT", ABOVE_RIGHT = "ABOVE", BELOW = "BELOW_RIGHT", BELOW_RIGHT = "BELOW" }
+-- Returns how many a lane holds, how many to a row and, where Max Buffs / Max Debuffs count, the row's room
 local function AuraFit(st, pos, f)
     local size = PlaceAuraSize(st, pos)
     local function PerRow(lineSize)
@@ -320,17 +322,20 @@ local function AuraFit(st, pos, f)
         return rows * perRow, perRow
     end
     if not EDGE_PLACES[pos] then return AuraGrid(st) end
+    -- a kind with its own Max and nothing on the edge's other side: the whole width too
+    local amount = PF.AmountTile(st) and (st.buffs == pos or st.debuffs == pos)
+    local other = PF.OTHER_SIDE[pos]
+    local alone = amount and other and st.buffs ~= other and st.debuffs ~= other and st.dispels ~= other
     local lineSize
-    if WIDE_PLACES[pos] then
+    if WIDE_PLACES[pos] or alone then
         local clear = (f and f.ringKind and ns.UFRing) and ns.UFRing.Clearance(f, K.AURA_GAP) or 0
-        lineSize = (st.width or 200) - 2 * K.INSET - clear
+        local width = f and f:GetWidth() or 0
+        lineSize = (width > 0 and width or st.width or 200) - 2 * K.INSET - clear
     else
         lineSize = math_floor((st.width or 200) / 2) - K.INSET - 4
     end
     local perRow = PerRow(lineSize)
-    if PF.AmountTile(st) and (st.buffs == pos or st.debuffs == pos) then
-        return PF.TileAmount(st, st.debuffs == pos), perRow
-    end
+    if amount then return PF.TileAmount(st, st.debuffs == pos), perRow, lineSize end
     return perRow, perRow
 end
 
@@ -790,6 +795,11 @@ local function UpdateStatus(f)
     end
 end
 
+-- A member under Mind Control (or in a duel with you) can't be dispelled: no type icons meanwhile
+function PF.UpdateDispelSide(f)
+    if f.AuraPos and not (f.ctx and f.ctx.hostile) then ns.AuraPolicy.UpdateSide(f, f.fuiUnit) end
+end
+
 -- A group member too far away to be visible comes with no aura durations: Hide Buffs drops until the
 -- unit is near again (ns.AuraPolicy.UpdateReach). Enemy tiles keep it.
 local function UpdateAuraReach(f)
@@ -1182,7 +1192,9 @@ local function OnMemberEvent(f, event, _, _, _, by, barID)
         -- every member fires it entering and leaving combat: one batched health repaint (the colour
         -- for charm and tapped, Dead and Ghost with the power text after it)
         MarkDirty(f, 3)
+        PF.UpdateDispelSide(f)
     elseif event == "UNIT_FACTION" or event == "UNIT_CONNECTION" then
+        PF.UpdateDispelSide(f)
         -- no aura rebuild for these (UNIT_FACTION also fires when the PvP flag changes)
         PF.UpdatePvP(f)
         UpdateHealth(f)
@@ -1371,14 +1383,14 @@ local function AuraAnchor(f, pos)
 end
 
 -- Anchors a container at its place and sets its flow
-local function PlaceAuraContainer(f, pos, container, size, perRow)
+local function PlaceAuraContainer(f, pos, container, size, perRow, line)
     local point, rel, relPoint, x, y, growH, growV = AuraAnchor(f, pos)
     -- a middle place: the container hangs on its side's middle and the row flows from its top
     local flowAnchor, V = point, growV
     if point == "LEFT" or point == "RIGHT" then flowAnchor = "TOP" .. point end
     container:ClearAllPoints()
     container:SetPoint(point, rel, relPoint, x, y)
-    local lineSize = perRow * (size + AURA_SPACING)
+    local lineSize = line and math_max(size, line) or perRow * (size + AURA_SPACING)
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
     pcall(container.SetFlowLayoutAnchorPoint, container, flowAnchor)
     pcall(container.SetFlowLayoutGrowthDirection, container, growH, V)
@@ -1400,19 +1412,7 @@ function PF.PlaceStackedAuras(f)
     local point, rel, _, x, _, _, growV = AuraAnchor(f, st[far])
     local up = growV == AnchorUtil.FlowDirection.Up
     local side = (point:find("LEFT") and "LEFT") or (point:find("RIGHT") and "RIGHT") or "LEFT"
-    local strip = f.AuraStackStrip
-    if not strip then
-        strip = CreateFrame("Frame", nil, f)
-        f.AuraStackStrip = strip
-    end
-    strip:ClearAllPoints()
-    strip:SetHeight(1)
-    strip:SetPoint("LEFT", rel, "LEFT")
-    strip:SetPoint("RIGHT", rel, "RIGHT")
-    strip:SetPoint(up and "BOTTOM" or "TOP", inner.container, up and "TOP" or "BOTTOM", 0, up and AURA_SPACING or -AURA_SPACING)
-    local at = (up and "BOTTOM" or "TOP") .. side
-    outer.container:ClearAllPoints()
-    outer.container:SetPoint(at, strip, at, x, 0)
+    ns.AuraPolicy.HangPast(f, outer.container, inner.container, rel, up, side, x, AURA_SPACING)
 end
 
 -- Dispel icons alone in their place: one icon per type you can dispel, as Forever's raid frames show
@@ -1487,8 +1487,8 @@ function PF.Extra.Entry(f, pos)
     local key = PF.Extra.Key(pos)
     local entry = f.AuraPos[key]
     if entry then return entry end
-    local ok, container = pcall(CreateFrame, "AuraContainer", nil, f, AURA_CONTAINER_TEMPLATE)
-    if not (ok and container) then return nil end
+    local container = ns.AuraPolicy.LayoutFrame("AuraContainer", f, AURA_CONTAINER_TEMPLATE)   -- (placed past the first one)
+    if not container then return nil end
     pcall(container.SetUnit, container, f.fuiUnit or "none")
     container:Hide()
     entry = { container = container }
@@ -1531,7 +1531,7 @@ local function ConfigurePosition(f, pos, lanes, extra)
     local st = TS(f)
     local portrait = pos == "PORTRAIT"
     local size = portrait and DispelGrid(f) or PlaceAuraSize(st, pos)
-    local max, perRow = AuraFit(st, pos, f)
+    local max, perRow, line = AuraFit(st, pos, f)
     if portrait then max, perRow = 4, 2 end
     local inside = portrait or pos:find("^INSIDE") ~= nil
     local showTimer = not inside and UFAura("auraTimer", "none") ~= "none"
@@ -1558,6 +1558,7 @@ local function ConfigurePosition(f, pos, lanes, extra)
                 if kind == "dispels" then
                     InitDispelIcon(button, size, inside)
                 else
+                    button.FlareUI_AuraOwner = f   -- (a member who changes sides: ns.AuraLook.DispelSide)
                     K.InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
                     if inside then PassClicks(button) end
                     NoAuraTooltip(f, button)
@@ -1579,7 +1580,7 @@ local function ConfigurePosition(f, pos, lanes, extra)
         end
     end
     ns.AuraGroups.Finish(container, entry)
-    PlaceAuraContainer(f, pos, container, size, perRow)
+    PlaceAuraContainer(f, pos, container, size, perRow, line)
     if extra then PF.Extra.Place(f, pos, extra.after, container, extra.beside) end
     -- (FlareUI Style lifts them over the ring's elite art: f.auraLift, UnitFramesRing.lua Ring.Layout)
     container:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 6))
@@ -1612,7 +1613,7 @@ local function ConfigureAuras(f)
     -- look as computed, so a new aura rule or look setting can't be missed here
     local sig = Signature(st.debuffs, st.buffs, st.dispels, st.auraSize, st.buffSize, st.debuffSize, st.width, st.height, st.powerHeight, st.portrait, st.ringSize, (DispelGrid(f)), f.ringKind, AuraGrid(st),
         ns.AuraGroups.Sig(K.Font(PF.FontKey(f), "auras")), st.castbar, st.castHeight, OnPlate(f), IsEditing(), st.auraSort, st.auraReverse, st.auraMineFirst,
-        st.buffAmount, st.debuffAmount, PF.TileAmountDefault(), st.auraOuter,
+        st.buffAmount, st.debuffAmount, PF.TileAmountDefault(), st.auraOuter, f:GetWidth(),
         ns.AuraGroups.Sig(lanes), ns.AuraGroups.Sig(LaneLook(10, false, false, f)))
     if f.auraSignature == sig then return end
     f.auraSignature = sig
@@ -1998,6 +1999,7 @@ local function CastStyle(st, f)
         -- the cast bar's own Background, as on the unit frames; unset, the frame's
         bgOpacity = st.castBgOpacity or st.bgOpacity,
         glow = ns.CastGlowOn(st.castGlow),   -- Edge Glow (Core.lua ns.CastGlowOn)
+        center = st.castCenter,              -- Center Spell Name
     }
 end
 
@@ -3808,6 +3810,7 @@ local function BuildSettings()
           set = function(layoutName, value) setS("castTimer")(layoutName, value and true or false) end,
           hidden = noCast,
           desc = L["The time left, at the right end of the bar."] },
+        ns.UnitFrames.CastCenterSetting(function() return { castCenter = getS("castCenter")() } end, setS("castCenter"), noCast),
         { name = L["Edge Glow"], kind = LEM.SettingType.Checkbox, default = ns.CastGlowDefault(),
           get = function() return ns.CastGlowOn(getS("castGlow")()) end,
           set = function(layoutName, value) setS("castGlow")(layoutName, value and true or false) end,
