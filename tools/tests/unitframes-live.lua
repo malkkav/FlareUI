@@ -298,6 +298,24 @@ callbacks.layout("Modern")
 local point, _, _, x, y = player:GetPoint()
 assert(point == "LEFT" and x == 11 and y == -25)
 
+do  -- the FlareUI Player Cast Bar's Width is what its border wraps, icon included
+    local castDb, holder = ns.db.profile.unitframes.playerCastbar, UF.GetPlayerCastHolder()
+    assert(castDb.width == 240 + 21 and holder:GetWidth() == castDb.width + 2 * 4, "a width saved without the icon takes it in, once")
+    local castWidth
+    for _, setting in ipairs(settings[holder]) do if setting.name == "Width" then castWidth = setting end end
+    castWidth.set("Modern", 300)
+    assert(castDb.width == 300 and holder:GetWidth() == 300 + 2 * 4 and holder:GetHeight() == 21 + 2 * 4)
+    assert(select(4, holder.Cast:GetPoint(1)) == 21 + 4 and select(4, holder.Cast:GetPoint(2)) == -4, "the bar takes what the icon and border leave")
+    local function converted(saved)
+        UF.CastWidthWithIcon(saved)
+        UF.CastWidthWithIcon(saved)
+        return saved.width
+    end
+    assert(converted({ width = 250, height = 25 }) == 250, "the default width, which every profile holds, stays")
+    assert(converted({ width = 300, height = 30 }) == 330, "once only")
+    assert(converted({ width = 300, height = 30, icon = false }) == 300, "no icon: nothing to take in")
+end
+
 state.target.casting = { noInterrupt = false, duration = {} }
 target:RunScript("OnEvent", "UNIT_SPELLCAST_START", "target", "Cast-1", 686)
 assert(target.Cast:IsShown() and target.Cast.Text:GetText() == "Shadow Bolt")
@@ -392,6 +410,12 @@ local tick = ui.timers[#ui.timers].callback
 tick()
 assert(cast.Text:GetText() == "Sample Cast (R2)" and cast.Delay:GetText() == "+0.5")
 assert(cast.Delay:IsShown() and cast.timerDirection == env.Enum.StatusBarTimerDirection.ElapsedTime)
+do  -- a setting changed in Edit Mode redraws the running sample: it doesn't start the next one
+    local started = cast.timerDuration.start
+    ui.time = (ui.time or 100) + 1
+    UF.RedrawPlayerCast()
+    assert(cast.Text:GetText() == "Sample Cast (R2)" and cast.timerDuration.start == started)
+end
 assert(targetDebuffs.groups[harm].maxFrameCount == 4 and target.Auras.TOPLEFT.lanes["debuffs#fill2"])
 ui.editing = false
 callbacks.exit()
@@ -410,12 +434,6 @@ do
     targetDb.buffs = "TOPLEFT"
     UF:Refresh()
     assert(Value("BOTTOMRIGHT") > target:GetWidth() / 2, "alone on its edge: past the middle")
-do  -- a setting changed in Edit Mode redraws the running sample: it doesn't start the next one
-    local started = cast.timerDuration.start
-    ui.time = (ui.time or 100) + 1
-    UF.RedrawPlayerCast()
-    assert(cast.Text:GetText() == "Sample Cast (R2)" and cast.timerDuration.start == started)
-end
     assert(Value("TOPLEFT") > target:GetWidth() / 2)
     targetDb.buffs = "OFF"
     UF:Refresh()

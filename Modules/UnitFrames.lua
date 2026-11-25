@@ -1659,10 +1659,28 @@ local function GetTimerFormatter()
     return timerFormatter or nil
 end
 
+-- The FlareUI Player Cast Bar's Width is what its border wraps, icon included, as the Resource Bars'
+-- Width: the same value gives the same box. It used to leave the icon out; a width saved that way is
+-- turned round once. The default width stays (a profile holds it raw, as a new one does): its box is
+-- the icon narrower than it was.
+function UF.CastWidthWithIcon(udb)
+    if rawget(udb, "widthWithIcon") then return end
+    udb.widthWithIcon = true
+    local width = rawget(udb, "width")
+    if width and width ~= 250 and udb.icon ~= false then udb.width = width + (udb.height or 25) + CAST_ICON_GAP end
+end
+
+-- the standalone holder's size for a style: its width and height, and the border round them
+function UF.CastBoxSize(style)
+    local _, pad = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
+    return style.width + 2 * pad, style.height + 2 * pad
+end
+
 -- style: { height, icon, timer, name, texture, border, borderTexture, width }
 -- plate: the frame is on Forever's plate, whose cast bar keeps the plate's border
 local function GetCastStyle(udb, standalone, plate)
     if standalone then
+        UF.CastWidthWithIcon(udb)
         return {
             width = udb.width or 250, height = udb.height or 25,
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = true,
@@ -1837,6 +1855,14 @@ local function ShowSampleCast(cast, keep)
     UF.EndCastFlash(cast)
     local own = cast.unit == "player"
     local now = GetTime()
+    -- (also one that just ended: the ticker starts the next, in step)
+    keep = keep and cast:IsShown() and cast.sampleStart
+    if not keep then
+        cast.sampleStart = now
+        cast.sampleChannel = own and not cast.sampleChannel
+    end
+    now = cast.sampleStart
+    local channel = cast.sampleChannel
     local duration = C_DurationUtil.CreateDuration()
     duration:SetTimeFromStart(now, SAMPLE_CAST_SECONDS)
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate,
@@ -1855,14 +1881,6 @@ local function ShowSampleCast(cast, keep)
     else
         color = channel and CAST_CHANNEL or CAST_COLOR
     end
-    -- (also one that just ended: the ticker starts the next, in step)
-    keep = keep and cast:IsShown() and cast.sampleStart
-    if not keep then
-        cast.sampleStart = now
-        cast.sampleChannel = own and not cast.sampleChannel
-    end
-    now = cast.sampleStart
-    local channel = cast.sampleChannel
     cast:SetStatusBarColor(color[1], color[2], color[3])
     cast:Show()
     if own then
@@ -6151,15 +6169,13 @@ function UF.DrawCastSample(holder)
     if holder.unit and holder.unit ~= "player" then
         local udb = GetUnitDb(holder.unit) or {}
         style = GetCastStyle(udb, false, ns.UFRing and ns.UFRing.Plate(frames[holder.unit]))
-        style.width = (udb.width or 220) - 2 * INSET - (style.icon and (style.height + CAST_ICON_GAP) or 0)
+        style.width = (udb.width or 220) - 2 * INSET
         style.fontKey = holder.unit
     else
         style = GetCastStyle(db and db.playerCastbar or {}, true)
         style.fontKey = "playercast"
     end
-    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
-    local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
-    holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
+    holder:SetSize(UF.CastBoxSize(style))
     LayoutCastBar(holder.Cast, style, holder, "FILL")
     ShowSampleCast(holder.Cast)
     if holder.ticker then holder.ticker:Cancel() end
@@ -6229,9 +6245,7 @@ local function LayoutPlayerCastBar()
     if InCombatLockdown() then pendingLayout = "LayoutPlayerCastBar" return end
     local style = GetCastStyle(cfg, true)
     style.fontKey = "playercast"
-    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
-    local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
-    holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
+    holder:SetSize(UF.CastBoxSize(style))
     LayoutCastBar(holder.Cast, style, holder, "FILL")
 end
 
@@ -6479,7 +6493,7 @@ local function BuildPlayerCastSettings()
     -- Pushback are their Cast Bar section's rows too)
     local Section, settings = EditSections()
     Section("Size", {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 1, get = get("width", 250), set = set("width") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 650, valueStep = 1, get = get("width", 250), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
     })
     local castItems = {
