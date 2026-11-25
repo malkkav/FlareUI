@@ -267,6 +267,7 @@ local function GetHeaderHandle(frame)
     return strip
 end
 
+local TSM_WINDOWS = { ProfessionsFrame = true, MerchantFrame = true, AuctionHouseFrame = true }
 local function SetupMovableFrame(name)
     if moveSuspended or moveFrames[name] or MOVE_EXCLUDED[name] then return end
     -- OpenMap and Leatrix Maps place and scale the map themselves, and put it back whenever anything
@@ -285,7 +286,9 @@ local function SetupMovableFrame(name)
     frame.moveName = name
     moveFrames[name] = frame
     frame:SetMovable(true)
-    frame:SetClampedToScreen(true)
+    -- TradeSkillMaster parks Blizzard's window off the screen while its own is open: kept on the screen,
+    -- both showed
+    frame:SetClampedToScreen(not (TSM_WINDOWS[name] and C_AddOns.IsAddOnLoaded("TradeSkillMaster")))
     SetupHandle(frame, GetHeaderHandle(frame))
     SetupWheel(frame)
     -- the panel manager has placed the window by OnShow: the saved position goes back before it draws

@@ -203,6 +203,12 @@ do
     pick:Set("fullname")
 end
 assert(row("showTitles"):Get() == false, "players start without titles")
+-- (11-25, #192) Party and Raid Colour count in Name Only Mode: not greyed there
+do
+    NP.TypeSet("enemyPlayer", "plate", "name")
+    assert(not row("groupColor"):IsDisabled() and not row("raidColor"):IsDisabled() and row("debuffs"):IsDisabled())
+    NP.TypeStore("enemyPlayer").preset, NP.TypeStore("enemyPlayer").custom = nil, nil
+end
 assert(not row("showGuild"):IsHidden() and not row("showGuild"):Get(), "players: Show Guild Name, off")
 side.unitGroup.cells[2]:Click()
 

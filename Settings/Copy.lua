@@ -583,9 +583,17 @@ ns.Copy = {
             section = "au.general",
             tags = { "timer colour", "timer color", "red timer" },
         },
+        ["au.totemShape"] = {
+            choices = { L["Round"], L["Square"] },
+            desc = L["The shape of your totem icons."],
+            label = L["Aura Icon Shape"],
+            section = "au.totems",
+            tags = { "totem shape", "square totems", "totem border" },
+            tip = L["The totems come with FlareUI's player frame."],
+        },
         ["au.totemSwipe"] = {
             choices = { L["Off"], L["Over the Icon"], L["Around the Border"], L["Both"] },
-            desc = L["The dark sweep on your totems as their time runs out:\n* Over the Icon: across the icon\n* Around the Border: round the ring\n* Both: one disc over icon and ring"],
+            desc = L["The dark sweep on your totems as their time runs out:\n* Over the Icon: across the icon\n* Around the Border: along the border\n* Both: over the icon and its border"],
             label = L["Aura Swipe"],
             section = "au.totems",
             tags = { "totem swipe", "totem cooldown" },
@@ -897,9 +905,12 @@ ns.Copy = {
             section = "br.where",
         },
         ["br.consumables"] = {
-            desc = L["An icon while you have no Well Fed buff or no flask. Choose where it shows on the When and Where tab."],
-            label = L["Food and Flask"],
+            choices = { L["None"], L["Food"], L["Flask"], L["Elixirs"] },
+            desc = L["What the reminders look for:\n* Food: an icon while you have no Well Fed buff\n* Flask: an icon while you have no flask\n* Elixirs: the ones picked below"],
+            label = L["Consumables to Watch"],
             section = "br.consumablesSection",
+            tags = { "food and flask", "food", "flask", "well fed", "elixirs" },
+            tip = L["Choose where they show on the When and Where tab."],
         },
         ["br.consumablesWhere"] = {
             choices = { L["Always"], L["In Dungeons and Raids"], L["In Raids"], L["Mouseover"] },
@@ -940,7 +951,7 @@ ns.Copy = {
             label = L["Elixirs and More"],
             section = "br.consumablesSection",
             tags = { "elixir", "flask", "consumables", "zanza", "juju", "mongoose", "giants", "raid buffs" },
-            tip = L["Where it shows is set by Consumables on the When and Where tab, as for Food and Flask."],
+            tip = L["Where it shows is set by Consumables on the When and Where tab, as for food and flasks."],
         },
         ["br.extras"] = {
             desc = L["Class buffs you're reminded of only if you tick them: Shadow Protection and Moonkin Form."],
@@ -1048,6 +1059,15 @@ ns.Copy = {
             label = L["Show Cooldown During Effect"],
             section = "cdm.icons",
             tags = { "cooldown", "effect", "corner timer", "overlap" },
+        },
+        ["cdm.em.barMax"] = {
+            desc = L["The most bars shown at once, the first ones in the order."],
+            label = L["Max Bars"],
+        },
+        ["cdm.em.barSort"] = {
+            choices = { L["Blizzard"], L["Newest First"], L["Newest Last"] },
+            desc = L["The order of the bars:\n* Blizzard: as in the Cooldown Manager's settings\n* Newest First, Newest Last: by when each bar came up"],
+            label = L["Sort By"],
         },
         ["cdm.em.fadeIn"] = {
             desc = L["How the bar fades:\n* Show Speed: how fast it comes back\n* Hide Speed: how fast it fades away\n* Faded Opacity: how far it fades. At 0% it disappears"],
@@ -2077,6 +2097,13 @@ ns.Copy = {
             section = "np.nameOnlySection",
             tags = { "name size", "name only", "name scale" },
         },
+        ["np.nameOnlyTarget"] = {
+            desc = L["Your target leaves Name Only Mode and shows its whole plate."],
+            label = L["Show Target's Plate"],
+            section = "np.nameOnlySection",
+            tags = { "target health bar", "name only target", "show bar on target" },
+            tip = L["Its options stay open to set that plate."],
+        },
         ["np.npcNames"] = {
             choices = { L["None"], L["Quest NPCs"], L["Hostile"], L["Interactive"], L["All"] },
             desc = L["Which NPCs show a name over their head."],
@@ -2211,13 +2238,13 @@ ns.Copy = {
             tags = { "target arrows", "pointer", "indicator" },
         },
         ["np.targetBarColor"] = {
-            desc = L["Your target's bar lights up in the target colour."],
-            label = L["Bar Colour"],
+            desc = L["Your target's bar gets brighter, in its own colour."],
+            label = L["Bar"],
             section = "np.highlights",
-            tags = { "target bar", "tint", "highlight" },
+            tags = { "target bar", "tint", "highlight", "bar colour", "brighter" },
         },
         ["np.targetBorder"] = {
-            desc = L["Your target's border in the target colour."],
+            desc = L["A bright border round your target's plate."],
             label = L["Border"],
             section = "np.highlights",
             tags = { "target border", "outline" },
@@ -2686,8 +2713,8 @@ ns.Copy = {
             section = "qt.display",
         },
         ["qt.sort"] = {
-            choices = { L["By Zone"], L["By Distance"], L["By Level"], L["By Progress"] },
-            desc = L["How quests are ordered:\n* By Zone: your zone first\n* By Distance: nearest first\n* By Level: lowest first\n* By Progress: furthest along first"],
+            choices = { L["By Zone"], L["By Zone and Level"], L["By Distance"], L["By Level"], L["By Progress"] },
+            desc = L["How quests are ordered:\n* By Zone: your zone first\n* By Zone and Level: your zone first, lowest level first in each zone\n* By Distance: nearest first\n* By Level: lowest first\n* By Progress: furthest along first"],
             label = L["Sort By"],
             section = "qt.quests",
             tags = { "objective sorting" },

@@ -247,8 +247,11 @@ assert(lineContains("Time's up!").timerBar:GetValue() == 0)
 header.zone:Click()
 assert(not db.zoneOnly and lineContains("Deliver the Note"))
 
+-- (11-25) By Zone and Level: the zones stay, with their quests by level
 header.sort:Click("LeftButton")
-assert(db.sortByDistance and ot.Build.SortMode(db) == "distance")
+assert(db.zoneFirst and db.zoneLevel and ot.Build.SortMode(db) == "zonelevel" and lineContains("Westfall"))
+header.sort:Click("LeftButton")
+assert(db.sortByDistance and not db.zoneLevel and ot.Build.SortMode(db) == "distance")
 header.sort:Click("LeftButton")
 assert(db.sortByLevel and not lineContains("Westfall"))
 header.sort:Click("LeftButton")
@@ -257,7 +260,9 @@ header.sort:Click("RightButton")
 assert(db.sortByLevel)
 header.sort:Click("RightButton")
 header.sort:Click("RightButton")
-assert(db.zoneFirst and lineContains("Westfall"))
+assert(db.zoneFirst and db.zoneLevel)
+header.sort:Click("RightButton")
+assert(db.zoneFirst and not db.zoneLevel and lineContains("Westfall"))
 
 header.autoAccept:Click()
 assert(tweaks.autoAcceptQuests and header.autoAccept.active)
@@ -563,8 +568,30 @@ env.GetQuestLogSpecialItemCooldown = function() return 3, 5, true end
 env.CooldownFrame_Set = function(widget, start, duration) widget:SetCooldown(start, duration) end
 env.IsQuestLogSpecialItemInRange = function() return itemRange end
 env.UnitExists = function() return true end
+-- (11-25, #198) the public API: each row in view, where another addon's button goes beside it
+local api, seen = assert(env.FlareUI_QuestTrackerAPI), nil
+assert(api.version == 1 and api:IsActive())
+api:RegisterCallback("Next", function(rows) seen = rows end)
+api:RegisterCallback("Broken", function() error("theirs") end)
+local caught = 0
+env.geterrorhandler = function() return function() caught = caught + 1 end end
 ot:UpdateItemButtons()
 local item = assert(env.FlareUI_TrackerItem1)
+assert(seen and #seen > 0 and seen == api:GetRows() and caught == 1, "every callback, one failing")
+do
+    local withItem, plain
+    for _, row in ipairs(seen) do
+        assert(type(row.questID) == "number" and row.size > 0 and row.point:find("^TOP") and row.line)
+        if row.hasItem then withItem = row else plain = row end
+    end
+    assert(withItem and plain, "a row with the quest's item and one without")
+    local _, _, _, itemX = item:GetPoint(1)
+    local dir = withItem.point == "TOPRIGHT" and -1 or 1
+    assert(withItem.x == itemX + dir * (withItem.size + 3), "past the item button")
+end
+api:UnregisterCallback("Broken")
+api:UnregisterCallback("Next")
+assert(not pcall(api.RegisterCallback, api, nil, nil))
 assert(item:IsShown() and item:GetAttribute("item") == "item:99" and item.count:GetText() == "2")
 assert(item.cooldown.cooldown[2] == 5 and item.out)
 itemRange = 1

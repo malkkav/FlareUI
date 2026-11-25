@@ -494,6 +494,8 @@ local function SetPowerValue(holder, powerType, glide, full)
     end
     holder.valueTime, holder.valueType, holder.lastValue = now, t, v
     ns.SetBarValue(holder.Bar, value, glide and cfg and cfg.smoothBars)
+    -- Bar Edge Glow: steady, as power changes all the time
+    if cfg and cfg.barEdgeGlow then K.BarLookUpdate(holder.Bar, "player", false, nil, K.PowerEdgeAlpha(powerType)) end
     local slots = RB.Slots(holder)
     if slots then RB.FillSlots(holder, K.PowerSource("player", powerType, slots)) end
 end
@@ -731,6 +733,7 @@ local function ApplyPreview(holder)
     elseif kind == "power" then
         bar:SetValue(0.6)
         bar:SetStatusBarColor(RB.PowerColor())
+        K.BarLookUpdate(bar, nil, false, false)
         RB.FillSlots(holder, K.SampleSource(0.6, 100))
         if holder.ManaCost then holder.ManaCost:Refresh(UnitPowerType("player")) end   -- the sample cost
         -- GCD Spark: a still sample
@@ -741,6 +744,7 @@ local function ApplyPreview(holder)
     elseif kind == "mana" then
         bar:SetValue(0.4)
         bar:SetStatusBarColor(DruidManaColor())
+        K.BarLookUpdate(bar, nil, false, false)
         RB.FillSlots(holder, K.SampleSource(0.4, 4000))
         if holder.ManaCost then holder.ManaCost:Refresh(MANA) end
     elseif kind == "seal" then
@@ -995,6 +999,8 @@ local function LayoutBar(holder)
         K.PlaceDamageTrail(holder.DamageTrail, false, RBC.trail)
         -- Bar Edge Glow (UnitFrames.lua UF.BarLook): the bar fills left to right
         K.BarLook(bar, false, cfg and cfg.barEdgeGlow)
+    elseif kind == "power" or kind == "mana" then
+        K.BarLook(bar, false, cfg.barEdgeGlow)
     end
     -- Smooth Animated Bars, when installed and on (UnitFrames.lua ns.SAB): the health and power bars
     if ns.SAB and not holder.fuiSample and (holder.key == "health" or holder.key == "power") then
@@ -1409,10 +1415,11 @@ local function BuildSettings(key)
             item.hidden = function() return info.kind ~= "health" and info.kind ~= "power" and info.kind ~= "mana" end
             return item
         end)(),
-        -- the health bar's Bar Edge Glow, as on the unit frames (default off)
+        -- Bar Edge Glow on the health, power and mana bars, as on the unit frames (default off)
         (function()
             local item = K.BarEdgeGlowSetting(get("barEdgeGlow", false), set("barEdgeGlow"))
-            item.hidden = function() return info.kind ~= "health" end
+            item.hidden = function() return info.kind ~= "health" and info.kind ~= "power" and info.kind ~= "mana" end
+            if info.kind ~= "health" then item.desc = L["A bright line and a soft glow at the front of the bar."] end
             return item
         end)(),
         (function()
@@ -1760,7 +1767,9 @@ local EVENTS = {
 -- later flight fills the bar with the time left. A flight is caught as it is picked (TakeTaxiNode on
 -- the flight map) and timed from take-off (UnitOnTaxi) to landing. Not kept: a flight left early
 -- (TaxiRequestEarlyLanding), one under 10 seconds, or one not caught from the start (a login in the
--- air without the record a reload leaves). Hovering a destination on the flight map adds its time.
+-- air without the record a reload leaves). A flight started in a conversation, with no flight map (the
+-- druids' Moonglade to Rut'theran), is known by the answer picked; its name is the place it landed at
+-- the first time (global.flightPlaces). Hovering a destination on the flight map adds its time.
 --------------------------------------------------
 local Flight = {}
 RB.Flight = Flight
@@ -1850,8 +1859,12 @@ local function TakeOff(pending, startedAt)
     Flight.now = { key = pending and pending.key, dest = pending and pending.dest, start = startedAt or GetTime(),
                    total = pending and pending.key and FlightStore()[pending.key], keep = pending and pending.key and true or false }
     Flight.pending = nil
+    if global and pending and pending.key and pending.gossip and not Flight.now.dest then
+        Flight.now.dest = global.flightPlaces and global.flightPlaces[pending.key]
+    end
+    Flight.now.gossip = pending and pending.gossip
     if global and pending and pending.key then
-        global.flightNow = { key = pending.key, dest = pending.dest, epoch = time() - (GetTime() - Flight.now.start) }
+        global.flightNow = { key = pending.key, dest = Flight.now.dest, gossip = pending.gossip, epoch = time() - (GetTime() - Flight.now.start) }
     end
     FlightShown()
 end
@@ -1863,7 +1876,14 @@ local function Land()
     if global then global.flightNow = nil end
     if now and now.keep and now.key then
         local flown = GetTime() - now.start
-        if flown >= FLIGHT_MIN then FlightStore()[now.key] = math_floor(flown + 0.5) end
+        if flown >= FLIGHT_MIN then
+            FlightStore()[now.key] = math_floor(flown + 0.5)
+            local place = now.gossip and global and GetMinimapZoneText and GetMinimapZoneText()
+            if place and canaccessvalue(place) and place ~= "" then
+                global.flightPlaces = global.flightPlaces or {}
+                global.flightPlaces[now.key] = place
+            end
+        end
     end
     FlightShown()
 end
@@ -1880,10 +1900,12 @@ local function FlightCheck()
         local global = ns.db and ns.db.global
         local record = global and global.flightNow
         if record and record.epoch and time() - record.epoch < FLIGHT_RESUME then
-            TakeOff({ key = record.key, dest = record.dest }, GetTime() - (time() - record.epoch))
+            TakeOff({ key = record.key, dest = record.dest, gossip = record.gossip }, GetTime() - (time() - record.epoch))
         else
-            TakeOff(nil)
+            local talk = Flight.talk
+            TakeOff(talk and GetTime() - talk.at < FLIGHT_CATCH and talk or nil)
         end
+        Flight.talk = nil
     end
     -- a light check while something is under way; the control events do the rest
     local busy = Flight.pending or Flight.now
@@ -1912,6 +1934,22 @@ function Flight.Init()
             if here and there and here ~= there then
                 Flight.pending = { key = RouteKey(here, there), dest = there, at = GetTime() }
                 FlightCheck()
+            end
+        end)
+    end
+    -- an answer picked in a conversation: if a flight starts within seconds, it was that
+    local function Talked(id)
+        if canaccessvalue(id) and type(id) == "number" then
+            Flight.talk = { key = "gossip " .. id, at = GetTime(), gossip = true }
+        end
+    end
+    if C_GossipInfo and C_GossipInfo.SelectOption then hooksecurefunc(C_GossipInfo, "SelectOption", Talked) end
+    -- (Blizzard's window picks by the answer's place)
+    if C_GossipInfo and C_GossipInfo.SelectOptionByIndex and C_GossipInfo.GetOptions then
+        hooksecurefunc(C_GossipInfo, "SelectOptionByIndex", function(index)
+            local ok, options = pcall(C_GossipInfo.GetOptions)
+            for _, option in ipairs(ok and options or {}) do
+                if option.orderIndex == index then Talked(option.gossipOptionID) return end
             end
         end)
     end

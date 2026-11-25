@@ -170,7 +170,6 @@ local KINDS = {
                 { L["Mob Types"], { { "boss", L["Boss"] }, { "elite", L["Elite"] }, { "caster", L["Caster"] }, { "trivial", L["Trivial"] } } },
                 { L["Cast Bar"], { { "cast", L["Cast"] }, { "channel", L["Channel"] }, { "castNoInterrupt", L["Uninterruptible"] },
                     { "kickReady", L["Kick Ready"] }, { "important", L["Important Cast Glow"] } } },
-                { L["Your Target"], { { "target", L["Target Highlight"] } } },
                 { L["Plate"], { { "focus", L["Focus"] }, { "group", L["Party Members"] }, { "raid", L["Raid Members"] },
                     { "execute", L["Execute Range"] }, { "heal", L["Incoming Heals"] }, { "absorb", L["Shields"] } } },
             }

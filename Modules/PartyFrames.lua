@@ -689,10 +689,20 @@ function PF.UpdatePvP(f)
     local ffa, pvp = UnitIsPVPFreeForAll(unit), UnitIsPVP(unit)
     if canaccessvalue(ffa) and ffa and K.HasAtlas("UI-HUD-UnitFrame-Player-PVP-FFAIcon") then
         icon:SetAtlas("UI-HUD-UnitFrame-Player-PVP-FFAIcon", false)
+        icon:SetAlpha(1)
         icon:Show()
         return
     end
-    if not (canaccessvalue(pvp) and pvp) then icon:Hide() return end
+    -- (a secret flag sets the crest's alpha, unread: UnitFrames.lua UpdateIndicators)
+    local hidden = not canaccessvalue(pvp)
+    if icon.fuiSecretAlpha and not hidden then icon:SetAlpha(1) end
+    icon.fuiSecretAlpha = hidden or nil
+    if hidden then
+        if not (icon.SetAlphaFromBoolean and pcall(icon.SetAlphaFromBoolean, icon, pvp, 1, 0)) then icon:Hide() return end
+    elseif not pvp then
+        icon:Hide()
+        return
+    end
     local faction = UnitFactionGroup(unit)
     PF.PaintFaction(icon, canaccessvalue(faction) and faction or nil)
 end
@@ -2190,6 +2200,8 @@ function PF.LayoutSlotTexts(f)
     -- the name: the plate keeps its name box (LayoutTexts); off it, in the slot holding a name pick,
     -- stopping short of the text across the bar
     f.btFullName = true
+    -- (Forever Style's name box: Show Name picks which name, as Raid Style's)
+    if plate and not raid and st.nameShown then f.btFullName = BT.FullOf(st.nameShown) end
     if plate or raid then return end   -- (Raid Style: on top of the tile, as LayoutTexts placed it)
     local slots, texts = PF.TileSlots(f, "health"), PF.TileSlotTexts(f, "health")
     local nameSlot, pick
@@ -3698,11 +3710,10 @@ local function BuildSettings()
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
         -- (Classic off the plate: the name is a Health Text pick)
-        -- (Forever Style's name box: the plain switch, its name is fixed; Raid Style picks which name)
-        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return getS("showName")() ~= false end, set = setS("showName"),
-          hidden = function() return not onPlate() or IsRaidStyle() end },
+        -- (Forever Style's name box and Raid Style: one dropdown, Off and which name)
         ns.BarText.ShowNameSetting({ db = function() return (S()) end, changed = function() Refresh() end,
-            hidden = function() return not IsRaidStyle() end, first = ns.BarText.OldFirstOnly }),
+            hidden = function() return not onPlate() and not IsRaidStyle() end,
+            first = function() return IsRaidStyle() and ns.BarText.OldFirstOnly() end }),
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
         K.ValuesOnHoverSetting(getS("valuesOnHover"), setS("valuesOnHover")),
         -- Level Disc Size (per frame): the ring styles' level disc, with Show Level on

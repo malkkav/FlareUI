@@ -10,20 +10,12 @@ local db = {
 local ui, ns = dofile("tools/tests/fixtures/unitframes-ui.lua")(db)
 local env = ui.env
 local UF, Ring = ns.UnitFrames, ns.UFRing
-local power, missing = 3, false
-local TWO = "UI-HUD-UnitFrame-Player-PortraitOn-ClassResource"
+local power = 3
+local TWO = "Interface\\AddOns\\FlareUI\\Media\\Frames\\PlateTwo"
 env.Enum = env.Enum or {}
 env.Enum.PowerType = env.Enum.PowerType or { Mana = 0 }
 env.UnitPowerType = function() return power end
 ns.EditPreviewing = function() return false end
-local info = env.C_Texture.GetAtlasInfo
-env.C_Texture.GetAtlasInfo = function(atlas)
-    if atlas == TWO then
-        if missing then return nil end
-        return { width = 198, height = 74, file = "Two", leftTexCoord = 0, rightTexCoord = 1, topTexCoord = 0, bottomTexCoord = 1 }
-    end
-    return info(atlas)
-end
 
 Ring.SetStyle("forever")
 assert(Ring.Style() == "forever")
@@ -38,20 +30,20 @@ local function draw() return assert(UF.DrawSample(f, "forever")) end
 -- a druid in Cat or Bear Form
 draw()
 local plate = f.PlateFrame
-assert(#plate.pieces == 30 and #plate.glow == 30 and plate.underFrom == 28)
+assert(#plate.pieces == 29 and #plate.glow == 29 and plate.underFrom == 28)
 assert(f.ShiftMana:IsShown() and not f.ShiftManaSeparator:IsShown(), "the plate has its own divider")
 assert(f.Power:IsShown() and f.Power.barTexture ~= false)
 local drop = Ring.PlateDrop(f)
 assert(drop > 0 and drop == f.plateDrop)
-for i = 25, 30 do assert(plate.pieces[i]:GetTexture() == "Two" and plate.pieces[i]:IsShown(), i) end
-assert(plate.pieces[24]:GetTexture() ~= "Two", "the rows above are the plate's own")
-for i = 25, 30 do assert(plate.glow[i]:GetTexture() == "Two") end
-assert(plate.pieces[30].masks[plate.UnderMask] and plate.glow[30].masks[plate.UnderMask] and not (plate.pieces[29].masks or {})[plate.UnderMask])
--- its y in that art: 55 to 74 of 74
+for i = 25, 29 do assert(plate.pieces[i]:GetTexture() == TWO and plate.pieces[i]:IsShown(), i) end
+assert(plate.pieces[24]:GetTexture() ~= TWO, "the rows above are the plate's own")
+for i = 25, 29 do assert(plate.glow[i]:GetTexture() == TWO) end
+assert(plate.backs[4]:IsShown(), "the second slot's wood")
+-- its y in that file: 0 to 19 of 32
 local u1, u2, v1, v2 = plate.pieces[25]:GetTexCoord()
-assert(math.abs(v1 - 55 / 74) < 0.0001 and math.abs(v2 - 1) < 0.0001)
--- the ring is on the left: that art as it is (mirrored twice)
-assert(u1 < u2, "not mirrored")
+assert(v1 == 0 and math.abs(v2 - 19 / 32) < 0.0001)
+-- the ring is on the left: that art flipped
+assert(u1 > u2, "flipped")
 -- the last piece ends as far below the frame as the slot reaches
 local function bottom(region)
     for i = 1, region:GetNumPoints() do
@@ -84,7 +76,8 @@ assert(math.abs(Ring.PlateReserve(f) - drop) < 0.001, "the room kept for what ca
 ui.combat, power = true, 0
 draw()
 assert(not f.ShiftMana:IsShown() and Ring.PlateDrop(f) == 0)
-assert(plate.pieces[25]:GetTexture() ~= "Two" and plate.pieces[29]:GetTexture() == nil and plate.glow[30]:GetTexture() == nil)
+assert(plate.pieces[25]:GetTexture() ~= TWO and plate.pieces[29]:GetTexture() == nil and plate.glow[29]:GetTexture() == nil)
+assert(not plate.backs[4]:IsShown())
 assert(f.plateDropUsed == 0, "in a fight too")
 ui.combat = false
 
@@ -93,18 +86,31 @@ power = 3
 db.units.player.platePower = 0
 draw()
 assert(not f.Power:IsShown() and f.ShiftMana:IsShown())
+assert(plate.backs[2]:IsShown() and not plate.backs[3]:IsShown() and plate.backs[4]:IsShown(), "no wood for the bar that is off")
 db.units.player.platePower = nil
-
--- a client without the art: no slot
-missing = true
-draw()
-assert(not f.ShiftMana:IsShown() and Ring.PlateDrop(f) == 0 and Ring.PlateReserve(f) == 0)
-missing = false
 
 -- off the plate: the strip inside the frame, and nothing hangs below
 draw()
 UF.DrawSample(f, "addon")
 assert(f.ShiftMana:IsShown() and Ring.PlateDrop(f) == 0 and not plate:IsShown())
+-- (11-25) FlareUI Style: the mana bar's left text starts past the portrait, as the other bars' do
+do
+    local function at(fs) local point, _, _, x = fs:GetPoint(1) return point, x end
+    local function left(style)
+        assert(UF.DrawSample(f, style))
+        local _, x = at(f.ShiftManaTextLeft)
+        local point, power = at(f.PowerTextLeft)
+        assert(x == power and point == "LEFT", style)
+        return x
+    end
+    local plain = left("addon")
+    local saved = Ring.Style()
+    Ring.SetStyle("flareui")
+    db.units.player.shiftMana = true
+    assert(left("flareui") > plain, "past the ring")
+    Ring.SetStyle(saved)
+    db.units.player.shiftMana, db.units.player.castbarPosition = true, "BOTTOM"
+end
 
 -- /fui druidbar: the same on a class without it, nothing saved
 ns.UnitShownLevel = function() return 43 end

@@ -332,6 +332,43 @@ do
     party.classic.showLevel = shown
 end
 
+-- (11-25) Forever Style's name box: Show Name picks which name, as in Raid Style
+do
+    local tile = { index = 1, btTexts = { health = {}, power = {} } }
+    local full = ns.BarText.FullOf
+    assert(full("lastname") == "lastname" and full("firstname") == false and full("fullname") == true)
+    local found
+    for _, item in ipairs(holder.settings) do if item.name == "Show Name" then found = (found or 0) + 1 end end
+    assert(found == 1, "one Show Name row")
+end
+
+-- (11-25) a secret PvP flag (battlegrounds): the crest is drawn and the flag sets its alpha, unread
+do
+    local icon, member = a.PvPIcon, unit[a.fuiUnit]
+    local alpha
+    local raidIcons = party.raid.icons
+    party.raid.icons = { pvp = { shown = true } }   -- (the style on now)
+    function icon:SetAlphaFromBoolean(value) alpha = value end
+    member.pvp = true
+    pf.UpdatePvP(a)
+    assert(icon:IsShown() and alpha == nil)
+    member.pvp = "hidden"
+    pf.UpdatePvP(a)
+    assert(icon:IsShown() and alpha == "hidden")
+    icon:SetAlpha(0)
+    member.pvp = true
+    pf.UpdatePvP(a)
+    assert(icon:IsShown() and icon:GetAlpha() == 1)
+    icon.SetAlphaFromBoolean = nil
+    member.pvp = "hidden"
+    pf.UpdatePvP(a)
+    assert(not icon:IsShown())
+    member.pvp = false
+    pf.UpdatePvP(a)
+    assert(not icon:IsShown())
+    party.raid.icons = raidIcons
+end
+
 -- a tile with the Elite & Rare skull (the boss frames'): gold or silver border with it, bronze without it
 -- and in the ring styles
 do

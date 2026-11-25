@@ -119,6 +119,26 @@ assert(width == f:GetWidth() and height == f:GetHeight() and p.root:IsVisible())
 assert(p.health:GetValue() == 0.15 and p.execMark:IsShown() and p.execTint:GetAlpha() == 1)
 assert(p.targetTint:IsShown() and p.targetGlow:IsShown() and p.discGlow:IsShown())
 assert(p.arrows.left:IsShown() and p.arrows.right:IsShown() and not p.arrows.top:IsShown())
+-- (11-25) the quest mark: its own art, half as wide as tall as the art is, 2 from the plate
+do
+    local w, h = p.quest:GetSize()
+    assert(w / h == 0.5 and p.quest:GetTexture():find("QuestMark", 1, true))
+    assert(math.abs((select(4, p.quest:GetPoint(1)))) == 2 + p.sideRoom[p.questSide])
+    assert(p.questPad == math.floor(w * 0.14 + 0.5))
+end
+-- (11-25) Target Highlight: the bar only gets brighter, and its colour is fixed
+do
+    local tint, set = nil, p.targetTint.SetColorTexture
+    p.targetTint.SetColorTexture = function(_, ...) tint = { ... } end
+    plates.LayoutTargetLook(p, plates.TypeDB("enemyNpc"), 19, false)
+    p.targetTint.SetColorTexture = set
+    plates.PlaceSides(p)
+    assert(tint[1] == 1 and tint[2] == 1 and tint[3] == 1 and tint[4] < 0.3, "white, whatever the colours are")
+    local palette, custom = db.palette, db.customColors
+    db.palette, db.customColors = "custom", { target = { 0.1, 0.2, 0.3 }, cast = { 0.4, 0.5, 0.6 } }
+    assert(plates.Color("target")[1] == plates.C.COLORS.target[1])
+    db.palette, db.customColors = palette, custom
+end
 -- the arrows push what sits beside the plate away, and only while they show
 do
     local a, room = p.arrows.right, plates.ArrowRoom(p, "right")
@@ -355,6 +375,22 @@ assert(simplified[token] == false and cvars.nameplateSelectedScale == "1" and cv
 assert(live.threatKey == "gaining" and live.threatText:GetText() == "80%")
 -- (11-23, #145) Threat Percentage in its own box, on the side away from the level, never in its place
 assert(live.threatInLevel == false and live.threatBoxOn and live.threatBox:IsShown())
+-- (11-25) the threat box is part of the plate: your target's border colour and Outer Glow reach it too
+do
+    local tdb = live.tdb
+    live.tdb = setmetatable({ targetGlow = true, targetBorder = true }, { __index = tdb })
+    live.targetShown, live.borderDirty = true, true
+    plates.UpdateTargetLook(live)
+    plates.PaintBorder(live)
+    assert(live.threatGlow:IsShown() and live.targetGlow:IsShown())
+    local r, g, b = live.threatBoxBorder:GetBackdropBorderColor()
+    local r2, g2, b2 = live.border:GetBackdropBorderColor()
+    assert(r == r2 and g == g2 and b == b2)
+    live.targetShown, live.borderDirty, live.tdb = false, true, tdb
+    plates.UpdateTargetLook(live)
+    plates.PaintBorder(live)
+    assert(not live.threatGlow:IsShown())
+end
 -- Threat Percentage: In a Group, In an Instance (the old switch's true is Always, its false Off)
 do
     local tdb, group, instance = live.tdb, env.IsInGroup, env.IsInInstance
@@ -1165,6 +1201,63 @@ petThreat = 1
 assert(not plates.PetHolds(token))
 plates.UpdateColor(live)
 assert(live.threatKey == "lost", "tank: nobody of ours holds it -> " .. tostring(live.threatKey))
+-- (11-25) a hunter's plates don't fade up close: no Wing Clip yet, or between it and the shots' reach
+do
+    local names = { "UnitClass", "C_Spell" }
+    local old = {}
+    for _, name in ipairs(names) do old[name] = env[name] end
+    local close, answers = ns.HunterClose, { spell75 = false, spell2974 = false }
+    local near = false
+    ns.HunterClose = function() return near end
+    env.UnitClass = function() return "Hunter", "HUNTER" end
+    env.C_Spell = setmetatable({ GetSpellName = function(id) return "spell" .. id end,
+        IsSpellInRange = function(name) return answers[name] end }, { __index = old.C_Spell })
+    local ids = {}
+    for id, name in pairs(plates.C.RANGE_NAMES) do ids[id] = name end
+    wipe = wipe or function(t) for k in pairs(t) do t[k] = nil end end
+    wipe(plates.C.RANGE_NAMES)
+    local tdb, set = live.tdb, plates.SetRangeAlpha
+    live.tdb = setmetatable({ rangeAlpha = 0.5 }, { __index = tdb })
+    local alpha
+    plates.SetRangeAlpha = function(_, a) alpha = a end
+    local function at() alpha = nil plates.UpdateRange(live) return alpha end
+    assert(at() == 0.5, "far")
+    near = true
+    assert(at() == 1, "in the gap")
+    near, answers.spell2974 = false, nil
+    assert(at() == 1, "no Wing Clip yet")
+    answers.spell75 = true
+    assert(at() == 1)
+    plates.SetRangeAlpha, live.tdb, ns.HunterClose = set, tdb, close
+    wipe(plates.C.RANGE_NAMES)
+    for id, name in pairs(ids) do plates.C.RANGE_NAMES[id] = name end
+    for _, name in ipairs(names) do env[name] = old[name] end
+end
+-- (11-25) Caster: by having mana at all where how much is hidden (dungeons), by how much where it isn't
+do
+    local names = { "UnitPowerType", "UnitPowerMax", "UnitHasPowerType", "UnitIsPlayer" }
+    local old = {}
+    for _, name in ipairs(names) do old[name] = env[name] end
+    local kind, max, has = 0, 500, true
+    env.UnitPowerType = function() return kind end
+    env.UnitPowerMax = function() return max end
+    env.UnitHasPowerType = function(_, power) return power == 0 and has end
+    env.UnitIsPlayer = function() return false end
+    local db = { colorCaster = true, mobTypesWhere = "everywhere" }
+    local function caster() return plates.MobRGB(token, db) ~= nil end
+    assert(caster())
+    max = 0
+    assert(not caster(), "no mana")
+    max = secret
+    assert(caster(), "hidden, but it has mana")
+    has = false
+    assert(not caster())
+    has, kind = true, 1
+    assert(not caster(), "rage")
+    kind, env.UnitHasPowerType = 0, nil
+    assert(not caster(), "nothing to ask")
+    for _, name in ipairs(names) do env[name] = old[name] end
+end
 -- (11-25) Threat Percentage's colour by Role
 local function ThreatTextRed(status, held)
     local colour, holds = env.GetThreatStatusColor, plates.OtherTankHolds
@@ -1401,6 +1494,30 @@ do
     plates.Layout(live)
 end
 assert(live.root:GetScale() == 1.18 and live.root:GetAlpha() == 0.77 and live.holder:GetAlpha() == 0.7)
+-- (11-25) Show Target's Plate: the whole plate while it's the target, in and out of a fight, the name alone after
+do
+    local function now() nextFrame() return assert(plates.PartsFor(gamePlate)) end
+    local function target(on) aliases.target = on and gamePlate or nil send("PLAYER_TARGET_CHANGED") return now() end
+    local was = aliases.target
+    assert(not plates.AnyTargetFull() and target(true).nameOnly, "off to start")
+    target(false)
+    plates.TypeSet("enemyNpc", "nameOnlyTarget", true)
+    profileEvent("OnProfileChanged")
+    assert(plates.AnyTargetFull() and now().nameOnly, "not the target yet")
+    local full = target(true)
+    assert(not full.nameOnly and full.layFull and full.health:IsShown())
+    ui.combat = true
+    assert(target(false).nameOnly, "in a fight too")
+    assert(not target(true).nameOnly)
+    ui.combat = false
+    assert(target(false).nameOnly)
+    plates.TypeSet("enemyNpc", "nameOnlyTarget", nil)
+    profileEvent("OnProfileChanged")
+    aliases.target = was
+    send("PLAYER_TARGET_CHANGED")
+    live = now()
+    assert(live.nameOnly and live.root:GetAlpha() == 0.77, tostring(live.root:GetAlpha()))
+end
 reads = {}
 testMob.health = 13
 live.events:RunScript("OnEvent", "UNIT_HEALTH", token)
@@ -1612,7 +1729,7 @@ do
     local access, painted, glow = env.canaccessvalue, {}, {}
     env.canaccessvalue = function(v) return not (type(v) == "table" and getmetatable(v) == mt) end
     local q = { health = { SetStatusBarColor = function(_, r) painted[#painted + 1] = r end }, targetGlow = { parts = {}, IsShown = function() return false end },
-        levelGlow = { parts = {} }, discGlow = { parts = {} } }
+        levelGlow = { parts = {} }, threatGlow = { parts = {} }, discGlow = { parts = {} } }
     q.targetGlow.parts[1] = { SetVertexColor = function(_, r) glow[#glow + 1] = r end }
     plates.PaintGlow(q)
     assert(glow[1] == 1, "no colour yet: white")

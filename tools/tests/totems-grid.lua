@@ -31,6 +31,7 @@ function Widget:SetDrawEdge(value) self.drawEdge = value end
 function Widget:SetSwipeTexture(value) self.swipeTexture = value end
 function Widget:SetEdgeTexture(value) self.edgeTexture = value end
 function Widget:SetReverse(value) self.reverse = value end
+Widget.RemoveMaskTexture = Widget.RemoveMaskTexture or function() end
 
 local parent = env.CreateFrame("Frame", "PlayerFrame", env.UIParent)
 local gameTotems = env.CreateFrame("Frame", "TotemFrame", parent)
@@ -85,6 +86,45 @@ ns.Totems.SetFaded(true)
 assert(not all[1]:IsMouseEnabled())
 ns.Totems.SetFaded(false)
 assert(all[1]:IsMouseEnabled())
+
+-- (11-25) Aura Icon Shape: Square swaps the round mask and the ring for the square border, and back
+do
+    local button = all[1]
+    local frame = env.CreateFrame("Frame", nil, button)
+    frame.Cooldown = cooldown
+    frame.Texture, frame.TextureMask = frame:CreateTexture(), frame:CreateMaskTexture()
+    local masks = { [frame.TextureMask] = true }
+    function frame.Texture:AddMaskTexture(m) masks[m] = true end
+    function frame.Texture:RemoveMaskTexture(m) masks[m] = nil end
+    local old = button.Icon
+    button.Icon = frame
+    frame:SetSize(22, 22)
+    ns.Totems.ApplyLayout()
+    assert(not button.FlareUI_Square and masks[frame.TextureMask], "Round to start: Blizzard's button untouched")
+    db.totems.shape, db.totems.swipe, db.totems.timer = "square", "both", "bottom"
+    ns.Totems.ApplyLayout()
+    local p = button.FlareUI_Square
+    assert(p.border:IsShown() and button.Border:GetAlpha() == 0 and masks[p.mask] and not masks[frame.TextureMask])
+    assert(p.border:GetTexture():find("IconBorder", 1, true) and frame:GetWidth() > 22 and frame:GetWidth() < p.border:GetWidth())
+    assert(cooldown:GetWidth() == p.border:GetWidth() and cooldown.circular == false and cooldown.swipeTexture:find("IconMask", 1, true))
+    assert(select(2, duration:GetPoint()) == p.border)
+    db.totems.swipe = "icon"
+    ns.Totems.ApplyLayout()
+    assert(cooldown:GetWidth() == frame:GetWidth() and cooldown.drawEdge)
+    db.totems.swipe = "border"
+    ns.Totems.ApplyLayout()
+    assert(cooldown.swipeTexture:find("BorderThick", 1, true) and not cooldown.drawEdge and cooldown.drawSwipe)
+    db.totems.swipe = "none"
+    ns.Totems.ApplyLayout()
+    assert(not cooldown.drawSwipe and not cooldown.drawEdge)
+    db.totems.shape, db.totems.swipe = nil, "both"
+    ns.Totems.ApplyLayout()
+    assert(not p.border:IsShown() and button.Border:GetAlpha() == 1 and masks[frame.TextureMask] and not masks[p.mask])
+    assert(frame:GetWidth() == 22 and cooldown.circular == true)
+    button.Icon = old
+    db.totems.swipe, db.totems.timer = "none", "none"
+    ns.Totems.ApplyLayout()
+end
 
 ui.editing = true
 edit.enter()

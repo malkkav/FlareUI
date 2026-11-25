@@ -48,6 +48,28 @@ env.GetDifficultyColor = function() return "challenging" end
 env.GetQuestDifficultyColor = function(level) return "level " .. level end
 eq(ns.UnitShownLevel("boss"), -1)
 eq(ns.UnitShownLevel("target"), 42)
+-- (11-25) HunterClose: an enemy within about 10 yards, by the items that answer
+do
+    local class, can, item, readable = env.UnitClass, env.UnitCanAttack, env.C_Item, env.canaccessvalue
+    local answers, attack, asked = {}, true, 0
+    env.UnitClass = function() return "Hunter", "HUNTER" end
+    env.UnitCanAttack = function() return attack end
+    env.canaccessvalue = function(v) return v ~= "hidden" end
+    env.C_Item = { IsItemInRange = function(id) asked = asked + 1 if answers[id] == "error" then error("no") end return answers[id] end }
+    eq(ns.HunterClose("target"), false)
+    answers[ns.CLOSE_ITEMS[1]], answers[ns.CLOSE_ITEMS[2]], answers[ns.CLOSE_ITEMS[3]] = "hidden", "error", false
+    eq(ns.HunterClose("target"), false)
+    answers[ns.CLOSE_ITEMS[4]] = true
+    eq(ns.HunterClose("target"), true)
+    asked, attack = 0, false
+    eq(ns.HunterClose("target"), false)
+    attack = "hidden"
+    eq(ns.HunterClose("target"), false)
+    env.UnitClass = function() return "Mage", "MAGE" end
+    eq(ns.HunterClose("target"), false)
+    eq(asked, 0)
+    env.UnitClass, env.UnitCanAttack, env.C_Item, env.canaccessvalue = class, can, item, readable
+end
 eq(ns.UnitLevelColor("pet", 12).g, 0.82)
 eq(ns.UnitLevelColor("target", 42), "challenging")
 eq(ns.UnitLevelColor("boss", 50), "level 50")

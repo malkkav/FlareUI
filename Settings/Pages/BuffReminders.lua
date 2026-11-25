@@ -32,24 +32,42 @@ Row{ key = "br.extras", kind = "dropdown", tab = "reminders", path = "auras.remi
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ExtraKeys() or {}, empty = "none" } }
 Row{ key = "br.playstyle", kind = "choice", tab = "reminders", path = "auras.reminder.playstyle",
     choices = { "auto", "melee", "caster", "healer", "tank" } }
--- Consumables: Food and Flask on or off (where it shows is on the When and Where tab), then the elixirs
+-- Consumables: one dropdown of toggles, food, flask and elixirs (where they show is on the When and Where
+-- tab), then the elixirs' rows. auras.reminder.consumables is off with none ticked, else where they show.
 local function ConsumablesOn() return (S:GetPath("auras.reminder.consumables") or "off") ~= "off" end
-Row{ key = "br.consumables", tab = "reminders",
-    get = ConsumablesOn,
-    set = function(on)
-        S:SetPath("auras.reminder.consumables", on and (S:GetPath("auras.reminder.consumablesWhere") or "instance") or "off")
+local CONSUMABLES = { { "food", "food" }, { "flask", "flask" }, { "elixirs", "elixirOn" } }
+local CONSUMABLE_SPEC = { exclusive = { "none" }, tokens = { "food", "flask", "elixirs" }, empty = "none" }
+local function ElixirsOn() return ConsumablesOn() and S:GetPath("auras.reminder.elixirOn") ~= false end
+Row{ key = "br.consumables", kind = "dropdown", tab = "reminders", toggles = CONSUMABLE_SPEC,
+    choices = { "none", { divider = true }, "food", "flask", "elixirs" },
+    get = function()
+        if not ConsumablesOn() then return "none" end
+        local on = {}
+        for _, c in ipairs(CONSUMABLES) do if S:GetPath("auras.reminder." .. c[2]) ~= false then on[#on + 1] = c[1] end end
+        return #on > 0 and table.concat(on, ",") or "none"
     end,
-    resetValue = function() return false end }
+    set = function(value)
+        local set = ns.Conditions.Set(value, CONSUMABLE_SPEC)
+        local any = false
+        for _, c in ipairs(CONSUMABLES) do
+            any = any or set[c[1]]
+            S:SetPath("auras.reminder." .. c[2], set[c[1]] and true or false)
+        end
+        local mode = "off"
+        if any then mode = ConsumablesOn() and S:GetPath("auras.reminder.consumables") or S:GetPath("auras.reminder.consumablesWhere") or "instance" end
+        S:SetPath("auras.reminder.consumables", mode)
+    end,
+    resetValue = function() return "none" end }
 -- which elixirs are watched, and each or any one of them
 Row{ key = "br.elixirSource", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
-    choices = { "ticked", "bags" }, disabled = function() return not ConsumablesOn() end }
+    choices = { "ticked", "bags" }, disabled = function() return not ElixirsOn() end }
 Row{ key = "br.elixirMode", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
-    choices = { "each", "any" }, disabled = function() return not ConsumablesOn() end }
+    choices = { "each", "any" }, disabled = function() return not ElixirsOn() end }
 Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.reminder.elixirs", parent = "br.consumables",
     choices = function() return BR() and BR().ElixirChoices() or {} end,
     toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
     -- (with Those in Your Bags the ticks don't count)
-    disabled = function() return not ConsumablesOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
+    disabled = function() return not ElixirsOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
 -- Upkeep: one dropdown of toggles over auras.reminder.<key>
 local UPKEEP = { "weaponOil", "supplies", "durability", "trinkets", "camping", "gathering" }
 local UPKEEP_SPEC = { exclusive = { "none" }, tokens = UPKEEP, empty = "none" }

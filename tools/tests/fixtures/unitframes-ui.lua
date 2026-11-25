@@ -51,7 +51,7 @@ return function(db)
     env.GetClassAtlas = function(class) return "Class/" .. class end
     env.GetClassAtlasName = env.GetClassAtlas
     env.SetPortraitTexture = function(tex, unit) tex:SetTexture("Portrait/" .. unit) end
-    env.canaccessvalue = function() return true end
+    env.canaccessvalue = function(v) return v ~= "hidden" end   -- ("hidden": a secret value)
 
     local Widget = getmetatable(env.UIParent)
     function Widget:SetTexCoord(...) self.coords = { ... } end

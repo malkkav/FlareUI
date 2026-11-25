@@ -233,9 +233,14 @@ menus["Never Remind Me"]()
 assert(not iconFor("custom2") and db.hidden["PRIEST:custom2"])
 br.SetCustom("c2,c3")
 assert(#br.CustomChoices() == 2 and not iconFor("custom2") and iconFor("custom3"))
+-- (11-25) the ticks stand for the reminders, not their places: the open menu's others stay theirs
+assert(br.CustomValue() == "c2,c3" and br.CustomChoices()[1][1] == "c2" and br.CustomChoices()[1][2] == "Beta Buff")
+br.SetCustom("c2,c3")
+assert(#br.CustomChoices() == 2, "a second click removes nothing it didn't untick")
 br.AddCustom("Delta Buff")
 assert(iconFor("custom4") and not iconFor("custom2"))
-br.SetCustom("c2,c3")
+br.SetCustom("c3,c4")
+assert(br.CustomChoices()[1][2] == "Gamma Buff" and iconFor("custom3") and iconFor("custom4"))
 assert(db.hidden["PRIEST:custom2"] == nil, "removed: no longer remembered as hidden")
 br.SetCustom("none")
 assert(#br.CustomChoices() == 0)
@@ -306,6 +311,7 @@ ns.CharDB().buffFood = 123
 instance, db.consumables, db.flask, db.durability = "party", "instance", false, true
 br.Update()
 assert(iconFor("food"):GetAttribute("item") == "item:123")
+assert(not iconFor("flask"), "food without flask")
 assert(iconFor("durability").count:GetText() == "10%")
 
 class, role, group = "HUNTER", "DAMAGER", false
@@ -343,6 +349,27 @@ ui:emit("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 688)
 br.Update()
 assert(iconFor("pet"):GetAttribute("spell") == "Summon Imp")
 assert(iconFor("healthstone"):GetAttribute("spell") == "Create Healthstone")
+-- (11-25) the pet that's out is the last one used too, however it was summoned
+do
+    local family = 16
+    env.UnitCreatureFamily = function(unit) if unit == "pet" then return "Demon", family end end
+    pet = true
+    br.Update()
+    pet = false
+    br.Update()
+    assert(ns.CharDB().lastSummon == 697 and iconFor("pet"):GetAttribute("spell") == "Summon Voidwalker")
+    -- a hidden or unknown kind keeps what was known
+    for _, kind in ipairs({ "hidden", 4 }) do
+        family, pet = kind, true
+        br.Update()
+        pet = false
+        br.Update()
+        assert(ns.CharDB().lastSummon == 697)
+    end
+    env.UnitCreatureFamily = nil
+    ns.CharDB().lastSummon = 688
+    br.Update()
+end
 -- Demonic Sacrifice: only with Demonic Pact known too (a click on it costs the pet otherwise)
 pet, known[18788] = true, true
 br.Resolve()
@@ -399,6 +426,28 @@ db.blessingPlayer = nil
 db.blessingClass = { WARRIOR = "wisdom" }
 br.Update()
 assert(blessing:GetAttribute("spell") == "Blessing of Wisdom")
+-- (11-25, #196) Greater Blessings: the greater rank you know, for a member whose class all get the same one
+do
+    known[25782], names[25782] = true, "Greater Blessing of Might"
+    db.blessingClass = { WARRIOR = "might" }
+    auras.player["Blessing of Wisdom"] = { expirationTime = 1000 }
+    br.Resolve()
+    br.Update()
+    assert(blessing:GetAttribute("spell") == "Blessing of Might", "off: the normal one")
+    db.greaterBlessings = true
+    br.Update()
+    assert(blessing:GetAttribute("spell") == "Greater Blessing of Might" and blessing:GetAttribute("unit") == "party1")
+    -- one of the class is picked for another blessing: the normal one for this member
+    db.blessingPlayer = { ["Unit-player"] = { key = "wisdom" } }
+    local was = env.UnitClass
+    env.UnitClass = function(unit) if unit == "player" then return "Warrior", "WARRIOR" end return was(unit) end
+    br.Update()
+    assert(blessing:GetAttribute("spell") == "Blessing of Might")
+    env.UnitClass, db.blessingPlayer, db.greaterBlessings, db.blessingClass = was, nil, nil, nil
+    known[25782] = nil
+    auras.player = {}
+    br.Resolve()
+end
 auras.player = { ["Concentration Aura"] = { expirationTime = 0, sourceUnit = "player" } }
 br.Update()
 assert(not iconFor("aura") and ns.CharDB().lastPaladinAura)
@@ -433,7 +482,19 @@ br.Update()
 assert(iconFor("giants"):GetAttribute("item") == "item:2454")
 bag[2454] = 0
 auras.player, bag[3383] = {}, 0
-assert(br.ElixirChoices()[3][1] == br.ElixirKeys()[1] and br.ExtraChoices()[3][1] == br.ExtraKeys()[1])
+-- (11-25) the elixir families by what they give, in the game's words where it has them; every key stays pickable
+do
+    env.SPELL_STAT2_NAME = "Beweglichkeit"
+    local list, keys, at = br.ElixirChoices(), {}, {}
+    for i, c in ipairs(list) do if c[1] then keys[c[1]], at[c[1]] = c[2], i end end
+    env.SPELL_STAT2_NAME = nil
+    assert(list[1][1] == "none" and keys.greaterAgility == "Beweglichkeit" and keys.giants == "Strength" and keys.superiorDefense == "Armour")
+    assert(keys.mongoose == "Item 13452" and at.mongoose > at.greaterAgility, "the ones of a kind by name, after the families")
+    local n = 0
+    for _, key in ipairs(br.ElixirKeys()) do assert(keys[key], key) n = n + 1 end
+    assert(#list == n + 3, "none and two dividers")
+end
+assert(br.ExtraChoices()[3][1] == br.ExtraKeys()[1])
 
 class, role = "SHAMAN", "HEALER"
 known = { [8024] = true }

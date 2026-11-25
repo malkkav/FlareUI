@@ -474,10 +474,10 @@ local function TypeDefault(key)
     return np.PresetValue(np.C.DEFAULT_PRESET[PIN.kind] or "full", key, PIN.kind)
 end
 -- NAME ONLY MODE: with it on, the type's other rows on its own tabs grey out (a
--- Name Only plate draws none of them), unless Show Plates in Combat gives it its bar in a fight
+-- Name Only plate draws none of them), unless Show Plates in Combat or Show Target's Plate gives it its bar
 local OWN_TABS = { style = true, extras = true, cast = true, auras = true }
 local function NameOnlyLocked()
-    if TV("plate") ~= "name" then return false end
+    if TV("plate") ~= "name" or TV("nameOnlyTarget") then return false end
     local v = S:GetPath("nameplates.combatPlates")
     if type(v) == "string" then
         for t in v:gmatch("[^,]+") do if t == PIN.kind then return false end end
@@ -491,7 +491,7 @@ local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true }
 local function Row(def)
     def.apply = def.apply or Refresh
     if def.tab == "visibility" and not FLAREUI_ONLY[def.key] and def.ignoreModule == nil then def.ignoreModule = true end
-    if OWN_TABS[def.tab] and def.section ~= "np.nameOnlySection" then
+    if OWN_TABS[def.tab] and def.section ~= "np.nameOnlySection" and not def.inNameOnly then
         local own = def.disabled
         def.disabled = function()
             if NameOnlyLocked() then return true end
@@ -734,6 +734,7 @@ Row{ key = "np.showTitles", tab = "style", section = "np.nameOnlySection", half 
 -- the player types only: NPCs have no guild
 Row{ key = "np.showGuild", path = "showGuild", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
     hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
+Row{ key = "np.nameOnlyTarget", path = "nameOnlyTarget", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff }
 Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
     choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
     toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },
@@ -901,9 +902,10 @@ Row{ key = "np.mobTypes", kind = "dropdown", tab = "extras", section = "np.speci
     resetValue = function() return "none" end }
 Row{ key = "np.mobTypesWhere", kind = "choice", path = "mobTypesWhere", choices = { "instances", "everywhere" }, tab = "extras", section = "np.specialColors",
     disabled = NoMobTypes }
--- Party Colour (the old Group Colour's saved switch) and Raid Colour (never set: follows it)
-Row{ key = "np.groupColor", path = "groupColor", tab = "extras", section = "np.specialColors", half = true }
-Row{ key = "np.raidColor", tab = "extras", section = "np.specialColors", half = true,
+-- Party Colour (the old Group Colour's saved switch) and Raid Colour (never set: follows it). They colour
+-- names, so they count in Name Only Mode too (inNameOnly: not greyed there)
+Row{ key = "np.groupColor", path = "groupColor", tab = "extras", section = "np.specialColors", half = true, inNameOnly = true }
+Row{ key = "np.raidColor", tab = "extras", section = "np.specialColors", half = true, inNameOnly = true,
     get = function()
         local v = TV("raidColor")
         if v == nil then v = TV("groupColor") end

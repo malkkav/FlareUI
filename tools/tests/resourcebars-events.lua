@@ -128,6 +128,34 @@ currentType, currentToken = 3, "ENERGY"
 send("UNIT_DISPLAYPOWER", "player")
 assert(mana:IsShown() and combo:IsShown() and combo.segments[5]:GetValue() == 2)
 assert(power.Bar:GetValue() == 70 and mana.Bar:GetValue() == 60)
+-- (11-25) Bar Edge Glow on the power and mana bars: its alpha through a curve, none while empty or full
+do
+    local K, seen = ns.UnitFrames.Kit, {}
+    local update, alpha = K.BarLookUpdate, K.PowerEdgeAlpha
+    K.BarLookUpdate = function(bar, unit, changed, _, a) seen[bar] = { unit, changed, a } end
+    K.PowerEdgeAlpha = function(kind) return kind == 0 and 0.25 or 0.75 end
+    send("UNIT_POWER_FREQUENT", "player", "MANA")
+    assert(not seen[mana.Bar], "off to start")
+    config.bars.mana.barEdgeGlow, config.bars.power.barEdgeGlow = true, true
+    ui.time = ui.time + 1
+    send("UNIT_POWER_FREQUENT", "player", "MANA")
+    assert(seen[mana.Bar][1] == "player" and seen[mana.Bar][2] == false and seen[mana.Bar][3] == 0.25)
+    send("UNIT_POWER_FREQUENT", "player", "ENERGY")
+    assert(seen[power.Bar][3] == 0.75)
+    config.bars.mana.barEdgeGlow, config.bars.power.barEdgeGlow = nil, nil
+    K.BarLookUpdate, K.PowerEdgeAlpha = update, alpha
+    ui.time = ui.time + 1
+    local percent, curves = env.UnitPowerPercent, env.C_CurveUtil
+    local points = {}
+    env.C_CurveUtil = { CreateCurve = function() return { SetType = function() end, AddPoint = function(_, x, y) points[x] = y end } end }
+    env.Enum.LuaCurveType = env.Enum.LuaCurveType or { Step = 1 }
+    ns.UnitFrames.powerEdgeCurve = nil
+    env.UnitPowerPercent = function() return 0.5 end
+    assert(alpha(0) == 0.5 and points[0] == 0 and points[0.001] == 1 and points[1] == 0)
+    env.UnitPowerPercent = function() error("not here") end
+    assert(alpha(0) == 1)
+    env.UnitPowerPercent, env.C_CurveUtil, ns.UnitFrames.powerEdgeCurve = percent, curves, nil
+end
 state.power, state.mana = 52, 57
 send("UNIT_POWER_FREQUENT", "player", "MANA")
 assert(power.Bar:GetValue() == 70 and mana.Bar:GetValue() == 57)
@@ -216,4 +244,49 @@ assert(hp.Bar:GetValue() == 20 and not timer:IsShown() and not main:IsShown())
 move[hp](hp, "Modern", "BOTTOM", 4.4, 20.6)
 callbacks.layout("Modern")
 assert(hp:GetPoint() == "BOTTOM" and select(5, hp:GetPoint()) == 21)
+-- (11-25) a flight started in a conversation (the druids' Moonglade flight): learned by the answer picked
+do
+    local flight, global = rb.Flight, ns.db.global
+    ns.db.global = {}
+    local onTaxi, options = false, { { orderIndex = 3, gossipOptionID = 512 } }
+    env.UnitOnTaxi = function() return onTaxi end
+    env.C_GossipInfo = { SelectOption = function() end, SelectOptionByIndex = function() end, GetOptions = function() return options end }
+    env.GetMinimapZoneText = function() return "Rut'theran Village" end
+    env.time = env.time or os.time
+    flight.initialized, flight.now, flight.pending = nil, nil, nil
+    local function handler() ui:emit("PLAYER_CONTROL_LOST") end
+    local after = env.C_Timer.After
+    env.C_Timer.After = function(_, fn) fn() end
+    flight.Init()
+    local function fly(pick, seconds)
+        pick()
+        onTaxi = true
+        handler()
+        local now = flight.now
+        ui.time = ui.time + seconds
+        onTaxi = false
+        handler()
+        return now
+    end
+    local first = fly(function() env.C_GossipInfo.SelectOptionByIndex(3) end, 95)
+    assert(first, "caught")
+    assert(first.key == "gossip 512" and first.keep and not first.total and not first.dest)
+    assert(ns.db.global.flightTimes["gossip 512"] == 95 and ns.db.global.flightPlaces["gossip 512"] == "Rut'theran Village")
+    local second = fly(function() env.C_GossipInfo.SelectOption(512) end, 94)
+    assert(second.total == 95 and second.dest == "Rut'theran Village")
+    -- an answer long before the flight isn't it
+    local stale = fly(function() env.C_GossipInfo.SelectOption(512) ui.time = ui.time + 60 end, 30)
+    assert(not stale.key and ns.db.global.flightTimes["gossip 512"] == 94)
+    -- a reload in the air carries it on
+    env.C_GossipInfo.SelectOption(512)
+    onTaxi = true
+    handler()
+    flight.now = nil
+    handler()
+    assert(flight.now.key == "gossip 512" and flight.now.dest == "Rut'theran Village")
+    onTaxi = false
+    handler()
+    env.C_Timer.After, ns.db.global = after, global
+end
+
 print("PASS: resource health, shapeshift power, swing timing, mirror timers and Edit Mode")

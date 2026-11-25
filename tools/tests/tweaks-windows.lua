@@ -119,6 +119,20 @@ assert(not book.moveName, "A protected window loaded in combat waits for lockdow
 ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(book.moveName == "SpellBookFrame" and book.TitleContainer.moveTarget == book)
+-- (11-25) TradeSkillMaster parks Blizzard's window off the screen: that one isn't kept on it
+do
+    local loaded, Frame = env.C_AddOns.IsAddOnLoaded, getmetatable(env.UIParent)
+    local clamp, set = {}, Frame.SetClampedToScreen
+    function Frame:SetClampedToScreen(on) clamp[self:GetName() or self] = on end
+    env.CreateFrame("Frame", "ProfessionsFrame", env.UIParent)
+    env.CreateFrame("Frame", "FriendsFrame", env.UIParent)
+    env.UIPanelWindows.ProfessionsFrame, env.UIPanelWindows.FriendsFrame = {}, {}
+    env.C_AddOns.IsAddOnLoaded = function(name) return name == "TradeSkillMaster" or loaded(name) end
+    ui:emit("ADDON_LOADED", "Blizzard_Professions")
+    ui:flushTimers()
+    assert(clamp.ProfessionsFrame == false and clamp.FriendsFrame == true)
+    env.C_AddOns.IsAddOnLoaded, Frame.SetClampedToScreen = loaded, set
+end
 local title = book.TitleContainer
 ui.leftDown = true
 title:RunScript("OnMouseDown", "LeftButton")

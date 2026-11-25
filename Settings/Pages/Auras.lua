@@ -32,12 +32,15 @@ S:Row{ key = "au.timer", kind = "choice", path = "auras.timer", choices = { "non
 S:Row{ key = "au.timerColor", path = "auras.timerColor", apply = Refresh, half = true,
     disabled = function() return S:GetPath("auras.timer") == "none" end }
 S:Row{ key = "au.arrive", path = "auras.arrive", apply = Refresh, half = true }
--- TOTEMS (from their Edit Mode dialog): the swipe and the time on the player's totems
+-- TOTEMS (from their Edit Mode dialog): the shape, the swipe and the time on the player's totems
 -- (unitframes.totems, Totems.lua StyleTotem). The totems come with FlareUI's player frame, not this module.
 local function TotemsRefresh() if ns.Totems and ns.Totems.ApplyLayout then ns.Totems.ApplyLayout() end end
 local function TotemsOff()
     return not (S:GetPath("unitframes.enabled") and S:GetPath("unitframes.units.player.enabled"))
 end
+S:Row{ key = "au.totemShape", kind = "choice", section = "au.totems", path = "unitframes.totems.shape", ignoreModule = true,
+    choices = { "round", "square" }, apply = TotemsRefresh, disabled = TotemsOff,
+    resetValue = function() return "round" end }
 S:Row{ key = "au.totemSwipe", kind = "choice", section = "au.totems", path = "unitframes.totems.swipe", ignoreModule = true,
     choices = { "none", "icon", "border", "both" }, apply = TotemsRefresh, disabled = TotemsOff,
     resetValue = function() return "both" end }

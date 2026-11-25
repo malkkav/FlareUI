@@ -95,7 +95,7 @@ local C = {
         -- Phase 2: mob types, focus, execute, your interrupt ready, group members
         boss = { 0.72, 0.25, 0.80 }, elite = { 0.90, 0.55, 0.20 }, caster = { 0.35, 0.55, 0.95 }, trivial = { 0.60, 0.60, 0.50 },
         -- (focus darker than the bright target colour, so the two stand apart)
-        focus = { 0.62, 0.42, 0.10 }, targetGlow = { 1.00, 1.00, 1.00 }, execute = { 1.00, 0.95, 0.40 }, kickReady = { 0.30, 0.72, 0.36 }, group = { 0.45, 0.75, 1.00 }, raid = { 1.00, 0.50, 0.00 },
+        focus = { 0.62, 0.42, 0.10 }, targetGlow = { 1.00, 1.00, 1.00 }, execute = { 1.00, 0.95, 0.40 }, kickReady = { 0.30, 0.72, 0.36 }, group = { 0.25, 0.95, 0.65 }, raid = { 1.00, 0.50, 0.00 },
     },
     -- debuffs first in a row, crowd control alone on the right, buffs on the right above the name
     FILTERS = {
@@ -111,7 +111,10 @@ local C = {
     -- (dispel: the ones you can dispel)
     FILTER_WORDS = { mine = "|PLAYER", dispel = "|RAID", purge = "|RAID_PLAYER_DISPELLABLE", important = "|IMPORTANT" },
     SIDE_GAP = 1,
-    QUEST_PAD = 0.3,          -- the empty share of the quest mark's art on each side of the "!"
+    QUEST_WIDTH = 0.5,        -- the quest mark: its art's width, as a share of its height
+    QUEST_PAD = 0.14,         -- the empty share of that art on each side of the "!"
+    QUEST_GAP = 2,            -- and its distance from the plate
+    TARGET_LIGHT = 0.18,      -- Target Highlight's Bar Colour: how much white is added
     PULSE_PERIOD = 0.8,       -- the shared pulse: one rise and fall, in seconds
     PULSE_LOW = 0.25,         -- and its faintest
     AURA_LINES = 2,           -- debuffs and buffs: two lines each at most
@@ -126,7 +129,7 @@ local C = {
     LEVEL_ATLAS = "ui-hud-nameplates-levelindicator",
     ELITE_GOLD = "nameplates-icon-elite-gold", ELITE_SILVER = "nameplates-icon-elite-silver",
     SHIELD_ATLAS = "nameplates-InterruptShield",
-    QUEST_ATLAS = "QuestNormal", QUEST_FILE = "Interface\\GossipFrame\\AvailableQuestIcon",
+    QUEST_FILE = "Interface\\AddOns\\FlareUI\\Media\\Art\\QuestMark",   -- Development/Tools/quest-mark
     -- Execute Range on Auto: the class's own execute spell, by name (any rank), and where it works
     EXECUTE = { WARRIOR = { 5308, 0.2 }, PALADIN = { 24275, 0.2 } },
     -- Out of Range Opacity: spells by name (any rank answers), never "next swing" attacks (in range
@@ -213,7 +216,7 @@ C.TYPE_KEYS = {
     castIcon = true, castTimer = true, castTarget = true, kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
     -- the Auras and Aura Positions sections
     auraStyle = true, auraSwipe = true, auraTimer = true, auraTimerColor = true, auraRows = true,
-    nameAbove = true, nameOnlyFull = true, castGlow = true,
+    nameAbove = true, nameOnlyFull = true, nameOnlyTarget = true, castGlow = true,
     -- the cast bar's own look; names by class on a full plate, guild colour, titles
     castTexture = true, castBorder = true, nameClassColor = true, guildColor = true, showTitles = true, showGuild = true,
 }
@@ -462,7 +465,10 @@ function NP.Palette()
     return db and db.palette == "custom" and "custom" or "flareui"
 end
 -- a colour { r, g, b }: yours on the Custom palette, else FlareUI's
+-- your target's is fixed (no colour of your own for it: C.FIXED_COLORS)
+C.FIXED_COLORS = { target = true }
 function NP.Color(key, preview)
+    if C.FIXED_COLORS[key] then return C.COLORS[key] end
     local cache = SettingsFor(preview)
     if cache then return cache.colors[key] or C.COLORS.hostile end
     local db = DB()
@@ -709,6 +715,7 @@ function NP.Build(parent, sample)
     end
     p.targetGlow = Glow(8, C.TARGET_GLOW)
     p.levelGlow = Glow(8, C.TARGET_GLOW)
+    p.threatGlow = Glow(8, C.TARGET_GLOW)   -- (the threat box: part of the plate, as the level box)
     p.discGlow = Glow(1, C.DISC_GLOW)
     p.discGlow.parts[1]:SetAllPoints()
     p.arrows = {}
@@ -1035,10 +1042,12 @@ function NP.LayoutThreat(p, db)
             local c = ns.BORDER_COLOR
             p.threatBoxBorder:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
             p.threatBoxBorder:Show()
+            p.borderDirty = true   -- (and your target's or threat's colour on it again: NP.PaintBorder)
         else
             p.threatBoxBorder:Hide()
         end
         fs:SetPoint("CENTER", box, "CENTER", 0, 0)
+        NP.PlaceGlow(p.threatGlow, box, box:GetWidth(), boxH)
     end
     -- (a plate laid out again while held: DoesItDie's bar follows, NP.DieProxy)
     if p.gamePlate then pcall(NP.DieProxy, p.gamePlate, p) end
@@ -1099,7 +1108,7 @@ function NP.PlaceSides(p, iconOn, textOn)
         or (threatShown and p.threatSide == "right" and p.threatBox) or p.box
     p.leftOf = leftOf
     if p.questie then pcall(NP.FixQuestie, p) end
-    local gap = C.SIDE_GAP
+    local gap, questGap = C.SIDE_GAP, C.QUEST_GAP
     local roomLeft, roomRight = NP.ArrowRoom(p, "left"), NP.ArrowRoom(p, "right")
     p.sideRoom = p.sideRoom or {}
     p.sideRoom.left, p.sideRoom.right = roomLeft, roomRight
@@ -1113,11 +1122,11 @@ function NP.PlaceSides(p, iconOn, textOn)
     -- (the progress beside the icon, or in its place with Objective Icon off)
     if iconOn == nil then iconOn, textOn = p.quest:IsShown(), p.questText:IsShown() end
     if questRight then
-        p.quest:SetPoint("LEFT", p.rightOf, "RIGHT", gap + roomRight, 0)
+        p.quest:SetPoint("LEFT", p.rightOf, "RIGHT", questGap + roomRight, 0)
         if iconOn then p.questText:SetPoint("LEFT", p.quest, "RIGHT", 1, 0)
         else p.questText:SetPoint("LEFT", p.rightOf, "RIGHT", gap + 1 + roomRight, 0) end
     else
-        p.quest:SetPoint("RIGHT", leftOf, "LEFT", -gap - roomLeft, 0)
+        p.quest:SetPoint("RIGHT", leftOf, "LEFT", -questGap - roomLeft, 0)
         if iconOn then p.questText:SetPoint("RIGHT", p.quest, "LEFT", -1, 0)
         else p.questText:SetPoint("RIGHT", leftOf, "LEFT", -gap - 1 - roomLeft, 0) end
     end
@@ -1214,6 +1223,7 @@ function NP.UpdateTargetLook(p)
     p.targetGlow:SetShown(glow and true or false)
     -- (the level box or disc glows with it: they and the bar read as one plate)
     p.levelGlow:SetShown(glow and p.levelFrame:IsShown() and true or false)
+    p.threatGlow:SetShown(glow and p.threatBoxShown and true or false)
     p.discGlow:SetShown(glow and p.levelAnchor == p.levelArt and p.levelArt:IsShown() and true or false)
     if glow then ApplyVisual(p, "PaintGlow") end
     local art = C.ARROWS[db.targetArrows or "off"]
@@ -1278,10 +1288,10 @@ end
 
 -- the highlight parts' look, at layout (the arrows' art turned to point at the plate)
 function NP.LayoutTargetLook(p, db, boxH, aurasUp)
-    local c = NP.Color("target", p.sample)
+    -- Bar Colour: white added to the bar's own colour, so it gets brighter and keeps its hue
     p.targetTint:ClearAllPoints()
     p.targetTint:SetAllPoints(p.fill)
-    p.targetTint:SetColorTexture(c[1], c[2], c[3], 0.3)
+    p.targetTint:SetColorTexture(1, 1, 1, C.TARGET_LIGHT)
     p.targetGlow:ClearAllPoints()
     -- (a glow in its own colour behind the plate: the plate hides its middle, so only a soft edge
     -- about 3 px wide shows round the bar and round the level box)
@@ -1708,9 +1718,9 @@ function NP.Layout(p)
     NP.LayoutTargetLook(p, db, h + 2 * pad, db.debuffs ~= "off")
     -- quest mark, its progress, crowd control, defensives and the raid marker beside the plate (NP.PlaceSides)
     local markSize = math_max(12, h + 2 * pad)
-    if C_Texture.GetAtlasInfo(C.QUEST_ATLAS) then p.quest:SetAtlas(C.QUEST_ATLAS) else p.quest:SetTexture(C.QUEST_FILE) end
-    p.quest:SetSize(markSize * 0.7, markSize)
-    p.questPad = math_floor(markSize * 0.7 * C.QUEST_PAD + 0.5)
+    p.quest:SetTexture(C.QUEST_FILE, nil, nil, "TRILINEAR")
+    p.quest:SetSize(markSize * C.QUEST_WIDTH, markSize)
+    p.questPad = math_floor(markSize * C.QUEST_WIDTH * C.QUEST_PAD + 0.5)
     ApplyFontTo(p.questText, db.healthFont)
     p.questText:SetTextColor(1, 0.82, 0)
     p.raid:SetSize(markSize, markSize)
@@ -1841,7 +1851,8 @@ function NP.Layout(p)
     NP.PlaceBelow(p)
     -- Plate: Bar (all of the above), Name Only (the name alone, centred, in its colour) or Hidden
     -- (Show Plates in Combat: a Name Only type picked there gets its bar in a fight, NP.CombatFull)
-    p.layFull = NP.CombatFull(db.kind, p.sample)
+    -- (and Show Target's Plate: a Name Only type gets it while it's your target)
+    p.layFull = NP.ShowsFull(db.kind, p)
     p.nameOnly = db.plate == "name" and not p.layFull
     p.hiddenPlate = db.plate == "hidden"
     p.health:SetShown(not p.nameOnly)
@@ -2106,6 +2117,7 @@ function NP.PaintGlow(p)
     if p.barSet then r, g, b = p.barR, p.barG, p.barB end
     for _, t in ipairs(p.targetGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
     for _, t in ipairs(p.levelGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
+    for _, t in ipairs(p.threatGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
     for _, t in ipairs(p.discGlow.parts) do t:SetVertexColor(r, g, b, C.GLOW_ALPHA) end
 end
 
@@ -2147,6 +2159,7 @@ function NP.UpdateThreatText(p, db)
             if p.threatBoxShown ~= boxShown then
                 p.threatBox:SetShown(boxShown)
                 p.threatBoxShown = boxShown
+                p.threatGlow:SetShown(boxShown and p.targetGlow:IsShown() or false)
                 -- the pieces on the right make room only while the box shows: out of a
                 -- fight they sit right beside the plate
                 RequestSideLayout(p)
@@ -2340,7 +2353,7 @@ function NP.NameAbovePick(db)
 end
 function NP.LayoutNameAbove(p, db)
     local slot, kind = NP.NameAbovePick(db)
-    local nameOnly = db.plate == "name" and not NP.CombatFull(db.kind, p.sample)
+    local nameOnly = db.plate == "name" and not p.layFull
     if not slot or nameOnly or db.plate == "hidden" then
         if p.aboveName then p.aboveName:Hide() end
         p.nameAboveLift, p.aboveKind = 0, nil
@@ -2624,6 +2637,7 @@ function NP.PaintBorder(p)
     end
     p.border:SetBackdropBorderColor(r, g, bl, a)
     p.levelBorder:SetBackdropBorderColor(r, g, bl, a)
+    p.threatBoxBorder:SetBackdropBorderColor(r, g, bl, a)
 end
 
 -- whether this plate's casts are an enemy's, which you could interrupt (Kick Ready and its mark)
@@ -2879,7 +2893,8 @@ function NP.UpdateExecute(p)
 end
 
 -- Mob type colours (Boss, Elite, Caster, Trivial; each its own switch), in instances only unless set
--- otherwise. A caster is an NPC with mana.
+-- otherwise. A caster is an NPC with mana: how much is hidden in dungeons, whether it has any is not
+-- (UnitHasPowerType, the idea after EllesmereUI).
 function NP.MobRGB(unit, db)
     if not (db.colorBoss or db.colorElite or db.colorCaster or db.colorTrivial) then return nil end
     if db.mobTypesWhere ~= "everywhere" then
@@ -2894,9 +2909,12 @@ function NP.MobRGB(unit, db)
     elseif db.colorElite and (classification == "elite" or classification == "rareelite") then c = NP.Color("elite")
     elseif db.colorTrivial and (classification == "trivial" or classification == "minus") then c = NP.Color("trivial")
     elseif db.colorCaster then
-        local powerType = Readable(UnitPowerType(unit))
-        local max = powerType == 0 and Readable(UnitPowerMax(unit, 0))
-        if type(max) == "number" and max > 0 then c = NP.Color("caster") end
+        if Readable(UnitPowerType(unit)) == 0 then
+            local max = Readable(UnitPowerMax(unit, 0))
+            local mana = type(max) == "number" and max > 0
+            if max == nil and UnitHasPowerType then mana = Readable(UnitHasPowerType(unit, 0)) end
+            if mana then c = NP.Color("caster") end
+        end
     end
     if c then return c[1], c[2], c[3] end
 end
@@ -3006,6 +3024,26 @@ end
 function NP.CombatFull(kind, preview)
     return state.combat and kind ~= nil and NP.CombatList(preview)[kind] or false
 end
+-- SHOW TARGET'S PLATE (per type, off): a Name Only type shows its whole plate while it is your target, in
+-- a fight and out of it. A new target lays out the two plates it changes (NP.Relayout).
+function NP.TargetFull(kind, preview)
+    return kind ~= nil and NP.TypeDB(kind, true, preview).nameOnlyTarget == true
+end
+function NP.AnyTargetFull()
+    for _, kind in ipairs(C.KINDS) do if NP.TargetFull(kind) then return true end end
+    return false
+end
+function NP.IsTarget(unit)
+    local plate = unit and C_NamePlate.GetNamePlateForUnit("target")
+    return plate ~= nil and plate == C_NamePlate.GetNamePlateForUnit(unit)
+end
+-- the whole plate for a Name Only type now; p: the plate (its unit, or the one it's being claimed for)
+function NP.ShowsFull(kind, p)
+    if NP.CombatFull(kind, p.sample) then return true end
+    if not NP.TargetFull(kind, p.sample) then return false end
+    if p.sample then return p.sampleTarget or false end
+    return NP.IsTarget(p.claimUnit or p.unit)
+end
 -- A fight began or ended: only the plates on screen whose look changes (a Name Only type picked in
 -- Show Plates in Combat) come off and are claimed again, which lays them out (no settings or game
 -- options touched: fine in a fight). Spare plates are laid out when claimed (NP.Claim checks layFull).
@@ -3013,7 +3051,7 @@ function NP.Relayout()
     if not NP.ready then return end
     local stale = {}
     for _, p in pairs(byPlate) do
-        if p.layFull ~= NP.CombatFull(p.layKind) then stale[#stale + 1] = p end
+        if p.layFull ~= NP.ShowsFull(p.layKind, p) then stale[#stale + 1] = p end
     end
     if #stale == 0 then return end
     for _, p in ipairs(stale) do NP.ReleasePlate(p) end
@@ -3027,7 +3065,7 @@ function NP.ComboAllowed(unit)
     if not want or not kind then return true end
     local tdb = NP.TypeDB(kind, true)
     -- a Name Only plate has no bar to hang them from (unless Show Plates in Combat gives it one)
-    if tdb.plate == "name" and not NP.CombatFull(kind) then return false end
+    if tdb.plate == "name" and not NP.ShowsFull(kind, { unit = unit }) then return false end
     return tdb.combo ~= false
 end
 function NP.QuestOn(preview)
@@ -3094,7 +3132,7 @@ function NP.UpdateRange(p)
     local list = C.RANGE[class]
     if class == "DRUID" and C.MELEE_FORMS[GetShapeshiftFormID and GetShapeshiftFormID() or 0] then list = C.RANGE.DRUID_MELEE end
     if not list then NP.SetRangeAlpha(p, 1) return end
-    local out, hasSecret, secret = false, false, nil
+    local out, hasSecret, secret, unknown = false, false, nil, false
     for _, id in ipairs(list) do
         -- (spell names by ID never change: looked up once)
         local name = C.RANGE_NAMES[id]
@@ -3112,9 +3150,13 @@ function NP.UpdateRange(p)
                 return
             elseif r == false then
                 out = true
+            else
+                unknown = true
             end
         end
     end
+    -- a hunter up close: no answer from Wing Clip (before level 12) or between it and the shots' reach
+    if out and class == "HUNTER" and (unknown or ns.HunterClose(p.unit)) then out = false end
     if hasSecret and pcall(p.holder.SetAlphaFromBoolean, p.holder, secret, 1, alpha) then p.rangeAlphaNow = nil return end
     NP.SetRangeAlpha(p, out and alpha or 1)
 end
@@ -3536,7 +3578,7 @@ function NP.Claim(unit)
     -- a spare plate already laid out for this type, else any (Test: every plate as the picked type)
     local look = NP.testKind or (NP.Peaceful(unit, kind) and "peaceful") or kind
     -- (and laid out for the fight as it stands now: Show Plates in Combat, NP.CombatFull)
-    local full = NP.CombatFull(look)
+    local full = NP.ShowsFull(look, { unit = unit })
     local p
     for i = #spare, 1, -1 do
         if spare[i].layKind == look and spare[i].layFull == full then p = table.remove(spare, i) break end
@@ -3551,7 +3593,9 @@ function NP.Claim(unit)
     p.kind, p.tdb = kind, NP.TypeDB(look, true)
     p.unitHidden = NP.UnitHidden(unit, kind)
     if p.layKind ~= look or p.layFull ~= full then
+        p.claimUnit = unit
         local okL, errL = pcall(NP.Layout, p)
+        p.claimUnit = nil
         if not okL then ns.LogError("Nameplates Layout", errL) end
     end
     if NP.Sab then pcall(NP.Sab.Prepare, p, unit) end
@@ -3863,6 +3907,7 @@ function NP:OnEvent(event, unit)
         NP.ReleaseUnit(unit)
     elseif event == "PLAYER_TARGET_CHANGED" then
         QueueWorld(D.TARGET)
+        if NP.AnyTargetFull() then NP.Relayout() end
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         QueueWorld(D.MOUSEOVER)
     elseif event == "RAID_TARGET_UPDATE" then

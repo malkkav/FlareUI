@@ -30,16 +30,40 @@ assert(target.Health:GetReverseFill() and not target.Portrait:IsShown())
 ui.combat = true
 local flare = assert(UF.DrawSample(player, "flareui", { preset = true, noClassColor = true }))
 assert(flare.left > 0 and flare.top > 0 and player.RingFrame:IsShown())
-assert(player.Portrait.ringMasked and player.RingFrame.artMasked)
+assert(player.Portrait.ringMasked and player.RingFrame.Art:GetTexture():find("Frames.Ring"))
 assert(player.RaidIcon:GetParent() == player.RingFrame.Icons)
 assert(player.Health.barColor[2] > player.Health.barColor[1], "preview can demonstrate the ordinary health colour")
 
 local forever = assert(UF.DrawSample(player, "forever", { preset = true }))
 assert(forever.left > 0 and player.PlateFrame:IsShown())
-assert(not player.Border:IsShown() and not player.RingFrame.artMasked)
+assert(not player.Border:IsShown() and player.RingFrame.hasArt)
 assert(player.Name:GetPoint() == "LEFT" and player.btStyle == "plate")
 assert(player.HealthTextMid:GetText():find("24000", 1, true), "Forever preview puts the maximum in the central health text")
 assert(#player.PlateFrame.pieces == 28 and not player.PlateFrame.Strip:IsShown())
+-- (11-25) the rims are in front of the bars and behind the texts, over each slot's wood
+do
+    local plate, level = player.PlateFrame, player:GetFrameLevel()
+    assert(plate.Front:GetFrameLevel() == level + 4 and player.Health:GetFrameLevel() < level + 4
+        and player.Overlay:GetFrameLevel() > level + 4, "bars, rims, texts")
+    for _, piece in ipairs(plate.pieces) do
+        assert(piece.parent == plate.Front and piece:GetTexture():find("Frames.Plate"))
+        for _, uv in ipairs({ piece:GetTexCoord() }) do assert(uv >= 0 and uv <= 1) end
+    end
+    local function box(region)
+        local t = {}
+        for i = 1, region:GetNumPoints() do
+            local point, _, _, x, y = region:GetPoint(i)
+            t[point] = { x, y }
+        end
+        return t.TOPLEFT[1], t.TOPLEFT[2], t.BOTTOMRIGHT[1], t.BOTTOMRIGHT[2]
+    end
+    for i, bar in ipairs({ player.Health, player.Power }) do
+        local a, b = { box(bar) }, { box(plate.backs[i + 1]) }
+        for k = 1, 4 do assert(a[k] == b[k], "the wood is as big as its bar") end
+        assert(plate.backs[i + 1]:IsShown())
+    end
+    assert(plate.backs[1]:IsShown() and not plate.backs[4]:IsShown(), "no second power slot")
+end
 -- (11-25) your own name box has no glow, with Class Colours on too
 do
     local on, sample, unit = ns.ClassColorsOn, player.fuiSample, player.fuiUnit
@@ -72,6 +96,39 @@ local mid = faceHeight("addon", 27, "CENTER")
 assert(mid == faceHeight("addon", 60, "CENTER"), "mid health bar follows the bar's set height")
 db.units.pet.icons = nil
 pet.Happiness = nil
+
+-- (11-25) The portrait, its dark disc, the tint and the bars' hole are centred on the painted ring, which is
+-- not the ring box's middle: further out from the bars and lower, mirrored with the ring. The portrait's
+-- edge stays under the rim (the painted opening is 26.2 art pixels in radius, the rim ends at 32.3).
+for _, style in ipairs({ "flareui", "forever" }) do
+    for _, f in ipairs({ player, target }) do
+        assert(UF.DrawSample(f, style, { preset = true }))
+        local ring = f.RingFrame
+        local art = ring:GetWidth() / 61.8
+        local point, relative, relPoint, x, y = ring.Centre:GetPoint()
+        local out = Ring.Side(f) == "LEFT" and -1 or 1
+        assert(point == "CENTER" and relative == ring and relPoint == "CENTER" and ring.Centre:GetWidth() == ring:GetWidth())
+        assert(math.abs(x - out * Ring.PAINTED.out * art) < 0.01 and math.abs(y + Ring.PAINTED.down * art) < 0.01, style)
+        for _, region in ipairs({ f.Portrait, ring.PortraitBack, ring.TintMask }) do
+            local p, rel, rp, rx, ry = region:GetPoint()
+            assert(p == "CENTER" and rel == ring.Centre and rp == "CENTER" and (rx or 0) == 0 and (ry or 0) == 0)
+        end
+        local radius = f.Portrait:GetWidth() / 2 / art
+        assert(radius > 26.2 and radius < 32.3, "the rim covers the portrait's edge")
+        assert(ring.TintMask:GetWidth() / 2 / art >= 32.3, "the tint reaches the rim's outer edge")
+        -- the ring's own picture, on the same centre: flipped with the side, 128 art pixels wide
+        assert(select(2, ring.Art:GetPoint()) == ring.Centre and math.abs(ring.Art:GetWidth() / art - 128) < 0.01)
+        local u1, u2 = ring.Art:GetTexCoord()
+        assert((u1 > u2) == (out < 0), "flipped on the left")
+        if style == "flareui" then
+            -- the painted circle stands on the bars' middle, however far off it its elements are placed from
+            local _, _, _, rx, ry = ring:GetPoint()
+            assert(math.abs(ry + y) < 0.01, "level with the bars")
+            local r, half = ring:GetWidth() / 2, f:GetHeight() / 2
+            assert(math.abs((rx + x) * out - (math.sqrt(r * r - half * half) - 4)) < 0.01, "the bars' corners meet the rim")
+        end
+    end
+end
 
 -- Switching styles preserves per-frame enablement and shared settings while remembering the
 -- frame sizes and pet positions for the setup that owns each of them.

@@ -540,7 +540,7 @@ local function CollectQuests(db)
                 info.ftHere = here and true or false
                 info.ftDone = db.completedLast and C_QuestLog.IsComplete(info.questID) or false
                 info.ftDistance = distance
-                info.ftLevel = (db.sortByLevel and (info.difficultyLevel or info.level))
+                info.ftLevel = ((db.sortByLevel or Build.SortMode(db) == "zonelevel") and (info.difficultyLevel or info.level))
                     or (db.sortByProgress and ProgressKey(info.questID)) or 0
                 questBuf[#questBuf + 1] = info
             end
@@ -2020,6 +2020,8 @@ function OT:UpdateItemButtons()
     end
     state.itemsDirty = false
     local used = 0
+    local apiRows = OT.API.rows
+    wipe(apiRows)
     if showing then
         local right = self:Side()
         local viewTop, viewBottom = scroll:GetTop(), scroll:GetBottom()
@@ -2033,6 +2035,17 @@ function OT:UpdateItemButtons()
             end
             local top = line:GetTop()
             local itemID = link and (line.sampleItem and 0 or link:match("item:(%d+)"))
+            -- the public API's row (FlareUI_QuestTrackerAPI): a real quest in view, and where a button
+            -- of another addon goes beside it (past the quest item button, if it has one)
+            local inView = top and viewTop and edge and top <= viewTop + 1 and top - C.ITEM_SIZE >= viewBottom - 1
+            local hasItem = itemID and inView
+                and (showWhenComplete or line.sampleItem or not C_QuestLog.IsComplete(line.questID)) or false
+            if inView and not line.sampleItem and line.questID then
+                local step = hasItem and (C.ITEM_SIZE + C.ITEM_GAP) or 0
+                apiRows[#apiRows + 1] = { questID = line.questID, line = line, hasItem = hasItem and true or false,
+                    point = right and "TOPRIGHT" or "TOPLEFT", size = C.ITEM_SIZE,
+                    x = right and (edge - C.ITEM_GAP - step) or (edge + C.ITEM_GAP + step), y = top + 2 }
+            end
             if itemID and top and viewTop and edge and top <= viewTop + 1 and top - C.ITEM_SIZE >= viewBottom - 1
                     and (showWhenComplete or line.sampleItem or not C_QuestLog.IsComplete(line.questID)) then
                 used = used + 1
@@ -2057,12 +2070,42 @@ function OT:UpdateItemButtons()
     end
     for i = used + 1, #itemButtons do itemButtons[i]:Hide() end
     state.itemsShown = used
+    OT.API.Notify()
     OT.ItemMouse()
     self:UpdateItemCooldowns()
     UpdateRangeTicker()
     -- the controller's place in the list follows (PadTracker.lua)
     if ns.PadTracker then ns.PadTracker.OnTrackerDrawn() end
 end
+
+--------------------------------------------------
+-- 8b. PUBLIC API (FlareUI_QuestTrackerAPI; simonrath's Next, #198): other addons can put a button beside
+-- a quest's row, as the quest item buttons stand. After each placing of the item buttons (out of a fight,
+-- as theirs are protected too), each callback gets the rows in view; an empty list when the tracker hides.
+-- A row: questID; point, x, y (the button's corner, on UIParent's BOTTOMLEFT, in UIParent's scale);
+-- size (the item buttons' size); hasItem (the spot is past the quest's own item button); line (the row's
+-- frame, to read only). Version 1: fields may be added, never removed or changed. Documented in API.md.
+--------------------------------------------------
+OT.API = { rows = {}, callbacks = {} }
+function OT.API.Notify()
+    for owner, callback in pairs(OT.API.callbacks) do
+        local ok, err = pcall(callback, OT.API.rows)
+        if not ok then geterrorhandler()(err) end
+    end
+end
+_G.FlareUI_QuestTrackerAPI = {
+    version = 1,
+    -- callback(rows): after each placing; owner: any key of the caller's (one callback each)
+    RegisterCallback = function(_, owner, callback)
+        if owner == nil or type(callback) ~= "function" then error("usage: FlareUI_QuestTrackerAPI:RegisterCallback(owner, function(rows) end)", 2) end
+        OT.API.callbacks[owner] = callback
+    end,
+    UnregisterCallback = function(_, owner) OT.API.callbacks[owner] = nil end,
+    -- the rows as last placed (do not change them)
+    GetRows = function() return OT.API.rows end,
+    -- FlareUI's tracker is on and showing
+    IsActive = function() return holder ~= nil and holder:IsVisible() and true or false end,
+}
 
 --------------------------------------------------
 -- 9. RENDER
@@ -3513,15 +3556,21 @@ function Build.LayoutAutoButtons(head, db)
     end
 end
 
--- the sort in use, from the four settings (as Quest Tracker > Sort reads them)
-Build.SORTS = { "zone", "distance", "level", "progress" }
+-- the sort in use, from the saved settings (as Quest Tracker > Sort By reads them)
+Build.SORTS = { "zone", "zonelevel", "distance", "level", "progress" }
 function Build.SortMode(db)
     if db.sortByLevel then return "level" end
     if db.sortByProgress then return "progress" end
-    return db.zoneFirst and "zone" or "distance"
+    return db.zoneFirst and (db.zoneLevel and "zonelevel" or "zone") or "distance"
+end
+-- writes a sort into the saved settings (the header button's; the settings row writes the same ones)
+function Build.SetSortMode(db, mode)
+    db.sortByLevel, db.sortByProgress = mode == "level", mode == "progress"
+    db.zoneFirst, db.sortByDistance = mode == "zone" or mode == "zonelevel", mode == "distance"
+    db.zoneLevel = mode == "zonelevel"
 end
 Build.SORT_LABELS = {
-    zone = function() return L["Sort: Zone"] end, distance = function() return L["Sort: Distance"] end,
+    zone = function() return L["Sort: Zone"] end, zonelevel = function() return L["Sort: Zone and Level"] end, distance = function() return L["Sort: Distance"] end,
     level = function() return L["Sort: Level"] end, progress = function() return L["Sort: Progress"] end,
 }
 
@@ -3666,8 +3715,8 @@ local function CreateFrames()
         end)
     end
 
-    -- Sort: a click the next way (Zone, Distance, Level, Progress), a right-click the one before; the
-    -- same four settings as Quest Tracker > Sort
+    -- Sort: a click the next way (Build.SORTS), a right-click the one before; the same settings as
+    -- Quest Tracker > Sort By
     local sort = header.sort
     sort:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     sort:SetScript("OnClick", function(self, mouse)
@@ -3677,8 +3726,7 @@ local function CreateFrames()
         for i, mode in ipairs(Build.SORTS) do if mode == now then at = i end end
         local step = mouse == "RightButton" and -1 or 1
         local mode = Build.SORTS[(at - 1 + step) % #Build.SORTS + 1]
-        db.sortByLevel, db.sortByProgress = mode == "level", mode == "progress"
-        db.zoneFirst, db.sortByDistance = mode == "zone", mode == "distance"
+        Build.SetSortMode(db, mode)
         OT:Render()
         self:GetScript("OnEnter")(self)
     end)

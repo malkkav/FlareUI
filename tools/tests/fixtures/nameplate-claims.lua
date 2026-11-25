@@ -24,6 +24,7 @@ local function RegisterUnit() end
 function NP.WantsPlate() return true, 'enemy' end
 function NP.Peaceful() return false end
 function NP.CombatFull() return true end
+function NP.ShowsFull() return true end
 function NP.TypeDB() return {} end
 function NP.UnitHidden() return false end
 function NP.QuestieHasIcons() return false end

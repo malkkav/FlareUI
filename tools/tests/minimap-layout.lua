@@ -354,11 +354,20 @@ assert(bar:GetAlpha() == 0)
 db.squareHeader = "art"
 minimap:Refresh()
 assert(minimap.Frame:GetWidth() == 244 and map:GetWidth() == 236 and map.mask:find("WHITE8X8", 1, true))
+-- (11-25) the title bar: the terrain starts under it, and the frame grows as much at its bottom only
+do
+    local function centre(region) local _, _, _, _, y = region:GetPoint(1) return y end
+    local top, bottom = centre(minimap.Frame) + minimap.Frame:GetHeight() / 2, centre(minimap.Frame) - minimap.Frame:GetHeight() / 2
+    assert(minimap.TitleRoom() == 16 and top == 122 and bottom == -122 - 16)
+    assert(top - (centre(map) + map:GetHeight() / 2) == 20 and (centre(map) - map:GetHeight() / 2) - bottom == 4)
+    assert(centre(minimap.Back) == centre(map), "the backing follows the terrain")
+end
 assert(minimap.Border.TopEdge:GetParent() == minimap.BorderAbove and not minimap.BorderAbove.Flare:IsShown())
 db.squareHeader = "headerless"
 db.squareBorder = "thin"
 minimap:Refresh()
 assert(minimap.SquareBorder().edge == 8 and minimap.Frame:GetWidth() == 250 and map:GetWidth() == 243)
+assert(minimap.TitleRoom() == 0, "only the Header border has a title bar")
 assert(minimap.BorderAbove.Flare:IsShown() and minimap.BorderAbove.Flare:GetBackdrop().edgeSize == 8)
 minimap:SetMapFaded(true)
 assert(map:IsShown() and map.mask:find("Empty", 1, true))

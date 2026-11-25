@@ -651,7 +651,7 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
-            totems = { size = 90, perRow = 4, swipe = "both", timer = "none" },
+            totems = { size = 90, perRow = 4, swipe = "both", timer = "none", shape = "round" },
             -- aura timers and stack counts; size 0 (Auto) follows the icon size. The stack font starts
             -- as a copy of the timer font (ns.SeedFont)
             auraFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -764,7 +764,7 @@ local defaults = {
                 castIcon = true, castTimer = true,
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 250, height = 25, texture = "FlareUI Dark", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false },
+            playerCastbar = { enabled = true, width = 275, height = 25, texture = "FlareUI Dark", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
                                  texture = "FlareUI Dark", border = "FlareUI Thick",
@@ -837,6 +837,7 @@ local defaults = {
             -- Growth in the viewers' Edit Mode dialogs: blizzard | CENTER, and START | END for the tracked buffs and bars
             -- (the icons fill from the middle unless the player picks otherwise)
             grow = { buffs = "CENTER", bars = "blizzard", essential = "CENTER", utility = "CENTER" },
+            barSort = "blizzard", barMax = 20,   -- Tracked Bars: Sort By (blizzard | newest | oldest) and Max Bars
         },
 
         -- [[ AURAS MODULE ]] the player's buffs and debuffs (Modules/Auras.lua)
@@ -855,7 +856,7 @@ local defaults = {
             reminders = false,
             reminder = { group = "all", size = 36, before = 2, orientation = "HORIZONTAL", grow = "FORWARD",
                          blessing = "auto", consumables = "off", pets = true, thorns = "tank", camping = false, gathering = false,
-                         food = true, flask = true, elixirSource = "ticked", elixirMode = "each",   -- Food, Flask, Elixirs to Watch / to Keep Up
+                         food = true, flask = true, elixirOn = true, elixirSource = "ticked", elixirMode = "each",   -- Food, Flask, Elixirs to Watch / to Keep Up
                          weaponOil = false,   -- Weapon Oil / Stone
                          elixirs = "none", weaponScope = "always", petScope = "always", readyCheck = false,
                          classScope = "always", timeLeft = true,   -- Where > Class Buffs; Edit Mode > Alerts > Time Left
@@ -972,6 +973,7 @@ local defaults = {
             headerSort = true,          -- Header Buttons: the sort button
             sortByDistance = true,
             sortByLevel = false,        -- the lowest level quest first (zones mixed, no zone headings)
+            zoneLevel = false,          -- By Zone and Level: with zoneFirst, by level inside each zone
             sortByProgress = false,     -- the furthest along first (zones mixed, no zone headings)
             anchor = "auto",            -- auto | TOP | BOTTOM (Edit Mode); left / right follows the frame's half
             questGap = 9,               -- pixels between quests (Edit Mode)
@@ -2683,12 +2685,12 @@ do
         -- sliders
         "Scale", "Size", "Width", "Height", "Portrait Scale", "Max Height", "Power Height",
         "Pet Frame Width", "Pet Frame Height", "Target Frame Width", "Target Frame Height",
-        "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Frame Gap", "Group Gap", "Spacing", "Quest Spacing",
+        "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Max Bars", "Frame Gap", "Group Gap", "Spacing", "Quest Spacing",
         "Background", "@Cast Bar Background", "@Cast Bar Height", "Level Disc Size",
         -- each aura kind's size, then how many (the Amount names until the Max Buffs / Max Debuffs rename)
         "Buff Size", "Max Buffs", "Buff Amount", "Debuff Size", "Max Debuffs", "Debuff Amount",
         -- the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
-        "Faded Opacity", "Fade Delay", "Fade Old Lines", "Keep Messages Shown",
+        "Faded Opacity", "Opacity", "Fade Delay", "Fade Old Lines", "Keep Messages Shown",
         -- switches
         -- first of their sections' switches: Range Check (Look) and Show Level (Frame)
         -- the resource bars' two texts right under the sliders, before Range Check
@@ -2697,7 +2699,7 @@ do
         "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid", "Show Target Markers",
         "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Show Icon", "Show Spell Timer", "Center Spell Name", "Edge Glow", "Show Spell Pushback",
+        "Show Icon", "Show Spell Timer", "Center Spell Name", "Edge Glow", "Show Latency", "Show Spell Pushback",
         "Class Colours", "Threat Glow", "Combat Glow", "Bar Animations", "Bar Edge Glow", "Damage Trail",
         -- the aura filters together, then the sort switches
         "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Dispellable Debuffs Only", "Show Weapon Enchants",
@@ -2926,6 +2928,22 @@ function ns.FCMActive()
     local fcm = ns.db and ns.db.profile and ns.db.profile.fcm
     for _, bar in pairs(fcm and fcm.bars or {}) do
         if bar.enabled then return true end
+    end
+    return false
+end
+
+-- A hunter's shots don't reach closer than 8 yards and Wing Clip not further than 5: whether an enemy is
+-- within about 10, by items the game can measure with (owned or not; the idea after EllesmereUI). Asked for
+-- enemies only: for others the question is blocked in a fight.
+ns.CLOSE_ITEMS = { 17626, 10699, 32321, 34368, 33278, 8149 }
+function ns.HunterClose(unit)
+    local _, class = UnitClass("player")
+    if class ~= "HUNTER" or not (C_Item and C_Item.IsItemInRange) then return false end
+    local can = UnitCanAttack("player", unit)
+    if (canaccessvalue and not canaccessvalue(can)) or not can then return false end
+    for _, id in ipairs(ns.CLOSE_ITEMS) do
+        local ok, near = pcall(C_Item.IsItemInRange, id, unit)
+        if ok and (not canaccessvalue or canaccessvalue(near)) and near then return true end
     end
     return false
 end

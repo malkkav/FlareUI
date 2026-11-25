@@ -160,4 +160,62 @@ line({ 5, 5, 4, 44, 44, true, false }, "TOP", 0, -44)
 line({ 1, 4, 4, 44, 44, true, true }, "TOP", 66, 0)
 -- columns: the next one to the right, centred in height
 line({ 5, 6, 4, 44, 50, false, false }, "LEFT", 50, -22)
+-- (11-25) the Tracked Bars' Sort By and Max Bars
+do
+    local bars = { childYPadding = 2, isHorizontal = false, iconDirection = 1 }
+    local x, y, z = Item(true), Item(true), Item(true)
+    local list = { x, y, z }
+    for i, item in ipairs(list) do
+        item.layoutIndex, item.alpha = i, 1
+        function item:SetAlpha(v) self.alpha = v end
+        item:SetPoint("TOPLEFT", bars, "TOPLEFT", 0, -(i - 1) * 42)
+    end
+    bars.itemFramePool = { EnumerateActive = function()
+        local i = 0
+        return function() i = i + 1; return list[i] end
+    end }
+    function bars:OnAcquireItemFrame() end
+    function bars:Layout() end
+    BuffBarCooldownViewer = bars
+    local CM, db = ns.CooldownManager, ns.db.profile.cooldownmanager
+    grow.bars = "START"
+    local function row(item) return -item.point[5] / 42 end
+    CM:Refresh()
+    assert(row(x) == 0 and row(y) == 1 and row(z) == 2, "Blizzard's order")
+    db.barSort = "newest"
+    CM:Refresh()
+    assert(row(z) == 0 and row(x) == 2, "Newest First: up together, Blizzard's last is the newest")
+    -- one goes and comes back: the newest now
+    x.want = false
+    x:UpdateShownState()
+    x.want = true
+    x:UpdateShownState()
+    CM:Refresh()
+    assert(row(x) == 0 and row(z) == 1 and row(y) == 2)
+    db.barSort = "oldest"
+    CM:Refresh()
+    assert(row(y) == 0 and row(x) == 2)
+    -- Max Bars: the rest are unseen, and come back
+    db.barMax = 2
+    CM:Refresh()
+    assert(y.alpha == 1 and z.alpha == 1 and x.alpha == 0)
+    db.barMax = 20
+    CM:Refresh()
+    assert(x.alpha == 1)
+    db.barMax = 1
+    CM:Refresh()
+    assert(z.alpha == 0)
+    grow.bars = "blizzard"
+    CM:Refresh()
+    assert(x.alpha == 1 and z.alpha == 1, "Growth off: all there")
+    LibStub = function() return { SettingType = { Dropdown = 1, Slider = 2 } } end
+    local rows = CM.BarSettings()
+    assert(rows[1].name == "Sort By" and rows[2].name == "Max Bars" and rows[1].hidden() and rows[2].hidden())
+    grow.bars = "END"
+    assert(not rows[1].hidden() and rows[1].get() == "oldest" and rows[2].get() == 1)
+    rows[1].set(nil, "blizzard")
+    rows[2].set(nil, 20)
+    assert(db.barSort == "blizzard" and db.barMax == 20)
+end
+
 print("PASS: Cooldown Manager Grow From")

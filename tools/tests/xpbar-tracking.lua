@@ -96,6 +96,7 @@ assert(select(2, right:GetPoint()) == left and right:GetWidth() == left:GetWidth
 bar.SetTextValue("remaining")
 bar:Refresh()
 assert(bar.TextAlways() and left.Text:GetText():find("XP  600 to go", 1, true))
+assert(frame:GetFrameStrata() == "MEDIUM", "above the minimap, which a click raises in LOW (11-25)")
 frame:SetAlpha(0.01)
 assert(not left:IsMouseEnabled())
 frame:SetAlpha(1)

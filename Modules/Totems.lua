@@ -105,23 +105,91 @@ end
 
 local function ByLayoutIndex(a, b) return (a.layoutIndex or 0) < (b.layoutIndex or 0) end
 
--- Aura Swipe and Aura Timer, as on the Buffs & Debuffs icons (round): the swipe over the icon,
+-- Aura Swipe and Aura Timer, as on the Buffs & Debuffs icons: the swipe over the icon,
 -- round the ring, both (one disc over icon and ring) or none; the time under the icon, along its
 -- bottom, in its middle or not at all. On Blizzard's own buttons, and on the Edit Mode samples.
 local MEDIA = "Interface\\AddOns\\FlareUI\\Media\\Auras\\"
 local SWIPE_ROUND = MEDIA .. "BorderRoundThick"
 local SWIPE_EDGE = MEDIA .. "Edge"
 local SWIPE_DISC = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+-- Aura Icon Shape, as on the Buffs & Debuffs icons: Round is Blizzard's ring, Square their border
+-- (Auras.lua), a little smaller than the ring so the row keeps its gaps
+local SQUARE = { SIZE = 28, INSET = 28 * 6 / 128, BORDER = MEDIA .. "IconBorder", MASK = MEDIA .. "IconMask",
+                 SWIPE = MEDIA .. "BorderThick", TINT = { 0.80, 0.60, 0.34 }, CROP = 0.08 }
+SQUARE.OPENING = SQUARE.SIZE - 2 * SQUARE.INSET
 local function TotemLook()
     local db = GetDb()
     local t = db and db.totems or {}
-    return t.swipe or "both", t.timer or "none"
+    return t.swipe or "both", t.timer or "none", t.shape == "square"
 end
 
--- button: the totem button; cd: its cooldown; text: its time; ring: its border art
-local function StyleTotem(button, cd, text, ring)
-    local swipe, timer = TotemLook()
+-- frame: what the icon's size is set on; art: the icon; mask: its round mask; ring: the ring's art. Only a
+-- change of shape touches Blizzard's button. Returns what stands in for the ring.
+local function ShapeTotem(button, frame, art, mask, ring, square)
+    local p = button.FlareUI_Square
+    if not (square or p) or not (frame and art and mask) then return ring end
+    if not p then
+        p = { border = button:CreateTexture(nil, "OVERLAY"), mask = button:CreateMaskTexture() }
+        p.border:SetSize(SQUARE.SIZE, SQUARE.SIZE)
+        p.border:SetPoint("CENTER")
+        p.border:SetTexture(SQUARE.BORDER)
+        p.border:SetVertexColor(SQUARE.TINT[1], SQUARE.TINT[2], SQUARE.TINT[3])
+        p.mask:SetTexture(SQUARE.MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        p.mask:SetAllPoints(p.border)
+        button.FlareUI_Square = p
+    end
+    if p.on ~= square then
+        p.on = square
+        art:RemoveMaskTexture(square and mask or p.mask)
+        art:AddMaskTexture(square and p.mask or mask)
+        local crop = square and SQUARE.CROP or 0
+        art:SetTexCoord(crop, 1 - crop, crop, 1 - crop)
+        frame:SetSize(square and SQUARE.OPENING or ICON, square and SQUARE.OPENING or ICON)
+        ring:SetAlpha(square and 0 or 1)
+        p.border:SetShown(square)
+    end
+    return square and p.border or ring
+end
+
+-- the swipe's art: the part of its file that is drawn (Blizzard's buttons have the round mask's)
+local function SwipeRange(cd, square, edge)
+    if not CreateVector2D then return end
+    if square then
+        cd:SetTexCoordRange(CreateVector2D(edge, edge), CreateVector2D(1 - edge, 1 - edge))
+        cd.FlareUI_Range = true
+    elseif cd.FlareUI_Range then
+        cd.FlareUI_Range = nil
+        local info = C_Texture.GetAtlasInfo("CircleMask")
+        if info then
+            cd:SetTexCoordRange(CreateVector2D(info.leftTexCoord, info.topTexCoord), CreateVector2D(info.rightTexCoord, info.bottomTexCoord))
+        end
+    end
+end
+
+-- button: the totem button; cd: its cooldown; text: its time; ring: its border art; frame, art, mask: its
+-- icon (ShapeTotem)
+local function StyleTotem(button, cd, text, ring, frame, art, mask)
+    local swipe, timer, square = TotemLook()
+    ring = ShapeTotem(button, frame, art, mask, ring, square)
     if cd then
+        SwipeRange(cd, square, swipe == "icon" and 6 / 128 or 0)
+    end
+    if cd and square then
+        local whole = swipe == "border" or swipe == "both"
+        cd:ClearAllPoints()
+        cd:SetPoint("CENTER", button, "CENTER")
+        cd:SetSize(whole and SQUARE.SIZE or SQUARE.OPENING, whole and SQUARE.SIZE or SQUARE.OPENING)
+        cd:SetFrameLevel(button:GetFrameLevel() + (whole and 3 or 1))
+        cd:SetUseCircularEdge(false)
+        cd:SetDrawSwipe(swipe ~= "none")
+        cd:SetDrawEdge(swipe == "icon" or swipe == "both")
+        if swipe ~= "none" then
+            cd:SetSwipeTexture(swipe == "border" and SQUARE.SWIPE or SQUARE.MASK)
+            cd:SetSwipeColor(0, 0, 0, swipe == "icon" and 0.82 or 0.7)
+            cd:SetEdgeTexture(SWIPE_EDGE, 1, 1, 1, 1)
+            if cd.SetEdgeScale then cd:SetEdgeScale(1.6) end
+        end
+    elseif cd then
         cd:ClearAllPoints()
         -- Blizzard draws the ring art 1 px right and 1.5 px down of the icon: only the ring swipe follows
         -- it. A disc stays on the icon at the icon's size, or it reads as a shadow growing bottom right.
@@ -206,7 +274,8 @@ local function ArrangeTotems()
     table_sort(active, ByLayoutIndex)
     PlaceInGrid(active, frame, perRow)
     for _, button in ipairs(active) do
-        StyleTotem(button, button.Icon and button.Icon.Cooldown, button.Duration, button.Border)
+        local icon = button.Icon
+        StyleTotem(button, icon and icon.Cooldown, button.Duration, button.Border, icon, icon and icon.Texture, icon and icon.TextureMask)
     end
     if previewing or faded then ApplyMouse() end
 end
@@ -268,7 +337,7 @@ local function CreatePreview()
         local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
         cd:SetHideCountdownNumbers(true)
         cd:SetReverse(true)
-        b.Cooldown, b.Duration, b.Ring = cd, text, ring
+        b.Cooldown, b.Duration, b.Ring, b.Icon, b.Mask = cd, text, ring, icon, mask
 
         preview.buttons[i] = b
     end
@@ -309,7 +378,7 @@ local function ApplyLayout()
     holder.preview:SetScale(scale)
     PlaceInGrid(holder.preview.buttons, holder.preview, perRow)
     for i, b in ipairs(holder.preview.buttons) do
-        StyleTotem(b, b.Cooldown, b.Duration, b.Ring)
+        StyleTotem(b, b.Cooldown, b.Duration, b.Ring, b.Icon, b.Icon, b.Mask)
         b.Cooldown:SetCooldown(GetTime() - 12 * i, 60)   -- a running sample swipe
     end
 
@@ -347,7 +416,7 @@ local function BuildSettings()
           get = get("size", size), set = set("size") },
         { name = L["Totems per Row"], kind = LEM.SettingType.Slider, default = perRow, minValue = 1, maxValue = MAX, valueStep = 1,
           get = get("perRow", perRow), set = set("perRow") },
-        -- (Aura Swipe and Aura Timer: Settings > Buffs & Debuffs > Totems)
+        -- (Aura Icon Shape, Aura Swipe and Aura Timer: Settings > Buffs & Debuffs > Totems)
     })
 end
 

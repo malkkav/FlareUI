@@ -39,6 +39,11 @@ Art (Media/Bars/)
       Blizzard Entertainment's World of Warcraft: Forever health bar art, greyed and resized;
       World of Warcraft (c) Blizzard Entertainment, Inc.
 
+Art (Media/Frames/)
+  Ring.tga, Plate.tga, PlateTwo.tga (the unit frames' portrait ring and plate)
+      Blizzard Entertainment's World of Warcraft: Forever unit frame art, taken apart into pieces;
+      World of Warcraft (c) Blizzard Entertainment, Inc.
+
 Icons (Media/Icons/)
   DMCountdown.tga (stopwatch)
       Icons8 ("stopwatch"), free licence with attribution .... https://icons8.com

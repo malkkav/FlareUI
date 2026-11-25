@@ -1659,12 +1659,35 @@ local function GetTimerFormatter()
     return timerFormatter or nil
 end
 
+-- The FlareUI Player Cast Bar's Width is what its border wraps, icon included, as the Resource Bars'
+-- Width: the same value gives the same box. It used to leave the icon out: every bar is turned round
+-- once so its box stays as it was (By Nico-Mayer, PR #197). The default is the old 250 and a 25 px icon:
+-- a bar left on it keeps the new default, any other gets the width it had.
+UF.CAST_WIDTH, UF.CAST_WIDTH_OLD = 275, 250
+function UF.CastWidthWithIcon(udb)
+    if rawget(udb, "widthWithIcon") then return end
+    udb.widthWithIcon = true
+    local width, height = rawget(udb, "width"), udb.height or 25
+    if udb.icon == false then
+        if width == nil then udb.width = UF.CAST_WIDTH_OLD end
+    elseif not (width == nil and height == 25) then
+        udb.width = (width or UF.CAST_WIDTH_OLD) + height + CAST_ICON_GAP
+    end
+end
+
+-- the standalone holder's size for a style: its width and height, and the border round them
+function UF.CastBoxSize(style)
+    local _, pad = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
+    return style.width + 2 * pad, style.height + 2 * pad
+end
+
 -- style: { height, icon, timer, name, texture, border, borderTexture, width }
 -- plate: the frame is on Forever's plate, whose cast bar keeps the plate's border
 local function GetCastStyle(udb, standalone, plate)
     if standalone then
+        UF.CastWidthWithIcon(udb)
         return {
-            width = udb.width or 250, height = udb.height or 25,
+            width = udb.width or UF.CAST_WIDTH, height = udb.height or 25,
             icon = udb.icon ~= false, timer = udb.timer ~= false, name = true,
             -- (its own border in every style, Forever Style too)
             texture = udb.texture, border = true, borderTexture = udb.borderTexture,
@@ -1832,15 +1855,19 @@ end
 -- Your own bar's sample takes turns: a cast (latency zone, pushback) and a channel (its latency
 -- zone on the left)
 local SAMPLE_CHANNEL_SPELL = 5143
-local function ShowSampleCast(cast)
+-- keep: a redraw (a setting changed) goes on with the running sample instead of starting the next
+local function ShowSampleCast(cast, keep)
     UF.EndCastFlash(cast)
     local own = cast.unit == "player"
-    local channel = false
-    if own then
-        cast.sampleChannel = not cast.sampleChannel
-        channel = cast.sampleChannel
-    end
     local now = GetTime()
+    -- (also one that just ended: the ticker starts the next, in step)
+    keep = keep and cast:IsShown() and cast.sampleStart
+    if not keep then
+        cast.sampleStart = now
+        cast.sampleChannel = own and not cast.sampleChannel
+    end
+    now = cast.sampleStart
+    local channel = cast.sampleChannel
     local duration = C_DurationUtil.CreateDuration()
     duration:SetTimeFromStart(now, SAMPLE_CAST_SECONDS)
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate,
@@ -2187,13 +2214,13 @@ function UF.UpdatePlayerCastExtras(cast, event, channeling, castBarID, startMs, 
     end
     -- this cast's measured latency (UF.CastLatency), the network average until one is measured
     local lag = UF.CastLatency(event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START")
-    -- The Latency Zone always shows. Spell Pushback is the player cast bar's switch: the standalone
-    -- bar keeps it in playerCastbar, the bar on the player frame with the frame's own settings.
+    -- Show Latency (on) and Spell Pushback are the player cast bar's switches: the standalone bar keeps
+    -- them in playerCastbar, the bar on the player frame with the frame's own settings.
     local db = GetDb()
     local pc
     if cast.standalone then pc = db and db.playerCastbar else pc = GetUnitDb("player") end
     local width = cast:GetWidth()
-    local zoneWidth = (lag and lag > 0 and width) and width * math.min(lag / (endMs - startMs), 1) or 0
+    local zoneWidth = (lag and lag > 0 and width and not (pc and pc.latency == false)) and width * math.min(lag / (endMs - startMs), 1) or 0
     if zoneWidth >= 1 then
         local c = UF.LAG_COLOR
         zone:SetVertexColor(c[1], c[2], c[3], c[4])
@@ -2332,7 +2359,7 @@ end
 -- by, barID: the event's interruptedBy (maybe secret) and castBarID (never secret, may be nil)
 local function UpdateCastBar(cast, enabled, event, by, barID)
     if not enabled then UF.EndCastFlash(cast) cast:Hide() return end
-    if ns.EditPreviewing() then UF.HideCastExtras(cast) ShowSampleCast(cast) return end
+    if ns.EditPreviewing() then UF.HideCastExtras(cast) ShowSampleCast(cast, true) return end
     -- a kicked channel only says so through CHANNEL_STOP's interruptedBy (a secret one is a GUID, so set)
     local interrupted = event == "UNIT_SPELLCAST_INTERRUPTED"
         or (event == "UNIT_SPELLCAST_CHANNEL_STOP" and cast.isChannel and not (canaccessvalue(by) and by == nil))
@@ -3816,6 +3843,30 @@ local function CreateHappiness(f)
     f.Happiness = face
 end
 
+-- PLUMBER's pet food menu is a button over Blizzard's happiness face (PetFrameHappiness), which sits in the
+-- parked pet frame: it moves onto the face shown here. Found by its own method; moved out of a fight only.
+function UF.PlumberPetFood(face)
+    local home = _G.PetFrameHappiness
+    if not (face and home and C_AddOns.IsAddOnLoaded("Plumber")) or InCombatLockdown() then return end
+    local button = UF.plumberFood
+    if not button then
+        for _, child in ipairs({ home:GetChildren() }) do
+            if type(child.GetFeedPetSpellName) == "function" and type(child.Attach) == "function" then button = child break end
+        end
+        if not button then return end
+        UF.plumberFood = button
+        -- (switched off and on again in Plumber: back to Blizzard's face, and then here)
+        hooksecurefunc(button, "Attach", function() UF.PlumberPetFood(UF.plumberFace) end)
+    end
+    UF.plumberFace = face
+    if not button.enabled then return end
+    button:SetParent(face)
+    button:ClearAllPoints()
+    button:SetPoint("TOPLEFT", face, "TOPLEFT", -1, 1)
+    button:SetPoint("BOTTOMRIGHT", face, "BOTTOMRIGHT", 1, -1)
+    button:SetFrameLevel(face:GetFrameLevel() + 2)
+end
+
 function UpdateHappiness(f)
     local face = f.Happiness
     if not face then return end
@@ -3823,6 +3874,7 @@ function UpdateHappiness(f)
         face:RegisterEvent("UNIT_HAPPINESS")
         face:RegisterEvent("UNIT_PET")
         face:UpdateHappiness()
+        UF.PlumberPetFood(face)
         if ns.EditPreviewing() and not face:IsShown() then
             face.Texture:SetAtlas(HAPPINESS_PREVIEW)
             face:Show()
@@ -4393,6 +4445,11 @@ function UF.BarLook(bar, mirror, on)
     look.edgeClip:SetShown(edgeOn)
 end
 
+-- Show Latency: the red end of your own cast bar (on the Player Cast Bar and the bar on the player frame)
+function UF.LatencySetting(get, set)
+    return { name = L["Show Latency"], kind = LEM.SettingType.Checkbox, default = true, get = get, set = set,
+        desc = L["A red end on your cast bar, as long as your latency. You can already start your next spell there."] }
+end
 -- Center Spell Name, left of Edge Glow on every frame's cast bar (and the player cast bar's Look)
 function UF.CastCenterSetting(db, set, hidden)
     return { name = L["Center Spell Name"], kind = LEM.SettingType.Checkbox, default = false,
@@ -4441,6 +4498,22 @@ function UF.BarEdgeGlowSetting(get, set)
     return { name = L["Bar Edge Glow"], kind = LEM.SettingType.Checkbox, default = false,
         get = function() return get() and true or false end, set = set,
         desc = L["A bright line and a soft glow at the front of the health bar. It flashes when health changes."] }
+end
+
+-- The edge's alpha on a power bar (the Resource Bars'): none while the bar is empty or full, as there is
+-- no front to show. Through a curve: power can be secret. nil where the client can't.
+function UF.PowerEdgeAlpha(powerType)
+    if not UF.powerEdgeCurve then
+        local curve = C_CurveUtil.CreateCurve()
+        curve:SetType(Enum.LuaCurveType.Step)
+        curve:AddPoint(0, 0)
+        curve:AddPoint(0.001, 1)
+        curve:AddPoint(1, 0)
+        UF.powerEdgeCurve = curve
+    end
+    local ok, alpha = pcall(UnitPowerPercent, "player", powerType, false, UF.powerEdgeCurve)
+    if ok then return alpha end
+    return 1
 end
 
 -- Damage Trail switch: on by default; saved as "damageTrail" (false = off). Right under Bar Edge Glow
@@ -4922,8 +4995,17 @@ function UpdateIndicators(f)
     end
     if f.PvPIcon then
         local ffa = readable(UnitIsPVPFreeForAll(unit))
-        local pvp = readable(UnitIsPVP(unit))
+        local rawPvp = UnitIsPVP(unit)
+        local pvp = readable(rawPvp)
         local faction = readable(UnitFactionGroup(unit))
+        -- where the game hides who a unit is (a battleground) the flag is secret: the crest is drawn and
+        -- the flag sets its alpha, unread
+        local hidden = not canaccessvalue(rawPvp)
+        if hidden then
+            pvp = f.PvPIcon.SetAlphaFromBoolean and pcall(f.PvPIcon.SetAlphaFromBoolean, f.PvPIcon, rawPvp, 1, 0)
+        end
+        if f.PvPIcon.fuiSecretAlpha and not hidden then f.PvPIcon:SetAlpha(1) end
+        f.PvPIcon.fuiSecretAlpha = hidden or nil
         if not ICON_UI.Shown(unit, "pvp") then
             f.PvPIcon:Hide()
         elseif ffa then
@@ -5090,8 +5172,6 @@ function UF.ShiftManaShown(f)
     if f.shiftTestOnly and not test then return false end
     local udb = GetUnitDb(f.fuiUnit)
     if not (udb and (udb.shiftMana or test)) then return false end
-    -- Forever Style: in the plate's second slot, if the client has its art
-    if ns.UFRing and ns.UFRing.Plate(f) and not ns.UFRing.TwoSlots() then return false end
     if test or ns.EditPreviewing() then return true end
     local powerType = UnitPowerType("player")
     if not canaccessvalue(powerType) then return f.ShiftMana:IsShown() end
@@ -5432,7 +5512,7 @@ local function LayoutFrame(f)
     local onPlate = nameBox and true or false
     UF.PlaceSlots(f, "health", health, mirror, onPlate, namePad, levelInRow)
     UF.PlaceSlots(f, "power", power, mirror, onPlate, namePad, false)
-    if f.ShiftManaText then UF.PlaceSlots(f, "mana", f.ShiftMana, mirror, onPlate, 0, false) end
+    if f.ShiftManaText then UF.PlaceSlots(f, "mana", f.ShiftMana, mirror, onPlate, namePad, false) end
     if nameBox then
         -- Show Name: off hides it
         f.Name:SetShown(udb.showName ~= false)
@@ -5699,17 +5779,20 @@ end
 -- counts as in range, so a hunter inside Auto Shot's minimum range stays bright.
 --------------------------------------------------
 UF.RANGE_ALPHA = 0.45
+-- Never a "next swing" attack (Heroic Strike, Raptor Strike, Maul): the game has those in range at any
+-- distance, so the frame never faded. young: until the class knows its last harm spell (a hunter's Wing
+-- Clip, level 12), this one too, or the frame would fade in melee.
 UF.RANGE_SPELLS = {   -- rank-1 spell IDs; only the ones the player knows are used
-    WARRIOR = { harm = { 78, 100 } },                                -- Heroic Strike, Charge
+    WARRIOR = { harm = { 772, 100 } },                               -- Rend, Charge
     ROGUE   = { harm = { 1752, 2764 } },                             -- Sinister Strike, Throw
-    HUNTER  = { harm = { 75, 2973 } },                               -- Auto Shot, Raptor Strike
+    HUNTER  = { harm = { 75, 2974 }, young = 2973 },                 -- Auto Shot, Wing Clip; Raptor Strike
     PALADIN = { harm = { 20271, 853 }, help = { 635 } },             -- Judgement, Hammer of Justice; Holy Light
     PRIEST  = { harm = { 585, 589 }, help = { 2050, 1243 } },        -- Smite, Shadow Word: Pain; Lesser Heal, Fortitude
     SHAMAN  = { harm = { 403, 8042 }, help = { 331 } },              -- Lightning Bolt, Earth Shock; Healing Wave
     MAGE    = { harm = { 133, 116, 2136 }, help = { 1459 } },        -- Fireball, Frostbolt, Fire Blast; Arcane Intellect
     WARLOCK = { harm = { 686, 348, 172 }, help = { 5697 } },         -- Shadow Bolt, Immolate, Corruption; Unending Breath
     DRUID   = { harm = { 5176, 8921 }, help = { 5185, 774, 1126 },   -- Wrath, Moonfire; Healing Touch, Rejuvenation, Mark of the Wild
-                melee = { 1082, 6807 } },                            -- Claw, Maul: enemies in Cat and Bear Form
+                melee = { 1082, 779, 6795 } },                       -- Claw, Swipe, Growl: enemies in Cat and Bear Form
 }
 -- form IDs (not stance bar slots, which follow the order the forms were learned)
 UF.MELEE_FORMS = { [1] = true, [5] = true, [8] = true }   -- Cat, Bear, Dire Bear
@@ -5758,6 +5841,8 @@ function UF.RangeKnown(kind)
                 if known then table.insert(UF.rangeKnown[k], known) end
             end
         end
+        local young, harm = lists.young, lists.harm
+        if young and #UF.rangeKnown.harm < #harm then table.insert(UF.rangeKnown.harm, young) end
     end
     return UF.rangeKnown[kind]
 end
@@ -5806,7 +5891,7 @@ function UF.ApplyRangeAlpha(f, unit)
         end
     end
     if hasSecret and f.SetAlphaFromBoolean and pcall(f.SetAlphaFromBoolean, f, secret, 1, UF.RANGE_ALPHA) then return end
-    f:SetAlpha(out and UF.RANGE_ALPHA or 1)
+    f:SetAlpha((out and not ns.HunterClose(unit)) and UF.RANGE_ALPHA or 1)
 end
 
 -- /fui range: what the fading reads for the target (developer probe, English only). Prints the
@@ -6147,15 +6232,13 @@ function UF.DrawCastSample(holder)
     if holder.unit and holder.unit ~= "player" then
         local udb = GetUnitDb(holder.unit) or {}
         style = GetCastStyle(udb, false, ns.UFRing and ns.UFRing.Plate(frames[holder.unit]))
-        style.width = (udb.width or 220) - 2 * INSET - (style.icon and (style.height + CAST_ICON_GAP) or 0)
+        style.width = (udb.width or 220) - 2 * INSET
         style.fontKey = holder.unit
     else
         style = GetCastStyle(db and db.playerCastbar or {}, true)
         style.fontKey = "playercast"
     end
-    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
-    local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
-    holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
+    holder:SetSize(UF.CastBoxSize(style))
     LayoutCastBar(holder.Cast, style, holder, "FILL")
     ShowSampleCast(holder.Cast)
     if holder.ticker then holder.ticker:Cancel() end
@@ -6225,9 +6308,7 @@ local function LayoutPlayerCastBar()
     if InCombatLockdown() then pendingLayout = "LayoutPlayerCastBar" return end
     local style = GetCastStyle(cfg, true)
     style.fontKey = "playercast"
-    local _, PADDING = BorderFit(style.height, style.border and GetBorderFile(style.borderTexture))
-    local iconOffset = style.icon and (style.height + CAST_ICON_GAP) or 0
-    holder:SetSize(style.width + iconOffset + 2 * PADDING, style.height + 2 * PADDING)
+    holder:SetSize(UF.CastBoxSize(style))
     LayoutCastBar(holder.Cast, style, holder, "FILL")
 end
 
@@ -6475,7 +6556,7 @@ local function BuildPlayerCastSettings()
     -- Pushback are their Cast Bar section's rows too)
     local Section, settings = EditSections()
     Section("Size", {
-        { name = L["Width"], kind = LEM.SettingType.Slider, default = 250, minValue = 100, maxValue = 600, valueStep = 1, get = get("width", 250), set = set("width") },
+        { name = L["Width"], kind = LEM.SettingType.Slider, default = UF.CAST_WIDTH, minValue = 100, maxValue = 650, valueStep = 1, get = get("width", UF.CAST_WIDTH), set = set("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = 25, minValue = 8, maxValue = 48, valueStep = 1, get = get("height", 25), set = set("height") },
     })
     local castItems = {
@@ -6485,6 +6566,7 @@ local function BuildPlayerCastSettings()
           desc = L["The time left, at the right end of the bar."] },
         { name = L["Show Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
           desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
+        UF.LatencySetting(get("latency", true), set("latency")),
     }
     Section("Look", {
         { name = L["Bar Texture"], kind = LEM.SettingType.Dropdown, default = DEFAULT_TEXTURE, values = BuildTextureValues(), get = get("texture", DEFAULT_TEXTURE), set = set("texture") },
@@ -6903,6 +6985,7 @@ local function BuildSettings(unit)
                 return function() local u = GetUnitDb(unit); local v = u and u[key]; if v == nil then return default end; return v end
             end
             local extras = {
+                UF.LatencySetting(flag("latency", true), set("latency")),
                 { name = L["Show Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
             }
@@ -7108,7 +7191,7 @@ UF.Kit = {
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana,
     IsDead = UF.IsDead, CreateShieldGlow = UF.CreateShieldGlow, PlaceShieldGlow = UF.PlaceShieldGlow,
     CreateDamageTrail = UF.CreateDamageTrail, PlaceDamageTrail = UF.PlaceDamageTrail, SetDamageTrail = UF.SetDamageTrail, SampleDamageTrail = UF.SampleDamageTrail,
-    BarLook = UF.BarLook, BarLookUpdate = UF.BarLookUpdate,
+    BarLook = UF.BarLook, BarLookUpdate = UF.BarLookUpdate, PowerEdgeAlpha = UF.PowerEdgeAlpha,
     CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
     ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow, SetBorderRank = UF.SetBorderRank,

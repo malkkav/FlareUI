@@ -62,12 +62,14 @@ local MASKS = { EMPTY = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty", FOREVER
 -- * Bordered: the title bar and its corners draw over the map, a band the header row sits in.
 -- band: how far below the frame's top the mail and other indicators start; headerTop: the header row's
 -- inset from the frame's top; drop: the top edge lowered onto the map; over: top pieces above the map.
+-- room: the map frame this much taller, at its bottom, and the terrain as much lower: it starts right
+-- under the title bar, which covered its top and cut the icons there.
 -- bronze: Headerless framed in the settings window's border instead, the character select's heavy
 -- bronze frame without its rivets, over the map; the metal frame's pieces stay (unseen) to measure the
 -- Edit Mode box, and come back if the client lacks the atlas.
 local HEADER_STYLES = {
     headerless = { band = 27, headerTop = 7, drop = 3, over = false, bronze = true, side = 10, shift = -1 },
-    art        = { band = 22, headerTop = 2, drop = 0, over = true, side = 6, barSide = 10 },
+    art        = { band = 22, headerTop = 2, drop = 0, over = true, side = 6, barSide = 10, room = 16 },
 }
 -- Border (minimap.squareBorder), Headerless only: the heavy bronze, or a FlareUI edge drawn around the
 -- map in its place (the bronze and metal pieces then unseen). Each border's numbers place what sits on
@@ -144,25 +146,31 @@ function MM.MaskBack(back)
     back.fuiMask:SetTexture(MM.SquareMask(), "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
 end
 -- The map frame's box in the border in use: width, height, its centre's offset from the cluster's,
--- the terrain's side, and the black backing's width and height. The bronze looks: the 244 square on the
--- cluster's centre. A FlareUI border: its edge frame, grown per side (grow), with the terrain filling it
+-- the terrain's side, the black backing's width and height, and the terrain's own offset up. The bronze
+-- looks: the 244 square on the cluster's centre (taller with a title bar: room). A FlareUI border: its edge frame, grown per side (grow), with the terrain filling it
 -- up to under the line and the backing out to the line's outside.
 function MM.ArtBox()
     local flare = HeaderStyle().flare
     if not flare then
         local inner = MAP_SIZE - 2 * MAP_CROP
-        return MAP_SIZE, MAP_SIZE, 0, 0, inner, inner, inner
+        local room = MM.TitleRoom()
+        return MAP_SIZE, MAP_SIZE + room, 0, -room / 2, inner, inner, inner, -room
     end
     local g = flare.grow
     local w, h = MAP_SIZE + g.left + g.right, MAP_SIZE + g.top + g.bottom
     -- the backing only as big as the terrain: its square corners would show past the border's angled ones
     local side = math.min(w, h) - 2 * flare.crop
-    return w, h, (g.right - g.left) / 2, (g.top - g.bottom) / 2, side, side, side
+    local y = (g.top - g.bottom) / 2
+    return w, h, (g.right - g.left) / 2, y, side, side, side, y
+end
+-- how much lower the terrain sits for the title bar (Border: Header), 0 without one
+function MM.TitleRoom()
+    return HeaderStyle().room or 0
 end
 -- Sizes and centres the map frame (frame, on relative), the terrain and the backing to MM.ArtBox;
 -- dx, dy: an offset the terrain keeps (a node addon's scan). Returns the terrain's side.
 function MM.FitArt(frame, relative, terrain, back, dx, dy)
-    local w, h, x, y, side, backW, backH = MM.ArtBox()
+    local w, h, x, y, side, backW, backH, mapY = MM.ArtBox()
     if frame then
         frame:SetSize(w, h)
         frame:ClearAllPoints()
@@ -172,12 +180,12 @@ function MM.FitArt(frame, relative, terrain, back, dx, dy)
         MM.MaskBack(back)
         back:SetSize(backW, backH)
         back:ClearAllPoints()
-        back:SetPoint("CENTER", relative, "CENTER", x, y)
+        back:SetPoint("CENTER", relative, "CENTER", x, mapY)
     end
     if terrain then
         terrain:SetSize(side, side)
         terrain:ClearAllPoints()
-        terrain:SetPoint("CENTER", relative, "CENTER", x + (dx or 0), y + (dy or 0))
+        terrain:SetPoint("CENTER", relative, "CENTER", x + (dx or 0), mapY + (dy or 0))
     end
     return side
 end
@@ -2338,6 +2346,9 @@ local function PlaceButton(button)
     -- FlareUI border's box is narrower than tall, so its side lines lie that much nearer)
     local halfY = half + MM.SquareBorder().buttons
     local box = MM.Frame
+    -- (a title bar: its box is taller, with its middle that much over the terrain's)
+    local lift = MM.TitleRoom() / 2
+    halfY = halfY + lift
     half = halfY + (box and (box:GetWidth() - box:GetHeight()) / 2 or 0)
     local x, y
     if button.FlareUI_DragAngle then
@@ -2359,6 +2370,7 @@ local function PlaceButton(button)
             x, y = half, -halfY + (along - 2 * half)
         end
     end
+    y = y + lift
     local _, _, _, cx, cy = button:GetPoint(1)
     if cx and cy and math.abs(cx - x) < 0.5 and math.abs(cy - y) < 0.5 then return end
     placing = true
@@ -2372,6 +2384,7 @@ local function SaveSpot(button)
     local name = buttonName[button]
     local _, _, _, px, py = button:GetPoint(1)
     if name and px and py and not (px == 0 and py == 0) then
+        py = py - MM.TitleRoom() / 2   -- (from the middle of the box the spots lie on: PlaceButton)
         Spots()[name] = math.deg(math.atan2(py, px)) % 360
         MM.PlaceAllButtons()
     end
@@ -2982,6 +2995,10 @@ do
         local sq = CreateFrame("Frame", nil, f)
         sq:SetPoint("TOPLEFT")
         sq:SetSize(MAP_SIZE + 2 * FRAME_PAD, MAP_SIZE + 2 * FRAME_PAD)
+        -- the cluster's box, which the art is centred on (sq grows below it for a title bar's room)
+        sq.Home = CreateFrame("Frame", nil, sq)
+        sq.Home:SetPoint("TOPLEFT")
+        sq.Home:SetSize(MAP_SIZE + 2 * FRAME_PAD, MAP_SIZE + 2 * FRAME_PAD)
         local inner = MAP_SIZE - 2 * MAP_CROP
         -- layered as the real map: the border under the terrain, the pieces that reach over the
         -- map (bottom corners; Bordered's title bar) above it
@@ -3135,13 +3152,15 @@ do
         local x, y
         if square then
             local art = f.Square.Art
-            local halfY = half + MM.SquareBorder().buttons
+            local lift = MM.TitleRoom() / 2   -- (as PlaceButton)
+            local halfY = half + MM.SquareBorder().buttons + lift
             local halfX = halfY + (art:GetWidth() - art:GetHeight()) / 2
             if angle then
                 x, y = EdgePoint(angle, halfX, halfY)
             else
                 x, y = -halfX + STACK.first, -halfY
             end
+            y = y + lift
         else
             angle = math.rad(angle or FLARE_ROUND_ANGLE)
             x, y = math.cos(angle) * (half + 5), math.sin(angle) * (half + 5)
@@ -3175,7 +3194,8 @@ do
             local sq = f.Square
             MM.sampleHeader = f.forceHeader
             -- the map frame, terrain and backing grown for a FlareUI border, as the real map's
-            MM.FitArt(sq.Art, sq, sq.Terrain, sq.Back)
+            MM.FitArt(sq.Art, sq.Home, sq.Terrain, sq.Back)
+            sq:SetHeight(MAP_SIZE + 2 * FRAME_PAD + MM.TitleRoom())
             ApplyBorder(sq.Art, sq.Above)
             MM.PlaceHeaderRow(sq.Art, sq.Tracking, sq.Header, sq.Calendar)
             f.sunOverhang = MM.SquareBorder().sun

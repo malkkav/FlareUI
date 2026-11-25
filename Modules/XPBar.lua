@@ -759,7 +759,8 @@ end
 local function BuildFlare()
     LEM = LibStub("FlareEditMode")
     flare = CreateFrame("Frame", FLARE_NAME, UIParent)
-    flare:SetFrameStrata("LOW")
+    -- above the minimap: it is in LOW, and a click on it brings it in front of everything there
+    flare:SetFrameStrata("MEDIUM")
     flare:SetClampedToScreen(true)
     BuildParts(flare)
 

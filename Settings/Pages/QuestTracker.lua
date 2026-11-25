@@ -42,19 +42,21 @@ S:Row{ key = "qt.border", kind = "choice", path = "objectivetracker.borderTextur
 S:Row{ key = "qt.hideScrollBar", path = "objectivetracker.hideScrollBar", apply = Refresh,
     hidden = function() return Style() == "blizzard" end }
 
--- one choice over four saved flags: zone (current zone first), distance, level, progress
+-- one choice over the saved flags: zone (current zone first), zone and level (by level inside each zone),
+-- distance, level, progress
 S:Row{
-    key = "qt.sort", kind = "choice", choices = { "zone", "distance", "level", "progress" }, apply = Refresh,
+    key = "qt.sort", kind = "choice", choices = { "zone", "zonelevel", "distance", "level", "progress" }, apply = Refresh,
     tab = "behaviour", section = "qt.quests",
     get = function()
         if S:GetPath("objectivetracker.sortByLevel") then return "level" end
         if S:GetPath("objectivetracker.sortByProgress") then return "progress" end
-        return S:GetPath("objectivetracker.zoneFirst") and "zone" or "distance"
+        return S:GetPath("objectivetracker.zoneFirst") and (S:GetPath("objectivetracker.zoneLevel") and "zonelevel" or "zone") or "distance"
     end,
     set = function(mode)
         S:SetPath("objectivetracker.sortByLevel", mode == "level")
         S:SetPath("objectivetracker.sortByProgress", mode == "progress")
-        S:SetPath("objectivetracker.zoneFirst", mode == "zone")
+        S:SetPath("objectivetracker.zoneFirst", mode == "zone" or mode == "zonelevel")
+        S:SetPath("objectivetracker.zoneLevel", mode == "zonelevel")
         S:SetPath("objectivetracker.sortByDistance", mode == "distance")
     end,
 }

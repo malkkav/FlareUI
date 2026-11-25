@@ -298,6 +298,28 @@ callbacks.layout("Modern")
 local point, _, _, x, y = player:GetPoint()
 assert(point == "LEFT" and x == 11 and y == -25)
 
+do  -- the FlareUI Player Cast Bar's Width is what its border wraps, icon included
+    local castDb, holder = ns.db.profile.unitframes.playerCastbar, UF.GetPlayerCastHolder()
+    assert(castDb.width == 240 + 21 and holder:GetWidth() == castDb.width + 2 * 4, "a width saved without the icon takes it in, once")
+    local castWidth
+    for _, setting in ipairs(settings[holder]) do if setting.name == "Width" then castWidth = setting end end
+    castWidth.set("Modern", 300)
+    assert(castDb.width == 300 and holder:GetWidth() == 300 + 2 * 4 and holder:GetHeight() == 21 + 2 * 4)
+    assert(select(4, holder.Cast:GetPoint(1)) == 21 + 4 and select(4, holder.Cast:GetPoint(2)) == -4, "the bar takes what the icon and border leave")
+    local function converted(saved)
+        UF.CastWidthWithIcon(saved)
+        UF.CastWidthWithIcon(saved)
+        return saved.width
+    end
+    -- (11-25) the box stays as it was for every bar, on the default too
+    assert(converted({ width = 250, height = 25 }) == 275, "the old default saved: the icon taken in")
+    assert(converted({ height = 25 }) == nil, "on the default: the new default is the same box")
+    assert(converted({ height = 30 }) == 280, "default width, another height")
+    assert(converted({ width = 300, height = 30 }) == 330, "once only")
+    assert(converted({ width = 300, height = 30, icon = false }) == 300, "no icon: nothing to take in")
+    assert(converted({ icon = false }) == 250, "no icon on the default: the old width, not the new default")
+end
+
 state.target.casting = { noInterrupt = false, duration = {} }
 target:RunScript("OnEvent", "UNIT_SPELLCAST_START", "target", "Cast-1", 686)
 assert(target.Cast:IsShown() and target.Cast.Text:GetText() == "Shadow Bolt")
@@ -382,16 +404,115 @@ do
     UF.SetNameAbove(player)
 end
 
+-- (11-25) the PvP crest where the game hides the flag (battlegrounds): drawn by faction, the secret flag
+-- sets its alpha; a readable flag works as before
+do
+    local icon = target.PvPIcon
+    local function emit() target:RunScript("OnEvent", "UNIT_FACTION", "target") end
+    state.target.pvp = true
+    emit()
+    assert(icon:IsShown() and icon:GetAlpha() == 1)
+    local fed
+    function icon:SetAlphaFromBoolean(value, on, off) fed = { value, on, off }; self:SetAlpha(0) end
+    state.target.pvp = "hidden"
+    emit()
+    assert(icon:IsShown() and fed[1] == "hidden" and fed[2] == 1 and fed[3] == 0)
+    state.target.pvp = true
+    emit()
+    assert(icon:IsShown() and icon:GetAlpha() == 1, "the secret's alpha doesn't stay")
+    icon.SetAlphaFromBoolean = nil
+    state.target.pvp = "hidden"
+    emit()
+    assert(not icon:IsShown(), "no way to show it unread: hidden")
+    state.target.pvp = nil
+    emit()
+    assert(not icon:IsShown())
+end
+
 ui.editing = true
 callbacks.enter()
 assert(player:GetAttribute("visibility") == nil and targetDebuffs.editPreview)
 local cast = UF.GetPlayerCastHolder().Cast
 assert(cast:IsShown() and cast.Text:GetText() == "Sample Channel" and cast.LagZone:IsShown())
 assert(cast.timerDirection == env.Enum.StatusBarTimerDirection.RemainingTime)
+-- (11-25) Show Latency off: no red end
+do
+    local pc, zone = db.playerCastbar, cast.LagZone
+    local function draw() UF.UpdatePlayerCastExtras(cast, "UNIT_SPELLCAST_START", false, nil, 1000, 4000, nil, 686) end
+    draw()
+    assert(zone:IsShown())
+    pc.latency = false
+    draw()
+    assert(not zone:IsShown())
+    pc.latency = nil
+    draw()
+    assert(zone:IsShown())
+    local item = UF.LatencySetting(function() return true end, function() end)
+    assert(item.name == "Show Latency" and item.default == true)
+end
+-- (11-25) Range Check never asks a "next swing" attack: those are in range at any distance
+do
+    local class, known = env.UnitClass, {}
+    for name, lists in pairs(UF.RANGE_SPELLS) do
+        for _, kind in ipairs({ "harm", "help", "melee" }) do
+            for _, id in ipairs(lists[kind] or {}) do
+                assert(id ~= 78 and id ~= 2973 and id ~= 6807, name)
+            end
+        end
+    end
+    local spell, spells, enum = env.C_Spell, env.C_SpellBook, env.Enum.SpellBookSpellBank
+    env.Enum.SpellBookSpellBank = { Player = 0 }
+    env.C_SpellBook = { GetNumSpellBookSkillLines = function() return 0 end }
+    env.C_Spell = {}
+    env.UnitClass = function() return "Hunter", "HUNTER" end
+    env.C_Spell.GetSpellName = function(id) return "spell" .. id end
+    env.C_SpellBook.IsSpellKnown = function(id) return known[id] == true end
+    local function list(...)
+        known = {}
+        for _, id in ipairs({ ... }) do known[id] = true end
+        UF.rangeKnown = nil
+        return table.concat(UF.RangeKnown("harm"), ",")
+    end
+    assert(list(75) == "75,2973", "before Wing Clip: Raptor Strike, or the frame fades in melee")
+    assert(list(75, 2974) == "75,2974")
+    env.UnitClass, env.C_Spell, env.C_SpellBook, env.Enum.SpellBookSpellBank = class, spell, spells, enum
+    UF.rangeKnown = nil
+end
+-- (11-25) Plumber's pet food button moves onto the happiness face shown
+do
+    local home, face = env.CreateFrame("Frame"), env.CreateFrame("Frame")
+    home.GetChildren = function(self) return unpack(self.kids or {}) end
+    local button = env.CreateFrame("Button", nil, home)
+    button.enabled, button.GetFeedPetSpellName = true, function() end
+    button.Attach = function(self) self:SetParent(home) end
+    home.kids = { env.CreateFrame("Frame", nil, home), button }
+    local loaded = env.C_AddOns.IsAddOnLoaded
+    env.PetFrameHappiness = home
+    UF.PlumberPetFood(face)
+    assert(button:GetParent() == home, "without Plumber nothing moves")
+    env.C_AddOns.IsAddOnLoaded = function(name) return name == "Plumber" end
+    local combat = ui.combat
+    ui.combat = true
+    UF.PlumberPetFood(face)
+    assert(button:GetParent() == home, "not in a fight")
+    ui.combat = false
+    UF.PlumberPetFood(face)
+    assert(button:GetParent() == face and select(2, button:GetPoint(1)) == face)
+    button:Attach()
+    assert(button:GetParent() == face, "switched on again in Plumber")
+    ui.combat, env.C_AddOns.IsAddOnLoaded, env.PetFrameHappiness = combat, loaded, nil
+    UF.plumberFood, UF.plumberFace = nil, nil
+end
 local tick = ui.timers[#ui.timers].callback
 tick()
 assert(cast.Text:GetText() == "Sample Cast (R2)" and cast.Delay:GetText() == "+0.5")
 assert(cast.Delay:IsShown() and cast.timerDirection == env.Enum.StatusBarTimerDirection.ElapsedTime)
+do  -- a setting changed in Edit Mode redraws the running sample: it doesn't start the next one
+    local started = cast.timerDuration.start
+    ui.time = (ui.time or 100) + 1
+    UF.RedrawPlayerCast()
+    assert(cast.Text:GetText() == "Sample Cast (R2)" and cast.timerDuration.start == started)
+end
 assert(targetDebuffs.groups[harm].maxFrameCount == 4 and target.Auras.TOPLEFT.lanes["debuffs#fill2"])
 ui.editing = false
 callbacks.exit()

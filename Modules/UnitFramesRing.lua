@@ -21,8 +21,9 @@ end
 
 --------------------------------------------------
 -- 1. ART AND PLACEMENT
--- The ring is the game's atlas (UI-HUD-UnitFrame-*-PortraitOn), cropped and masked to the ring; the
--- art is drawn from the game, not copied into FlareUI (LICENSES/README.txt).
+-- The ring and the plate are FlareUI's own pieces, cut from Blizzard's unit frame art (Media/Frames,
+-- LICENSES/README.txt): its atlas holds ring and plate in one picture, which no crop takes apart cleanly.
+-- The rest (level disc, crests, dragons, skull) is the game's atlases, drawn whole.
 -- Everything round the ring sits where Blizzard puts it: each anchor on Blizzard's 232 x 100 frame,
 -- taken from Blizzard's ring centre and scaled by ring size over Blizzard's; mirrored on the other side.
 -- The ring is centred on the frame's middle, its end tucked under it so the bars start where their
@@ -37,31 +38,17 @@ local SMALL_FRAMES = { pet = "player", targettarget = "target", focustarget = "t
 local SMALL_KEYS = {}
 for unit in pairs(SMALL_FRAMES) do SMALL_KEYS[unit] = { unit .. "Setup", unit .. "Stash", unit .. "Positions" } end
 
--- the art: the atlas and the ring's box in it (fractions, to the outer edge of its shadow). The ring
--- is on the atlas's right; on the left it is mirrored. Every frame shares the target's ring.
-local ART = {
-    target = { atlas = "UI-HUD-UnitFrame-Target-PortraitOn", side = "RIGHT",
-               box = { 252.78 / 384, 375.0 / 384, 1.67 / 134, 123.89 / 134 } },
-}
-ART.player = ART.target
-ART.focus = ART.target
-ART.party = ART.target
-ART.boss = ART.target
-ART.pet = ART.target
-ART.targettarget = ART.target
-ART.focustarget = ART.target
+-- the ring alone, its painted circle in the file's middle: so many art pixels across, 61.8 of them to the
+-- ring's diameter (PLATE.ringD). Flipped when the ring is on the left.
+local RING_FILE, RING_FILE_SIZE = "Interface\\AddOns\\FlareUI\\Media\\Frames\\Ring", 128
 local CIRCLE_MASK   = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 local SMALL_CIRCLE  = "UI-HUD-UnitFrame-SmallCircle"
-local PORTRAIT_SHARE = 0.86   -- the portrait inside the ring, of its diameter
--- A dark disc behind the portrait, out under the rim: the art's
--- opening is off-centre and wider than the portrait at the bottom and outer side (0.84-0.90 of the
--- radius), so the world showed through a thin crescent there
+local PORTRAIT_SHARE = 0.90   -- the portrait inside the ring, of its diameter: its edge is under the rim all round
+-- A dark disc behind the portrait, out under the rim, for portraits with see-through parts
 local PORTRAIT_BACK_SHARE = 0.94
--- FlareUI Style (no plate): the whole art, cut to a circle so the art's join to the plate (a tail
--- on the bars' side) doesn't show. The art's rim reaches further out on the outer side, so
--- the circle is larger and moved outwards: its edge stays CLEAN_RING_BARS of the ring's diameter
--- from the centre on the bars' side and reaches CLEAN_RING_OUTER on the outer side (rim and shadow)
-local CLEAN_RING_BARS, CLEAN_RING_OUTER = 0.49, 0.585
+-- The painted ring stands so much further out from the bars, and lower, than the point its elements are
+-- placed from (art pixels, Blizzard's layout). Everything of the ring's shape is centred on it: ring.Centre
+Ring.PAINTED = { out = 0.87, down = 1.76 }
 -- Blizzard's combo arc round its 61.1 px target ring (Camelot ComboFrame.lua POINT_LAYOUT_DATA),
 -- started higher while the PvP crest shows; radius in the points' scale, shift from the centre
 local RING_COMBO = { radius = 66, start = -10, pvpStart = 2, step = 21, scale = 0.6, shift = { 2, 2 } }
@@ -161,7 +148,7 @@ local STATUS_COMBAT  = { 1.0, 0.22, 0.18 }
 -- the player's rest / combat state tints the ring's own border, pulsing softly: alpha low, high,
 -- seconds each way (the ring art is copied in grey, coloured, over the art)
 local STATUS_PULSE   = { 0.12, 0.55, 1.2 }
-local TINT_RIM_SHARE = 1.04   -- the tint's circle, of the ring's diameter (the rim's outer edge)
+local TINT_RIM_SHARE = 1.05   -- the tint's circle, of the ring's diameter (the rim's outer edge)
 -- Blizzard's level text (WhiteLargeNumberFont) at 1x
 local LEVEL_FONT, LEVEL_FONT_SIZE = "Fonts\\FRIZQT__.TTF", 14
 -- the level disc, number and skull, of the atlas size (as Blizzard draws them)
@@ -179,28 +166,29 @@ local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, st
 -- a stored setup may lack these
 local TILE_KEYS = { party = true, boss = true }
 
--- Forever's frame plate: the left part of the target's atlas (194 x 68 art px) with its name box and
--- bar slots. The frame is x0..x1, y0..y1; cutX / cutY are the piece edges (ends keep their size, the
--- middles stretch). The last piece runs on under the ring. Scale sets its size, with the ring.
+-- Forever's frame plate, in the pixels of the target's atlas it was cut from (194 x 68): rims with their
+-- inner shadow, drawn in front of the bars, over the slots' wood. The frame is x0..x1, y0..y1; cutX / cutY
+-- are the piece edges (ends keep their size, the middles stretch). The last piece runs on under the ring.
+-- Scale sets its size, with the ring.
 local PLATE = {
-    atlas = "UI-HUD-UnitFrame-Target-PortraitOn", artW = 194, artH = 68,
+    file = "Interface\\AddOns\\FlareUI\\Media\\Frames\\Plate", fileW = 256, fileH = 64, fromY = 6,   -- art pixels, and the file's first row
     x0 = 1, x1 = 131, y0 = 8, y1 = 57,
-    -- the second row stretches with the height; rowDelta resizes a row by that many art pixels.
-    -- the last column (127 on) is Blizzard's ring rim: it keeps rowDelta whatever Power Height
-    -- does to the rows, so the rim never bends (Ring.LayoutPlate)
-    cutX = { 0, 8, 120, 127, 145 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
+    -- the second row stretches with the height; rowDelta resizes a row by that many art pixels. The last
+    -- column (127 on), cut to the ring, keeps rowDelta whatever Power Height does to the rows
+    cutX = { 0, 8, 120, 127, 150 }, cutY = { 6, 14, 24, 32, 39, 47, 51, 59 },
     rowDelta = { 0, -3, 0, 2, 0, 1, 0 },
     defaultScale = { player = 130, target = 130, focus = 100, party = 100, boss = 100, pet = 75,
                      targettarget = 65, focustarget = 65 },   -- percent of Blizzard's size
     ringD = 61.8, ringX = 158.6,           -- Blizzard's ring on this art: its diameter and centre
     ringRise = 0.64,                       -- its centre above the plate's, in art pixels
-    maskLeft = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingPlateLeft",     -- the ring art's mask: ring on the left
-    maskRight = "Interface\\AddOns\\FlareUI\\Media\\Masks\\RingPlateRight",
+    wood = { 313 / 512, 503 / 512, 9 / 128, 31 / 128 },   -- the slots' wood in the file
+    back = { 4.8, 124.7, 10, 25.5 },       -- the name box's
     name   = { 4, 125, 11, 26 },           -- x from, x to, y from, y to
-    -- the bars' art; mirrored files for right-to-left fill (a status bar crops an atlas from the left)
-    health = { 4, 125, 29, 42, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever.tga",
+    -- the bars' art, their edges just under the rims; mirrored files for right-to-left fill (a status bar
+    -- crops an atlas from the left)
+    health = { 4.8, 124.7, 28, 41.9, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever.tga",
                mirrored = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mirrored.tga" },
-    power  = { 4, 125, 45, 53, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana.tga",
+    power  = { 4.8, 124.7, 44, 52.9, tex = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana.tga",
                mirrored = "Interface\\AddOns\\FlareUI\\Media\\Bars\\FlareUI-Forever-Mana-Mirrored.tga" },
     strip  = "UI-HUD-UnitFrame-Target-PortraitOn-Type",   -- the name box's reaction glow
     stripRight = 131, stripTop = 10,       -- where Blizzard's anchors put the glow on this art
@@ -214,19 +202,16 @@ Ring.STRIP_ATLAS = PLATE.strip
 -- power slot) takes or gives. Off folds the separator's row (5) and row 6 into row 4, and the power
 -- slot's bottom edge (row 7) closes the health slot.
 Ring.PLATE_POWER = { default = 9, min = 4, max = 15 }
-PLATE.healthFull = { PLATE.health[1], PLATE.health[2], PLATE.health[3], 53, tex = PLATE.health.tex,
+PLATE.healthFull = { PLATE.health[1], PLATE.health[2], PLATE.health[3], PLATE.power[4], tex = PLATE.health.tex,
                      mirrored = PLATE.health.mirrored }
--- Mana on Shapeshift: Blizzard's player plate with two power slots, unused on
--- Forever. Its upper part is the target's plate, mirrored and 4 art pixels lower (measured on the sheet:
--- x there = 197 - x here), so only what is below the power slot comes from it: the last row, 11 longer.
--- It hangs below the frame, which can't resize in a fight. Two more pieces carry its corner on under the
--- ring; the outer one is cut to a circle, as Blizzard's ring stands a little further out than ours.
+-- Mana on Shapeshift: a second power slot, from Blizzard's player plate with two (unused on Forever). Only
+-- what is below the power slot comes from it: the last row, 11 longer. It hangs below the frame, which
+-- can't resize in a fight; one more piece carries its corner on under the ring.
 PLATE.two = {
-    atlas = "UI-HUD-UnitFrame-Player-PortraitOn-ClassResource", artW = 198, artH = 74, flipX = 197, downY = 4,
-    from = 51, to = 70, drop = 11,         -- the last row's y here, and how much lower it ends (59 to 70)
-    under = { 145, 158.6, 192 },           -- the two pieces under the ring: x from, between, to
-    maskD = 62, maskX = 154.6, maskY = 36.9,   -- the outer piece's circle
-    slot = { PLATE.power[1], PLATE.power[2], 56, 63.5, tex = PLATE.power.tex, mirrored = PLATE.power.mirrored },
+    file = "Interface\\AddOns\\FlareUI\\Media\\Frames\\PlateTwo", fileW = 256, fileH = 32, fromY = 51,
+    from = 51, to = 70, drop = 11,         -- the last row's y, and how much lower it ends (59 to 70)
+    under = { 150, 192 },                  -- the piece under the ring: x from, to
+    slot = { PLATE.power[1], PLATE.power[2], 55.2, 63.6, tex = PLATE.power.tex, mirrored = PLATE.power.mirrored },
 }
 local plateRows = {}
 -- the rows' deltas for a power slot of that height
@@ -526,7 +511,7 @@ local function DefaultDiameter(h)
     return math.floor((h or 44) * RING_SHARE + 0.5)
 end
 
--- the plate's screen pixels per art pixel for a ring of diameter D
+-- the screen pixels per art pixel for a ring of diameter D
 local function PlateScale(D) return D / PLATE.ringD end
 -- Forever Style's Scale (percent of Blizzard's size) writes the ring size and the height
 local function ApplyPlateScale(udb, percent)
@@ -670,20 +655,6 @@ end
 --------------------------------------------------
 -- 4. BUILD
 --------------------------------------------------
--- the ring out of its atlas, mirrored on the other side from the atlas's
-local function Crop(tex, artInfo, side, box)
-    local info = C_Texture.GetAtlasInfo(artInfo.atlas)
-    if not info then return false end
-    local l, r, t, b = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
-    if not (l and r and t and b and info.file) then return false end
-    box = box or artInfo.box
-    local x1, x2 = l + box[1] * (r - l), l + box[2] * (r - l)
-    if side and side ~= artInfo.side then x1, x2 = x2, x1 end
-    tex:SetTexture(info.file)
-    tex:SetTexCoord(x1, x2, t + box[3] * (b - t), t + box[4] * (b - t))
-    return true
-end
-
 -- (an atlas found is remembered: GetAtlasInfo makes a new table on each call, and Ring.Update asks often)
 Ring.atlasFound = {}
 local function SetAtlasSafe(tex, atlas)
@@ -804,7 +775,7 @@ function Ring.SyncSabHole(f)
     mask:ClearAllPoints()
     if ring and ring.BarHoleCut then
         mask:SetTexture(BAR_HOLE_FILE, "CLAMPTOWHITE", "CLAMPTOWHITE")
-        mask:SetAllPoints(ring)
+        mask:SetAllPoints(ring.Centre)
     else
         mask:SetTexture("Interface\\Buttons\\WHITE8X8", "CLAMPTOWHITE", "CLAMPTOWHITE")
         mask:SetAllPoints(f)
@@ -832,7 +803,7 @@ local function ApplyBarHole(f, ring)
         ring.BarHole:SetTexture(BAR_HOLE_FILE, "CLAMPTOWHITE", "CLAMPTOWHITE")
     end
     ring.BarHole:ClearAllPoints()
-    ring.BarHole:SetAllPoints(ring)
+    ring.BarHole:SetAllPoints(ring.Centre)
     ring.BarHoleCut = ring.BarHoleCut or {}
     for _, region in ipairs(BarHoleRegions(f)) do
         if not ring.BarHoleCut[region] then
@@ -861,19 +832,24 @@ local function SetDiscHole(f, ring, on, size)
     ring.discHoleOn = on
 end
 
+-- Off the screen's pixel grid, as Blizzard draws its own unit frame art: rounded piece by piece, the
+-- plate and the ring miss each other by a pixel
+function Ring.NoSnap(tex)
+    tex:SetSnapToPixelGrid(false)
+    tex:SetTexelSnappingBias(0)
+    return tex
+end
+
 -- the ring, its masks, the discs, glows and extras: made once
 local function Build(f)
     if f.RingFrame then return f.RingFrame end
     local ring = CreateFrame("Frame", nil, f)
-    -- the art itself is cropped at each layout (mirrored with the ring's side)
-    ring.Art = ring:CreateTexture(nil, "ARTWORK")
-    ring.Art:SetAllPoints()
-    ring.Mask = ring:CreateMaskTexture()
-    ring.Mask:SetAllPoints(ring.Art)
-    ring.Mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    ring.Art:AddMaskTexture(ring.Mask)
-    ring.artMasked = true
-    ring.PlateMask = ring:CreateMaskTexture()
+    -- (flipped with the ring's side at each layout)
+    ring.Art = Ring.NoSnap(ring:CreateTexture(nil, "ARTWORK"))
+    -- the ring's size, centred on the painted circle (Ring.PAINTED)
+    ring.Centre = CreateFrame("Frame", nil, ring)
+    ring.Art:SetTexture(RING_FILE)
+    ring.hasArt = true
 
     -- the portrait's mask, the same shape
     ring.PortraitMask = f.Portrait:CreateMaskTexture()
@@ -890,15 +866,15 @@ local function Build(f)
     -- the glows: resting / combat status (player) and the threat flash
     ring.Status = GlowTexture(ring)
     ring.Flash = GlowTexture(ring)
-    -- the rest / combat tint: the ring art again, in grey and coloured, cut to the ring's circle (on
-    -- Forever Style's plate the art runs on past the ring), pulsing
-    ring.Tint = ring:CreateTexture(nil, "ARTWORK", nil, 7)
+    -- the rest / combat tint: the ring art again, in grey and coloured, cut to its rim (without the
+    -- shadow), pulsing
+    ring.Tint = Ring.NoSnap(ring:CreateTexture(nil, "ARTWORK", nil, 7))
     ring.Tint:SetDesaturated(true)
     ring.Tint:SetBlendMode("BLEND")
     ring.Tint:Hide()
     ring.TintMask = ring:CreateMaskTexture()
     ring.TintMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    ring.TintMask:SetPoint("CENTER", ring, "CENTER")
+    ring.TintMask:SetPoint("CENTER", ring.Centre, "CENTER")
     ring.Tint:AddMaskTexture(ring.TintMask)
     ring.Pulse = ring:CreateAnimationGroup()
     ring.Pulse:SetLooping("BOUNCE")
@@ -1007,54 +983,29 @@ function Ring.Layout(f)
 
     ring:ClearAllPoints()
     ring:SetSize(g.D, g.D)
-    -- Blizzard's whole ring, shadow and all, out to the atlas's edges. Forever Style cuts it to the
-    -- ring only where the plate's band meets it (PLATE.maskLeft / maskRight); FlareUI Style cuts it to
-    -- a circle (CLEAN_RING_BARS / CLEAN_RING_OUTER).
     local plate = Ring.Plate(f)
-    ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", left and g.centre or -g.centre, plate and PLATE.ringRise * g.s or 0)
-    local art = ART[Kind(f)]
+    local perArt = PlateScale(g.D)
+    local outX, down = Ring.PAINTED.out * perArt, Ring.PAINTED.down * perArt
+    -- Forever Style: where Blizzard's art has it on the plate. FlareUI Style: the painted circle on the
+    -- bars' middle, so the ring and all its elements move by that much
+    local x, y = left and g.centre or -g.centre, plate and PLATE.ringRise * g.s or down
+    if not plate then x = x + (left and outX or -outX) end
+    ring:SetPoint("CENTER", f, left and "LEFT" or "RIGHT", x, y)
+    ring.Centre:ClearAllPoints()
+    ring.Centre:SetSize(g.D, g.D)
+    ring.Centre:SetPoint("CENTER", ring, "CENTER", left and -outX or outX, -down)
     ring.Art:ClearAllPoints()
-    do
-        -- out to the atlas's own edges, at the same scale; the plate takes over on the bars' side
-        local box = art.box
-        local w, h = g.D / (box[2] - box[1]), g.D / (box[4] - box[3])
-        local out = (1 - box[2]) * w
-        ring.Art:SetPoint("TOPLEFT", ring, "TOPLEFT", left and -out or 0, box[3] * h)
-        ring.Art:SetPoint("BOTTOMRIGHT", ring, "BOTTOMRIGHT", left and 0 or out, -(1 - box[4]) * h)
-        ring.hasArt = Crop(ring.Art, art, g.side, { box[1], 1, 0, 1 })
-    end
+    ring.Art:SetSize(RING_FILE_SIZE * perArt, RING_FILE_SIZE * perArt)
+    ring.Art:SetPoint("CENTER", ring.Centre, "CENTER")
+    if left then ring.Art:SetTexCoord(1, 0, 0, 1) else ring.Art:SetTexCoord(0, 1, 0, 1) end
     -- Blizzard's gold ring in Forever's bronze, the same in both ring styles (Ring.PLATE_TINT)
     Ring.TintPlateArt(ring.Art)
-    ring:SetShown(ring.hasArt)
-    do
-        -- the whole art past the plate's end; before it only the ring, as the art's copy of the plate's
-        -- rails rounds differently from the plate and shows a step. The file is 2.5 radii wide.
-        ring.PlateMask:SetTexture(left and PLATE.maskLeft or PLATE.maskRight, "CLAMPTOWHITE", "CLAMPTOWHITE")
-        ring.PlateMask:ClearAllPoints()
-        ring.PlateMask:SetPoint("CENTER", ring, "CENTER")
-        ring.PlateMask:SetSize(g.R * 2.5, g.R * 2.5)
-    end
-    if not plate then
-        ring.Mask:ClearAllPoints()
-        local size = (CLEAN_RING_BARS + CLEAN_RING_OUTER) * g.D
-        local shift = (CLEAN_RING_OUTER - CLEAN_RING_BARS) / 2 * g.D
-        ring.Mask:SetPoint("CENTER", ring, "CENTER", left and -shift or shift, 0)
-        ring.Mask:SetSize(size, size)
-    end
-    if plate and ring.artMasked then
-        ring.Art:RemoveMaskTexture(ring.Mask)
-        ring.Art:AddMaskTexture(ring.PlateMask)
-        ring.artMasked = false
-    elseif not plate and not ring.artMasked then
-        ring.Art:RemoveMaskTexture(ring.PlateMask)
-        ring.Art:AddMaskTexture(ring.Mask)
-        ring.artMasked = true
-    end
+    ring:Show()
     -- the tint follows the art exactly
     ring.Tint:SetTexture(ring.Art:GetTexture())
     ring.Tint:SetTexCoord(ring.Art:GetTexCoord())
     ring.Tint:ClearAllPoints()
-    for i = 1, ring.Art:GetNumPoints() do ring.Tint:SetPoint(ring.Art:GetPoint(i)) end
+    ring.Tint:SetAllPoints(ring.Art)
     ring.TintMask:SetSize(g.D * TINT_RIM_SHARE, g.D * TINT_RIM_SHARE)
     -- (pcall: a copy inside Blizzard's aura button is locked to addon code while a secret aura is in it)
     for holder in pairs(ring.DispelTints or {}) do pcall(Ring.SyncDispelTint, ring, holder) end
@@ -1065,10 +1016,10 @@ function Ring.Layout(f)
     local size = g.D * PORTRAIT_SHARE
     f.Portrait:ClearAllPoints()
     f.Portrait:SetSize(size, size)
-    f.Portrait:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    f.Portrait:SetPoint("CENTER", ring.Centre, "CENTER", 0, 0)
     ring.PortraitBack:ClearAllPoints()
     ring.PortraitBack:SetSize(g.D * PORTRAIT_BACK_SHARE, g.D * PORTRAIT_BACK_SHARE)
-    ring.PortraitBack:SetPoint("CENTER", ring, "CENTER", 0, 0)
+    ring.PortraitBack:SetPoint("CENTER", ring.Centre, "CENTER", 0, 0)
     if not f.Portrait.ringMasked then
         f.Portrait.Tex:AddMaskTexture(ring.PortraitMask)
         f.Portrait.ringMasked = true
@@ -1158,8 +1109,8 @@ end
 
 --------------------------------------------------
 -- 5b. FOREVER STYLE: THE FRAME PLATE
--- Forever's plate behind the bars, cut from the target's atlas: ends keep their art size, middles
--- stretch. Mirrored when the ring is on the left.
+-- Forever's plate: the slots' wood behind the bars, the rims in front of them. Ends keep their art size,
+-- middles stretch. Mirrored when the ring is on the left.
 --------------------------------------------------
 -- an edge in art pixels -> its anchor on the frame: the side it hangs from and the offset
 local function EdgeX(x, s)
@@ -1191,31 +1142,43 @@ end
 
 local function BuildPlate(f)
     if f.PlateFrame then return f.PlateFrame end
+    local NoSnap = Ring.NoSnap
     local plate = CreateFrame("Frame", nil, f)
     plate:SetAllPoints(f)
+    -- the rims: over the bars and their overlays (the Border's level, which the plate hides), under the texts
+    plate.Front = CreateFrame("Frame", nil, plate)
+    plate.Front:SetAllPoints(f)
     plate.pieces = {}
-    for i = 1, (#PLATE.cutX - 1) * (#PLATE.cutY - 1) do plate.pieces[i] = plate:CreateTexture(nil, "BACKGROUND") end
-    -- the player's: the second power slot's corner under the ring (PLATE.two), behind the rest
+    for i = 1, (#PLATE.cutX - 1) * (#PLATE.cutY - 1) do
+        plate.pieces[i] = NoSnap(plate.Front:CreateTexture(nil, "OVERLAY", nil, -6))
+    end
+    -- the player's: the second power slot's corner under the ring (PLATE.two)
     if f.ShiftMana or (f.fuiUnit == "player" and not f.fuiSample and not f.ctx) then
         plate.underFrom = #plate.pieces
-        for i = 1, 2 do plate.pieces[plate.underFrom + i] = plate:CreateTexture(nil, "BACKGROUND", nil, -1) end
-        plate.UnderMask = plate:CreateMaskTexture()
-        plate.UnderMask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        plate.pieces[plate.underFrom + 2]:AddMaskTexture(plate.UnderMask)
+        plate.pieces[plate.underFrom + 1] = NoSnap(plate.Front:CreateTexture(nil, "OVERLAY", nil, -7))
+    end
+    -- the wood of the name box, health, power and second power slots
+    plate.backs = {}
+    for i = 1, 4 do
+        local back = plate:CreateTexture(nil, "BACKGROUND")
+        back:SetTexture(PLATE.file)
+        back:SetTexCoord(unpack(PLATE.wood))
+        Ring.TintPlateArt(back)
+        back:SetAlpha(i == 1 and 0.5 or 0.7)
+        plate.backs[i] = back
     end
     -- Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
     -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
     -- light: the bright metal glows, the dark slots stay dark.
     plate.glow = {}
-    plate.GlowPulse = plate:CreateAnimationGroup()
+    plate.GlowPulse = plate.Front:CreateAnimationGroup()
     plate.GlowPulse:SetLooping("BOUNCE")
     for i = 1, #plate.pieces do
-        local g = plate:CreateTexture(nil, "BACKGROUND", nil, 7)
+        local g = NoSnap(plate.Front:CreateTexture(nil, "OVERLAY", nil, 5))
         g:SetBlendMode("ADD")
         g:SetDesaturated(true)
         g:Hide()
         plate.glow[i] = g
-        if plate.underFrom and i == plate.underFrom + 2 then g:AddMaskTexture(plate.UnderMask) end
         local fade = plate.GlowPulse:CreateAnimation("Alpha")
         fade:SetTarget(g)
         fade:SetFromAlpha(STATUS_PULSE[1])
@@ -1250,52 +1213,55 @@ local function PlaceBar(bar, f, s, flip, slot)
     if bar.bg then bar.bg:SetAlpha(0) end   -- the slot is the background
 end
 
--- The second power slot (PLATE.two), over the last row's pieces and on under the ring; off: the pieces
--- under the ring draw nothing. info: the plate's own atlas; s, flip as LayoutPlate's
+-- A piece of the plate, and its lit copy, with art rect x1..x2, y1..y2 of a file (art: PLATE or PLATE.two)
+local function DrawPiece(f, plate, i, art, s, flip, x1, x2, y1, y2, rows)
+    local u1, u2 = x1 / art.fileW, x2 / art.fileW
+    if flip then u1, u2 = u2, u1 end
+    local v1, v2 = (y1 - art.fromY) / art.fileH, (y2 - art.fromY) / art.fileH
+    local tex, g = plate.pieces[i], plate.glow[i]
+    tex:SetTexture(art.file)
+    tex:SetTexCoord(u1, u2, v1, v2)
+    PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2, rows)
+    g:SetTexture(art.file)
+    g:SetTexCoord(u1, u2, v1, v2)
+    PlaceOnPlate(g, f, s, flip, x1, x2, y1, y2, rows)
+    Ring.TintPlateArt(tex)
+end
+
+-- The second power slot (PLATE.two), over the last row's pieces and on under the ring; off: the piece
+-- under the ring draws nothing
 local function LayoutTwoSlots(f, plate, s, flip, two)
     local T = PLATE.two
-    local du, dv = two and two.rightTexCoord - two.leftTexCoord, two and two.bottomTexCoord - two.topTexCoord
-    local function Draw(i, x1, x2)
-        local tex, g = plate.pieces[i], plate.glow[i]
-        if not two then
-            tex:SetTexture(nil)
-            g:SetTexture(nil)
-            return
-        end
-        local u1 = two.leftTexCoord + (T.flipX - x1) / T.artW * du
-        local u2 = two.leftTexCoord + (T.flipX - x2) / T.artW * du
-        if flip then u1, u2 = u2, u1 end
-        local v1 = two.topTexCoord + (T.from + T.downY) / T.artH * dv
-        local v2 = two.topTexCoord + (T.to + T.downY) / T.artH * dv
-        for _, t in ipairs({ tex, g }) do
-            t:SetTexture(two.file)
-            t:SetTexCoord(u1, u2, v1, v2)
-            PlaceOnPlate(t, f, s, flip, x1, x2, T.from, T.to, PLATE.rowDelta)
-        end
-        Ring.TintPlateArt(tex)
-        tex:Show()
-    end
-    if plate.underFrom then
-        Draw(plate.underFrom + 1, T.under[1], T.under[2])
-        Draw(plate.underFrom + 2, T.under[2], T.under[3])
-        local x = (T.maskX - PLATE.x1) * s
-        plate.UnderMask:ClearAllPoints()
-        plate.UnderMask:SetSize(T.maskD * s, T.maskD * s)
-        plate.UnderMask:SetPoint("CENTER", f, flip and "BOTTOMLEFT" or "BOTTOMRIGHT", flip and -x or x,
-            (RowY(PLATE.y1) - RowY(T.maskY)) * s)
-    end
     if two then
         local cols = #PLATE.cutX - 1
         local first = (#PLATE.cutY - 2) * cols
-        for col = 1, cols do Draw(first + col, PLATE.cutX[col], PLATE.cutX[col + 1]) end
+        for col = 1, cols do
+            DrawPiece(f, plate, first + col, T, s, flip, PLATE.cutX[col], PLATE.cutX[col + 1], T.from, T.to, PLATE.rowDelta)
+        end
+    end
+    if not plate.underFrom then return end
+    local i = plate.underFrom + 1
+    if two then
+        DrawPiece(f, plate, i, T, s, flip, T.under[1], T.under[2], T.from, T.to, PLATE.rowDelta)
+        plate.pieces[i]:Show()
+    else
+        plate.pieces[i]:SetTexture(nil)
+        plate.glow[i]:SetTexture(nil)
     end
 end
 
--- Whether the second power slot's art is there, and how far it reaches below the frame (0: not shown)
-function Ring.TwoSlots()
-    local info = C_Texture.GetAtlasInfo(PLATE.two.atlas)
-    return info and info.file and info.leftTexCoord and info or nil
+-- The slots' wood under the bars; a slot not in use has none
+local function LayoutBacks(f, plate, s, flip, power, two)
+    local slots = { PLATE.back, power > 0 and PLATE.health or PLATE.healthFull, power > 0 and PLATE.power or false,
+                    two and PLATE.two.slot or false }
+    for i, back in ipairs(plate.backs) do
+        local slot = slots[i]
+        if slot then PlaceOnPlate(back, f, s, flip, slot[1], slot[2], slot[3], slot[4]) end
+        back:SetShown(slot and true or false)
+    end
 end
+
+-- How far the second power slot reaches below the frame (0: not shown)
 function Ring.PlateDrop(f)
     return f and f.PlateFrame and f.PlateFrame:IsShown() and f.plateDrop or 0
 end
@@ -1303,7 +1269,7 @@ end
 function Ring.PlateReserve(f)
     local udb = f and f.ShiftMana and Db(f)
     local test = ns.UnitFrames and ns.UnitFrames.shiftTest
-    if not (udb and (udb.shiftMana or test) and Ring.Plate(f) and Ring.TwoSlots()) then return 0 end
+    if not (udb and (udb.shiftMana or test) and Ring.Plate(f)) then return 0 end
     return PLATE.two.drop * Geometry(f).s
 end
 
@@ -1313,42 +1279,28 @@ function Ring.LayoutPlate(f)
     local s, flip = g.s, g.side == "LEFT"
     local plate = BuildPlate(f)
     plate:SetFrameLevel(f:GetFrameLevel())
+    plate.Front:SetFrameLevel(f:GetFrameLevel() + 4)
     plate:Show()
     local power = Ring.PlatePower(f)
     f.plateRows = PlateRows(power)
     local UF = ns.UnitFrames
-    local split = f.ShiftMana and UF and UF.ShiftManaShown and UF.ShiftManaShown(f)
-    local two = split and Ring.TwoSlots() or nil
+    local two = f.ShiftMana and UF and UF.ShiftManaShown and UF.ShiftManaShown(f) or nil
     f.plateDrop = two and PLATE.two.drop * s or 0
-    local info = C_Texture.GetAtlasInfo(PLATE.atlas)
-    if info and info.file then
-        local du, dv = info.rightTexCoord - info.leftTexCoord, info.bottomTexCoord - info.topTexCoord
+    do
         local cx, cy, i = PLATE.cutX, PLATE.cutY, 0
         local cols = #cx - 1
         for row = 1, #cy - 1 do
             for col = 1, cols do
                 i = i + 1
-                local tex = plate.pieces[i]
-                local x1, x2, y1, y2 = cx[col], cx[col + 1], cy[row], cy[row + 1]
-                local u1 = info.leftTexCoord + x1 / PLATE.artW * du
-                local u2 = info.leftTexCoord + x2 / PLATE.artW * du
-                if flip then u1, u2 = u2, u1 end
-                tex:SetTexture(info.file)
-                tex:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
-                Ring.TintPlateArt(tex)
-                -- the ring rim's column keeps the art's own rows (Power Height moves only the bars' line)
                 local rows = col == cols and PLATE.rowDelta or f.plateRows
-                PlaceOnPlate(tex, f, s, flip, x1, x2, y1, y2, rows)
+                DrawPiece(f, plate, i, PLATE, s, flip, cx[col], cx[col + 1], cy[row], cy[row + 1], rows)
                 -- (a row folded away by Power Height Off has no height)
-                tex:SetShown((y2 - y1) + (rows[row] or 0) > 0)
-                local g = plate.glow[i]
-                g:SetTexture(info.file)
-                g:SetTexCoord(u1, u2, info.topTexCoord + y1 / PLATE.artH * dv, info.topTexCoord + y2 / PLATE.artH * dv)
-                PlaceOnPlate(g, f, s, flip, x1, x2, y1, y2, rows)
+                plate.pieces[i]:SetShown((cy[row + 1] - cy[row]) + (rows[row] or 0) > 0)
             end
         end
     end
-    if two or plate.underFrom then LayoutTwoSlots(f, plate, s, flip, two) end
+    LayoutTwoSlots(f, plate, s, flip, two)
+    LayoutBacks(f, plate, s, flip, power, two)
     plate.glowOn = nil   -- the lit copy's art was set again: Ring.PlateGlow redoes its colour
     for holder in pairs(plate.dispelCopies or {}) do Ring.SyncPlateDispel(plate, holder) end
     local n = PLATE.name
@@ -1379,7 +1331,7 @@ function Ring.LayoutPlate(f)
             strip:SetReverseFill(f.Power:GetReverseFill())
             PlaceBar(strip, f, s, flip, PLATE.two.slot)
         end
-        strip:SetShown(two ~= nil)
+        strip:SetShown(two and true or false)
         line:Hide()
     end
     if power > 0 then
@@ -1397,8 +1349,8 @@ end
 -- the dispel highlight tints the plate's bronze too: a grey copy of the plate's art
 -- over it in the debuff type's colour, drawn as the portrait ring's dispel tint (DispelTint) so both
 -- read as one colour and beat as one (added light washed blue out to white on the bronze). Its own
--- copy: Blizzard shows and tints these for a dispellable debuff. At the plate's own level, under the
--- bars (the frame's children, one level up). parent: the highlight's frame, which pulses. Each piece
+-- copy: Blizzard shows and tints these for a dispellable debuff. At the rims' level, over the bars like
+-- them. parent: the highlight's frame, which pulses. Each piece
 -- sits on its plate piece; LayoutPlate keeps their art in step.
 function Ring.DispelPlate(f, parent)
     local plate = f.PlateFrame
@@ -1411,7 +1363,7 @@ function Ring.DispelPlate(f, parent)
         holder = CreateFrame("Frame", nil, parent)
         holder.tex = {}
         for i, piece in ipairs(plate.pieces) do
-            local tex = holder:CreateTexture(nil, "OVERLAY")
+            local tex = Ring.NoSnap(holder:CreateTexture(nil, "OVERLAY"))
             tex:SetAllPoints(piece)
             tex:SetBlendMode("BLEND")
             tex:SetDesaturated(true)
@@ -1422,7 +1374,7 @@ function Ring.DispelPlate(f, parent)
         plate.dispelCopies[holder] = true
     end
     holder:SetAllPoints(plate)
-    holder:SetFrameLevel(plate:GetFrameLevel())
+    holder:SetFrameLevel(plate.Front:GetFrameLevel())
     holder:Show()
     Ring.SyncPlateDispel(plate, holder)
     return holder.tex
@@ -1557,7 +1509,8 @@ function Ring.IconSpot(f, key)
     end
     if not dx then return nil end
     -- the crown: 2 px under the frame's top edge, clear of the auras above
-    if key == "leader" then dy = g.H / 2 - 2 end
+    -- (from the frame's middle: FlareUI Style's ring frame stands a little above it)
+    if key == "leader" then dy = g.H / 2 - 2 - (Ring.Plate(f) and 0 or Ring.PAINTED.down * PlateScale(g.D)) end
     -- the raid marker: smaller than Blizzard's and a little lower, clear of Show Threat's number
     if key == "raidIcon" then w, h, dy = w * 0.75, h * 0.75, dy - 3 end
     -- the flag carriers' faction crest: big, centred on the ring's outer edge
@@ -1775,7 +1728,7 @@ function Ring.SyncDispelTint(ring, holder)
     tex:SetTexture(ring.Art:GetTexture())
     tex:SetTexCoord(ring.Art:GetTexCoord())
     tex:ClearAllPoints()
-    for i = 1, ring.Art:GetNumPoints() do tex:SetPoint(ring.Art:GetPoint(i)) end
+    tex:SetAllPoints(ring.Art)
     holder.Mask:SetSize(ring.TintMask:GetSize())
     -- over the ring's art, under its icons, disc and crest (as the threat tint)
     holder:SetFrameLevel(ring:GetFrameLevel() + 1)
@@ -1793,12 +1746,12 @@ function Ring.DispelTint(f, parent)
     if not holder then
         holder = CreateFrame("Frame", nil, parent)
         holder:SetAllPoints(ring)
-        holder.Tex = holder:CreateTexture(nil, "ARTWORK", nil, 7)
+        holder.Tex = Ring.NoSnap(holder:CreateTexture(nil, "ARTWORK", nil, 7))
         holder.Tex:SetDesaturated(true)
         holder.Tex:SetBlendMode("BLEND")
         holder.Mask = holder:CreateMaskTexture()
         holder.Mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        holder.Mask:SetPoint("CENTER", ring, "CENTER")
+        holder.Mask:SetPoint("CENTER", ring.Centre, "CENTER")
         holder.Tex:AddMaskTexture(holder.Mask)
         parent.FlareUI_RingDispel = holder
     end

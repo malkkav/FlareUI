@@ -8,6 +8,7 @@ ignore:
   - README.md
   - AGENTS.md
   - CONTRIBUTING.md
+  - API.md
   - CHANGELOG.md
   - CHANGELOG-history.md
   - tools

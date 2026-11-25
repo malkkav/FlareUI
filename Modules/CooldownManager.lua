@@ -318,6 +318,27 @@ local showing, arranged = {}, {}
 
 local function Number(v) return Readable(v) and type(v) == "number" and v or nil end
 local function ByLayoutIndex(a, b) return a.layoutIndex < b.layoutIndex end
+-- Tracked Bars' Sort By: by when a bar came up (p.since, a count), as its time left can't be read in a fight
+local since = 0
+local function Came(item)
+    local p = Pieces(item)
+    if not p.since then
+        since = since + 1
+        p.since = since
+    end
+    return p.since
+end
+local function NewestFirst(a, b) return Came(a) > Came(b) end
+local function NewestLast(a, b) return Came(a) < Came(b) end
+CM.BAR_SORTS = { newest = NewestFirst, oldest = NewestLast }
+CM.MAX_BARS = 20
+-- Max Bars: the ones past it are there but unseen
+local function Cap(item, off)
+    local p = Pieces(item)
+    if (p.capped or false) == off then return end
+    p.capped = off or nil
+    item:SetAlpha(off and 0 or 1)
+end
 
 local function Grow(name)
     local key = GROW_KEYS[name]
@@ -382,6 +403,7 @@ local function Restore(name)
     local viewer = _G[name]
     for item in ActiveItems(name) do
         local p = Pieces(item)
+        Cap(item, false)
         if p.moved then
             local point, relative, _, x, y = item:GetPoint(1)
             if p.b1 and Readable(point) and Number(x) and Number(y) and Own(p, viewer, point, relative, x, y) then
@@ -410,9 +432,18 @@ local function Arrange(name)
     if count == 0 then return end
     local viewer = _G[name]
     table.sort(showing, ByLayoutIndex)
+    local bars = GROW_KEYS[name] == "bars"
+    if bars then
+        local db = GetDb()
+        -- (their places in Blizzard's order first: bars up together stay in it)
+        for _, item in ipairs(showing) do Came(item) end
+        local sort = CM.BAR_SORTS[db.barSort]
+        if sort then table.sort(showing, sort) end
+        local max = tonumber(db.barMax) or CM.MAX_BARS
+        for i, item in ipairs(showing) do Cap(item, max < CM.MAX_BARS and i > max) end
+    end
     local width, height = Number(showing[1]:GetWidth()), Number(showing[1]:GetHeight())
     if not (width and height and width > 0 and height > 0) then return end
-    local bars = GROW_KEYS[name] == "bars"
     local horizontal = not bars and viewer.isHorizontal ~= false
     -- (Blizzard's padding is in the frames' own units, whatever its Icon Size: GridLayoutUtil)
     local step = (horizontal and width or height) + (Number(horizontal and viewer.childXPadding or viewer.childYPadding) or 0)
@@ -441,6 +472,7 @@ local function ItemChanged(item)
     shown = Readable(shown) and shown and true or false
     if shown == p.shown then return end
     p.shown = shown
+    p.since = nil   -- (gone, or just up: its place in Sort By starts anew)
     -- (released for a layout, no place yet: Blizzard's layout follows, and the packing with it)
     local points = item:GetNumPoints()
     if Readable(points) and points == 0 then return end
@@ -483,7 +515,34 @@ function CM.GrowSetting(key)
             db.grow = db.grow or {}
             db.grow[key] = value
             CM:Refresh()
+            -- (Sort By and Max Bars come and go with it)
+            if key == "bars" then LEM:RefreshFrameSettings(_G[name]) end
         end,
+    }
+end
+
+-- Sort By and Max Bars, the Tracked Bars' own rows under Growth: only while Growth packs them
+function CM.BarSettings()
+    local LEM = LibStub("FlareEditMode")
+    local function hidden() return Grow("BuffBarCooldownViewer") == "blizzard" end
+    local function get(key, default) return function() local db = GetDb() return db and db[key] or default end end
+    local function set(key)
+        return function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db[key] = value
+            CM:Refresh()
+        end
+    end
+    return {
+        { name = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "blizzard", hidden = hidden,
+          values = { { text = L["Blizzard"], value = "blizzard", isRadio = true }, { text = L["Newest First"], value = "newest", isRadio = true },
+                     { text = L["Newest Last"], value = "oldest", isRadio = true } },
+          desc = L["The order of the bars:\n* Blizzard: as in the Cooldown Manager's settings\n* Newest First, Newest Last: by when each bar came up"],
+          get = get("barSort", "blizzard"), set = set("barSort") },
+        { name = L["Max Bars"], kind = LEM.SettingType.Slider, default = CM.MAX_BARS, minValue = 1, maxValue = CM.MAX_BARS, valueStep = 1, hidden = hidden,
+          desc = L["The most bars shown at once, the first ones in the order."],
+          get = get("barMax", CM.MAX_BARS), set = set("barMax") },
     }
 end
 
@@ -879,6 +938,7 @@ local function Hook()
             hooksecurefunc(viewer, "OnAcquireItemFrame", function(_, item)
                 -- (Blizzard cleared the frame's points on release: no place of FlareUI's is left on it)
                 Pieces(item).moved = nil
+                Cap(item, false)
                 if On() then ApplyItem(name, item) end
             end)
             -- Blizzard gives a frame its spell after acquiring it, and swaps spells in place

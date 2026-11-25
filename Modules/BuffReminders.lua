@@ -229,6 +229,17 @@ local MIGHT_CLASSES = { WARRIOR = true, ROGUE = true, HUNTER = true }
 -- pets: hunters call, revive and mend; warlocks summon (the last one they summoned, else the first known)
 local CALL_PET, REVIVE_PET = 883, 982
 local WARLOCK_SUMMONS = { 691, 697, 712, 688 }   -- Felhunter, Voidwalker, Succubus, Imp
+-- the same by the pet's creature family (UnitCreatureFamily): the pet out is the last one summoned too,
+-- one summoned before this module was on included (the idea after EllesmereUI)
+BR.PET_FAMILIES = { [15] = 691, [16] = 697, [17] = 712, [23] = 688 }
+function BR.NotePet()
+    if not UnitCreatureFamily then return end
+    local ok, _, family = pcall(UnitCreatureFamily, "pet")
+    if not ok or (canaccessvalue and not canaccessvalue(family)) then return end
+    local id = family and BR.PET_FAMILIES[family]
+    local me = id and ns.CharDB and ns.CharDB()
+    if me then me.lastSummon = id end
+end
 local GLOW_MISSING, GLOW_EXPIRING = { 1, 0.82, 0.25 }, { 1, 0.45, 0.1 }
 
 -- classes that never use mana
@@ -529,7 +540,7 @@ local function Resolve()
                         end
                     end
                     -- cast: every rank, so each member gets the one their level can take
-                    known[key] = { castID = id, cast = b.cast, names = names, icon = SpellIcon(id) }
+                    known[key] = { castID = id, cast = b.cast, greater = b.greater, names = names, icon = SpellIcon(id) }
                 end
             end
             if next(known) then
@@ -778,7 +789,8 @@ function BR.AddCustom(text)
     BR.Resolve()
     BR.Update()
 end
--- Custom Reminders, one by one: this class's own, ticked; unticking removes one
+-- Custom Reminders, one by one: this class's own, ticked; unticking removes one. By id, not by place:
+-- the menu stays open, and after one was removed its other ticks stood for the wrong reminders
 local customTokens = {}
 function BR.CustomTokens() return customTokens end
 local function CustomLabel(c)
@@ -792,9 +804,9 @@ end
 function BR.CustomChoices()
     local list = {}
     wipe(customTokens)
-    for i, c in ipairs(CustomList() or {}) do
-        customTokens[#customTokens + 1] = "c" .. i
-        list[#list + 1] = { "c" .. i, CustomLabel(c) }
+    for _, c in ipairs(BR.CustomIds(CustomList())) do
+        customTokens[#customTokens + 1] = "c" .. c.id
+        list[#list + 1] = { "c" .. c.id, CustomLabel(c) }
     end
     return list
 end
@@ -807,7 +819,7 @@ function BR.SetCustom(value)
     local ticked = ns.Conditions.Set(value or "")
     BR.CustomIds(list)
     for i = #list, 1, -1 do
-        if not ticked["c" .. i] then BR.ForgetCustom(table.remove(list, i)) end
+        if not ticked["c" .. list[i].id] then BR.ForgetCustom(table.remove(list, i)) end
     end
     BR.Resolve()
     BR.Update()
@@ -895,7 +907,7 @@ function Enabled(entry)
     -- an elixir: watched (ticked in Elixirs and More, or in your bags), and where food and flask show
     if entry.def.elixir then
         local mode = db.consumables or "off"
-        if mode == "off" or not ElixirWatched(entry.def, db) then return false end
+        if mode == "off" or db.elixirOn == false or not ElixirWatched(entry.def, db) then return false end
         return InScope(mode)
     end
     if entry.def.notRole and not ns.EditPreviewing() then
@@ -908,7 +920,7 @@ function Enabled(entry)
     end
     if entry.def.elixirStock then
         local mode = db.consumables or "off"
-        if mode == "off" or db.elixirSource ~= "bags" then return false end
+        if mode == "off" or db.elixirOn == false or db.elixirSource ~= "bags" then return false end
         return InScope(mode)
     end
     if entry.def.consumable then
@@ -1217,7 +1229,23 @@ end
 -- GUID, the right-click menu's Group Members), else for their class (By Class), else the one for
 -- everyone (Automatic: Might for the fighters, Wisdom for the rest), else the first you know
 -- (a pick you no longer know falls through to the next one)
-local function BlessingFor(entry, unit)
+local BlessingFor
+-- Greater Blessings (the icon's menu, off; Elkren, #196): a click casts the greater rank you know on a
+-- member, covering their class, unless someone else of that class should have another blessing (picked
+-- per player or class): then that member gets the normal one. nil: the normal one.
+function BR.GreaterRank(entry, b, unit, units)
+    if not ((GetDb() or {}).greaterBlessings and b and b.greater) then return nil end
+    local _, class = UnitClass(unit)
+    if not (Readable(class) and class) then return nil end
+    for _, other in ipairs(units) do
+        if other ~= unit then
+            local _, otherClass = UnitClass(other)
+            if Readable(otherClass) and otherClass == class and BlessingFor(entry, other) ~= b then return nil end
+        end
+    end
+    return BR.RankFor(b.greater, unit)
+end
+function BlessingFor(entry, unit)
     local db = GetDb() or {}
     local players, classes = db.blessingPlayer, db.blessingClass
     if players and next(players) then
@@ -1262,6 +1290,7 @@ local function PetFix(entry)
     -- until it has caught up (the Passive Pet reminder would flash)
     if GetTime() - (BR.petSettleAt or 0) < PET_SETTLE then return nil end
     local exists = UnitExists("pet")
+    if exists and entry.def.pet == "WARLOCK" then BR.NotePet() end
     if exists and not UnitIsDead("pet") then
         local passive = PetPassive()
         if passive then return nil, "pet", "/petdefensive", passive end
@@ -1687,11 +1716,12 @@ local function Check(entry, before)
     if def.blessing then
         local missing, total, first, firstBlessing, firstRank, gone = 0, 0, nil, nil, nil, false
         local farUnit, farBlessing, farRank   -- the first missing member out of the spell's range, if no one closer
-        for _, unit in ipairs(GroupUnits(units)) do
+        local members = GroupUnits(units)
+        for _, unit in ipairs(members) do
             if Reachable(unit) then
                 local b = BlessingFor(entry, unit)
                 -- the rank this member can take; none (Kings under level 10...) leaves them out
-                local rank = b and BR.RankFor(b.cast, unit)
+                local rank = b and (BR.GreaterRank(entry, b, unit, members) or BR.RankFor(b.cast, unit))
                 if rank then
                     total = total + 1
                     local fine, running = HasBuff(unit, b.names, before)
@@ -1913,6 +1943,9 @@ function BR.Menu(owner)
             root:CreateTitle(L["Blessing"])
             for _, choice in ipairs(BR.BlessingChoices()) do Radio(choice[2], "blessing", choice[1]) end
             BR.BlessingSubmenus(root, entry, db)
+            root:CreateDivider()
+            root:CreateCheckbox(L["Greater Blessings"], function() return db.greaterBlessings == true end,
+                function() db.greaterBlessings = not db.greaterBlessings or nil; BR.Update() end)
         elseif entry.def.weapon then
             -- per hand: Last Used, or one you can put on
             local kind = entry.def.weapon
@@ -2413,12 +2446,34 @@ local function OnMoved(_, layoutName, point, x, y)
 end
 
 -- Elixirs and More's list: None, then every item by its name in your language
+-- what an elixir family gives: the game's own word for it, else ours
+BR.ELIXIR_GIVES = {
+    giants = { "SPELL_STAT1_NAME", L["Strength"] }, greaterAgility = { "SPELL_STAT2_NAME", L["Agility"] },
+    greaterIntellect = { "SPELL_STAT4_NAME", L["Intellect"] }, greaterArcane = { "ITEM_MOD_SPELL_POWER_SHORT", L["Spell Power"] },
+    fortitude = { "HEALTH", L["Health"] }, superiorDefense = { "ARMOR", L["Armour"] },
+    mageblood = { "ITEM_MOD_MANA_REGENERATION_SHORT", L["Mana Regeneration"] },
+    trollsBlood = { "ITEM_MOD_HEALTH_REGENERATION_SHORT", L["Health Regeneration"] },
+}
+function BR.ElixirLabel(def)
+    local give = BR.ELIXIR_GIVES[def.key]
+    if not give then return nil end
+    local word = _G[give[1]]
+    return type(word) == "string" and word ~= "" and word or give[2]
+end
 function BR.ElixirChoices()
     local list = { { "none", L["None"] }, { divider = true } }
+    -- the families (any rank counts) by what they give, then the ones of a kind by name
     for _, def in ipairs(ELIXIRS) do
-        local id = def.items[1]
-        if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
-        list[#list + 1] = { def.key, C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or def.key }
+        local label = BR.ElixirLabel(def)
+        if label then list[#list + 1] = { def.key, label } end
+    end
+    list[#list + 1] = { divider = true }
+    for _, def in ipairs(ELIXIRS) do
+        if not BR.ELIXIR_GIVES[def.key] then
+            local id = def.items[1]
+            if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
+            list[#list + 1] = { def.key, C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or def.key }
+        end
     end
     return list
 end

@@ -619,6 +619,12 @@ function Visibility:GetMinAlpha(key)
     local owner = ElementGroup(key) or ElementConfig(key)
     return owner and owner.minAlpha or 0
 end
+-- Opacity (Nico-Mayer, #195): how see-through it is when shown, in percent (100 until set); never under
+-- its Faded Opacity
+function Visibility:GetMaxAlpha(key)
+    local owner = ElementGroup(key) or ElementConfig(key)
+    return owner and tonumber(owner.maxAlpha) or 100
+end
 
 -- Fade Delay: seconds it stays after its last reason to show. The chat and the meter keep their own,
 -- also in a fade group (they wait themselves: Chat.lua FadeHold, DamageMeter.lua); every other frame
@@ -671,6 +677,7 @@ function Visibility:SetGroup(key, group)
     group = group or 0
     if group == (cfg.group or 0) then return end
     local show, fadeIn, fadeOut, minAlpha = self:GetShow(key), self:GetFadeIn(key), self:GetFadeOut(key), self:GetMinAlpha(key)
+    local maxAlpha = self:GetMaxAlpha(key)
     local e = ELEMENT_BY_KEY[key]
     local delay = e and e.delay and not (e.chat or e.external) and self:GetFadeDelay(key) or nil
     -- (the threat window on Same as Meter brings the meter's; the meter's Never can't lead a group)
@@ -684,6 +691,7 @@ function Visibility:SetGroup(key, group)
     end
     if target then
         target.show, target.fadeIn, target.fadeOut, target.minAlpha = show, fadeIn, fadeOut, minAlpha
+        target.maxAlpha = maxAlpha ~= 100 and maxAlpha or nil
         -- (the Fade Delay too, when the frame has one: a group's members share it)
         if delay then target.fadeDelay = delay ~= 0 and delay or nil end
     end
@@ -1040,7 +1048,7 @@ Fader.UpdateScript = function(self, elapsed)
             local groupFading = false
             for _, data in ipairs(members) do
                 local frame = data.frame
-                local targetAlpha = effectiveShow and 1 or data.minAlpha
+                local targetAlpha = effectiveShow and (data.maxAlpha or 1) or data.minAlpha
                 if data.clickRule and effectiveShow then Visibility.SetBarMouse(data.key, frame, true) end
                 if data.external then
                     -- the meter fades itself: told only when its group's answer changes
@@ -1237,6 +1245,18 @@ local function BuildElementSettings(key)
             hidden = AlwaysShown,
             desc = L["How see-through it gets when faded. 0% is invisible."],
         },
+        {
+            name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 10, maxValue = 100, valueStep = 5,
+            formatter = function(value) return value end,
+            get = function() return Visibility:GetMaxAlpha(key) end,
+            set = function(_, value) Visibility:SetElementFade(key, "maxAlpha", value ~= 100 and value or nil) end,
+            hidden = function(...)
+                local el = ELEMENT_BY_KEY[key]
+                if el and (el.external or el.noOpacity) then return true end
+                return AlwaysShown(...)
+            end,
+            desc = L["How see-through it is when it shows. Never lower than its Faded Opacity."],
+        },
     }
     -- Fade Delay (the chat and the meter): how long it stays before it fades
     local e = ELEMENT_BY_KEY[key]
@@ -1299,16 +1319,16 @@ function Visibility:UnitFrameSettings(unit)
     local key = "uf_" .. unit
     local rows = BuildElementSettings(key)
     local e = ELEMENT_BY_KEY[key]
-    -- rows: 1 Fade Group, 2 Visibility, 3 Show Speed, 4 Hide Speed, 5 Faded Opacity
+    -- rows: 1 Fade Group, 2 Visibility, 3 Show Speed, 4 Hide Speed, 5 Faded Opacity, 6 Opacity
     -- the two speeds on every unit frame, in a fade group or not
     local kept = {}
     if not (e and e.noGroup) then kept[#kept + 1] = rows[1] end
     kept[#kept + 1] = rows[2]
     kept[#kept + 1] = rows[3]
     kept[#kept + 1] = rows[4]
-    if not (e and e.noOpacity) then kept[#kept + 1] = rows[5] end
-    -- 6 Fade Delay: the player and pet frames only (e.delay)
-    if e and e.delay then kept[#kept + 1] = rows[6] end
+    if not (e and e.noOpacity) then kept[#kept + 1] = rows[5] kept[#kept + 1] = rows[6] end
+    -- 7 Fade Delay: the player and pet frames only (e.delay)
+    if e and e.delay then kept[#kept + 1] = rows[7] end
     if unit == "pet" then
         local function Linked() return Visibility:PetLinked() end
         for _, row in ipairs(kept) do
@@ -1339,7 +1359,7 @@ end
 -- Faded Opacity, hidden with Cinematic (it fades the bar itself)
 function Visibility:PlayerCastSettings()
     local rows = BuildElementSettings("uf_playercastbar")
-    local kept = { rows[2], rows[3], rows[4], rows[5] }   -- Visibility, Show Speed, Hide Speed, Faded Opacity
+    local kept = { rows[2], rows[3], rows[4], rows[5], rows[6] }   -- Visibility, Show Speed, Hide Speed, Faded Opacity, Opacity
     for _, row in ipairs(kept) do
         local own = row.hidden
         row.hidden = function(...)
@@ -1452,6 +1472,9 @@ local function AddEditModeSettings()
                 local CM = ns.CooldownManager
                 local frameRows, lookRows = {}, {}
                 if e.cdmGrow and CM and CM.GrowSetting then frameRows[1] = CM.GrowSetting(e.cdmGrow) end
+                if e.cdmGrow == "bars" and CM and CM.BarSettings then
+                    for _, item in ipairs(CM.BarSettings()) do frameRows[#frameRows + 1] = item end
+                end
                 if e.cdmShape and CM and CM.ShapeSetting then lookRows[1] = CM.ShapeSetting(e.cdmShape) end
                 if #frameRows + #lookRows > 0 then
                     local Section, settings = ns.EditSections()
@@ -1549,8 +1572,9 @@ local function HasMana()
     return hasMana
 end
 
--- 1 below full, alpha at full
-local function StepCurve(store, key, alpha)
+-- top below full (the frame's Opacity), alpha at full
+local function StepCurve(store, key, alpha, top)
+    top = top or 1
     local curve = store[key]
     if not curve then
         curve = C_CurveUtil.CreateCurve()
@@ -1559,12 +1583,12 @@ local function StepCurve(store, key, alpha)
     end
     -- rebuilt only when the alpha changes, not on every health tick
     -- (the alpha kept in FlareUI's own table: the curve is Blizzard's object)
-    local seen = key .. "_alpha"
-    if store[seen] ~= alpha then
+    local seen, seenTop = key .. "_alpha", key .. "_top"
+    if store[seen] ~= alpha or store[seenTop] ~= top then
         curve:ClearPoints()
-        curve:AddPoint(0, 1)
+        curve:AddPoint(0, top)
         curve:AddPoint(1, alpha)
-        store[seen] = alpha
+        store[seen], store[seenTop] = alpha, top
     end
     return curve
 end
@@ -1573,23 +1597,24 @@ local function UnitApplier(data, unit, health, mana)
     return function(alpha)
         data.value, unitValues[data.key] = alpha, alpha
         local holder = data.frame
-        if not (health or mana) or alpha >= 0.999 then holder:SetAlpha(alpha) return end
+        local top = data.maxAlpha or 1
+        if not (health or mana) or alpha >= top - 0.001 then holder:SetAlpha(alpha) return end
         local h, m
         if health then
-            local ok, value = pcall(UnitHealthPercent, unit, false, StepCurve(healthCurves, data.key, alpha))
+            local ok, value = pcall(UnitHealthPercent, unit, false, StepCurve(healthCurves, data.key, alpha, top))
             if ok and value ~= nil then h = value end
         end
         if mana and HasMana() then
-            local ok, value = pcall(UnitPowerPercent, "player", MANA, false, StepCurve(manaCurves, data.key, alpha))
+            local ok, value = pcall(UnitPowerPercent, "player", MANA, false, StepCurve(manaCurves, data.key, alpha, top))
             if ok and value ~= nil then m = value end
         end
         if h == nil and m == nil then holder:SetAlpha(alpha) return end
         if m == nil then holder:SetAlpha(h) return end
         if h == nil then holder:SetAlpha(m) return end
         -- both: a curve answers 1 while its bar is missing some
-        if Readable(h) then holder:SetAlpha(h >= 0.999 and 1 or m)
-        elseif Readable(m) then holder:SetAlpha(m >= 0.999 and 1 or h)
-        else holder:SetAlpha(1) end
+        if Readable(h) then holder:SetAlpha(h >= top - 0.001 and top or m)
+        elseif Readable(m) then holder:SetAlpha(m >= top - 0.001 and top or h)
+        else holder:SetAlpha(top) end
     end
 end
 
@@ -1840,6 +1865,7 @@ function Visibility:Refresh()
                                    fadeOut = ns.FadeTime(self:GetFadeOut(settingsKey)),
                                    fadeStaged = self:GetFadeOut(settingsKey) == "slower",
                                    minAlpha = e.noOpacity and 0 or self:GetMinAlpha(settingsKey) / 100,
+                                   maxAlpha = e.noOpacity and 1 or math_max(self:GetMaxAlpha(settingsKey), self:GetMinAlpha(settingsKey)) / 100,
                                    -- Fade Delay (the chat waits itself, in its hold)
                                    delay = e.delay and not e.chat and self:GetFadeDelay(settingsKey) or nil }
                     -- the pointer shows it only with Mouseover ticked

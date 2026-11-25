@@ -244,6 +244,22 @@ assert(nearly(run(2), 0.55), "restarted: the first stage again")
 assert(nearly(run(1.5), 0.55), "restarted: the rest runs its full 2 s (it was cut short before)")
 assert(run(1) < 0.55, "then it finishes")
 assert(nearly(run(0.5), 0.2), "down to Faded Opacity")
+-- (11-25, #195) Opacity: as see-through as that when it shows, never under its Faded Opacity
+do
+    assert(vis:GetMaxAlpha("bar2") == 100)
+    vis:SetElementFade("bar2", "maxAlpha", 60)
+    b.mouseOver = true
+    for _ = 1, 10 do run(0.2) end
+    assert(nearly(run(0.2), 0.6), "shows at 60%")
+    vis:SetElementFade("bar2", "maxAlpha", 10)
+    for _ = 1, 40 do run(0.2) end
+    local v = run(0.2) assert(nearly(v, 0.2), "not under Faded Opacity " .. tostring(v) .. " " .. vis:GetMinAlpha("bar2"))
+    vis:SetElementFade("bar2", "maxAlpha", nil)
+    for _ = 1, 10 do run(0.2) end
+    assert(run(0.2) == 1)
+    b.mouseOver = false
+    for _ = 1, 30 do run(0.2) end
+end
 
 -- Fade Delay (11-23): a frame stays its Fade Delay after its last reason to show, then fades
 vis:SetElementFade("bar2", "fadeOut", "instant")
