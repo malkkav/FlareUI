@@ -1,3 +1,107 @@
+# FlareUI 7.0.17
+
+New unit frame art, a combat ring you can't miss, and a pile of fixes from Discord and GitHub.
+
+**Restart the game fully after updating.** This version brings new art files, and a /reload doesn't load them.
+
+**We need your help testing:**
+- **Combat:** start a fight. The ring around your portrait flares, then stays red. In Forever Style, your name box turns red too.
+- **Hunters:** fight in melee range. Your nameplates and frames should stay fully visible.
+- **Range Check as a warrior, hunter or Bear Form druid:** step out of range. The target's frame should fade.
+- **Druids:** fly from Moonglade to Rut'theran. The Flight Timer should know the flight the next time.
+- **Battlegrounds:** the PvP icon shows on your frame and your party's.
+
+## Heads up
+Some things look different even if you change nothing:
+- **Target Highlight > Bar:** it brightens your target's bar instead of colouring it. Its colour is gone from Pick Your Colours.
+- **Party Members** nameplate colour is mint green, so it no longer looks like a mage's or a shaman's.
+- **Square minimap with Border: Header:** the frame is 16 px taller at the bottom, so the map starts under the title bar.
+- **Player Cast Bar:** **Width** now counts the icon. Your bar keeps its size. The default is 275.
+
+## New
+
+### Unit Frames
+- **Show Latency** (on): the end of the cast bar shows your latency. In the Player Cast Bar's Behaviour section and in the player frame's Cast Bar section.
+- With Plumber installed, clicking your pet's happiness face opens Plumber's pet food menu.
+
+### Nameplates
+- **Show Target's Plate** (off) for Name Only Mode: your target gets its full plate back. Set per unit type.
+
+### Resource Bars
+- **Bar Edge Glow** (off) on the power and mana bars.
+
+### Buffs & Debuffs
+- Totems: **Aura Icon Shape** (Round).
+
+### Cooldown Manager
+- Tracked Bars, in Edit Mode, with Growth Up or Down:
+  - **Sort By** (Blizzard): Blizzard, Newest First or Newest Last
+  - **Max Bars** (20)
+
+### Quest Tracker
+- **Sort By:** a new choice, By Zone and Level.
+
+### Buff Reminders
+- **Greater Blessings** (off) in the Blessing reminder's menu.
+
+### Fading
+- **Opacity** (100) under Faded Opacity, in every Visibility Fading section: how visible the frame is when it isn't faded.
+
+### For addon authors
+- **FlareUI_QuestTrackerAPI:** place your own buttons beside the quest tracker's rows. See API.md on GitHub.
+
+## Changed
+
+### Unit Frames
+- New ring and plate art:
+  - The portrait sits in the middle of its ring.
+  - FlareUI Style: the whole ring and its shadow show, and the level lines up with the bars.
+  - Forever Style: the bars sit inside the plate's slots.
+- **Combat Glow:**
+  - When a fight starts, the ring gives two quick, bright pulses.
+  - During the fight it stays clearly red and never fades out.
+  - Forever Style: your name box turns red and pulses with it.
+- Forever Style party: **Show Name** is a choice now: Off, First Name, Last Name or Full Name.
+- **Player Cast Bar:** **Width** counts the icon. By Nico-Mayer.
+
+### Nameplates
+- New quest mark art. It sits 2 px from the plate.
+- The threat box uses your target's border colour and Outer Glow.
+
+### Buff Reminders
+- Food and Flask is now **Consumables to Watch**: None, Food, Flask, Elixirs.
+- **Elixirs and More** lists elixirs by what they give. Your ticks are kept.
+
+### Translations
+- French updated. By Brainc3ll.
+
+## Fixed
+
+### Unit Frames
+- **Mana on Shapeshift:** the left text hid behind the portrait in FlareUI Style.
+- The PvP icon didn't show in battlegrounds, on unit and party frames.
+- **Range Check:** warriors, hunters and Bear Form druids were always in range. The spells it used, such as Heroic Strike, count at any distance.
+
+### Nameplates
+- Hunters: plates and frames faded when the target was close.
+- The quest mark was stretched.
+- **Colour Mob Types > Caster** didn't work in dungeons.
+- **Party Colour** and **Raid Colour** turned grey in Name Only Mode.
+
+### Minimap
+- The XP bar went under the minimap after you clicked it.
+- **Square minimap with Border: Header:** the map sat under the title bar.
+
+### Buff Reminders
+- Custom reminders: unticking one could remove another.
+- **Pet to Summon > Last Used:** the pet you already had out didn't count.
+
+### Flight Timer
+- Flights started by talking to someone, such as Moonglade to Rut'theran, were never learned.
+
+### Move Any Window
+- With TSM, Blizzard's profession window popped onto the screen.
+
 # FlareUI 7.0.16
 
 Aura corners that use the whole frame, a threat number that knows you're the tank, and a long list of fixes.
@@ -326,67 +430,3 @@ Some things look or work differently even if you change nothing:
 - Long tab names no longer overlap.
 - Frames keep their spots in a third Edit Mode layout.
 - `/fui errors` counts repeated errors, and says more about blocked bag clicks.
-
-# FlareUI 7.0.12
-
-A clean-up of the chat, easier to spot elites in Modern Style, guild names on nameplates and spell ranks on the radials.
-
-**We need your help testing:**
-- **Chat:** names, levels and web links on every kind of line, and replying to whispers with R, also in a boss fight.
-- **Radial Menu:** party spells while you're alone, with nothing targeted, next to a vendor.
-- **Modern Style:** the gold and silver borders, and the level in front of the name above a frame.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Chat:** only Alt+Up and Alt+Down go through the messages you sent, as in the default chat. The arrows alone no longer do it.
-- **Chat:** with **Level Before Names** on, far more people show a level.
-- **Modern Style:** target, focus and boss frames get a gold border for elites and bosses, and a silver one for rares.
-- **Modern Style:** with **Show Level** on, the level also shows in front of **Name Above Frames**.
-- **Pet frame:** the happiness icon beside it is as tall as the health bar.
-- **Radial Menu:** **Button Names** is now **Icon Labels**. Your choice is kept.
-
-## New
-
-### Nameplates
-- **Show Guild Name** (off) for players in Name Only Mode:
-  - Set separately for enemy and friendly players
-  - Under the name, or under the title when Show Titles is on
-
-### Radial Menu
-- **Show Spell Rank** (Off), for spells below your best rank:
-  - **In the Icon:** the rank's number, at the top left
-  - **In the Label:** after the name, like "Frostbolt (Rank 2)"
-  - **Both**
-
-### Chat
-- A warning when another addon that changes the chat is running too, such as Prat or ls_Glass.
-
-## Changed
-
-### Unit Frames
-- **Modern Style, elites and rares:**
-  - The skull is a third larger
-  - The borders follow the **Elite & Rare** icon: turn it off to keep the normal border
-  - The threat glow still takes over while you have threat
-- **Modern Style, level above the name:** on every frame with both options, except in FlareUI and Forever Style, which have a level disc.
-
-### Chat
-- Each window keeps 500 lines to scroll back through (was 128). The Combat Log is unchanged.
-- Alt+Up goes back through your last 200 messages (was 50).
-- **Level Before Names** uses the level the game sends with each player.
-- **Save History:** old lines no longer offer Report, because it could point at the wrong message.
-
-### Languages
-- **French:** texts from 7.0.6 to 7.0.11. By Braincell1980.
-
-## Fixed
-- **Chat:** web addresses can be clicked in community channels, Discord guild chat and party guide lines.
-- **Chat:** **Save History** keeps your last 128 lines of conversation in each window. Loot messages used to push them out.
-- **Chat:** **Save History** keeps Discord guild chat.
-- **Chat:** **Copy Chat** shows Battle.net friends by name.
-- **Radial Menu:** with nothing targeted, a party spell you use alone goes to you. It went to the NPC in front of you.
-- **Unit Frames:** **Name Above Frames** shows over the elite dragon in FlareUI Style.
-
----
-
-Older versions (7.0.11 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

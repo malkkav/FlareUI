@@ -148,6 +148,11 @@ local STATUS_COMBAT  = { 1.0, 0.22, 0.18 }
 -- the player's rest / combat state tints the ring's own border, pulsing softly: alpha low, high,
 -- seconds each way (the ring art is copied in grey, coloured, over the art)
 local STATUS_PULSE   = { 0.12, 0.55, 1.2 }
+-- in a fight (combat or threat) the pulse never fades below 0.3, so the ring stays red; as the fight
+-- starts it flares first: FLARE_COUNT quick bright beats, then the steady pulse (Sorgrum 11-25)
+-- STRIP: Forever Style, your own name box in a fight, pulsing with the ring: a hostile unit's colour there
+-- (UnitSelectionColor's red; Malkkav 11-25)
+local FIGHT_PULSE = { 0.3, 0.6, 1.2, FLARE = { 0.3, 0.95, 0.2 }, FLARE_COUNT = 2, STRIP = { 1, 0, 0 } }
 local TINT_RIM_SHARE = 1.05   -- the tint's circle, of the ring's diameter (the rim's outer edge)
 -- Blizzard's level text (WhiteLargeNumberFont) at 1x
 local LEVEL_FONT, LEVEL_FONT_SIZE = "Fonts\\FRIZQT__.TTF", 14
@@ -883,6 +888,7 @@ local function Build(f)
     fade:SetFromAlpha(STATUS_PULSE[1])
     fade:SetToAlpha(STATUS_PULSE[2])
     fade:SetDuration(STATUS_PULSE[3])
+    ring.PulseFade, ring.pulseShape = fade, STATUS_PULSE
 
     -- the icons that live on the ring sit on their own layer above it
     ring.Icons = CreateFrame("Frame", nil, ring)
@@ -1170,7 +1176,7 @@ local function BuildPlate(f)
     -- Threat / Combat Glow on the plate: a lit copy of its art over it, tinted and
     -- pulsing with the ring's tint (one animation group, so every piece beats together). Added
     -- light: the bright metal glows, the dark slots stay dark.
-    plate.glow = {}
+    plate.glow, plate.GlowFades = {}, {}
     plate.GlowPulse = plate.Front:CreateAnimationGroup()
     plate.GlowPulse:SetLooping("BOUNCE")
     for i = 1, #plate.pieces do
@@ -1185,9 +1191,18 @@ local function BuildPlate(f)
         fade:SetToAlpha(STATUS_PULSE[2])
         fade:SetDuration(STATUS_PULSE[3])
         fade:SetSmoothing("IN_OUT")
+        plate.GlowFades[i] = fade
     end
     -- the name box's reaction glow, and an anchor for the name
     plate.Strip = plate:CreateTexture(nil, "BORDER")
+    plate.StripPulse = plate:CreateAnimationGroup()
+    plate.StripPulse:SetLooping("BOUNCE")
+    plate.StripFade = plate.StripPulse:CreateAnimation("Alpha")
+    plate.StripFade:SetTarget(plate.Strip)
+    plate.StripFade:SetFromAlpha(FIGHT_PULSE[1])
+    plate.StripFade:SetToAlpha(FIGHT_PULSE[2])
+    plate.StripFade:SetDuration(FIGHT_PULSE[3])
+    plate.StripFade:SetSmoothing("IN_OUT")
     plate.NameBox = CreateFrame("Frame", nil, plate)
     f.PlateFrame = plate
     return plate
@@ -1420,6 +1435,7 @@ function Ring.UpdatePlate(f)
     if not (plate and plate:IsShown()) then return end
     local unit = f.fuiUnit
     local K = ns.UnitFrames and ns.UnitFrames.Kit
+    if unit == "player" and not f.fuiSample then return Ring.FightStrip(f) end
     if unit == "player" or unit == "pet" or f.fuiSample or not UnitExists(unit) then
         plate.Strip:Hide()
         return
@@ -1434,6 +1450,24 @@ function Ring.UpdatePlate(f)
     local r, g, b = UnitSelectionColor(unit)
     plate.Strip:SetVertexColor(r, g, b, 1)
     plate.Strip:Show()
+end
+
+-- Your own name box: empty, as Blizzard's, but red and pulsing with the ring while you are in a fight
+-- with Combat Glow on (ring.fightStrip, set by Ring.Update)
+function Ring.FightStrip(f)
+    local plate, ring = f.PlateFrame, f.RingFrame
+    if not (plate and plate.StripPulse) then return end
+    if ring and ring.fightStrip and plate:IsShown() then
+        local c = FIGHT_PULSE.STRIP
+        plate.Strip:SetVertexColor(c[1], c[2], c[3], 1)
+        if not plate.Strip:IsShown() then
+            plate.Strip:Show()
+            Ring.SyncPulses(f)
+        end
+    else
+        plate.StripPulse:Stop()
+        plate.Strip:Hide()
+    end
 end
 
 -- the name box, for the name to sit in (nil off the plate)
@@ -1658,6 +1692,11 @@ function Ring.Update(f)
             color = IconOn(f, "rest", true) and STATUS_RESTING or nil
         end
         ring.Status:Hide()
+        -- entering a fight: the tint flares first (ApplyTint)
+        if combat and color and not ring.wasFighting then ring.flarePending = true end
+        ring.wasFighting = combat and true or false
+        ring.fightStrip = combat and Ring.GlowOn(f, "combatGlow") and true or false
+        Ring.FightStrip(f)
         -- the tint itself is applied by UpdateThreat below (threat, when there is any, comes first)
         ring.statusColor = color
         -- the player's level is white, as on Blizzard's frame
@@ -1699,21 +1738,54 @@ function Ring.SyncPulses(f)
     local border = f and f.Border and f.Border.FlareUI_Pulse
     local groups = { ring and ring.Tint and ring.Tint:IsShown() and ring.Pulse,
                      plate and plate.glow and plate.glow[1] and plate.glow[1]:IsShown() and plate.GlowPulse,
-                     border and border:IsPlaying() and border }
-    for i = 1, 3 do
+                     border and border:IsPlaying() and border,
+                     plate and plate.StripPulse and plate.Strip:IsShown() and f.fuiUnit == "player" and plate.StripPulse }
+    for i = 1, 4 do
         local group = groups[i]
         if group then group:Stop(); group:Play() end
     end
 end
 
+-- the pulse's shape (low, high, seconds each way) on the ring's tint and the plate's glow; true when it changed
+local function SetPulseShape(f, shape)
+    local ring, plate = f.RingFrame, f.PlateFrame
+    if ring.pulseShape == shape or not ring.PulseFade then return false end
+    ring.pulseShape = shape
+    local fades = { ring.PulseFade }
+    for _, fade in ipairs(plate and plate.GlowFades or {}) do fades[#fades + 1] = fade end
+    if plate and plate.StripFade then fades[#fades + 1] = plate.StripFade end
+    for _, fade in ipairs(fades) do
+        fade:SetFromAlpha(shape[1])
+        fade:SetToAlpha(shape[2])
+        fade:SetDuration(shape[3])
+    end
+    return true
+end
+
 local function ApplyTint(ring, color)
     local f = ring:GetParent()
     if color and ring.hasArt and ring.Tint then
+        -- the fight just started (Ring.Update): a few quick bright beats, then the steady pulse
+        if ring.flarePending then
+            ring.flarePending = nil
+            ring.flareToken = (ring.flareToken or 0) + 1
+            local token = ring.flareToken
+            ring.flaring = true
+            C_Timer.After(FIGHT_PULSE.FLARE[3] * 2 * FIGHT_PULSE.FLARE_COUNT, function()
+                if ring.flareToken ~= token then return end
+                ring.flaring = nil
+                Ring.UpdateThreat(f)
+            end)
+        end
+        local shape = ring.flaring and FIGHT_PULSE.FLARE or (color == STATUS_RESTING and STATUS_PULSE or FIGHT_PULSE)
+        local reshaped = SetPulseShape(f, shape)
         ring.Tint:SetVertexColor(color[1], color[2], color[3])
         ring.Tint:Show()
         Ring.PlateGlow(f, color)
-        if not ring.Pulse:IsPlaying() then Ring.SyncPulses(f) end
+        if reshaped or not ring.Pulse:IsPlaying() then Ring.SyncPulses(f) end
     elseif ring.Tint then
+        ring.flarePending, ring.flaring = nil, nil
+        ring.flareToken = (ring.flareToken or 0) + 1
         ring.Tint:Hide()
         ring.Pulse:Stop()
         Ring.PlateGlow(f, nil)

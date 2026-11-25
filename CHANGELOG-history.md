@@ -1,6 +1,70 @@
 # FlareUI changelog history
 
-Versions 7.0.11 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.12 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.12
+
+A clean-up of the chat, easier to spot elites in Modern Style, guild names on nameplates and spell ranks on the radials.
+
+**We need your help testing:**
+- **Chat:** names, levels and web links on every kind of line, and replying to whispers with R, also in a boss fight.
+- **Radial Menu:** party spells while you're alone, with nothing targeted, next to a vendor.
+- **Modern Style:** the gold and silver borders, and the level in front of the name above a frame.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Chat:** only Alt+Up and Alt+Down go through the messages you sent, as in the default chat. The arrows alone no longer do it.
+- **Chat:** with **Level Before Names** on, far more people show a level.
+- **Modern Style:** target, focus and boss frames get a gold border for elites and bosses, and a silver one for rares.
+- **Modern Style:** with **Show Level** on, the level also shows in front of **Name Above Frames**.
+- **Pet frame:** the happiness icon beside it is as tall as the health bar.
+- **Radial Menu:** **Button Names** is now **Icon Labels**. Your choice is kept.
+
+## New
+
+### Nameplates
+- **Show Guild Name** (off) for players in Name Only Mode:
+  - Set separately for enemy and friendly players
+  - Under the name, or under the title when Show Titles is on
+
+### Radial Menu
+- **Show Spell Rank** (Off), for spells below your best rank:
+  - **In the Icon:** the rank's number, at the top left
+  - **In the Label:** after the name, like "Frostbolt (Rank 2)"
+  - **Both**
+
+### Chat
+- A warning when another addon that changes the chat is running too, such as Prat or ls_Glass.
+
+## Changed
+
+### Unit Frames
+- **Modern Style, elites and rares:**
+  - The skull is a third larger
+  - The borders follow the **Elite & Rare** icon: turn it off to keep the normal border
+  - The threat glow still takes over while you have threat
+- **Modern Style, level above the name:** on every frame with both options, except in FlareUI and Forever Style, which have a level disc.
+
+### Chat
+- Each window keeps 500 lines to scroll back through (was 128). The Combat Log is unchanged.
+- Alt+Up goes back through your last 200 messages (was 50).
+- **Level Before Names** uses the level the game sends with each player.
+- **Save History:** old lines no longer offer Report, because it could point at the wrong message.
+
+### Languages
+- **French:** texts from 7.0.6 to 7.0.11. By Braincell1980.
+
+## Fixed
+- **Chat:** web addresses can be clicked in community channels, Discord guild chat and party guide lines.
+- **Chat:** **Save History** keeps your last 128 lines of conversation in each window. Loot messages used to push them out.
+- **Chat:** **Save History** keeps Discord guild chat.
+- **Chat:** **Copy Chat** shows Battle.net friends by name.
+- **Radial Menu:** with nothing targeted, a party spell you use alone goes to you. It went to the NPC in front of you.
+- **Unit Frames:** **Name Above Frames** shows over the elite dragon in FlareUI Style.
+
+---
+
+Older versions (7.0.11 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
 
 # FlareUI 7.0.11
 
