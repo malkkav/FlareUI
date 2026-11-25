@@ -64,6 +64,12 @@ Malkkav fixes bugs fast, so check first:
   for t in tools/tests/*.lua; do [ "$t" = tools/tests/perf-helpers.lua ] || luajit "$t" || echo "FAILED: $t"; done
   ```
 
+- A bug fix or a change in behaviour comes with a test in `tools/tests/`, if it can be reproduced outside the game.
+
+### Using an AI coding tool
+
+That's fine, but before it changes anything, have it read [AGENTS.md](AGENTS.md) and follow it. Say in the PR that you used one. Read and test the result yourself: the pull request is yours.
+
 ### Lua line coverage
 
 The `Lua tests` check requires at least 80% overall Lua line coverage on pull
