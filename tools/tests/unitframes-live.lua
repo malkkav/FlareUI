@@ -410,6 +410,12 @@ do
     targetDb.buffs = "TOPLEFT"
     UF:Refresh()
     assert(Value("BOTTOMRIGHT") > target:GetWidth() / 2, "alone on its edge: past the middle")
+do  -- a setting changed in Edit Mode redraws the running sample: it doesn't start the next one
+    local started = cast.timerDuration.start
+    ui.time = (ui.time or 100) + 1
+    UF.RedrawPlayerCast()
+    assert(cast.Text:GetText() == "Sample Cast (R2)" and cast.timerDuration.start == started)
+end
     assert(Value("TOPLEFT") > target:GetWidth() / 2)
     targetDb.buffs = "OFF"
     UF:Refresh()

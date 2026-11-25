@@ -1832,14 +1832,10 @@ end
 -- Your own bar's sample takes turns: a cast (latency zone, pushback) and a channel (its latency
 -- zone on the left)
 local SAMPLE_CHANNEL_SPELL = 5143
-local function ShowSampleCast(cast)
+-- keep: a redraw (a setting changed) goes on with the running sample instead of starting the next
+local function ShowSampleCast(cast, keep)
     UF.EndCastFlash(cast)
     local own = cast.unit == "player"
-    local channel = false
-    if own then
-        cast.sampleChannel = not cast.sampleChannel
-        channel = cast.sampleChannel
-    end
     local now = GetTime()
     local duration = C_DurationUtil.CreateDuration()
     duration:SetTimeFromStart(now, SAMPLE_CAST_SECONDS)
@@ -1859,6 +1855,14 @@ local function ShowSampleCast(cast)
     else
         color = channel and CAST_CHANNEL or CAST_COLOR
     end
+    -- (also one that just ended: the ticker starts the next, in step)
+    keep = keep and cast:IsShown() and cast.sampleStart
+    if not keep then
+        cast.sampleStart = now
+        cast.sampleChannel = own and not cast.sampleChannel
+    end
+    now = cast.sampleStart
+    local channel = cast.sampleChannel
     cast:SetStatusBarColor(color[1], color[2], color[3])
     cast:Show()
     if own then
@@ -2332,7 +2336,7 @@ end
 -- by, barID: the event's interruptedBy (maybe secret) and castBarID (never secret, may be nil)
 local function UpdateCastBar(cast, enabled, event, by, barID)
     if not enabled then UF.EndCastFlash(cast) cast:Hide() return end
-    if ns.EditPreviewing() then UF.HideCastExtras(cast) ShowSampleCast(cast) return end
+    if ns.EditPreviewing() then UF.HideCastExtras(cast) ShowSampleCast(cast, true) return end
     -- a kicked channel only says so through CHANNEL_STOP's interruptedBy (a secret one is a GUID, so set)
     local interrupted = event == "UNIT_SPELLCAST_INTERRUPTED"
         or (event == "UNIT_SPELLCAST_CHANNEL_STOP" and cast.isChannel and not (canaccessvalue(by) and by == nil))
