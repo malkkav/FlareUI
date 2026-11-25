@@ -1,4 +1,3 @@
-local H = dofile("tools/tests/perf-helpers.lua")
 local UI = dofile("tools/tests/fixtures/settings-ui.lua")
 return function(db)
     local ui = UI.new()
@@ -36,6 +35,8 @@ return function(db)
         if name == "LibSharedMedia-3.0" then return media end
         if name == "AceEvent-3.0" then return ace end
         if name == "FlareEditMode" then return editMode end
+        -- (Core.lua asks for its own Ace libraries as it loads: nothing of them is used here)
+        if name:match("^Ace") or name:match("^Lib") then return {} end
         error("unexpected library " .. name)
     end
     env.CurveConstants = { ScaleTo100 = {} }
@@ -69,11 +70,16 @@ return function(db)
     function Widget:SetSnapToPixelGrid(value) self.snapToPixelGrid = value end
     function Widget:SetTexelSnappingBias(value) self.texelSnappingBias = value end
 
+    -- the whole of Core.lua, then the doubles above again over what it set (the tests' own profile and
+    -- sample names); no part of it is cut out
     env.ns = ns
-    H.loadSections("Core.lua", {
-        {"ns.THREAT_MAX = 999", "-- Edit Mode rows in one order everywhere"},
-        {"function ns.ProfileChanges(", "function ns.PlayerGUID("},
-    }, env)
+    local doubles = {}
+    for key, value in pairs(ns) do doubles[key] = value end
+    env.GetLocale = env.GetLocale or function() return "enUS" end
+    env.NUM_CHAT_WINDOWS = env.NUM_CHAT_WINDOWS or 1
+    env.CopyTable = env.CopyTable or function(t) local c = {} for k, v in pairs(t) do c[k] = v end return c end
+    ui:load("Core.lua", ns)
+    for key, value in pairs(doubles) do ns[key] = value end
     ui:load("Modules/BarText.lua", ns)
     ui:load("Modules/UnitFramesRing.lua", ns)
     ui:load("Modules/UnitFrames.lua", ns)

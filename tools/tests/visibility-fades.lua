@@ -57,11 +57,7 @@ env.tContains = function(values, want)
     for _, value in ipairs(values) do if value == want then return true end end
     return false
 end
-H.loadSections("Core.lua", {
-    {"local FADE_TIMES =", "-- Numbers on the bars"},
-    {"function ns.EditSections()", "-- A spell the player knows."},
-    {"ns.Conditions = {}", "-- Fake CM is on"},
-}, env)
+H.loadCore(env, ns)
 ns.OrderEditSettings = noop
 local edit = { SettingType = { Dropdown = 1, Slider = 2, Checkbox = 3, Expander = 4 }, settings = {} }
 function edit:RegisterCallback(event, callback) self[event] = callback end

@@ -1,5 +1,6 @@
 -- The whole of Core.lua, loaded with the client doubles it needs. Returns the fixture (its env and timers) and ns.
-return function(profile)
+-- setup(env, ns), when given, runs just before Core.lua does: client doubles a test needs at load time.
+return function(profile, setup)
     local ui = dofile("tools/tests/fixtures/settings-ui.lua").new()
     local env = ui.env
     local ns = {
@@ -19,6 +20,7 @@ return function(profile)
     env.AuraContainerSortDirection = { Normal = 1, Reverse = 2 }
     env.AuraUtil = { AuraUpdateChangedType = { Buff = 1, Dispel = 2 } }
     env.NUM_CHAT_WINDOWS = 1
+    if setup then setup(env, ns) end
     ui:load("Core.lua", ns)
     return ui, ns
 end

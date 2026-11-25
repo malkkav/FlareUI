@@ -1,23 +1,22 @@
 -- Run from the repository root with a Lua 5.1/LuaJIT runtime:
 --   luajit tools/tests/font-families.lua
 --
--- The WoW client is not available here.  These tests execute the production
--- FontFamiliesAlways/SetFont decision code in a small Lua 5.1 harness and
--- leave CreateFontFamily absent for the fallback case.
-local H = dofile("tools/tests/perf-helpers.lua")
-local source = H.read("Core.lua")
+-- The WoW client is not available here. Each case loads the whole of Core.lua on client doubles:
+-- the client's language, and CreateFontFamily (left out for the fallback case).
+local loadCore = dofile("tools/tests/fixtures/core.lua")
 
-local function compile(body)
-    local loader = loadstring or load
-    return assert(loader(body))
+-- Core.lua for a client language; family(members) stands in for CreateFontFamily (nil: none)
+local function Core(client, family, profile)
+    local reads = { n = 0 }
+    local _, ns = loadCore(profile, function(env)
+        env.GetLocale = function() reads.n = reads.n + 1 return client end
+        env.CreateFontFamily = family and function(_, members) return family(members) end or nil
+        env.C_Timer.NewTicker = function() error("raw SetFont should not schedule a retry") end
+        env.canaccessallvalues = function() return true end
+    end)
+    reads.n = 0
+    return ns, reads
 end
-
-local familyStart = assert(source:find("local FONT_FAMILY_LOCALES"))
-local familyEnd = assert(source:find("\nfunction ns.SetFont%(", familyStart))
-local familyFactory = compile([[return function(ns, GetLocale)
-]] .. source:sub(familyStart, familyEnd - 1) .. [[
-return ns.FontFamiliesAlways
-end]])()
 
 local function check(actual, expected, message)
     assert(actual == expected,
@@ -25,17 +24,12 @@ local function check(actual, expected, message)
 end
 
 local function decision(clientLocale, selectedLocale, cached)
-    local ns = { LoadedLocale = function() return selectedLocale end }
-    if cached ~= nil then ns.fontFamiliesAlways = cached end
-    local localeReads = 0
-    local getLocale = function()
-        localeReads = localeReads + 1
-        return clientLocale
-    end
-    local fn = familyFactory(ns, getLocale)
-    local first = fn()
-    local second = fn()
-    return first, second, localeReads, ns
+    local ns, reads = Core(clientLocale)
+    ns.LoadedLocale = function() return selectedLocale end
+    ns.fontFamiliesAlways = cached
+    local first = ns.FontFamiliesAlways()
+    local second = ns.FontFamiliesAlways()
+    return first, second, reads.n, ns
 end
 
 -- A selected language with Cyrillic/CJK letters needs a family when the game
@@ -73,15 +67,9 @@ check(reads, 0, "preloaded cache avoids locale reads")
 
 -- If the family API is unavailable, ns.SetFont must take the ordinary raw
 -- path even when the selected language asks for families.
-local rawStart = assert(source:find("local RETRY_SECONDS"))
-local rawEnd = assert(source:find("\n-- Font families for text other players", rawStart, true))
-local rawFactory = compile([[return function(ns, GetLocale, CreateFontFamily, C_Timer, BaseFont)
-]] .. source:sub(rawStart, rawEnd - 1) .. [[
-return ns
-end]])()
-local ns = { LoadedLocale = function() return "zhCN" end, TEXT_SCALE = 1 }
-local timer = { NewTicker = function() error("raw SetFont should not schedule a retry") end }
-ns = rawFactory(ns, function() return "enUS" end, nil, timer, function() return "base" end)
+local ns = Core("enUS")
+ns.LoadedLocale = function() return "zhCN" end
+ns.fontFamiliesAlways = nil
 local calls = 0
 local fontString = {
     SetFont = function(self, path, size, flags)
@@ -99,16 +87,10 @@ check(calls, 1, "raw fallback call count")
 -- Inspect the family supplied to Blizzard's API.  The chosen Latin face must
 -- coexist with the stock Chinese faces on an English client, and selecting
 -- Traditional Chinese on a Simplified Chinese client must keep both faces.
-local membersStart = assert(source:find("ns.FontFamily = {", 1, true))
-local membersEnd = assert(source:find("\n-- Blizzard's own font objects", membersStart, true))
-local membersFactory = compile([[return function(ns, GetLocale, CreateFontFamily)
-]] .. source:sub(membersStart, membersEnd - 1) .. [[
-return ns
-end]])()
 for _, client in ipairs({ "enUS", "zhCN" }) do
     local captured, attached
     local family = {}
-    local actual = membersFactory({ TEXT_SCALE = 1 }, function() return client end, function(_, members)
+    local actual = Core(client, function(members)
         captured = members
         return family
     end)
@@ -124,8 +106,9 @@ end
 
 -- Global Font > Outline: over every font's own, or left to each
 do
-    local host = { TEXT_SCALE = 1, db = { profile = { fonts = { outline = "" } } }, LoadedLocale = function() return "enUS" end }
-    host = rawFactory(host, function() return "enUS" end, nil, timer, function() return "base" end)
+    local host = Core("enUS", nil, { fonts = { outline = "" } })
+    host.LoadedLocale = function() return "enUS" end
+    host.fontFamiliesAlways = nil
     local flags
     local string = { SetFont = function(_, _, _, f) flags = f return true end, SetFontObject = function() end }
     host.SetFont(string, "chosen.ttf", 12, "THICKOUTLINE")
@@ -141,7 +124,7 @@ end
 -- Sharp Outline: the game's Slug flag reaches every alphabet's member, and the string scales smoothly only with it
 do
     local captured
-    local actual = membersFactory({ TEXT_SCALE = 1 }, function() return "enUS" end, function(_, members) captured = members return {} end)
+    local actual = Core("enUS", function(members) captured = members return {} end)
     local smooth, times
     times = 0
     local string = { SetFontObject = function() end, SetSmoothScaling = function(_, on) smooth, times = on, times + 1 end }
@@ -162,10 +145,7 @@ local function newFont()
     local font = { SetShadowColor = function(self, r, g, b, a) self.color = a end, SetShadowOffset = function(self, x, y) self.x, self.y = x, y end }
     return font
 end
-local shadowed = compile([[return function(ns, GetLocale, CreateFontFamily, canaccessallvalues)
-]] .. source:sub(membersStart, membersEnd - 1) .. source:sub(assert(source:find("\nfunction ns.ApplyShadow", 1, true)), assert(source:find("\n-- A font split off another", 1, true)) - 1) .. [[
-return ns
-end]])()({ TEXT_SCALE = 1 }, function() return "enUS" end, function()
+local shadowed = Core("enUS", function()
     local family = newFont()
     family.members = {}
     family.GetFontObjectForAlphabet = function(self, alphabet)
@@ -174,7 +154,7 @@ end]])()({ TEXT_SCALE = 1 }, function() return "enUS" end, function()
     end
     made[#made + 1] = family
     return family
-end, function() return true end)
+end)
 local text = newFont()
 text.red, text.h = 1, "LEFT"
 function text:SetFontObject(font) self.font, self.red, self.h, self.sets = font, 0, "CENTER", (self.sets or 0) + 1 end

@@ -140,13 +140,6 @@ env.CopyTable = function(source)
     for key, value in pairs(source) do result[key] = value end
     return result
 end
-H.loadSections("Core.lua", {
-    {"ns.AuraOrder = {}", "-- The level the frames show"},
-    {"function ns.CastGlowDefault(", "-- For a time Lua can read"},
-    {"ns.auraTipKind =", "-- GameTooltip for FlareUI's own buttons."},
-    {"ns.AuraGroups = {}", "-- \"Show Speed\" / \"Hide Speed\" choices"},
-    {"function ns.EditSections()", "-- A spell the player knows."},
-}, env)
 ns.SetAuraDurationText = function(button, text) button:SetDurationText(text) end
 dofile("tools/tests/fixtures/aura-containers.lua")(env)
 for _, method in ipairs({ "SetReverse", "SetDrawSwipe", "SetUseCircularEdge", "SetEdgeTexture" }) do

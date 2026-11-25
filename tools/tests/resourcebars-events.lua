@@ -82,9 +82,6 @@ ns.TargetInRange = function(ranged) return not (ranged and state.outOfRange) end
 ns.SEGMENT_LINE_COLOR = { 0.1, 0.1, 0.1, 1 }
 ns.SegmentSpan = function(_, width, count, i) return (i - 1) * width / count, width / count, 1 end
 ns.Visibility = { GetShow = function(_, key) return key == "rb_swingMain" and "inuse" or "always" end }
-H.loadSections("Core.lua", {
-    {"function ns.EditSections()", "-- A spell the player knows."},
-}, env)
 ns.OrderEditSettings = function() end
 local editMode = env.LibStub("FlareEditMode")
 editMode.SettingType = { Slider = 1, Checkbox = 2, Dropdown = 3, Expander = 4 }

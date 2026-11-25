@@ -34,6 +34,7 @@ function editMode:AddFrame(holder, moved) holder.moved = moved end
 function editMode:AddFrameSettings(holder, settings) holder.settings = settings end
 function editMode:GetActiveLayoutName() return "Modern" end
 function editMode:Defer() return false end
+function editMode:IsInEditMode() return false end
 function editMode:RegisterCallback(event, callback)
     self.callbacks[event] = self.callbacks[event] or {}
     table.insert(self.callbacks[event], callback)
@@ -48,13 +49,7 @@ env.C_UnitAuras = {
     AddPrivateAuraAnchor = function(opts) nextAnchor = nextAnchor + 1; anchors[nextAnchor] = opts; return nextAnchor end,
     RemovePrivateAuraAnchor = function(id) assert(anchors[id]); anchors[id] = nil end,
 }
-H.loadSections("Core.lua", {
-    {"ns.AuraOrder = {}", "-- The Edit Mode \"Aura Ordering\" rows"},
-    {"local AURA_TIME_BANDS =", "-- Bags & Looting's switch"},
-    {"function ns.FormatAuraTime(", "-- GameTooltip for FlareUI's own buttons."},
-    {"function ns.SeedFont(", "-- AURA POLICY: what every aura frame shows."},
-    {"function ns.EditSections()", "-- A spell the player knows."},
-}, env)
+H.loadCore(env, ns)
 ns.AuraPolicy = { PlayerListLane = function(debuff) return { filter = debuff and "HARMFUL" or "HELPFUL" } end }
 
 local Widget = getmetatable(env.UIParent)

@@ -50,10 +50,7 @@ end
 function Widget:SetTimerDuration(duration, interpolation, direction)
     self.timerDuration, self.timerInterpolation, self.timerDirection = duration, interpolation, direction
 end
-H.loadSections("Core.lua", {
-    {"local function LoggedResult(", "-- /fui errors:"},
-    {"function ns.CastGlowDefault(", "-- For a time Lua can read"},
-}, env)
+H.loadCore(env, ns)
 ui:load("Modules/Nameplates.lua", ns)
 local plates = ns.Nameplates
 

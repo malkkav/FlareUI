@@ -1,43 +1,39 @@
 -- A pet without a saved power height shows its resource bar; saved choices win.
-local H = dofile("tools/tests/perf-helpers.lua")
-local core = H.read("Core.lua")
-local ace = H.read("Libs/AceDB-3.0/AceDB-3.0.lua")
-local frames = H.read("Modules/UnitFrames.lua")
+-- Both halves run whole files: Core.lua for its defaults, UnitFrames.lua for the frame's layout.
 
-H.load([[
-local ns = { UF_FONT_DEFAULTS = {}, UF_FONT_FRAME_DEFAULTS = {} }
-local function FCMBars() return {} end
-local function VisibilityElements() return {} end
-]] .. H.section(core, "local defaults = {", "\n--------------------------------------------------\n-- 5. SHARED UTILITIES") .. [[
-]] .. H.section(ace, "local function copyDefaults(", "-- Called to remove all defaults") .. [[
-local INSET, SEPARATOR_HEIGHT = 2, 1
-local UF = { LayoutMirrored = function() return false end }
-local function IsComboShown() return false end
-local function PortraitSpace() return 0 end
-local settings
-local function GetUnitDb() return settings end
-]] .. H.section(frames, "local function LayoutBars(f)", "-- Shows or hides the bar") .. [[
-local function widget()
-    return {
-        ClearAllPoints = function() end, SetPoint = function() end,
-        Show = function(self) self.shown = true end,
-        Hide = function(self) self.shown = false end,
-        SetHeight = function(self, height) self.height = height end,
-    }
-end
+-- Core.lua's defaults, as it hands them to the saved-settings library when FlareUI loads
+local defaults
+local ui = dofile("tools/tests/fixtures/core.lua")(nil, function(env)
+    local editMode = { IsInEditMode = function() return false end, SettingType = { Dropdown = 1, Checkbox = 2 } }
+    local db = { New = function(_, _, given) defaults = given error("stop here: only the defaults are wanted") end }
+    env.LibStub = function(name)
+        if name == "AceDB-3.0" then return db end
+        return name == "FlareEditMode" and editMode or {}
+    end
+    env.DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+end)
+ui:emit("ADDON_LOADED", "FlareUI")
+local petDefaults = assert(defaults and defaults.profile.unitframes.units.pet, "Core.lua hands over its defaults")
+
+-- The pet frame laid out with its saved settings over those defaults (the library's way)
 local function layout(savedHeight)
-    settings = {}
-    if savedHeight ~= nil then settings.powerHeight = savedHeight end
-    copyDefaults(settings, defaults.profile.unitframes.units.pet)
-    local frame = { fuiUnit = "pet", Health = widget(), Power = widget(), Separator = widget() }
-    LayoutBars(frame)
-    return frame.Power
+    local saved = {}
+    if savedHeight ~= nil then saved.powerHeight = savedHeight end
+    setmetatable(saved, { __index = petDefaults })
+    local frames, ns = dofile("tools/tests/fixtures/unitframes-ui.lua")({
+        styleStart = true, frameFontsSeeded = true, castTimeSeeded = true,
+        units = { pet = saved }, layouts = { Main = {} }, party = { size = {}, auras = {}, enabled = false },
+    })
+    ns.EditPreviewing = function() return false end
+    local f = ns.UnitFrames.CreateSample(frames.env.UIParent, "pet")
+    assert(ns.UnitFrames.DrawSample(f, "addon"))
+    return f.Power
 end
+
 local default = layout()
-assert(default.shown and default.height == 8, "default pet resource bar must be visible at height 8")
+assert(default:IsShown() and default:GetHeight() == 8, "default pet resource bar must be visible at height 8")
 local hidden = layout(0)
-assert(hidden.shown == false, "a saved height of 0 must keep the pet resource bar hidden")
+assert(not hidden:IsShown(), "a saved height of 0 must keep the pet resource bar hidden")
 local custom = layout(13)
-assert(custom.shown and custom.height == 13, "a saved pet resource bar height must be kept")
-]])
+assert(custom:IsShown() and custom:GetHeight() == 13, "a saved pet resource bar height must be kept")
 print("PASS: pet power bar defaults to height 8 and keeps saved heights")

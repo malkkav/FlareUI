@@ -1,10 +1,6 @@
 -- The "Slower" Hide Speed: ns.StagedFall fades to the resting opacity in 2 s, rests 2 s, then finishes
--- in 0.4 s. Only the real Core.lua section runs; the client is not needed.
-local H = dofile("tools/tests/perf-helpers.lua")
-local ns = {}
-H.loadSections("Core.lua", {
-    { '-- "Show Speed" / "Hide Speed" choices', "-- Numbers on the bars" },
-}, { ns = ns, math = math })
+-- in 0.4 s. The whole of Core.lua runs, on client doubles.
+local _, ns = dofile("tools/tests/fixtures/core.lua")()
 
 assert(ns.FadeTime("slower") == 4 and ns.FadeTime("slow") == 0.4 and ns.FadeTime("nope") == 0)
 local stage = ns.FADE_STAGES
