@@ -238,8 +238,34 @@ local function Build(host, np)
         end
     end)
 
+    -- Copy From: another unit's whole setup onto this one (Undo Changes brings its own back). The box never
+    -- holds a choice, it only does the copy.
+    host.copyLabel = Label(host.editBox, L["Copy From"])
+    host.copyDrop = CreateFrame("DropdownButton", nil, host.editBox, "WowStyle2DropdownTemplate")
+    if ns.SettingsPanel.BoxArrow then ns.SettingsPanel.BoxArrow(host.copyDrop) end
+    if host.copyDrop.SetDefaultText then host.copyDrop:SetDefaultText(L["Pick a Unit"]) end
+    local function CopyFrom(from)
+        np.CopyType(PIN.kind, from)
+        if np.Refresh then np:Refresh() end
+        RefreshAll(DrawSide)
+    end
+    host.copyDrop:SetupMenu(function(_, root)
+        for _, k in ipairs(KINDS) do
+            if k[1] ~= PIN.kind then root:CreateButton(k[2], function() CopyFrom(k[1]) end) end
+        end
+    end)
+
     -- the Gamepad UI: FlareUI's plain list in place of Blizzard's menu
     if ns.PadNav and ns.PadNav.GuardDropdown then
+        ns.PadNav.GuardDropdown(host.copyDrop, function()
+            local list = {}
+            for _, k in ipairs(KINDS) do
+                if k[1] ~= PIN.kind then
+                    list[#list + 1] = { text = k[2], checked = function() return false end, pick = function() CopyFrom(k[1]) end }
+                end
+            end
+            return list
+        end)
         ns.PadNav.GuardDropdown(host.presetDrop, function()
             local list = {}
             for _, pr in ipairs(PRESETS) do
@@ -322,21 +348,24 @@ DrawSide = function()
     if not (host and host:IsVisible() and np and np.CreateSample) then return end
     if not host.editBox then Build(host, np) end
     -- Plate Setup: the two lists, as tall as they need (the labels share one column)
-    local labelW = math.max(host.unitGroup.label:GetStringWidth() or 30, host.presetLabel:GetStringWidth() or 40)
+    local labelW = math.max(host.unitGroup.label:GetStringWidth() or 30, host.presetLabel:GetStringWidth() or 40,
+        host.copyLabel:GetStringWidth() or 60)
     local startX = SIDE_PAD + labelW + 6
     local y = PlaceGroup(host, host.unitGroup, -38, startX)
-    -- Preset: its dropdown from the links' column to the box's right
-    y = y - 8
-    local dd = host.presetDrop
-    dd:ClearAllPoints()
-    dd:SetPoint("TOPLEFT", host.editBox, "TOPLEFT", startX, y)
-    dd:SetPoint("RIGHT", host.editBox, "RIGHT", -SIDE_PAD, 0)
-    host.presetLabel:ClearAllPoints()
-    host.presetLabel:SetPoint("LEFT", host.editBox, "LEFT", SIDE_PAD, 0)
-    host.presetLabel:SetPoint("TOP", dd, "TOP")
-    host.presetLabel:SetPoint("BOTTOM", dd, "BOTTOM")
-    dd:GenerateMenu()
-    y = y - (dd:GetHeight() > 0 and dd:GetHeight() or 26)
+    -- Preset and Copy From: their dropdowns from the links' column to the box's right
+    for _, pair in ipairs({ { host.presetDrop, host.presetLabel, 8 }, { host.copyDrop, host.copyLabel, 6 } }) do
+        local dd, label = pair[1], pair[2]
+        y = y - pair[3]
+        dd:ClearAllPoints()
+        dd:SetPoint("TOPLEFT", host.editBox, "TOPLEFT", startX, y)
+        dd:SetPoint("RIGHT", host.editBox, "RIGHT", -SIDE_PAD, 0)
+        label:ClearAllPoints()
+        label:SetPoint("LEFT", host.editBox, "LEFT", SIDE_PAD, 0)
+        label:SetPoint("TOP", dd, "TOP")
+        label:SetPoint("BOTTOM", dd, "BOTTOM")
+        dd:GenerateMenu()
+        y = y - (dd:GetHeight() > 0 and dd:GetHeight() or 26)
+    end
     host.editBox:SetHeight(-y + SIDE_PAD)
     -- Undo Changes: from the setup this type had when the window opened
     PIN.snap = PIN.snap or {}
@@ -407,13 +436,16 @@ function ns.NameplatesPinned.Hover(key)
     DrawSide()
 end
 
+local function TabLabel(name) return rawget(L, name .. " (tab)") end
 S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
     enabled = "nameplates.enabled",
     -- (Targeting moved next to Visibility; it, Visibility and Fonts are shared by every type)
     -- (#165 Nico-Mayer) two groups with a label each: the tabs that change only the unit
     -- type picked in Plate Setup, then the ones every plate shares (Panel.lua UpdateHeader, groupLabel)
-    tabs = { { key = "style", groupLabel = L["This Unit Type"] }, { key = "extras" }, { key = "cast" }, { key = "auras" },
-             { key = "targeting", groupLabel = L["All Nameplates"] }, { key = "visibility" }, { key = "fonts" } },
+    -- (label: a language's own shorter word for the tab, where the full one doesn't fit the row: ruRU)
+    tabs = { { key = "style", groupLabel = L["This Unit Type"], label = TabLabel("Plate") }, { key = "extras", label = TabLabel("Extras") },
+             { key = "cast", label = TabLabel("Cast Bar") }, { key = "auras" },
+             { key = "targeting", groupLabel = L["All Nameplates"], label = TabLabel("Targeting") }, { key = "visibility" }, { key = "fonts" } },
     -- the page's subtitle names what the rows change
     subtitle = function(tab)
         local np = NP()
@@ -424,7 +456,7 @@ S:Module{ key = "np", group = "combat", order = 5,   -- (first in Combat)
     end,
     sidePanel = {
         -- Plate Setup and Live Preview at the bottom; the text box gets the rest
-        height = 360,   -- (+30 for the Unit list's three rows)
+        height = 392,   -- (+30 for the Unit list's three rows, +32 for Copy From)
         show = function(host)
             PIN.host = host
             DrawSide()

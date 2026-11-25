@@ -1441,8 +1441,10 @@ function Ring.SyncPlateDispel(plate, holder)
     end
 end
 
--- Forever Style's Power Height (art pixels, 0 = Off) for this frame
+-- Forever Style's Power Height (art pixels, 0 = Off) for this frame; Off on a party tile Only Mana Power Bars
+-- leaves without one
 function Ring.PlatePower(f)
+    if f.noPowerBar then return 0 end
     local udb = Db(f)
     return Ring.PlatePowerValue(udb and udb.platePower)
 end
@@ -2278,6 +2280,10 @@ function Ring.ChooseStyle(style)
             -- (a pick made on another profile stays with it)
             if choice and choice.db == GetDb() then Ring.SetStyle(choice.style) end
         end)
+        -- the profile starts over, or takes another's: its own style counts, not a pick made before
+        local function Forget() Ring.choice = nil end
+        ns.db.RegisterCallback(Ring, "OnProfileReset", Forget)
+        ns.db.RegisterCallback(Ring, "OnProfileCopied", Forget)
     end
 end
 

@@ -109,6 +109,10 @@ local function StyleItemLevel(fs)
     local style, db = ns.Bags and ns.Bags.StyleIconText, GetDb()
     if style and db then style(fs, db.bagItemLevelFont) end
 end
+local function StyleBoE(fs)
+    local style, db = ns.Bags and ns.Bags.StyleBoE, GetDb()
+    if style and db then style(fs, db) end
+end
 
 local function StyleTitle()
     local title = win and win.title
@@ -225,7 +229,6 @@ local function NewRow(i)
     row.boe = marks:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     row.boe:SetPoint("TOPLEFT", 2, -2)
     row.boe:SetText(L["BoE"])
-    row.boe:SetTextColor(0.12, 1, 0.12)
     row.ilvl = marks:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     row.ilvl:SetPoint("BOTTOMLEFT", 2, 2)
     row.eye = marks:CreateTexture(nil, "OVERLAY", nil, 7)
@@ -302,7 +305,9 @@ local function PaintRow(row, data, db)
     local Bags = ns.Bags
     -- (the bags' own switches: Bags & Looting > Bags)
     row.junk:SetShown(db.bagJunkIcon and LW.IsJunk(data) or false)
-    row.boe:SetShown(db.bagBoE and link and Bags and Bags.IsBoE(link) or false)
+    local boe = db.bagBoE and link and Bags and Bags.IsBoE(link) or false
+    if boe then StyleBoE(row.boe) end
+    row.boe:SetShown(boe)
     row.eye:SetShown(db.bagUncollected and link and Bags and Bags.Uncollected(link) or false)
     if db.bagItemLevel and data.ilvl then
         StyleItemLevel(row.ilvl)
@@ -583,7 +588,10 @@ end
 function LW:ApplyFont()
     for fs, small in pairs(texts) do StyleText(fs, small) end
     StyleTitle()
-    for _, row in ipairs(pool) do StyleItemLevel(row.ilvl) end
+    for _, row in ipairs(pool) do
+        StyleItemLevel(row.ilvl)
+        StyleBoE(row.boe)
+    end
 end
 
 --------------------------------------------------

@@ -779,6 +779,7 @@ ns.Copy = {
             desc = L["The item level numbers on your bag items and the character sheet. Default keeps Blizzard's font."],
             label = L["Item Level"],
             section = "bl.fonts",
+            tip = L["The BoE mark uses it too."],
         },
         ["bl.font.lootFeed"] = {
             desc = L["The lines that float up as you loot."],

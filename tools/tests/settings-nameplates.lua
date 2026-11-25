@@ -60,6 +60,10 @@ function NP.TypeDB(kind)
     for key, value in pairs(own.custom or {}) do values[key] = value end
     return values
 end
+function NP.CopyType(kind, from)
+    local own = NP.TypeStore(kind)
+    own.custom, own.preset = NP.TypeDB(from), "custom"
+end
 function NP.PresetValue(_, key) return defaults[key] end
 function NP.SameValue(a, b)
     if type(a) ~= "table" or type(b) ~= "table" then return a == b end
@@ -140,6 +144,17 @@ presets[4].pick()
 assert(row("nameOnlyMode"):Get() and side.undo:IsEnabled())
 side.undo:Click()
 assert(NP.PresetOf("enemyNpc") == "full" and not side.undo:IsEnabled())
+
+-- Copy From: the other units only; the copy applies at once and Undo Changes takes it back
+local copies = side.copyDrop:OpenMenu().entries
+assert(#copies == 4)
+for _, entry in ipairs(copies) do assert(entry.text ~= "Enemy NPC") end
+NP.TypeSet("minor", "width", 170)
+for _, entry in ipairs(side.copyDrop:OpenMenu().entries) do if entry.text == "Minor" then entry.pick() end end
+assert(NP.TypeDB("enemyNpc").width == 170 and NP.PresetOf("enemyNpc") == "custom" and side.undo:IsEnabled())
+side.undo:Click()
+assert(NP.PresetOf("enemyNpc") == "full" and NP.TypeDB("enemyNpc").width ~= 170)
+NP.TypeStore("minor").preset, NP.TypeStore("minor").custom = nil, nil
 
 P:Open("np", "extras")
 assert(not row("questMarks"):IsHidden() and row("mobTypesWhere"):IsDisabled())

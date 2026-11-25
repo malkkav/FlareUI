@@ -3210,7 +3210,9 @@ local function SecureReHide(frame)
     if not frame:IsProtected() then return end
     local _, explicit = frame:IsProtected()
     if not explicit then
-        if frame.actionButtons and not frame.FlareUI_HomeParent and not InCombatLockdown() then
+        -- (the raid manager the same way: joining a group in a fight showed it until the fight ended)
+        if (frame.actionButtons or frame == _G.CompactRaidFrameManager) and not frame.FlareUI_HomeParent
+            and not InCombatLockdown() then
             if not secureHider then
                 -- named, so a /dump of a bar's parent tells "hidden by FlareUI" apart from UIParent
                 secureHider = CreateFrame("Frame", "FlareUI_HiddenBarParent", UIParent)

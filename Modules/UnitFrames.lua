@@ -4629,6 +4629,13 @@ function ns.SAB.UnitFrame(f)
     if f.fuiSample or ns.SAB.absent then return end
     ns.SAB.Want(f.Health, f.fuiUnit, "health", true, f, f.DamageTrail)
     ns.SAB.Want(f.Power, f.fuiUnit, "power", f.Power:IsShown(), f)
+    -- Mana on Shapeshift: handed over in caster form too, hidden, since shifting comes in a fight. No unit ("none":
+    -- it follows the bar's own value and colour): as the player's power it would take the form's rage effects.
+    if f.ShiftMana then
+        local udb = GetUnitDb(f.fuiUnit)
+        local tall = ns.UFRing and ns.UFRing.Plate(f) or UF.ShiftManaHeight(f) >= ns.SAB.MIN_HEIGHT
+        ns.SAB.Want(f.ShiftMana, "none", "power", udb and (udb.shiftMana or UF.shiftTest) and tall, f)
+    end
 end
 
 function UpdateHealPrediction(f)

@@ -1,6 +1,23 @@
 # FlareUI changelog history
 
-Versions 7.0.9 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.10 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.10
+
+A hotfix for quest clicks that only opened the quest log, plus Smooth Animated Bars on nameplates.
+
+**We need your help testing:**
+- **Quest Tracker:** clicking quests from other zones, and Craftsman's Writs.
+- **Nameplates** with **Smooth Animated Bars**: please tell us how it looks and runs.
+
+## New
+- **Nameplates:** support for **Smooth Animated Bars**. Its own nameplate switches turn the liquid on.
+  - With its DoTs on Nameplates on, your DoTs show on your target's plate.
+  - With its **Your Colours on Their Bars** on, nameplates keep FlareUI's fill.
+
+## Fixed
+- **Quest Tracker:** clicking a quest from another zone, or one with no location like a Craftsman's Writ, often opened only the quest log.
+- **Quest Tracker:** with the map open full size, or with its quest list closed, some quests didn't open.
 
 # FlareUI 7.0.9
 

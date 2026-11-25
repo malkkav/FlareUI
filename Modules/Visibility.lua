@@ -710,7 +710,7 @@ local function KeepHiddenInEditMode(frame, settingKey)
         local db = GetDb()
         local editing = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
         -- only while FlareUI still hides it: not after Action Bars went off without a reload
-        if db and db[editHideHooked[f]] and f.FlareUI_Hidden and ActionBarsOn() and editing and not InCombatLockdown() then ns.RawHide(f) end
+        if db and db[editHideHooked[f]] and f.FlareUI_Hidden and Visibility.HidesOn(editHideHooked[f]) and editing and not InCombatLockdown() then ns.RawHide(f) end
     end)
 end
 
@@ -1467,7 +1467,8 @@ function Visibility:ShouldLoad()
     for _, e in ipairs(ELEMENTS) do
         if ElementOn(e) then return true end
     end
-    return false
+    local db = GetDb()
+    return db and db.hideRaidManager or false
 end
 
 local HIDE_KEYS = {
@@ -1475,6 +1476,12 @@ local HIDE_KEYS = {
     { "stance", "hideStanceBar" }, { "possess", "hidePossessBar" }, { "totem", "hideTotemBar" },
     { "raid", "hideRaidManager" }, { "endcaps", "hideEndCaps" },
 }
+
+-- Whether FlareUI may hide what this setting is for: Blizzard's bars go with Action Bars; the raid manager is a
+-- Quality of Life switch and needs no module
+function Visibility.HidesOn(settingKey)
+    return settingKey == "hideRaidManager" or ActionBarsOn() and Visibility:ShouldLoad()
+end
 
 --------------------------------------------------
 -- 8b. UNIT FRAMES AND MISSING HEALTH
@@ -1646,7 +1653,7 @@ function Visibility:Refresh()
     if not db then return end
     -- A frame hidden for good stays hidden in Edit Mode, its selection made invisible; lifting the hide
     -- would lose whether the frame comes back when the option goes off.
-    -- Whatever is not hidden, or everything with Action Bars off (or every element off), comes back at
+    -- Whatever is not hidden, or every bar with Action Bars off (or every element off), comes back at
     -- once, in Edit Mode or not: its parent, its selection and its mouse (a bar left showing must stay
     -- pickable in Edit Mode). Both steps only undo what FlareUI did this session, so nothing of
     -- Blizzard's is forced. Runs before the ShouldLoad return below.
@@ -1654,7 +1661,7 @@ function Visibility:Refresh()
     local barsOn = ActionBarsOn() and self:ShouldLoad()
     for _, pair in ipairs(not inCombat and HIDE_KEYS or {}) do
         local key, settingKey = pair[1], pair[2]
-        local hidden = barsOn and db[settingKey]
+        local hidden = db[settingKey] and Visibility.HidesOn(settingKey)
         if hidden then
             ApplySecureHide(key, true)
             if inEditMode then
@@ -1882,7 +1889,7 @@ function Visibility:Init()
     -- in Edit Mode, toggling Raid / Party Frames makes Blizzard show the raid manager again
     hooksecurefunc("CompactRaidFrameManager_UpdateShown", function()
         local db = GetDb()
-        if db and db.hideRaidManager and ActionBarsOn() and _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
+        if db and db.hideRaidManager and _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown() then
             local manager = _G.CompactRaidFrameManager
             if manager and manager:IsShown() and not InCombatLockdown() then ns.RawHide(manager) end
         end

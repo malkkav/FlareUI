@@ -1395,6 +1395,7 @@ function R.lootWindow(c, spec)
         marks.count:SetShown(r.quantity and r.quantity > 1 or false)
         marks.count:SetText(r.quantity or '')
         if showIlvl and ns.Bags and ns.Bags.StyleIconText then ns.Bags.StyleIconText(marks.ilvl, Get('tweaks.bagItemLevelFont')) end
+        if showBoE and ns.Bags and ns.Bags.StyleBoE then ns.Bags.StyleBoE(marks.boe, { bagItemLevelFont = Get('tweaks.bagItemLevelFont') }) end
         marks.ilvl:SetShown(showIlvl and r.ilvl and true or false)
         marks.ilvl:SetText(r.ilvl or '')
         marks.ilvl:SetTextColor(qr, qg, qb)

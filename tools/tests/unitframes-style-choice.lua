@@ -45,6 +45,17 @@ assert(Ring.Style() == "forever" and db.plateStyle, "saving the profile switches
 assert(db.styleProfiles.forever.units.player.width == 190, "the style left is stored")
 assert(Ring.ChosenStyle() == "forever")
 
+-- a profile reset, or copied from another, before the reload: the pick made before it is gone
+local function fire(event) for _, handler in pairs(callbacks[event] or {}) do handler(event, ns.db) end end
+for _, event in ipairs({ "OnProfileReset", "OnProfileCopied" }) do
+    Ring.ChooseStyle("flareui")
+    assert(Ring.ChosenStyle() == "flareui")
+    fire(event)
+    assert(Ring.ChosenStyle() == "forever", event)
+    save()
+    assert(Ring.Style() == "forever", event .. ": the profile's own style stays")
+end
+
 -- a pick made on another profile is not carried over to this one
 Ring.ChooseStyle("addon")
 local other = newDb()

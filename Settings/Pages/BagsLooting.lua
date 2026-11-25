@@ -198,7 +198,7 @@ S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     -- Item Level's numbers, in the bags, on the character sheet and in the loot window: shown while
     -- it's on
     { key = "itemLevel", path = "tweaks.bagItemLevelFont", optional = true,
-      hidden = function() return not S:GetPath("tweaks.bagItemLevel") end },
+      hidden = function() return not (S:GetPath("tweaks.bagItemLevel") or S:GetPath("tweaks.bagBoE")) end },
     -- the free bag slots on the backpack button (too small to read)
     { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
     -- the gold, silver and copper at the bags' foot

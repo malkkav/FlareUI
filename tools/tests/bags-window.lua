@@ -208,6 +208,16 @@ local function overlay(slot)
 end
 local weapon, junk, empty = overlay(1), overlay(2), overlay(5)
 assert(weapon.ilvl:GetText() == "39" and weapon.ilvl:IsShown() and weapon.eye:IsShown() and weapon.boe:IsShown())
+-- the BoE mark takes the Item Level font and stays green, Blizzard's font back on Default
+do
+    local green = function() local r, g, b = weapon.boe:GetTextColor() return r == 0.12 and g == 1 and b == 0.12 end
+    assert(green())
+    bags.StyleBoE(weapon.boe, { bagItemLevelFont = { face = "Test", size = 17 } })
+    local path, size = weapon.boe:GetFont()
+    assert(path == "Fonts/Test" and size == 17 and green())
+    bags.StyleBoE(weapon.boe, { bagItemLevelFont = { face = "" } })
+    assert(green())
+end
 assert(junk.junk:IsShown() and not junk.ilvl:IsShown() and empty.plain:IsShown())
 -- (11-24) ... and a locked slot keeps its padlock
 do

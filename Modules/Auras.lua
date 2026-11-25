@@ -402,19 +402,12 @@ function AU.StyleDispelIcon(button, look, area, size)
         return
     end
     if not typeIcon then
-        -- on the text overlay: above the icon, its border and the cooldown swipe in every swipe style. In a
-        -- frame of its own, which the unit's side hides: Blizzard shows and hides the icon itself
-        local holder = CreateFrame("Frame", nil, button.FlareUI_Overlay)
-        holder:SetAllPoints()
-        typeIcon = holder:CreateTexture(nil, "OVERLAY", nil, 1)
+        -- on the text overlay: above the icon, its border and the cooldown swipe in every swipe style
+        typeIcon = button.FlareUI_Overlay:CreateTexture(nil, "OVERLAY", nil, 1)
         typeIcon:Hide()   -- until Blizzard shows it for a typed debuff
-        button.FlareUI_DispelIcon, button.FlareUI_DispelHolder = typeIcon, holder
-    end
-    local owner, holder = button.FlareUI_AuraOwner, button.FlareUI_DispelHolder
-    if owner and holder then
-        owner.FlareUI_DispelHolders = owner.FlareUI_DispelHolders or setmetatable({}, { __mode = "k" })
-        owner.FlareUI_DispelHolders[holder] = true
-        holder:SetAlpha(owner.FlareUI_DispelEnemy and 0 or 1)
+        button.FlareUI_DispelIcon = typeIcon
+        local owner = button.FlareUI_AuraOwner
+        if owner then pcall(typeIcon.AddMaskTexture, typeIcon, AU.DispelMask(owner)) end
     end
     local side = math_max(8, math_floor(size * 0.38 + 0.5))
     pcall(typeIcon.ClearAllPoints, typeIcon)
@@ -425,11 +418,29 @@ end
 -- DISPELLABLE ONLY: nobody on your side takes a debuff off an enemy, so a unit frame whose
 -- unit is one shows no type icons (the target and focus change sides: AP.UpdateSide, Core.lua). Nameplates and
 -- boss tiles know their side: look.noTypeIcon.
+-- A button that holds an aura is forbidden, with all that is in it (7.0.14: "SetAlpha on bad self" at each new target
+-- in a fight), so nothing in it can change. Every icon carries one mask that belongs to the unit frame, and the side
+-- changes only that mask: white cuts nothing, the empty one cuts the icons away.
+AU.DISPEL_MASK = { shown = "Interface\\Buttons\\WHITE8X8", hidden = "Interface\\AddOns\\FlareUI\\Media\\Art\\Empty" }
+function AU.SetDispelMask(f)
+    local mask = f.FlareUI_DispelMask
+    local file, wrap = AU.DISPEL_MASK.shown, "CLAMPTOWHITE"
+    if f.FlareUI_DispelEnemy then file, wrap = AU.DISPEL_MASK.hidden, "CLAMPTOBLACKADDITIVE" end
+    pcall(mask.SetTexture, mask, file, wrap, wrap)
+end
+function AU.DispelMask(f)
+    if not f.FlareUI_DispelMask then
+        f.FlareUI_DispelMask = f:CreateMaskTexture()
+        f.FlareUI_DispelMask:SetAllPoints(f)
+        AU.SetDispelMask(f)
+    end
+    return f.FlareUI_DispelMask
+end
 function AU.DispelSide(f, enemy)
     enemy = enemy and true or false
     if f.FlareUI_DispelEnemy == enemy then return end
     f.FlareUI_DispelEnemy = enemy
-    for holder in pairs(f.FlareUI_DispelHolders or {}) do holder:SetAlpha(enemy and 0 or 1) end
+    if f.FlareUI_DispelMask then AU.SetDispelMask(f) end
 end
 
 -- An Edit Mode or settings sample: the icon of the given type ("None": no icon)

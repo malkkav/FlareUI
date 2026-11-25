@@ -1,3 +1,52 @@
+# FlareUI 7.0.15
+
+A hotfix for the Lua error when you change target in a fight (our own doing, from 7.0.14), plus a few fixes and small additions.
+
+**We need your help testing:**
+- **Dispel icons:** change target in a fight with debuffs up. Friends show the icons, enemies don't.
+- **Raid Manager:** join a group in and out of a fight, with it hidden.
+- **Druids:** **Mana on Shapeshift** with Smooth Animated Bars.
+- **Nameplates:** the colours in **Name Only Mode**.
+
+## Heads up
+Some things look different even if you change nothing:
+- **Name Only Mode:** titles and guilds take the name's colour, and names take the colours Blizzard gives them. Colours you picked yourself stay.
+- **Raid Manager:** if you hid it but play without our Action Bars, it's hidden now.
+- **Bags & Looting:** with a font picked for Item Level, the BoE mark takes it too.
+
+## New
+
+### Nameplates
+- **Copy From**, in Plate Setup: puts another unit's whole setup on the one you're editing. Undo Changes takes it back.
+
+## Changed
+
+### Nameplates
+- **Name Only Mode:** Blizzard's colours for names, titles and guilds.
+
+### Unit Frames
+- **Only Mana Power Bars** (off) works in every party style, Forever Style too.
+- A **Frame Style** you pick waits for the reload. By mateuszmalek.
+
+### Bags & Looting
+- The BoE mark takes the Item Level font, in the bags and the loot window.
+
+### Languages
+- **Russian:** shorter names for the Nameplates tabs and Plate Setup.
+
+## Fixed
+
+### Unit Frames
+- A Lua error each time you changed target in a fight.
+- The player and target frames got shorter when you switched **Frame Style** and back. By mateuszmalek.
+- **Smooth Animated Bars** left out the **Mana on Shapeshift** bar.
+
+### Nameplates
+- The target arrows hitched at each end of their bounce.
+
+### Quality of Life
+- A hidden **Raid Manager** still showed with Action Bars off, or when you joined a group in a fight.
+
 # FlareUI 7.0.14
 
 The blocked bag clicks: potions, recipes, crates and gear that the game refused to use after a visit to the bank. It's the worst bug FlareUI ever had.
@@ -286,23 +335,6 @@ Some things look or work differently even if you change nothing:
 - **Threat:** nameplates, unit frames and the meter could show different numbers for the same mob.
 - **Radial Menu:** a lower rank of a party spell could turn into your best rank. It now stays, and its rank shows in the list.
 
-# FlareUI 7.0.10
-
-A hotfix for quest clicks that only opened the quest log, plus Smooth Animated Bars on nameplates.
-
-**We need your help testing:**
-- **Quest Tracker:** clicking quests from other zones, and Craftsman's Writs.
-- **Nameplates** with **Smooth Animated Bars**: please tell us how it looks and runs.
-
-## New
-- **Nameplates:** support for **Smooth Animated Bars**. Its own nameplate switches turn the liquid on.
-  - With its DoTs on Nameplates on, your DoTs show on your target's plate.
-  - With its **Your Colours on Their Bars** on, nameplates keep FlareUI's fill.
-
-## Fixed
-- **Quest Tracker:** clicking a quest from another zone, or one with no location like a Craftsman's Writ, often opened only the quest log.
-- **Quest Tracker:** with the map open full size, or with its quest list closed, some quests didn't open.
-
 ---
 
-Older versions (7.0.9 and before): [CHANGELOG-history.md](CHANGELOG-history.md).
+Older versions (7.0.10 and before): [CHANGELOG-history.md](CHANGELOG-history.md).

@@ -1568,7 +1568,6 @@ local function GetOverlay(button)
     ov.boe = ov:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
     ov.boe:SetPoint("TOPLEFT", 2, -2)
     ov.boe:SetText(L["BoE"])
-    ov.boe:SetTextColor(0.12, 1, 0.12)
     ov.boe:Hide()
     ov.plain = ov:CreateTexture(nil, "BACKGROUND")
     ov.plain:SetAllPoints()
@@ -1699,7 +1698,10 @@ local function ShowItemData(ov, db, bagID, slotID, link, quality, isBound)
         if level then ShowItemLevel(ov, level, quality) end
     end
     if db.bagUncollected and Uncollected(link) then ov.eye:Show() end
-    if db.bagBoE and not isBound and Bags.IsBoE(link) then ov.boe:Show() end
+    if db.bagBoE and not isBound and Bags.IsBoE(link) then
+        Bags.StyleBoE(ov.boe, db)
+        ov.boe:Show()
+    end
 end
 
 local function UpdateButton(button, db)
@@ -1739,6 +1741,11 @@ local function StyleIconText(fs, font)
     fs.fuiFont = { path = path, size = size, flags = flags, sh = font.enableShadow, x = font.shadowX, y = font.shadowY, got = fs:GetFont() }
 end
 Bags.StyleIconText = StyleIconText   -- (the loot window's item levels, LootWindow.lua)
+-- the BoE mark (bags and loot window): the Item Level font, always green (a font object brings its own colour)
+function Bags.StyleBoE(fs, db)
+    StyleIconText(fs, db.bagItemLevelFont)
+    fs:SetTextColor(0.12, 1, 0.12)
+end
 -- the money at the bags' foot (Bags and Looting > Fonts > Gold): Blizzard's gold, silver and copper
 -- texts on the combined bags and the backpack; their widths follow the new text
 function Bags.StyleMoney()

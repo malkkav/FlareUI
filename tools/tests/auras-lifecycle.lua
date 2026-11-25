@@ -97,20 +97,29 @@ local buff, debuff = auraButton(buffs), auraButton(debuffs)
 assert(buff.auraIcon == buff.FlareUI_Icon and buff.auraCooldown == buff.FlareUI_Cooldown)
 assert(buff.arrival and buff.cancelClick == "RightButtonUp" and not debuff.cancelClick)
 assert(debuff.dispelTextures[debuff.FlareUI_DispelIcon].style == env.Enum.CustomAuraButtonDispelTypeTextureStyle.Icon)
--- (11-24) a unit frame's type icons go while its unit is an enemy: Blizzard shows the icon, its frame hides it
+-- (11-24) a unit frame's type icons go while its unit is an enemy: Blizzard shows the icon, the frame's own mask
+-- cuts it. A button that holds an aura is forbidden: nothing in it may be touched when the target changes
 do
-    local owner, look = {}, ns.AuraLook.ForUnit(24, true, false, "square", "both", "none", "target")
+    local owner, look = env.CreateFrame("Frame", nil, env.UIParent), ns.AuraLook.ForUnit(24, true, false, "square", "both", "none", "target")
     local first, second = env.CreateFrame("Frame", nil, env.UIParent), env.CreateFrame("Frame", nil, env.UIParent)
     first.FlareUI_AuraOwner = owner
     ns.AuraLook.Style(first, look)
-    assert(first.FlareUI_DispelHolder:GetAlpha() == 1 and first.FlareUI_DispelIcon:GetParent() == first.FlareUI_DispelHolder)
+    local mask = owner.FlareUI_DispelMask
+    assert(mask:GetParent() == owner and mask:GetTexture():find("WHITE8X8", 1, true))
+    local function forbidden() error("calling 'SetAlpha' on bad self (Attempt to access forbidden object)") end
+    for _, object in ipairs({ first, first.FlareUI_Overlay, first.FlareUI_DispelIcon }) do
+        for _, method in ipairs({ "SetAlpha", "Show", "Hide", "SetShown", "SetTexture" }) do object[method] = forbidden end
+    end
     ns.AuraLook.DispelSide(owner, true)
-    assert(first.FlareUI_DispelHolder:GetAlpha() == 0)
+    assert(mask:GetTexture():find("Empty", 1, true), "an enemy: the icons are cut away")
     second.FlareUI_AuraOwner = owner
     ns.AuraLook.Style(second, look)
-    assert(second.FlareUI_DispelHolder:GetAlpha() == 0, "a button made while the unit is an enemy")
+    assert(owner.FlareUI_DispelMask == mask and mask:GetTexture():find("Empty", 1, true), "a button made while the unit is an enemy")
     ns.AuraLook.DispelSide(owner, false)
-    assert(first.FlareUI_DispelHolder:GetAlpha() == 1 and second.FlareUI_DispelHolder:GetAlpha() == 1)
+    assert(mask:GetTexture():find("WHITE8X8", 1, true))
+    -- a client that refuses the mask too: no error in the middle of the target switch
+    mask.SetTexture = forbidden
+    ns.AuraLook.DispelSide(owner, true)
 end
 assert(ns.auraTipKind[debuff] == "solo" and buff.FlareUI_Cooldown.drawEdge)
 

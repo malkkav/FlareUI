@@ -133,6 +133,15 @@ assert(a.Highlight:IsShown() and env.GameTooltip.unit == "party1")
 a:RunScript("OnLeave")
 assert(not a.Highlight:IsShown() and not env.GameTooltip:IsShown())
 
+-- Only Mana Power Bars outside Raid Style too
+assert(b.Power:IsShown())
+party.classic.powerManaOnly = true
+pf:Refresh()
+assert(a.Power:IsShown() and not b.Power:IsShown() and b.noPowerBar and not a.noPowerBar, "the hunter keeps it, the warrior doesn't")
+party.classic.powerManaOnly = nil
+pf:Refresh()
+assert(b.Power:IsShown() and not b.noPowerBar)
+
 party.style, party.orientation, party.raid.powerManaOnly = "raid", "HORIZONTAL", true
 local originalWidth = a:GetWidth()
 ui.combat = true

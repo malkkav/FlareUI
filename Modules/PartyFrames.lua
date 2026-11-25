@@ -527,23 +527,24 @@ end
 
 local LayoutBars   -- section 6
 
--- Mana Users Only (raid tiles): no power bar for the classes that never use mana. By class, so it
--- holds for a druid in Cat or Bear Form; an unreadable class keeps the bar.
+-- Only Mana Power Bars (party and raid tiles, every style): no power bar for the classes that never use
+-- mana. By class, so it holds for a druid in Cat or Bear Form; an unreadable class keeps the bar.
 local NO_MANA = { WARRIOR = true, ROGUE = true }
 local function WantsPower(f, previewClass)
-    -- the plate: its own Power Height (LayoutBars)
-    if OnPlate(f) then return ns.UFRing.PlatePower(f) > 0 end
     local st = TS(f)
-    if not (st and (st.powerHeight or 0) > 0) then return false end
-    if st.powerManaOnly and RaidTile(f) then
+    local off = false
+    if st and st.powerManaOnly then
         local class = previewClass
         if not class and f.fuiUnit then
             local _, file = UnitClass(f.fuiUnit)
             if canaccessvalue(file) then class = file end
         end
-        if class and NO_MANA[class] then return false end
+        off = class and NO_MANA[class] or false
     end
-    return true
+    -- the plate: its own Power Height (LayoutBars), Off on a tile with no power bar (Ring.PlatePower)
+    f.noPowerBar = off or nil
+    if OnPlate(f) then return ns.UFRing.PlatePower(f) > 0 end
+    return st and (st.powerHeight or 0) > 0 and not off or false
 end
 
 -- Power Text: the raid's (and raid-style tiles') default is None, the party's Value
@@ -3669,11 +3670,10 @@ local function BuildSettings()
                 st.platePower = value
                 Refresh()
             end, onPlate),
-        -- (Raid Style, as on the raid frames)
+        -- (every style, as on the raid frames)
         { name = L["Only Mana Power Bars"], kind = LEM.SettingType.Checkbox, default = false,
           get = function() return getS("powerManaOnly")() and true or false end, set = setS("powerManaOnly"),
-          desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."],
-          hidden = function() return not IsRaidStyle() end },
+          desc = L["Power bars only for classes that use mana. Warriors and rogues get the room for health instead."] },
         -- the ring always holds a portrait (no None; 2D by default)
         -- "3d" is the stored name of the 2D picture (kept for saved setups)
         { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = ringPortrait and "3d" or D.portrait or "none",

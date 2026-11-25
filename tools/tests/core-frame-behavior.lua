@@ -142,6 +142,19 @@ ns.HideFrameSecurely(pet, false)
 assert(pet:GetParent() == container and not pet:IsShown())
 assert(not ns.HideFrameSecurely({}, true))
 
+-- the raid manager, protected through its buttons only: parked, so joining a group in a fight can't show it
+local manager = env.CreateFrame("Frame", nil, container)
+env.CompactRaidFrameManager = manager
+manager.IsProtected = function() return true, false end
+ns.HideFrameSecurely(manager, true)
+assert(manager:GetParent() == env.FlareUI_HiddenBarParent)
+ui.combat = true
+manager:Show()
+assert(not manager:IsVisible(), "nothing Blizzard shows in a fight is drawn")
+ui.combat = false
+ns.HideFrameSecurely(manager, false)
+assert(manager:GetParent() == container and manager:IsVisible(), "switched off: back as Blizzard left it")
+
 local resized = frame()
 resized:SetSize(1, 1)
 resized:SetScale(2)

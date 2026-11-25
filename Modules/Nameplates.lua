@@ -410,6 +410,15 @@ function NP.TypeSet(kind, key, value)
     own.custom[key] = Copy(value)
     CacheType(kind, SettingsFor(true))
 end
+-- Copy From (Plate Setup): the type takes another's whole setup, as its Custom
+function NP.CopyType(kind, from)
+    local own = NP.TypeStore(kind)
+    if not own or kind == from then return end
+    local view, custom = NP.TypeDB(from), {}
+    for key in pairs(C.TYPE_KEYS) do custom[key] = Copy(view[key]) end
+    own.custom, own.preset = custom, "custom"
+    CacheType(kind, SettingsFor(true))
+end
 -- types saved before presets (their own values over the shared ones) become their preset when
 -- nothing differs, else Custom with what they showed
 local function Same(a, b)
@@ -487,6 +496,19 @@ local function ReactionRGB(unit)
     if not canaccessvalue(reaction) or type(reaction) ~= "number" then return nil end
     local c = NP.Color(reaction <= 3 and "hostile" or reaction == 4 and "neutral" or "friendly")
     return c[1], c[2], c[3]
+end
+
+-- A Name Only name's: the colour Blizzard gives the unit's name in the world, unless the player picked one for
+-- its reaction. Can be secret: only for SetTextColor.
+function NP.NameRGB(unit)
+    local reaction = UnitReaction(unit, "player")
+    if canaccessvalue(reaction) and type(reaction) == "number" then
+        local key = reaction <= 3 and "hostile" or reaction == 4 and "neutral" or "friendly"
+        local c = NP.Color(key)
+        if c ~= C.COLORS[key] then return c[1], c[2], c[3] end
+    end
+    if UnitSelectionColor then return UnitSelectionColor(unit) end
+    return ReactionRGB(unit)
 end
 
 -- Pulses on one shared clock (Flash When Targeted, Highlight Important Casts, Threat Glow): every
@@ -711,12 +733,7 @@ function NP.Build(parent, sample)
         -- (it moves 3 px: snapped to whole pixels it went in steps)
         a.tex:SetSnapToPixelGrid(false)
         a.tex:SetTexelSnappingBias(0)
-        -- a small bounce towards the plate
-        a.bounce = a:CreateAnimationGroup()
-        a.bounce:SetLooping("BOUNCE")
-        a.move = a.bounce:CreateAnimation("Translation")
-        a.move:SetDuration(0.45)
-        a.move:SetSmoothing("IN_OUT")
+        a:SetScript("OnUpdate", NP.BounceArrow)
         a:Hide()
         p.arrows[side] = a
     end
@@ -1192,12 +1209,8 @@ function NP.UpdateTargetLook(p)
     -- Layout positions even the hidden arrows. Selecting a target only toggles them.
     for side, a in pairs(p.arrows) do
         local show = (on or (p.sample and p.sampleTarget)) and art and want[side] or false
+        if show and not a:IsShown() then a.time = 0 end
         a:SetShown(show and true or false)
-        if show then
-            if not a.bounce:IsPlaying() then a.bounce:Play() end
-        else
-            a.bounce:Stop()
-        end
     end
 end
 
@@ -1235,6 +1248,17 @@ function NP.PlaceGlow(glowFrame, to, gw, gh, glowSize)
     end
 end
 
+-- An arrow's small bounce towards the plate and back, C.BOUNCE_TIME each way (only a shown arrow gets an
+-- OnUpdate). Not a looping Translation: that draws the arrow unmoved for one frame at each turn.
+C.BOUNCE_TIME = 0.45
+function NP.BounceArrow(a, elapsed)
+    a.time = (a.time or 0) + elapsed
+    local k = (1 - math.cos(math.pi * a.time / C.BOUNCE_TIME)) / 2
+    local x, y = (a.moveX or 0) * k, (a.moveY or 0) * k
+    a.tex:SetPoint("TOPLEFT", a, "TOPLEFT", x, y)
+    a.tex:SetPoint("BOTTOMRIGHT", a, "BOTTOMRIGHT", x, y)
+end
+
 -- the highlight parts' look, at layout (the arrows' art turned to point at the plate)
 function NP.LayoutTargetLook(p, db, boxH, aurasUp)
     local c = NP.Color("target", p.sample)
@@ -1270,7 +1294,7 @@ function NP.LayoutTargetLook(p, db, boxH, aurasUp)
         end
         -- (the frame is the turned art's footprint: the art turns inside it without stretching)
         if side == "top" then a.w, a.h = p.arrowSize, along * k else a.w, a.h = along * k, p.arrowSize end
-        a.move:SetOffset(MOVE[side][1], MOVE[side][2])
+        a.moveX, a.moveY = MOVE[side][1], MOVE[side][2]
     end
 end
 
@@ -2315,6 +2339,13 @@ end
 function NP.UpdateName(p)
     NP.UpdateBarName(p)
     NP.UpdateNameAbove(p)
+    NP.ColorLines(p)
+end
+-- the title and the guild take the name's colour, as in Blizzard's own names
+function NP.ColorLines(p)
+    local title, guild = p.npcTitle, p.guildName
+    if title and title:IsShown() then title:SetTextColor(p.name:GetTextColor()) end
+    if guild and guild:IsShown() then guild:SetTextColor(p.name:GetTextColor()) end
 end
 function NP.UpdateBarName(p)
     local db, unit = PDB(p), p.unit
@@ -2379,9 +2410,9 @@ function NP.UpdateBarName(p)
             return
         end
     end
-    -- a name with no bar under it carries the reaction colour itself
+    -- a name with no bar under it carries the reaction colour itself: Blizzard's, or yours (Pick Your Colours)
     if p.nameOnly then
-        local r, g, b = ReactionRGB(unit)
+        local r, g, b = NP.NameRGB(unit)
         if r then p.name:SetTextColor(r, g, b) return end
     end
     p.name:SetTextColor(1, 1, 1)
@@ -2448,8 +2479,6 @@ function NP.UpdateGuild(p)
     end
     if not guild then fs:Hide() return end
     fs:SetText("<" .. guild .. ">")
-    local c = ns.PALETTE.bronze5
-    fs:SetTextColor(c[1], c[2], c[3], 1)
     fs:ClearAllPoints()
     fs:SetPoint("TOP", (p.npcTitle and p.npcTitle:IsShown()) and p.npcTitle or p.name, "BOTTOM", 0, -1)
     fs:Show()
@@ -2458,6 +2487,7 @@ end
 function NP.UpdateTitle(p)
     NP.UpdateTitleLine(p)
     NP.UpdateGuild(p)
+    NP.ColorLines(p)
 end
 function NP.UpdateTitleLine(p)
     local fs = p.npcTitle
@@ -2469,10 +2499,6 @@ function NP.UpdateTitleLine(p)
     end
     if not title then fs:Hide() return end
     fs:SetText(title)
-    -- its own colour, apart from the name's: the palette's light bronze, a tan as other
-    -- nameplate addons draw titles in
-    local c = ns.PALETTE.bronze5
-    fs:SetTextColor(c[1], c[2], c[3], 1)
     fs:Show()
 end
 

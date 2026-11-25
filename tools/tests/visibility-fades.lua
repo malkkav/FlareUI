@@ -330,4 +330,24 @@ vis:SetShow("bar2", "always")
 assert(bButton:IsMouseEnabled())
 ns.ActionBars = nil
 
+-- the Raid Manager switch is Quality of Life's: it works with Action Bars, and every other module, off
+local manager = frame("CompactRaidFrameManager")
+db.hideRaidManager, db.hidePetBar = true, true
+local pet = frame("PetActionBar")
+profile.actionbars.enabled = false
+vis:Refresh()
+assert(manager.FlareUI_Hidden and not pet.FlareUI_Hidden, "Blizzard's bars come with Action Bars")
+env.EditModeManagerFrame:Show()
+manager:Show()
+assert(not manager:IsShown(), "Edit Mode's samples don't bring it back")
+env.EditModeManagerFrame:Hide()
+for _, key in ipairs({ "unitframes", "objectivetracker", "damagemeter", "chat" }) do profile[key].enabled = false end
+ns.CooldownManager = nil
+assert(vis:ShouldLoad(), "loaded for this switch alone")
+vis:Refresh()
+assert(manager.FlareUI_Hidden)
+db.hideRaidManager = false
+vis:Refresh()
+assert(not manager.FlareUI_Hidden and not vis:ShouldLoad())
+
 print("PASS: visibility migrates fades, groups bars, handles mouse and combat, and restores native opacity")

@@ -134,6 +134,13 @@ ui.combat = true
 UF.ShiftManaTest()
 assert(not other.ShiftMana and not UF.shiftTest, "made out of a fight")
 ui.combat = false
+-- a party tile Only Mana Power Bars leaves without a power bar: the plate's power slot folds away
+do
+    local tile = { fuiUnit = "player" }
+    assert(Ring.PlatePower(tile) > 0)
+    tile.noPowerBar = true
+    assert(Ring.PlatePower(tile) == 0 and not Ring.PlatePowerText(tile))
+end
 UF.ShiftManaTest()
 assert(redrawn == 1 and other.ShiftMana and other.shiftTestOnly and UF.shiftTest)
 assert(other.ShiftMana:IsShown() and other.ShiftMana:GetValue() == 0.7 and Ring.PlateDrop(other) > 0 and Ring.PlateReserve(other) > 0)

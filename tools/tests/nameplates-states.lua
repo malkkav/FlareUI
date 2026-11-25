@@ -118,7 +118,18 @@ local p = f.plates[1]
 assert(width == f:GetWidth() and height == f:GetHeight() and p.root:IsVisible())
 assert(p.health:GetValue() == 0.15 and p.execMark:IsShown() and p.execTint:GetAlpha() == 1)
 assert(p.targetTint:IsShown() and p.targetGlow:IsShown() and p.discGlow:IsShown())
-assert(p.arrows.left:IsShown() and p.arrows.right.bounce:IsPlaying() and not p.arrows.top:IsShown())
+assert(p.arrows.left:IsShown() and p.arrows.right:IsShown() and not p.arrows.top:IsShown())
+-- the arrow's bounce: from rest, 3 px towards the plate half way, back at rest after both ways
+do
+    local a = p.arrows.right
+    local function x() return (select(4, a.tex:GetPoint(1))) end
+    a:RunScript("OnUpdate", 0)
+    assert(math.abs(x()) < 1e-6, "starts at rest")
+    a:RunScript("OnUpdate", plates.C.BOUNCE_TIME)
+    assert(math.abs(x() + 3) < 1e-6, "the right one moves left")
+    a:RunScript("OnUpdate", plates.C.BOUNCE_TIME)
+    assert(math.abs(x()) < 1e-6, "and comes back")
+end
 assert(p.threatKey == "aggro" and p.flashAnim:IsPlaying() and not p.threatFx:IsShown(),
     "the target border has priority over the threat border")
 assert(p.cast:IsShown() and p.cast.target:GetText() == "Juniper" and p.cast.kickClip:IsShown())
@@ -1105,6 +1116,13 @@ do
     assert(shown(true) and p.guildName:GetText() == "<Emerald Circle>" and select(2, p.guildName:GetPoint()) == p.name)
     p.npcTitle:Show()
     assert(shown(true) and select(2, p.guildName:GetPoint()) == p.npcTitle, "under the title")
+    -- the title and the guild take the name's colour, as in Blizzard's own names
+    p.name:SetTextColor(0.1, 0.2, 0.3)
+    plates.ColorLines(p)
+    for _, fs in ipairs({ p.npcTitle, p.guildName }) do
+        local r, g, b = fs:GetTextColor()
+        assert(r == 0.1 and g == 0.2 and b == 0.3)
+    end
     guild = nil
     assert(not shown(true), "no guild")
     guild = "Secret Circle"
@@ -1117,6 +1135,40 @@ do
     p.nameOnly, p.kind = true, "friendlyNpc"
     assert(not shown(true), "players only")
     env.GetGuildInfo = oldGuild
+end
+-- a Name Only name: Blizzard's own colour for the unit, or the one picked for its reaction
+do
+    local selection, reaction = env.UnitSelectionColor, env.UnitReaction
+    env.UnitSelectionColor = function() return 0, 0.5, 1 end
+    env.UnitReaction = function() return 5 end
+    local r, g, b = plates.NameRGB("nameplate9")
+    assert(r == 0 and g == 0.5 and b == 1)
+    local color = plates.Color
+    plates.Color = function(key) return key == "friendly" and { 0.7, 0.8, 0.9 } or color(key) end
+    r, g, b = plates.NameRGB("nameplate9")
+    assert(r == 0.7 and g == 0.8 and b == 0.9, "the player's own friendly colour")
+    plates.Color = color
+    env.UnitSelectionColor = nil
+    r = plates.NameRGB("nameplate9")
+    assert(r == color("friendly")[1])
+    env.UnitSelectionColor, env.UnitReaction = selection, reaction
+end
+-- Copy From: every one of the type's settings, the other type left alone, later changes apart
+do
+    local before = plates.TypeDB("friendlyNpc").width
+    plates.TypeSet("friendlyNpc", "width", 190)
+    plates.TypeSet("friendlyNpc", "castIcon", true)
+    plates.CopyType("minor", "friendlyNpc")
+    assert(plates.PresetOf("minor") == "custom")
+    for key in pairs(plates.C.TYPE_KEYS) do
+        local source = plates.TypeDB("friendlyNpc")[key]   -- (nil: this test's profile has no default for it)
+        assert(source == nil or plates.SameValue(plates.TypeDB("minor")[key], source), key)
+    end
+    plates.TypeSet("minor", "width", 80)
+    assert(plates.TypeDB("friendlyNpc").width == 190 and plates.TypeDB("minor").width == 80)
+    plates.CopyType("minor", "minor")
+    assert(plates.TypeDB("minor").width == 80)
+    plates.TypeSet("friendlyNpc", "width", before)
 end
 -- the mouseover border: lighter than the plate's own bronze, back after (target and threat colours get lighter too)
 local savedThreat, savedTarget = live.threatRGB, live.targetShown
