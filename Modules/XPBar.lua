@@ -594,6 +594,8 @@ local function UpdateFlare(target)
         left, right = PickSections()
     end
     if not left then flare:Hide() return end
+    -- Unit Frames > Hide XP Bars > FlareUI XP Bar (UnitFramesXP.lua); Edit Mode still shows it, to be placed
+    if not flare.fuiSample and not ns.EditPreviewing() and ns.UFXP and ns.UFXP.Hides("flare") then flare:Hide() return end
 
     local style = XPB.Style()
     if style == "single" then right = nil end

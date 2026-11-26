@@ -58,6 +58,10 @@ S:Row{ key = "ch.headerButtons", kind = "dropdown", section = "ch.frame", apply 
         end
     end,
     resetValue = function() return "social,channels,menu,volume" end }
+-- Friends Online: a small number on the Social button (Chat.UpdateSocialCount); greyed with the button off
+S:Row{ key = "ch.socialCount", path = "chat.socialCount", section = "ch.frame",
+    apply = function() if ns.Chat and ns.Chat.UpdateSocialCount then ns.Chat.UpdateSocialCount() end end,
+    disabled = function() return S:GetPath("chat.socialHide") and true or false end }
 -- Tab Sets Channel (Haisen): picking a tab that shows one kind of chat makes it the kind you
 -- type in (Modules/Chat.lua TAB SETS CHANNEL). Read on each tab pick, so no apply needed.
 

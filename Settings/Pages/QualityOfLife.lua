@@ -51,7 +51,9 @@ S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other",
 -- (Nameplate Combo Points is gone: Blizzard's plates always show them, NameplateExtras.lua)
 -- EXTRAS (tab key "interface"): Hide Clutter, then Camera and Controller (11-26: the Systems tab joined it)
 S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
-S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }
+-- (greyed while Banners shows the zone itself: Blizzard's zone text is hidden for it already)
+S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true,
+    disabled = function() return S:GetPath("banners.enabled") and S:GetPath("banners.zone") and true or false end }
 S:Row{ key = "qol.hideTips", half = true, tab = "interface", path = "tweaks.hideTips", apply = Refresh }
 S:Row{ key = "qol.hideLootAlerts", half = true, tab = "interface", path = "tweaks.hideLootAlerts", apply = Refresh }
 S:Row{ key = "qol.hideFrameNumbers", half = true, tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }

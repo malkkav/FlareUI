@@ -10,7 +10,7 @@ local S = ns.Settings
 -- With the reload bar below (42) it fits 768 units; a smaller screen scales it down (FitScale).
 -- HEIGHT: the left list holds every page without a scroll bar (730 for Cooldown Manager and
 -- Nameplates; each page is 30 px, the list has HEIGHT - 88 px)
-local WIDTH, HEIGHT = 1180, 730
+local WIDTH, HEIGHT = 1180, 790   -- (790: the Banners and DoT Tracker pages joined the list)
 local HEADER_H, FOOTER_H = 46, 34
 local FOOTER_RISE = 8    -- the reload bar's extra height for the top the window's bronze frame covers
 local LEFT_W, RIGHT_W = 200, 280
@@ -2029,6 +2029,8 @@ local GAME_ICONS = {
     mm = "INV_Misc_Map_01", qt = 8197102,
     ch = "INV_Misc_Note_06", dm = "INV_Misc_Ribbon_01", tt = "INV_Misc_Spyglass_02", rm = "INV_Misc_Orb_05", qol = "INV_Drink_04",
     bl = "INV_Misc_Bag_08",   -- Bags & Looting
+    bn = "INV_BannerPVP_02",   -- Banners
+    dt = "Spell_Shadow_AbominationExplosion",   -- DoT Tracker: Corruption
     br = "Ability_Warrior_BattleShout",   -- Buff Reminders, its own page: a shout for the buffs you lack
     np = "Ability_Hunter_SniperShot",   -- Nameplates: Hunter's Mark, a target in the crosshairs
     cdm = "Spell_Nature_TimeStop",   -- Cooldown Manager, its own page

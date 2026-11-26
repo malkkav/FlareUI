@@ -3541,7 +3541,8 @@ end
 -- so its marker lands on ours with all of its own settings. One per game plate (DoesItDie remembers
 -- the bar it found per plate), hidden when we let the plate go or show no bar on it.
 function NP.DieProxy(plate, p)
-    if not (plate and _G.DoesItDie) then return end
+    -- (FlareUI's own DoT Tracker draws on the same bar: NameplateDots.lua)
+    if not (plate and (_G.DoesItDie or (ns.Dots and ns.Dots.Active()))) then return end
     local proxy = plate.FlareUI_DieHealth
     if not p then
         if proxy then proxy:Hide() end
@@ -3561,6 +3562,7 @@ function NP.DieProxy(plate, p)
         proxy:SetValue(1)
         plate.FlareUI_DieHealth = proxy
     end
+    proxy.fuiHealth = health   -- (NameplateDots.lua: the mark follows the health's own fill)
     proxy:ClearAllPoints()
     proxy:SetAllPoints(health)
     proxy:SetFrameStrata(health:GetFrameStrata())

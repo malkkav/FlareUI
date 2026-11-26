@@ -519,6 +519,7 @@ local defaults = {
             -- Header buttons
             showVolume = true,
             socialHide = false,
+            socialCount = false,        -- Friends Online: the number of friends online on the social button
             menuHide = false,
             channelHide = false,
 
@@ -654,6 +655,10 @@ local defaults = {
         -- [[ UNIT FRAMES MODULE ]]
         unitframes = {
             enabled = false,
+            -- XP on Frame (Modules/UnitFramesXP.lua): mode off | levelRing | ring | disc; thickness thin | medium | thick;
+            -- texture shaded | flat; quest false | "done" | "all" | "zone" (as the XP bar's Quest XP); hideBars: "flare,blizzard,blizzard2"
+            xp = { mode = "off", thickness = "medium", texture = "shaded", rested = true, quest = false, repAtMax = true, pet = true, animate = true,
+                   levelText = "level", tooltip = true, hideBars = "" },
             simplePet = false,          -- Simple Pet Frame: the plain pet frame in every style; off, it follows the style
             simpleTargetOf = false,     -- Simple "Target Of": the same for target of target and target of focus
             levelSize = 1,              -- Level Badge Size: the ring styles' level disc, 0.5-1 of its size (UnitFramesRing.lua LayoutLevel)
@@ -1096,6 +1101,41 @@ local defaults = {
         },
 
         -- [[ TWEAKS MODULE ]]
+        -- DoT Tracker (Modules/DotTracker.lua): the damage your DoTs still have to deal, on the target and focus
+        -- frames and the nameplates, and a kill icon when it is enough. Off: nothing is tracked.
+        dots = {
+            enabled = false,
+            target = true, focus = true,
+            plates = "icon",            -- off | marker | icon (the marker and a kill icon)
+            marker = true,              -- the mark on the health bar
+            position = "health",        -- health (back from the health's end) | start (from the bar's start, as DoesItDie)
+            colors = "each",            -- each (a colour per DoT, by its school) | single
+            opacity = 55,
+            smooth = true,              -- the mark glides to its new width
+            icon = "skull",             -- the kill icon: off | skull | cross
+            iconSize = 100,             -- percent
+            pulse = true,
+            waitFirstTick = "off",      -- off | unsure | always: a DoT counts only once its first tick has landed
+            estimateDuringCast = true,  -- a DoT with a cast time counts while it is being cast
+            trackChannels = true,       -- Drain Life, Mind Flay and the like, while channelled
+        },
+        -- Banners (Modules/Banners.lua, BannerSources.lua): zone, level, quest, achievement and boss text as
+        -- one banner at the top of the screen. Off leaves Blizzard's own text alone.
+        banners = {
+            enabled = false,
+            zone = true, subzone = true, discovery = true,   -- the kinds, each its own switch
+            hideZoneInSub = false,      -- a subzone's banner without the zone's name below
+            zoneColors = false,         -- the zone's name in its territory's colour (friendly, hostile, contested, sanctuary)
+            levelUp = true, achievement = true, achievementProgress = false,
+            questAccept = true, questComplete = true, questProgress = true,
+            compactProgress = false,    -- progress banners without the title above the line
+            bossEmote = true, rare = true, scenario = true,
+            icons = true,               -- the quest and achievement icon beside the title
+            animate = true, enterTime = 0.7, exitTime = 0.8, hold = 1,   -- seconds in, seconds out, the hold's multiplier
+            skipDungeon = false, skipRaid = false, skipArena = false, skipBattleground = false,   -- Don't Show In
+            titleFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = true, shadowX = 2, shadowY = -2 },
+            textFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
+        },
         tweaks = {
             acceptSummon = false,       -- Accept Summons: taken after 10 seconds unless cancelled
             craftTotal = false,         -- Craft Batch Time: the batch's time left after the cast bar's timer

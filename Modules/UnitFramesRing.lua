@@ -167,7 +167,8 @@ local SHARED_KEYS = { enabled = true, foreverStyle = true, plateStyle = true, st
                       auraStyle = true, auraTimer = true, font = true, fontPower = true, fontCast = true, auraFont = true,
                       auraCountFont = true, auraCountFontSeeded = true, styleSavesThin = true,
                       -- (frameFonts, each frame's fonts, is NOT shared: every style keeps its own)
-                      frameFontsSeeded = true, castTimeSeeded = true }
+                      frameFontsSeeded = true, castTimeSeeded = true,
+                      xp = true }   -- (XP on Frame, UnitFramesXP.lua)
 -- a stored setup may lack these
 local TILE_KEYS = { party = true, boss = true }
 

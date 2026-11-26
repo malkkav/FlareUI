@@ -171,3 +171,61 @@ for _, frame in ipairs(FONT_FRAMES) do
         pageHidden = function() return pickedFont ~= key end,
         beforeJump = function() pickedFont = key end }
 end
+
+-- XP ON FRAME (Modules/UnitFramesXP.lua): the player's XP on the frame itself, and the XP bars it can
+-- stand in for. General, as the page's other options: one setup for every frame style.
+local function XPRefresh() if ns.UFXP then ns.UFXP:Refresh() end end
+local function XPOff() return (S:GetPath("unitframes.xp.mode") or "off") == "off" end
+S:Row{ key = "uf.xpMode", kind = "choice", lead = true, section = "uf.xp",
+    choices = { "off", "levelRing", "ring", "disc" }, apply = XPRefresh,
+    -- (the name box look is gone: a setup that had it shows, and is, the level ring)
+    get = function()
+        local mode = S:GetPath("unitframes.xp.mode") or "off"
+        return mode == "name" and "levelRing" or mode
+    end,
+    set = function(mode) S:SetPath("unitframes.xp.mode", mode) end,
+    resetValue = function() return "off" end }
+local function NoRing()
+    local mode = S:GetPath("unitframes.xp.mode") or "off"
+    return mode == "off" or mode == "disc"
+end
+S:Row{ key = "uf.xpThickness", kind = "choice", half = true, section = "uf.xp", path = "unitframes.xp.thickness",
+    choices = { "thin", "medium", "thick" }, apply = XPRefresh, disabled = NoRing }
+S:Row{ key = "uf.xpTexture", kind = "choice", half = true, section = "uf.xp", path = "unitframes.xp.texture",
+    choices = { "shaded", "flat" }, apply = XPRefresh, disabled = NoRing }
+S:Row{ key = "uf.xpLevelText", kind = "choice", half = true, section = "uf.xp", path = "unitframes.xp.levelText",
+    choices = { "level", "percent" }, apply = XPRefresh, disabled = XPOff }
+S:Row{ key = "uf.xpColors", kind = "button", half = true, section = "uf.xp", buttonText = L["Pick Your Colours"], disabled = XPOff,
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
+S:Row{ key = "uf.xpRested", half = true, section = "uf.xp", path = "unitframes.xp.rested", apply = XPRefresh, disabled = XPOff }
+-- Quest XP: the XP bar's own choices (Action Bars > XP Bar > Quest XP), saved as false or the quests counted
+S:Row{ key = "uf.xpQuest", kind = "choice", half = true, section = "uf.xp", choices = { "off", "all", "done", "zone" },
+    apply = XPRefresh, disabled = XPOff,
+    get = function()
+        local value = S:GetPath("unitframes.xp.quest")
+        if value == true then return "done" end
+        return (value == "all" or value == "done" or value == "zone") and value or "off"
+    end,
+    set = function(value) S:SetPath("unitframes.xp.quest", value ~= "off" and value or false) end,
+    resetValue = function() return "off" end }
+S:Row{ key = "uf.xpRep", half = true, section = "uf.xp", path = "unitframes.xp.repAtMax", apply = XPRefresh, disabled = XPOff }
+S:Row{ key = "uf.xpPet", half = true, section = "uf.xp", path = "unitframes.xp.pet", apply = XPRefresh, disabled = XPOff }
+S:Row{ key = "uf.xpAnimate", half = true, section = "uf.xp", path = "unitframes.xp.animate", apply = XPRefresh, disabled = XPOff }
+S:Row{ key = "uf.xpTooltip", half = true, section = "uf.xp", path = "unitframes.xp.tooltip", disabled = XPOff }
+-- Hide XP Bars: FlareUI's own bar, Blizzard's XP bar and its second one, each a tick (on its own: XP on
+-- Frame may be off)
+local XP_BARS = { exclusive = { "none" }, tokens = { "flare", "blizzard", "blizzard2" }, empty = "none" }
+S:Row{ key = "uf.xpHideBars", kind = "dropdown", section = "uf.xp", toggles = XP_BARS, apply = XPRefresh,
+    choices = { "none", { divider = true }, "flare", "blizzard", "blizzard2" },
+    get = function()
+        local value = S:GetPath("unitframes.xp.hideBars")
+        return type(value) == "string" and value ~= "" and value or "none"
+    end,
+    set = function(value)
+        local on, list = ns.Conditions.Set(value, XP_BARS), {}
+        for _, token in ipairs(XP_BARS.tokens) do
+            if on[token] then list[#list + 1] = token end
+        end
+        S:SetPath("unitframes.xp.hideBars", table.concat(list, ","))
+    end,
+    resetValue = function() return "none" end }

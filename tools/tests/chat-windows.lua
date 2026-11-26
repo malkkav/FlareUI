@@ -626,4 +626,34 @@ do
     assert(general.FlareUI_CopyButton:IsShown() and (hooks.FCF_DockUpdate or 0) > (updates or 0))
     ui.gamepad = true
 end
+
+-- Friends Online: character and Battle.net friends on the social button, warm while someone is on; gone with the
+-- option off or the button hidden
+do
+    local social = env.QuickJoinToastButton or env.CreateFrame("Button", "QuickJoinToastButton", env.UIParent)
+    env.QuickJoinToastButton = social
+    local chatDb = ns.db.profile.chat
+    local onlineHere, onlineBnet = 2, 3
+    env.C_FriendList = { GetNumOnlineFriends = function() return onlineHere end, ShowFriends = function() end }
+    env.BNGetNumFriends = function() return 9, onlineBnet end
+    social.FlareUI_ForceHidden = nil
+    chatDb.socialCount = false
+    ns.Chat.UpdateSocialCount()
+    assert(social.FlareUI_Count == nil, "off: nothing is made")
+    chatDb.socialCount = true
+    ns.Chat.UpdateSocialCount()
+    local count = social.FlareUI_Count
+    assert(count and count:IsShown() and tostring(count:GetText()) == "5" and count.textColor[1] == 1)
+    assert(social.FlareUI_CountBack:IsShown() and social.FlareUI_CountRim:GetWidth() == 16, "on its dark disc")
+    onlineHere, onlineBnet = 0, 0
+    ui:emit("FRIENDLIST_UPDATE")
+    assert(tostring(count:GetText()) == "0" and count.textColor[1] == 0.6, "nobody on: grey")
+    social.FlareUI_ForceHidden = true
+    ns.Chat.UpdateSocialCount()
+    assert(not count:IsShown() and not social.FlareUI_CountBack:IsShown(), "the Social button is off")
+    social.FlareUI_ForceHidden = nil
+    chatDb.socialCount = false
+    ns.Chat.UpdateSocialCount()
+    assert(not count:IsShown())
+end
 print("PASS: chat window styling, dock tabs, edit box history, previews and independent fading")

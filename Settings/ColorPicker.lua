@@ -89,7 +89,10 @@ local KINDS = {
         base = function() return "flareui" end,
         setPalette = function(p) ns.db.profile.actionbars.xpbar.palette = p ~= "flareui" and p or nil end,
         palettes = { "flareui", "custom" },
-        apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end,
+        apply = function()
+            if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end
+            if ns.UFXP then ns.UFXP:Refresh() end   -- XP on Frame paints with the same colours
+        end,
         rows = function()
             return {
                 { L["Experience"], { { "xp", L["XP"] }, { "rested", L["Rested XP"] }, { "restBonus", L["Rested Bonus"] },

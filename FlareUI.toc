@@ -69,7 +69,23 @@ Modules\BarText.lua
 Modules\UnitFrames.lua
 Modules\UnitFramesRing.lua
 Modules\UnitFramesDragon.lua
+# The DoT tracker's engine (Does It Die Advanced, MIT): its own namespace, started by DotTracker.lua
+Modules\DotEngine\Namespace.lua
+Modules\DotEngine\Locale.lua
+Modules\DotEngine\Locale_deDE.lua
+Modules\DotEngine\Locale_esES.lua
+Modules\DotEngine\Locale_frFR.lua
+Modules\DotEngine\Locale_koKR.lua
+Modules\DotEngine\Locale_ruRU.lua
+Modules\DotEngine\Locale_zhCN.lua
+Modules\DotEngine\Locale_ptBR.lua
+Modules\DotEngine\Engine.lua
+Modules\DotEngine\Shields.lua
+Modules\DotMarker.lua
+Modules\DotTracker.lua
 Modules\UnitFramesDoesItDie.lua
+Modules\NameplateDots.lua
+Modules\UnitFramesXP.lua
 Modules\PadGroupTargeting.lua
 Modules\PadTracker.lua
 Modules\PartyFrames.lua
@@ -99,6 +115,8 @@ Modules\LootFeed.lua
 Modules\LootRolls.lua
 Modules\LootWindow.lua
 Modules\ZoneText.lua
+Modules\Banners.lua
+Modules\BannerSources.lua
 Modules\Tooltips.lua
 Modules\ItemStats.lua
 Modules\ObjectiveTracker.lua
@@ -124,6 +142,7 @@ Settings\Pages\CooldownManager.lua
 Settings\Pages\UnitFrames.lua
 Settings\Pages\ResourceBars.lua
 Settings\Pages\Nameplates.lua
+Settings\Pages\DotTracker.lua
 Settings\Pages\Chat.lua
 Settings\Pages\DamageMeter.lua
 Settings\Pages\Tooltips.lua
@@ -133,6 +152,7 @@ Settings\Pages\Minimap.lua
 Settings\Pages\QuestTracker.lua
 Settings\Pages\RadialMenu.lua
 Settings\Pages\QualityOfLife.lua
+Settings\Pages\Banners.lua
 Settings\Pages\BagsLooting.lua
 Settings\Pages\Advanced.lua
 Settings\Pages\Language.lua

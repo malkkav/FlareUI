@@ -1384,6 +1384,83 @@ function Chat.HeaderIcon(btn, iconPath)
     ns.BronzeIcon.Apply(btn.FlareUI_Icon, iconPath, HEADER_ICON_COLOR)
 end
 
+-- FRIENDS ONLINE (Frame > Friends Online, off): how many of your friends are online, as a badge on the
+-- social button's corner: the number in the tabs' font on a dark disc with a bronze rim (the header's icons
+-- are bronze too: bare, the number was lost among them), bright while someone is on, grey at 0. Character
+-- friends and Battle.net friends together. Blizzard's own count on that button is hidden with its art,
+-- and its events are off (DisableQuickJoinToasts), so this one listens for itself.
+function Chat.OnlineFriends()
+    local total = 0
+    local function Add(value)
+        if type(value) == "number" and (not canaccessvalue or canaccessvalue(value)) then total = total + value end
+    end
+    if C_FriendList and C_FriendList.GetNumOnlineFriends then
+        local ok, online = pcall(C_FriendList.GetNumOnlineFriends)
+        if ok then Add(online) end
+    end
+    if BNGetNumFriends then
+        local ok, _, online = pcall(BNGetNumFriends)
+        if ok then Add(online) end
+    end
+    return total
+end
+
+function Chat.UpdateSocialCount()
+    local btn = _G.QuickJoinToastButton
+    if not btn then return end
+    local db = GetDb()
+    local text = btn.FlareUI_Count
+    if not (db and db.socialCount) or btn.FlareUI_ForceHidden then
+        if text then
+            text:Hide()
+            btn.FlareUI_CountRim:Hide()
+            btn.FlareUI_CountBack:Hide()
+        end
+        return
+    end
+    if not text then
+        -- the disc sits on the button's lower right corner, half off it; the number in its middle
+        local disc = "Interface\\AddOns\\FlareUI\\Media\\Panel\\Circle.tga"
+        local rim = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+        rim:SetTexture(disc)
+        rim:SetVertexColor(0.80, 0.60, 0.34, 1)
+        rim:SetPoint("CENTER", btn, "BOTTOMRIGHT", 0, 3)
+        local back = btn:CreateTexture(nil, "OVERLAY", nil, 2)
+        back:SetTexture(disc)
+        back:SetVertexColor(0.07, 0.06, 0.05, 1)
+        back:SetPoint("CENTER", rim, "CENTER")
+        text = btn:CreateFontString(nil, "OVERLAY", nil, 3)
+        text:SetPoint("CENTER", rim, "CENTER", 0, 0)
+        text:SetJustifyH("CENTER")
+        btn.FlareUI_Count, btn.FlareUI_CountRim, btn.FlareUI_CountBack = text, rim, back
+    end
+    if not Chat.socialEvents then
+        Chat.socialEvents = CreateFrame("Frame")
+        for _, event in ipairs({ "FRIENDLIST_UPDATE", "BN_FRIEND_INFO_CHANGED", "BN_FRIEND_ACCOUNT_ONLINE",
+            "BN_FRIEND_ACCOUNT_OFFLINE", "BN_CONNECTED", "BN_DISCONNECTED", "PLAYER_ENTERING_WORLD" }) do
+            pcall(Chat.socialEvents.RegisterEvent, Chat.socialEvents, event)
+        end
+        Chat.socialEvents:SetScript("OnEvent", function() Chat.UpdateSocialCount() end)
+        -- (the friend list is sent on request)
+        if C_FriendList and C_FriendList.ShowFriends then pcall(C_FriendList.ShowFriends) end
+    end
+    local font = db.tabFont
+    ns.SetFont(text, ns.GetFontPath(font and font.face or "__global"), 12, "OUTLINE")
+    local online = Chat.OnlineFriends()
+    text:SetText(online)
+    if online > 0 then text:SetTextColor(1, 0.96, 0.82) else text:SetTextColor(0.6, 0.6, 0.6) end
+    -- (wider for two digits and more)
+    local size = online > 9 and 20 or 16
+    btn.FlareUI_CountRim:SetSize(size, size)
+    btn.FlareUI_CountBack:SetSize(size - 2, size - 2)
+    -- (styling the header clears every texture of the button, Blizzard's art: ours come back)
+    btn.FlareUI_CountRim:SetAlpha(1)
+    btn.FlareUI_CountBack:SetAlpha(1)
+    btn.FlareUI_CountRim:Show()
+    btn.FlareUI_CountBack:Show()
+    text:Show()
+end
+
 -- An error inside (reported) must not leave the guard up: every later call would be skipped
 function Chat:StyleHeaderButtons(chatFrame)
     if self.isStyling then return end
@@ -1454,6 +1531,7 @@ function Chat:StyleHeaderButtonsBody(chatFrame)
             if btn.QueueButton then btn.QueueButton:SetAlpha(0) end
             local count = _G[btn:GetName().."FriendCount"] or btn.FriendCount
             if count then count:SetAlpha(0) end
+            Chat.UpdateSocialCount()
         end
 
         btn:SetScript("OnEnter", HeaderButtonEnter)

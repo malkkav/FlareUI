@@ -198,6 +198,12 @@ loader:SetScript("OnEvent", function(self)
             ns.ShowTour()
         elseif msg == "buff" or msg == "buffs" then
             ns.SettingsPanel:Open("br")   -- the Buff Reminders page (a command, not another button)
+        elseif msg == "dots" then
+            -- what the DoT Tracker sees right now (Modules/DotTracker.lua), for bug reports
+            if ns.Dots then ns.Dots.Report() end
+        elseif msg == "banner" or msg:find("^banner%s") then
+            -- an example banner of one kind (Modules/Banners.lua)
+            if ns.Banners then ns.Banners:Command(msg:sub(8)) end
         elseif msg == "kb" then
             ns.OpenQuickKeybind()
         elseif msg == "perf" or msg:find("^perf%s") then

@@ -26,6 +26,15 @@ Code
   The roll and loot history handling in Modules/LootRolls.lua
       ForeverLootRoll by AKIMRX, MIT License
       https://www.curseforge.com/wow/addons/foreverlootroll ... ForeverLootRoll.txt
+  The banners' playing order, queue rules, zone, quest and achievement conditions and the way
+  Blizzard's own announcements are silenced, in Modules/Banners.lua and BannerSources.lua
+      Presence, part of Horizon Suite by Crystilac, MIT License
+      https://github.com/Tacit-Labs/Horizon-Suite ............ HorizonSuite.txt
+  The DoT tracking in Modules/DotEngine (reading spell descriptions, matching ticks, learning tick
+  sizes, shields) and the status bar method of Modules/DotMarker.lua
+      Does It Die Advanced by WhiteKnight / Smuggz_, based on Does It Die by JoeGG (Joe Greive),
+      MIT License
+      https://github.com/swirllyman/DoesItDie .............. DoesItDieAdvanced.txt
   The buff proc spell IDs and the Cooldown Manager reading idea in Modules/ProcGlow.lua
       ProcDoc by wsmaxcy, free to use, modify or share (its README)
       https://github.com/wsmaxcy/ProcDoc

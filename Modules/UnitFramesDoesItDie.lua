@@ -2,6 +2,7 @@ local _, ns = ...
 
 --------------------------------------------------
 -- DOESITDIE
+-- (With FlareUI's own DoT Tracker running instead, DotTracker.lua: its estimate, drawn by DotMarker.lua.)
 -- With DoesItDie or DoesItDiePlus, its estimate on FlareUI's target and focus frames, which replace the Blizzard
 -- frames it draws on: a mark for the damage the player's DoTs still have to deal, and a skull when that is
 -- enough to kill. Numbers come from its public API; its marker and skull settings are followed, and a frame
@@ -137,9 +138,78 @@ local function Source()
     end
 end
 
+-- FlareUI's own tracker (DotTracker.lua) running: its estimate, drawn by DotMarker.lua with the DoT Tracker
+-- page's look: a piece per DoT, the kill icon on the portrait (on the bar's far end without one).
+local own = {}
+local function UpdateOwn(unit, flash)
+    local info = UNITS[unit]
+    if not info then return end
+    local D = ns.Dots
+    local rec = own[unit]
+    local look = D.Look(unit)
+    if not look or ns.EditPreviewing() then
+        if rec then rec:Hide() end
+        return
+    end
+    local exists, dead = UnitExists(unit), UnitIsDead(unit)
+    if not canaccessvalue(exists) or not exists or (canaccessvalue(dead) and dead) then
+        if rec then rec:Hide() end
+        return
+    end
+    local total, count, list = D.API.GetRemainingDamage(unit)
+    if not count or count == 0 then
+        if rec then rec:Hide() end
+        return
+    end
+    if not rec then
+        local f = _G[info.frame]
+        if not (f and f.Health) then return end
+        rec = ns.DotMarker.New(f, f.Health, 8)
+        own[unit] = rec
+    end
+    local f = rec.host
+    local level = f:GetFrameLevel()
+    local portrait = f.Portrait and f.Portrait:IsShown() and f.Portrait or nil
+    if portrait then
+        rec:Place(level + 3, level + 12, portrait, "CENTER", portrait:GetWidth() * KILL_ON_PORTRAIT * look.iconSize)
+    else
+        local side = f.Health:GetReverseFill() and "LEFT" or "RIGHT"
+        rec:Place(level + 3, level + 12, f.Health, side, f.Health:GetHeight() * KILL_ON_BAR * look.iconSize)
+    end
+    -- The ring styles: the portrait ring lies over the bar's first pixels on its side. Where the health
+    -- starts on that side (the target frame's mirrored bar), a small mark would be all under the ring:
+    -- that stretch of it is drawn again over the ring.
+    local Ring = ns.UFRing
+    local startSide = f.Health:GetReverseFill() and "RIGHT" or "LEFT"
+    if not look.atHealth and Ring and Ring.Applies and Ring.Applies(f) and Ring.Side(f) == startSide then
+        rec:SetCap(level + 11, Ring.TextPad(f))
+    else
+        rec:SetCap(nil)
+    end
+    look.shielded = D.Shielded(unit)
+    rec:Draw(unit, list, total, look)
+    if flash then rec:Flash() end
+end
+
+-- /fui dots: the own tracker's mark on a frame, in words
+function DIE.Describe(unit)
+    local info = UNITS[unit]
+    local f = info and _G[info.frame]
+    if not f then return "no frame " .. tostring(info and info.frame) end
+    local rec = own[unit]
+    if not rec then return ("frame %s shown %s, health bar %s, no mark made yet"):format(info.frame, tostring(f:IsShown()), tostring(f.Health ~= nil)) end
+    local gauge = rec.gauges[1]
+    return ("frame shown %s (level %s), mark shown %s (level %s), pieces %s, first piece shown %s, icon shown %s, health bar level %s, width %s, bar starts %s, over the ring %s"):format(
+        tostring(f:IsVisible()), tostring(f:GetFrameLevel()), tostring(rec.art:IsVisible()), tostring(rec.art:GetFrameLevel()),
+        tostring(#rec.gauges), tostring(gauge and gauge:IsVisible()), tostring(rec.window:IsVisible()),
+        tostring(f.Health:GetFrameLevel()), tostring(f.Health:GetWidth()),
+        f.Health:GetReverseFill() and "right" or "left", tostring(rec.capWidth))
+end
+
 local function Update(unit)
     local info = UNITS[unit]
     if not info then return end
+    if ns.Dots and ns.Dots.Active() then return UpdateOwn(unit) end
     local rec = records[unit]
     local api, db, plus = Source()
     if not api then return HideRecord(rec) end
@@ -193,23 +263,40 @@ end
 
 local EVENT_UNITS = { PLAYER_TARGET_CHANGED = "target", PLAYER_FOCUS_CHANGED = "focus" }
 
+-- Once a tracker is there: DoesItDie or DoesItDiePlus at login, or FlareUI's own as its module starts
 local loader = CreateFrame("Frame")
+function DIE:Attach()
+    if self.attached then return end
+    if ns.Dots and ns.Dots.Active() then
+        ns.Dots.API.RegisterCallback("frames", function(_, unit, flash)
+            if unit then
+                UpdateOwn(unit, flash)
+            else
+                for each in pairs(UNITS) do UpdateOwn(each) end
+            end
+        end)
+    else
+        local api = Source()
+        if not api then return end
+        api.RegisterCallback("FlareUI", function(_, unit) Update(unit) end)
+    end
+    self.attached = true
+    loader:RegisterEvent("PLAYER_ENTERING_WORLD")
+    loader:RegisterEvent("PLAYER_TARGET_CHANGED")
+    loader:RegisterEvent("PLAYER_FOCUS_CHANGED")
+    loader:RegisterUnitEvent("UNIT_HEALTH", "target", "focus")
+    loader:RegisterUnitEvent("UNIT_MAXHEALTH", "target", "focus")
+    LEM:RegisterCallback("enter", function() DIE:Refresh() end)
+    LEM:RegisterCallback("exit", function() DIE:Refresh() end)
+    ns.OnEditFight(function() DIE:Refresh() end)
+    DIE:Refresh()
+end
+
 loader:RegisterEvent("PLAYER_LOGIN")
 loader:SetScript("OnEvent", function(self, event, arg)
     if event == "PLAYER_LOGIN" then
         self:UnregisterEvent("PLAYER_LOGIN")
-        local api = Source()
-        if not api then return end
-        api.RegisterCallback("FlareUI", function(_, unit) Update(unit) end)
-        self:RegisterEvent("PLAYER_ENTERING_WORLD")
-        self:RegisterEvent("PLAYER_TARGET_CHANGED")
-        self:RegisterEvent("PLAYER_FOCUS_CHANGED")
-        self:RegisterUnitEvent("UNIT_HEALTH", "target", "focus")
-        self:RegisterUnitEvent("UNIT_MAXHEALTH", "target", "focus")
-        LEM:RegisterCallback("enter", function() DIE:Refresh() end)
-        LEM:RegisterCallback("exit", function() DIE:Refresh() end)
-        ns.OnEditFight(function() DIE:Refresh() end)
-        DIE:Refresh()
+        DIE:Attach()
     elseif event == "PLAYER_ENTERING_WORLD" then
         DIE:Refresh()
     else
