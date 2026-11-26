@@ -55,6 +55,12 @@ ui:load("Modules/Nameplates.lua", ns)
 local plates = ns.Nameplates
 
 assert(plates:ShouldLoad())
+for _, other in ipairs({ "Platynator", "MFNameplates" }) do
+    env.C_AddOns.IsAddOnLoaded = function(name) return name == other end
+    assert(plates.OtherAddon() == other, other .. " runs the nameplates")
+end
+env.C_AddOns.IsAddOnLoaded = function() return false end
+assert(not plates.OtherAddon())
 assert(db.ownSwitches and db.questMarks and not db.comboPoints and not db.enemyInCombat and next(ns.db.profile.tweaks) == nil,
     "the quest switch moves; In Combat plates did nothing with Quality of Life off, so they don't start now")
 assert(db.nameOnlyFontV1 and db.nameOnlyFont ~= db.nameFont and db.nameOnlyFont.size == 17 and db.nameOnlyFont.face == "Expressway",
