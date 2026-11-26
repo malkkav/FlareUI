@@ -1608,8 +1608,8 @@ do
     end
     -- only while it still holds the font asked for (another setter since then: left alone)
     function R.String(fontString, want)
-        local _, size = fontString:GetFont()
-        if not (size and math.abs(size - want.size) < 0.05) then return end
+        local ok, _, size = pcall(fontString.GetFont, fontString)
+        if not (ok and size and math.abs(size - want.size) < 0.05) then return end
         fontString:SetFont(want.path, want.size + 1, want.flags)
         fontString:SetFont(want.path, want.size, want.flags)
     end
@@ -1653,7 +1653,10 @@ local retryTicker, retryTicks
 local function RetryFonts()
     retryTicks = retryTicks + 1
     for fontString, want in pairs(pendingFonts) do
-        if fontString:SetFont(want.path, want.size, want.flags) ~= false then
+        local ok, set = pcall(fontString.SetFont, fontString, want.path, want.size, want.flags)
+        if not ok then
+            pendingFonts[fontString] = nil
+        elseif set ~= false then
             pendingFonts[fontString] = nil
             if ns.FontRedraw then ns.FontRedraw.String(fontString, want) end   -- the file is in: draw the text anew
         end

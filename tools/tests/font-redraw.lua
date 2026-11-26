@@ -54,4 +54,33 @@ local chat = FakeString("X.ttf", 14, "")
 R.Object(chat, { path = "X.ttf", size = 14, flags = "", redraw = function() used = true end })
 check(used and #chat.calls == 0, "own redraw used")
 
+local function Refuse(fontString, method)
+    fontString[method] = function()
+        error("calling '" .. method .. "' on bad self (Attempt to access forbidden object from code tainted by an AddOn)")
+    end
+end
+
+local locked = FakeString("X.ttf", 13, "")
+Refuse(locked, "GetFont")
+R.strings[locked] = { path = "X.ttf", size = 13, flags = "" }
+local before = #a.calls
+check(pcall(R.All), "a text the client refuses doesn't stop the pass")
+check(#locked.calls == 0 and #a.calls == before + 2 and #b.calls == before + 2, "the other texts are still redrawn")
+R.strings[locked] = nil
+
+local late, waitingToo = FakeString("Base.ttf", 13, ""), FakeString("Base.ttf", 13, "")
+function late:SetFont() return false end
+function waitingToo:SetFont() return false end
+local tickers = #ui.timers
+ns.SetFontUnscaled(late, "Late.ttf", 13, "")
+ns.SetFontUnscaled(waitingToo, "Late.ttf", 13, "")
+check(#ui.timers == tickers + 1, "a font that isn't in yet is asked for again")
+local retry = ui.timers[#ui.timers]
+Refuse(late, "SetFont")
+check(pcall(retry.callback) and not retry.cancelled, "a refused text doesn't stop the retries of the others")
+local asked = 0
+function waitingToo:SetFont() asked = asked + 1; return true end
+retry.callback()
+check(asked > 0 and retry.cancelled, "the refused text is dropped: the retries end once the others have their font")
+
 print("PASS: font redraw rules")
