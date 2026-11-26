@@ -30,6 +30,8 @@ ns.Nameplates = { Report = record("plates") }
 ns.db.profile.tweaks = { enabled = true, way = true }
 S:Module{ key = "ch", group = "interface" }
 S:Row{ key = "ch.editBoxBorder", kind = "choice", path = "chat.editBoxBorder" }
+-- (a NEW badge of this version on a page that is on, whatever the release's own NEW list holds)
+S.NEW["ch.editBoxBorder"] = (E.C_AddOns.GetAddOnMetadata("FlareUI", "Version") or ""):match("^[^-]*")
 E.print = function(text) messages[#messages + 1] = text end
 E.SlashCmdList = {}
 E.ERR_NOT_IN_COMBAT = "Not in combat"

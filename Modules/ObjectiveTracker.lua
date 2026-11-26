@@ -2154,7 +2154,8 @@ end
 -- table per colour, so a line keeps its colour between renders)
 -- Show Complete Tag (on by default): a green "(Complete)" after a finished quest's name; the name and
 -- its turn-in line keep their usual colours either way
-function Build.CompleteTag(db) return db.showCompleteTag ~= false end
+-- the "(Complete)" tag: always on since 11-26 (a readability fix, no option; showCompleteTag is unused)
+function Build.CompleteTag() return true end
 
 function Build.DoneColor() return C.OBJECTIVE end
 
@@ -3330,8 +3331,7 @@ local function BuildSettings()
             OT:Render()
         end
     end
-    -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua), then the
-    -- Fonts section, always last
+    -- the Frame section (dropdowns, sliders, switches); Fading comes after it (Visibility.lua)
     local Section, settings = ns.EditSections()
     Section("Frame", {
         { name = L["Width"], kind = LEM.SettingType.Slider, default = C.WIDTH, minValue = 180, maxValue = 500, valueStep = 1,

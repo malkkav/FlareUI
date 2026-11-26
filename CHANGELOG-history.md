@@ -1,6 +1,60 @@
 # FlareUI changelog history
 
-Versions 7.0.13 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.14 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.14
+
+The blocked bag clicks: potions, recipes, crates and gear that the game refused to use after a visit to the bank. It's the worst bug FlareUI ever had.
+
+**A HUGE thank you to parchinskiy,** who hunted it down test after test until it had nowhere left to hide. Awesome work!
+
+**We need your help testing:**
+- **Bags:** use items after you visit the bank, with **Crafting Bag in Backpack** and **Keyring in Backpack** on. If one is still blocked, send us what `/fui errors` shows.
+- **Crafting Bag in Backpack:** move, split, search and use items in its section.
+- **Bank:** buying bank slots, and opening it twice in a row.
+- **Controller:** radials on your bar if you play on two computers.
+- **Nameplates:** combo points with your own plate width.
+
+## Heads up
+Some things look or work differently even if you change nothing:
+- **Nameplates:** combo points follow the plate's width. A width of 150 looks as before. Wider plates get bigger points, narrower ones smaller.
+- **Bags & Looting:** switching **Combined Backpack** in FlareUI's settings asks for a reload.
+- **Dispel icons:** enemies' debuffs no longer show one on the target, focus and boss frames.
+
+## New
+
+### Quality of Life
+- **Nameplate Combo Points** (off): combo points under your target, on Blizzard's own nameplates. It's on the Gameplay tab while FlareUI's Nameplates are off.
+
+### Radial Menu
+- **Pet commands** (Attack, Follow, the stances and the rest of your pet's bar): first under Pet Spells.
+
+## Changed
+
+### Nameplates
+- Bigger maximum sizes: height 50, cast bar 40, buffs and debuffs 50, crowd control and defensives 60.
+- Plates grow and shrink smoothly with **Target Scale**.
+
+### Chat
+- **Fade Delay** shows in Edit Mode with any Visibility while **Fade Old Lines** is on.
+
+## Fixed
+
+### Bags
+- Items blocked after a visit to the bank:
+  - The crafting bag in the backpack no longer opens Blizzard's bag window. By parchinskiy.
+  - Keyring in the backpack: FlareUI cleans up after itself when it opens Blizzard's window.
+  - Bags that open with the character window or the guild bank no longer add to it.
+
+### Radial Menu
+- Radials on the controller bar broke when you played on two computers. They go by the radial's name now: give it the same name on both.
+
+### Auras
+- Dispel icons showed on enemies' debuffs.
+
+### Performance
+- **Minimap:** with the coordinates on the Info Bar, less memory while you stand still.
+- The language files are smaller: phrases nothing uses any more are gone.
 
 # FlareUI 7.0.13
 

@@ -109,4 +109,29 @@ do
     assert(ns.UnitDisplayName("wolf", nil, "lastname") == "Wolf", "no surname: the name")
     assert(ns.UnitDisplayName("hidden", nil, "lastname") == "Secret", "a hidden surname: the name")
 end
+-- (11-26, Sharkounet) on a mirrored frame the menu's Left is the screen's left: the stored Right
+do
+    _G.LibStub = function() return { SettingType = { Dropdown = "dropdown" } } end
+    local udb, mirrored = {}, true
+    local setting = BT.Setting({ name = "Health Text", bar = "health", unit = "target", db = function() return udb end,
+        style = function() return "plain" end, mirrored = function() return mirrored end })
+    local menus = {}
+    local function Menu()
+        local m = { boxes = {} }
+        function m:CreateCheckbox(label, isOn, toggle) self.boxes[label] = { isOn = isOn, toggle = toggle } return {} end
+        return m
+    end
+    local root = { CreateButton = function(_, label) local m = Menu(); menus[#menus + 1] = { label = label, menu = m } return m end }
+    setting.generator({}, root)
+    assert(menus[1].label == "Left" and menus[3].label == "Right")
+    menus[1].menu.boxes["Health Max"].toggle()
+    local stored = BT.Slots(udb, "health", "plain", nil, nil, "target")
+    assert(stored.right.max and not stored.left.max, "the screen's left is the stored right on a mirrored frame")
+    assert(menus[1].menu.boxes["Health Max"].isOn())
+    mirrored = false
+    menus = {}
+    setting.generator({}, root)
+    assert(not menus[1].menu.boxes["Health Max"].isOn(), "not mirrored: Left is the stored left")
+    _G.LibStub = nil
+end
 print("bartext-order: ok")

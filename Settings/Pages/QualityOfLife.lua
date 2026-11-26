@@ -18,7 +18,7 @@ end
 
 S:Module{
     key = "qol", group = "interface", order = 40, enabled = "tweaks.enabled",
-    tabs = { { key = "gameplay" }, { key = "interface" }, { key = "systems" }, { key = "fonts" } },
+    tabs = { { key = "gameplay" }, { key = "interface" }, { key = "fonts" } },
 }
 
 
@@ -48,17 +48,39 @@ S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", section = "qol.other
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.deleteJunkWhenFull" }
 S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.alertSounds" }
--- the one exception to "nameplates only on the Nameplates page": combo points under
--- Blizzard's plates, for those who keep the module off. Gone while it's on: it has its own (np.comboPoints).
-S:Row{ key = "qol.plateCombo", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.plateCombo",
-    apply = function() if ns.Nameplates and ns.Nameplates.ApplyCombo then ns.Nameplates.ApplyCombo() end end,
-    hidden = function() return S:GetPath("nameplates.enabled") and true or false end,
-    disabled = function() return ns.Nameplates and ns.Nameplates.OtherAddon and ns.Nameplates.OtherAddon() and true or false end }
+-- (Nameplate Combo Points is gone: Blizzard's plates always show them, NameplateExtras.lua)
+-- EXTRAS (tab key "interface"): Hide Clutter, then Camera and Controller (11-26: the Systems tab joined it)
+S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
+S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }
+S:Row{ key = "qol.hideTips", half = true, tab = "interface", path = "tweaks.hideTips", apply = Refresh }
+S:Row{ key = "qol.hideLootAlerts", half = true, tab = "interface", path = "tweaks.hideLootAlerts", apply = Refresh }
+S:Row{ key = "qol.hideFrameNumbers", half = true, tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }
+-- (from Action Bars, they aren't bars) the main bar's gryphons and the raid manager. The raid manager
+-- works with Quality of Life off (ignoreModule). Gryphons: one choice over Hide Gryphons and Gryphons
+-- Behind Bars, all of it Quality of Life's own (Gryphons.lua), with no link to Action Bars.
+local function BarsRefresh()
+    if ns.Gryphons then ns.Gryphons.Refresh() end
+    if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
+end
+S:Row{ key = "qol.gryphons", kind = "choice", tab = "interface", section = "qol.hideClutter",
+    choices = { "shown", "behind", "hidden" }, apply = BarsRefresh,
+    get = function()
+        if S:GetPath("visibility.hideEndCaps") then return "hidden" end
+        return S:GetPath("actionbars.gryphonsBehind") and "behind" or "shown"
+    end,
+    set = function(value)
+        S:SetPath("visibility.hideEndCaps", value == "hidden")
+        S:SetPath("actionbars.gryphonsBehind", value == "behind")
+    end,
+    resetValue = function() return "shown" end }
+S:Row{ key = "ab.hideRaidManager", module = "qol", tab = "interface", section = "qol.hideClutter", ignoreModule = true, half = true,
+    path = "visibility.hideRaidManager", apply = BarsRefresh }
+
 -- The camera: two sliders. Each starts at Blizzard's own value; back on it,
 -- FlareUI leaves the game's setting alone (nil). Better Camera's old switch carried over as 2.6 and 50.
 local function CameraSlider(key, path, cvar, choices)
     local default = ns.Tweaks and ns.Tweaks.CameraDefault and ns.Tweaks.CameraDefault(cvar)
-    S:Row{ key = key, kind = "range", tab = "systems", choices = choices,
+    S:Row{ key = key, kind = "range", tab = "interface", choices = choices,
         get = function() return S:GetPath(path) or default or choices[1][1] end,
         set = function(value)
             if default and math.abs(value - default) < 0.001 then value = nil end
@@ -80,37 +102,26 @@ S:FontRows{ module = "qol", tab = "fonts", section = "qol.fonts", fonts = {
 end }
 
 -- Controller: the Gamepad mode prompt and rumble (GamepadMode.lua)
-S:Row{ key = "qol.gamepadPrompt", half = true, tab = "systems", path = "tweaks.gamepadPrompt" }
+S:Row{ key = "qol.gamepadPrompt", half = true, tab = "interface", path = "tweaks.gamepadPrompt" }
 -- the quest tracker's own switch (ObjectiveTracker.lua OT.WantedInMode), with the other gamepad ones;
 -- greyed while FlareUI's tracker is off, since then Blizzard's shows anyway
-S:Row{ key = "qol.padTracker", half = true, tab = "systems", path = "objectivetracker.padBlizzard", reload = true,
+S:Row{ key = "qol.padTracker", half = true, tab = "interface", path = "objectivetracker.padBlizzard", reload = true,
     disabled = function() return not S:GetPath("objectivetracker.enabled") end }
-S:Row{ key = "qol.rumbleAlerts", half = true, tab = "systems", path = "tweaks.rumbleAlerts" }
-S:Row{ key = "qol.rumbleProcs", half = true, tab = "systems", path = "tweaks.rumbleProcs" }
-
--- INTERFACE --------------------------------------
-S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
-S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }
-S:Row{ key = "qol.hideTips", half = true, tab = "interface", path = "tweaks.hideTips", apply = Refresh }
-S:Row{ key = "qol.hideLootAlerts", half = true, tab = "interface", path = "tweaks.hideLootAlerts", apply = Refresh }
-S:Row{ key = "qol.hideFrameNumbers", half = true, tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }
--- (from Action Bars, they aren't bars) the main bar's gryphons and the raid manager. Their
--- own modules draw them, so they work with Quality of Life off (ignoreModule). Gryphons: one choice over
--- Hide Gryphons and Gryphons Behind Bars (Behind Bars needs FlareUI's action bars).
-local function BarsRefresh()
-    if ns.ActionBars and ns.ActionBars.Refresh then ns.ActionBars:Refresh() end
-    if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
+-- Rumble: Rumble on Alerts and Rumble on Procs as toggles (Gamepad Mode Prompt | Force Blizzard Tracker
+-- stay the pair above)
+local RUMBLE = { { "alerts", "rumbleAlerts" }, { "procs", "rumbleProcs" } }
+local RUMBLE_SPEC = { exclusive = { "none" }, tokens = { "alerts", "procs" }, empty = "none" }
+local function RumbleValue(read)
+    local on = {}
+    for _, r in ipairs(RUMBLE) do if read("tweaks." .. r[2]) then on[#on + 1] = r[1] end end
+    return #on > 0 and table.concat(on, ",") or "none"
 end
-S:Row{ key = "qol.gryphons", kind = "choice", tab = "interface", section = "qol.hideClutter", ignoreModule = true,
-    choices = { "shown", "behind", "hidden" }, apply = BarsRefresh,
-    get = function()
-        if S:GetPath("visibility.hideEndCaps") then return "hidden" end
-        return S:GetPath("actionbars.gryphonsBehind") and "behind" or "shown"
+S:Row{ key = "qol.rumble", kind = "dropdown", tab = "interface", section = "qol.controller", toggles = RUMBLE_SPEC,
+    choices = { "none", { divider = true }, "alerts", "procs" },
+    get = function() return RumbleValue(function(path) return S:GetPath(path) end) end,
+    set = function(v)
+        local on = ns.Conditions.Set(v, RUMBLE_SPEC)
+        for _, r in ipairs(RUMBLE) do S:SetPath("tweaks." .. r[2], on[r[1]] and true or false) end
     end,
-    set = function(value)
-        S:SetPath("visibility.hideEndCaps", value == "hidden")
-        S:SetPath("actionbars.gryphonsBehind", value == "behind")
-    end,
-    resetValue = function() return "shown" end }
-S:Row{ key = "ab.hideRaidManager", module = "qol", tab = "interface", section = "qol.hideClutter", ignoreModule = true, half = true,
-    path = "visibility.hideRaidManager", apply = BarsRefresh }
+    resetValue = function() return RumbleValue(function(path) return S:DefaultPath(path) end) end }
+

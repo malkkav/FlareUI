@@ -653,4 +653,17 @@ do
     assert(KICK.Active() == nil and KICK.IsReady() == nil)
     env.C_SpellBook, env.C_Spell, ns.IsPlayerSpell, env.Enum.SpellBookSpellBank = book, spell, player, enum
 end
+-- (11-26, I1) Copy Look to All Frames: the player's look on every other frame, the party's two styles,
+-- raid, boss and flag carriers; nothing in a fight
+do
+    playerDb.texture, playerDb.border, playerDb.bgOpacity = "Test Texture", "Test Border", 40
+    ui.combat = true
+    assert(not UF.CopyLookToAll("player"), "not in a fight")
+    ui.combat = false
+    assert(UF.CopyLookToAll("player"))
+    assert(targetDb.texture == "Test Texture" and targetDb.border == "Test Border" and targetDb.bgOpacity == 40)
+    assert(db.party.classic.texture == "Test Texture" and db.party.raid.texture == "Test Texture")
+    assert(db.raid.texture == "Test Texture" and db.boss.border == "Test Border" and db.flagCarriers.bgOpacity == 40)
+    assert(targetDb.mirror == true, "only the look rows are copied")
+end
 print("PASS: unit frame startup, resource events, combat deferral and cast changes")

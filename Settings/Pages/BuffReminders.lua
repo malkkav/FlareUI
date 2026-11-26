@@ -58,16 +58,41 @@ Row{ key = "br.consumables", kind = "dropdown", tab = "reminders", toggles = CON
         S:SetPath("auras.reminder.consumables", mode)
     end,
     resetValue = function() return "none" end }
--- which elixirs are watched, and each or any one of them
-Row{ key = "br.elixirSource", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirSource", parent = "br.consumables",
-    choices = { "ticked", "bags" }, disabled = function() return not ElixirsOn() end }
-Row{ key = "br.elixirMode", kind = "choice", half = true, tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
+-- each or any one of the elixirs
+Row{ key = "br.elixirMode", kind = "choice", tab = "reminders", path = "auras.reminder.elixirMode", parent = "br.consumables",
     choices = { "each", "any" }, disabled = function() return not ElixirsOn() end }
-Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", path = "auras.reminder.elixirs", parent = "br.consumables",
-    choices = function() return BR() and BR().ElixirChoices() or {} end,
-    toggles = { exclusive = { "none" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" },
-    -- (with Those in Your Bags the ticks don't count)
-    disabled = function() return not ElixirsOn() or S:GetPath("auras.reminder.elixirSource") == "bags" end }
+-- which elixirs: All in Your Bags (auras.reminder.elixirSource = "bags", every elixir you carry) on top,
+-- or the ticked ones (elixirSource "ticked"; the ticks saved in auras.reminder.elixirs as before)
+local ELIXIR_SPEC = { exclusive = { "none", "bags" }, tokens = BR() and BR().ElixirKeys() or {}, empty = "none" }
+Row{ key = "br.elixirs", kind = "dropdown", tab = "reminders", parent = "br.consumables", toggles = ELIXIR_SPEC,
+    choices = function()
+        local list = BR() and BR().ElixirChoices() or {}
+        -- after None: All in Your Bags (the list has its divider next)
+        local out = {}
+        for i, c in ipairs(list) do
+            out[#out + 1] = c
+            if i == 1 then out[#out + 1] = { "bags", L["All in Your Bags"] } end
+        end
+        return out
+    end,
+    get = function()
+        if S:GetPath("auras.reminder.elixirSource") == "bags" then return "bags" end
+        return S:GetPath("auras.reminder.elixirs") or "none"
+    end,
+    set = function(value)
+        if value == "bags" then
+            S:SetPath("auras.reminder.elixirSource", "bags")
+        else
+            S:SetPath("auras.reminder.elixirSource", "ticked")
+            S:SetPath("auras.reminder.elixirs", value)
+        end
+    end,
+    resetValue = function()
+        local d = ns.defaults and ns.defaults.profile and ns.defaults.profile.auras and ns.defaults.profile.auras.reminder or {}
+        if d.elixirSource == "bags" then return "bags" end
+        return d.elixirs or "none"
+    end,
+    disabled = function() return not ElixirsOn() end }
 -- Upkeep: one dropdown of toggles over auras.reminder.<key>
 local UPKEEP = { "weaponOil", "supplies", "durability", "trinkets", "camping", "gathering" }
 local UPKEEP_SPEC = { exclusive = { "none" }, tokens = UPKEEP, empty = "none" }
@@ -120,26 +145,19 @@ ListRow("br.customClear", "CustomChoices", "CustomTokens", "CustomValue", "SetCu
 ListRow("br.hidden", "HiddenChoices", "HiddenTokens", "HiddenValue", "SetHidden")
 
 -- WHEN AND WHERE ------------------------------
--- Timing: before it ends, and apart for dungeons and raids ("same": the main one)
+-- Timing: before it ends (its In Dungeons / In Raids overrides removed in 7.1)
 -- (Venu: "15 seconds before Battle Shout runs out") seconds too, as fractions of a minute
 local BEFORE = { { 0, L["Only When Missing"] }, { 0.25, "15 s" }, { 0.5, "30 s" }, { 0.75, "45 s" }, { 1, "1 min" }, { 2, "2 min" }, { 3, "3 min" }, { 5, "5 min" }, { 10, "10 min" } }
 Row{ key = "br.before", kind = "choice", tab = "when", path = "auras.reminder.before", choices = BEFORE }
-local function BeforeFor(key, path)
-    local choices = { { "same", L["Same as Above"] } }
-    for _, c in ipairs(BEFORE) do choices[#choices + 1] = c end
-    Row{ key = key, kind = "choice", half = true, tab = "when", parent = "br.before", choices = choices,
-        get = function() return S:GetPath(path) or "same" end,
-        set = function(v) S:SetPath(path, v ~= "same" and v or nil) end }
-end
-BeforeFor("br.beforeDungeon", "auras.reminder.beforeDungeon")
-BeforeFor("br.beforeRaid", "auras.reminder.beforeRaid")
 -- Where: four kinds, the same four choices, in two columns (On Mouseover: 6.4.1)
 local WHERE = { "always", "instance", "raid", "mouseover" }
 Row{ key = "br.classScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.classScope", choices = WHERE }
 Row{ key = "br.weaponScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.weaponScope", choices = WHERE }
 Row{ key = "br.petScope", kind = "choice", half = true, tab = "when", path = "auras.reminder.petScope", choices = WHERE }
 -- Consumables' place: kept while Food and Flask is off, and used again when it comes back on
+-- (greyed while none is ticked)
 Row{ key = "br.consumablesWhere", kind = "choice", half = true, tab = "when", choices = WHERE,
+    disabled = function() return not ConsumablesOn() end,
     get = function()
         local mode = S:GetPath("auras.reminder.consumables") or "off"
         if mode ~= "off" then return mode end
@@ -149,11 +167,12 @@ Row{ key = "br.consumablesWhere", kind = "choice", half = true, tab = "when", ch
         S:SetPath("auras.reminder.consumablesWhere", v)
         if ConsumablesOn() then S:SetPath("auras.reminder.consumables", v) end
     end }
--- Group Buffs: only the one who gives it, and the roles that hide them (one list for the four switches)
-Row{ key = "br.provider", tab = "when", path = "auras.reminder.onlyProvider" }
+-- Group buffs: only the one who gives it, and the roles that hide them (one list for the four
+-- switches), on the Reminders tab with the Group Buffs row they work with
+Row{ key = "br.provider", tab = "reminders", path = "auras.reminder.onlyProvider" }
 local ROLE_KEYS = { tank = "hideTank", healer = "hideHealer", damage = "hideDamage", norole = "hideNoRole" }
 local ROLE_ORDER = { "tank", "healer", "damage", "norole" }
-Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",
+Row{ key = "br.hideRoles", kind = "dropdown", tab = "reminders",
     choices = { "none", { divider = true }, "tank", "healer", "damage", "norole" },
     toggles = { exclusive = { "none" }, tokens = ROLE_ORDER, empty = "none" },
     get = function()
@@ -169,7 +188,7 @@ Row{ key = "br.hideRoles", kind = "dropdown", tab = "when",
     end,
     resetValue = function() return "none" end }
 
--- ALERTS --------------------------------------
+-- NOTIFICATIONS -------------------------------
 Row{ key = "br.sound", kind = "choice", tab = "when", path = "auras.reminder.sound", choices = { "off", "raidwarning", "alarm", "whisper" },
     soundPreview = function(v) S:PlayAlertSound(v) end,
     apply = function() Refresh(); if BR() and BR().PlayAlert then BR().PlayAlert(true) end end }

@@ -63,12 +63,14 @@ end
 
 -- the tile settings: the flag carriers' db plus fixed values (no auras, no party icons; the role
 -- icon's place holds the faction crest, ctx.factionIcon)
--- No range fading and no raid markers, to stay on the safe side: Blizzard's own flag
--- carrier frames show neither, so FlareUI's show nothing more than they do
+-- No raid markers, to stay on the safe side: Blizzard's own flag carrier frames show none. Range Check
+-- (11-26, off): fades a carrier out of range, as Blizzard's arena frames do
 local ICONS = { role = { shown = true }, leader = { shown = false }, readyCheck = { shown = false },
                 status = { shown = false }, raidIcon = { shown = false } }
-local FIXED = { buffs = "OFF", debuffs = "OFF", dispels = "OFF", dispelHighlight = "off", portrait = "class",
-                auraMax = 5, auraPerRow = 5, rangeCheck = false, raidIcon = false }
+-- (Portrait, 11-26: None or Class Icon in Modern Style, the class icon until picked; the ring styles
+-- keep the class icon)
+local FIXED = { buffs = "OFF", debuffs = "OFF", dispels = "OFF", dispelHighlight = "off",
+                auraMax = 5, auraPerRow = 5, raidIcon = false }
 -- In FlareUI and Forever Style the boss frames' size preset (UnitFramesRing.lua
 -- FOREVER_TILES.boss) where the player set nothing, so both kinds start the same size
 local SIZE_KEYS = { width = true, height = true, powerHeight = true, ringSize = true, castHeight = true, spacing = true }
@@ -82,6 +84,11 @@ local view = setmetatable({}, { __index = function(_, key)
     if not db then return nil end
     if FIXED[key] ~= nil then return FIXED[key] end
     if key == "icons" then return ICONS end
+    if key == "rangeCheck" then return db.rangeCheck == true end   -- (off until ticked)
+    if key == "portrait" then
+        if ns.UFRing and ns.UFRing.Style() ~= "addon" then return "class" end   -- (RingStyle is defined further down)
+        return db.portrait == "none" and "none" or "class"
+    end
     local ring = RingSize(db, key)
     if ring ~= nil then return ring end
     return db[key]
@@ -297,8 +304,9 @@ local function BuildSettings()
 
     local function onPlate() return ns.UFRing and ns.UFRing.PlateOn() or false end
     local frameItems = {
+        -- (75-250, as the boss frames; the default stays)
         { name = L["Scale"], kind = LEM.SettingType.Slider, default = ns.UFRing and ns.UFRing.PlateDefaultScale("boss") or 100,
-          minValue = 50, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box
+          minValue = 75, maxValue = 250, valueStep = 5, formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local db = GetDb(); return db and db.plateScale or (ns.UFRing and ns.UFRing.PlateDefaultScale("boss")) or 100 end,
           set = function(layoutName, value)
               if not onPlate() then return end
@@ -334,19 +342,20 @@ local function BuildSettings()
                 Refresh()
             end, onPlate),
         -- the unit frames' Left / Middle / Right text slots, with their defaults
+        -- (the menu's Left and Right are the screen's: mirrored off the plate, PartyFrames.lua Sides)
         ns.BarText.Setting({ name = L["Health Text"], bar = "health", db = GetDb, changed = Refresh,
-            style = function() return onPlate() and "plate" or "plain" end }),
+            style = function() return onPlate() and "plate" or "plain" end,
+            mirrored = function() return ctx.mirror and not onPlate() or false end }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", db = GetDb, changed = Refresh,
-            style = function() return onPlate() and "plate" or "plain" end }),
+            style = function() return onPlate() and "plate" or "plain" end,
+            mirrored = function() return ctx.mirror and not onPlate() or false end }),
         -- Name Above Frames (BarText.lua): not on Forever Style's plate (its name box)
         ns.NameAbove.Setting({ db = GetDb, changed = Refresh, hidden = onPlate }),
-        -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
-        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
-          hidden = function() return not onPlate() end },
+        -- (no Show Name: Forever Style's name box always shows the name, as Blizzard's, 11-26)
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel == true, get = function() return get("showLevel")() == true end, set = set("showLevel") },
         K.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
-        -- Level Disc Size (per frame): the ring styles' level disc, with Show Level on
-        { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+        -- Level Disc Scale (per frame): the ring styles' level disc, with Show Level on
+        { name = L["Level Disc Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
           formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
           set = function(layoutName, value) set("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
@@ -359,8 +368,16 @@ local function BuildSettings()
           hidden = function() return not RingStyle() end },
         { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
-          desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
-        -- Behaviour
+          desc = L["The bars fill from the other side and their texts swap sides, so the frame faces the other way."] },
+        -- Portrait (Modern Style): None or Class Icon, as the boss frames' pick (the ring styles: the class icon)
+        { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = "class",
+          values = { { text = L["None"], value = "none", isRadio = true }, { text = L["Class Icon"], value = "class", isRadio = true } },
+          get = function() local db = GetDb(); return (db and db.portrait == "none") and "none" or "class" end,
+          set = set("portrait"), hidden = RingStyle },
+        -- Behaviour: Range Check (off), as the boss and party frames
+        { name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = false,
+          desc = L["The frame fades while the unit is out of range."],
+          get = function() return get("rangeCheck")() == true end, set = set("rangeCheck") },
         K.HealthColorSetting(get("healthColor"), set("healthColor")),
     }
     local sizeItems, textItems, behaviourItems = ns.SplitFrameItems(frameItems)
@@ -500,11 +517,13 @@ function FC:Init()
     end
 
     for _, event in ipairs(GLOBAL_EVENTS) do self:RegisterEvent(event, "OnGlobalEvent") end
-    -- a carrier changing hands with no event: a new readable GUID repaints
+    -- a carrier changing hands with no event: a new readable GUID repaints; out of range fading (no event
+    -- covers an enemy's range), as the boss frames
     C_Timer.NewTicker(0.25, function()
         if not holder:IsShown() or IsEditing() then return end
         for _, f in ipairs(tiles) do
             if f.fuiUnit and f:IsVisible() then
+                if Tile.UpdateRange then Tile.UpdateRange(f) end
                 local guid = UnitGUID(f.fuiUnit)
                 if canaccessvalue(guid) and guid and guid ~= f.carrierGuid then
                     f.carrierGuid = guid

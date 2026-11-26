@@ -87,12 +87,14 @@ r = o.trackerTitle:GetTextColor()
 assert(r == 1, "hovering Blizzard: Blizzard's gold heading, got " .. tostring(r))
 draw("tracker", "qt.headerButtons", "accept,turnin")
 assert(shown(o.trackerBtn_accept) and shown(o.trackerBtn_turnin) and not shown(o.trackerBtn_sort), "a hovered Header Buttons pick")
-profile.objectivetracker = { frameStyle = "flareui", showCompleteTag = false, hideFinished = true, hideScrollBar = true }
+profile.objectivetracker = { frameStyle = "flareui", hideFinished = true, hideScrollBar = true }
 draw("tracker", "qt.overview")
-assert(not text(o.quest1, "(Complete)") and not shown(o.objectiveDone) and not shown(o.trackerScroll))
+-- (11-26) the Complete tag always shows
+assert(text(o.quest1, "(Complete)") and not shown(o.objectiveDone) and not shown(o.trackerScroll))
 
 profile.damagemeter = { threatValueDisplay = "percent", threatTankLead = true, threatPullLine = true }
-draw("meter", "dm.pullFlash", true, "damagemeter.threatPullFlash")
+profile.damagemeter.threatPullFlash = true
+draw("meter", "dm.pullWarning", "flash")
 assert(text(o.meterTitle, "Threat") and text(o.meterName1, "125%") and shown(o.pullLine))
 c.frame:RunScript("OnUpdate", 0.2)
 local flash = o.pullFlash:GetAlpha()
@@ -179,10 +181,10 @@ assert(text(o.lootWinName4, "Silver") and text(o.lootWinName1, "Large Bear Tooth
 draw("lootWindow", "bl.lootWindowOrder", "top", "tweaks.lootWindowOrder")
 assert(text(o.lootWinName1, "Silver") and text(o.lootWinName4, "Large Bear Tooth"), "Top to Bottom: the first row on top")
 -- Growth: a short loot hanging from the top, or standing on the picture's bottom with room above
-draw("lootWindow", "bl.lootWindowGrowth", "down", "tweaks.lootWindowGrowth")
+draw("lootWindow", "bl.lootWindow", "down")
 local _, _, downY = o.lootWinPanel:GetPoint()
 assert(downY == -30 and shown(o.lootWinName2) and not shown(o.lootWinName3), "Down: two rows at the top")
-draw("lootWindow", "bl.lootWindowGrowth", "up", "tweaks.lootWindowGrowth")
+draw("lootWindow", "bl.lootWindow", "up")
 local _, _, upY = o.lootWinPanel:GetPoint()
 assert(upY < downY and upY - o.lootWinPanel:GetHeight() >= -c.height, "Up: at the bottom, inside the picture: " .. tostring(upY))
 assert(c.used == -upY + o.lootWinPanel:GetHeight(), "the picture takes the window's bottom")

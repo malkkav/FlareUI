@@ -3,21 +3,20 @@ local L = ns.L
 local S = ns.Settings
 
 -- GENERAL: the whole interface's own options (the page key stays "language"), in two tabs:
--- General (Sync Blizz UI, Move Any Window, language) and Interface (scale, Global Font)
+-- Account (Sync Blizz UI, Move Any Window, language; its key already was "account") and Interface
+-- (scale, fonts)
 ns.Copy.modules.language = {
     title = L["General"],
     desc = L["Options for the whole interface: your characters, windows, scale and language."],
-    -- General first, ESC Menu on top of it
-    tabs = { L["General"], L["Interface"] },
+    -- Account first, ESC Menu on top of it
+    tabs = { L["Account"], L["Interface"] },
 }
 ns.Copy.sections["language.main"] = L["Language"]
-ns.Copy.rows["language.useGame"] = {
-    label = L["Use the Game Language"],
-    desc = L["Match the language selected in World of Warcraft."],
-}
+-- Language: one list, the game's language first (it was Use the Game Language + Addon Language)
 ns.Copy.rows["language.override"] = {
-    label = L["Addon Language"],
-    desc = L["Applies after reloading the UI."],
+    label = L["Language"],
+    desc = L["The language of FlareUI's text. Game Language follows the language World of Warcraft uses."],
+    tags = { "addon language", "use the game language", "translation", "locale" },
 }
 
 local function UseGameLanguage()
@@ -43,7 +42,7 @@ S:Module{
 -- ESC Menu: a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
 -- for every character
 S:Row{
-    key = "language.escButton", module = "language", tab = "account", section = "language.escMenu",
+    key = "language.escButton", module = "language", tab = "account", section = "language.escMenu", account = true,
     get = function() local g = ns.db and ns.db.global; return g and g.escMenuButton == true or false end,
     set = function(on) local g = ns.db and ns.db.global; if g then g.escMenuButton = on and true or nil end end,
     resetValue = function() return false end,
@@ -66,7 +65,7 @@ S:Row{
 -- Hide Pop-up Alerts (off): syncs happen without their reload pop-up, on every character (account-wide);
 -- the pop-up's Hide These Alerts turns it on
 S:Row{
-    key = "qol.syncHideAlerts", module = "language", tab = "account", parent = "qol.sync", section = "qol.syncBlizzUi",
+    key = "qol.syncHideAlerts", module = "language", tab = "account", parent = "qol.sync", section = "qol.syncBlizzUi", account = true,
     get = function() return ns.db and ns.db.global and ns.db.global.syncHideAlerts == true or false end,
     set = function(on) if ns.db and ns.db.global then ns.db.global.syncHideAlerts = on and true or nil end end,
     resetValue = function() return false end,
@@ -85,12 +84,13 @@ S:Row{
 
 -- The whole interface's scale (Tweaks.lua 17b): a preset applied as you log in,
 -- account-wide; Custom opens its own scale row
-local SCALE_PRESETS = { "blizzard", "auto", "custom", "4k", "1440p", "1440p125", "1080p", "1080p125" }
+-- (Custom last: the presets first, then your own)
+local SCALE_PRESETS = { "blizzard", "auto", "4k", "1440p", "1440p125", "1080p", "1080p125", "custom" }
 local CUSTOM_CHOICES = {}
 for percent = 30, 200, 5 do CUSTOM_CHOICES[#CUSTOM_CHOICES + 1] = { percent, percent .. "%" } end
 local function Global() return ns.db and ns.db.global end
 S:Row{
-    key = "qol.uiScale", kind = "choice", module = "language", tab = "interface", choices = SCALE_PRESETS, reload = true,
+    key = "qol.uiScale", kind = "choice", module = "language", tab = "interface", choices = SCALE_PRESETS, reload = true, account = true,
     get = function() local g = Global(); return g and g.uiScale or "blizzard" end,
     set = function(preset)
         local g = Global()
@@ -103,9 +103,9 @@ S:Row{
     end,
 }
 S:Row{
-    -- (a slider; right under UI Scale, shown only on Custom, not indented)
-    key = "qol.uiScaleCustom", kind = "range", module = "language", tab = "interface", choices = CUSTOM_CHOICES, reload = true,
-    hidden = function() local g = Global(); return not (g and g.uiScale == "custom") end,
+    -- (a slider; right under UI Scale, greyed until Custom is picked, not indented)
+    key = "qol.uiScaleCustom", kind = "range", module = "language", tab = "interface", choices = CUSTOM_CHOICES, reload = true, account = true,
+    disabled = function() local g = Global(); return not (g and g.uiScale == "custom") end,
     get = function()
         local g = Global()
         local value = g and tonumber(g.uiScaleCustom) or 1
@@ -122,7 +122,7 @@ S:Row{
 local TEXT_CHOICES = {}
 for percent = 80, 150, 5 do TEXT_CHOICES[#TEXT_CHOICES + 1] = { percent, percent .. "%" } end
 S:Row{
-    key = "qol.textScale", kind = "range", module = "language", tab = "interface", choices = TEXT_CHOICES, reload = true,   -- (a slider)
+    key = "qol.textScale", kind = "range", module = "language", tab = "interface", choices = TEXT_CHOICES, reload = true, account = true,   -- (a slider)
     get = function()
         local g = Global()
         return math.floor((g and tonumber(g.textScale) or 1) * 20 + 0.5) * 5
@@ -218,24 +218,24 @@ S:Row{
 }
 
 
+-- Language: Game Language (global.useGameLanguage, the default) first, then each language
 S:Row{
-    key = "language.useGame", lead = true, tab = "account",   -- on top: the language list below only counts while it is off
-    get = UseGameLanguage,
-    set = function(on)
-        local global = ns.db.global
-        if not on and global.language == nil then
-            global.language = PreferredLanguage()
-        end
-        global.useGameLanguage = on
-        TrackLanguageReload()
+    key = "language.override", kind = "dropdown", tab = "account", account = true, reloadNote = true,   -- (its own reload tracking)
+    choices = function()
+        local list = { { "game", L["Game Language"] }, { divider = true } }
+        for _, c in ipairs(ns.LanguageChoices()) do list[#list + 1] = c end
+        return list
     end,
-}
-
-S:Row{
-    key = "language.override", kind = "dropdown", choices = ns.LanguageChoices, tab = "account",
-    get = PreferredLanguage, disabled = UseGameLanguage,
+    get = function() return UseGameLanguage() and "game" or PreferredLanguage() end,
     set = function(locale)
-        ns.db.global.language = locale
+        local global = ns.db.global
+        if locale == "game" then
+            global.useGameLanguage = true
+        else
+            global.useGameLanguage = false
+            global.language = locale
+        end
         TrackLanguageReload()
     end,
+    resetValue = function() return "game" end,
 }

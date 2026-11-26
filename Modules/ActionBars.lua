@@ -1928,7 +1928,13 @@ local CLASS_PAGING = {
     -- keys still turn pages). bonusbar:2 held too, should the game's own prowl page come before or
     -- outlast the stealth
     DRUID = { key = "keepStealthPage", driver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,bonusbar:2] 7; [actionbar:1,stealth,form] 7; [actionbar:1,stealth] 1; default",
-              offDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 8; default" },
+              offDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 8; default",
+              -- Keep Page 1 On Shapeshift (keepFormPage, 11-26): Cat (bonus bar 1) and Bear (3) stay on
+              -- page 1. With In Stealth too, Prowl stays there as well; without it Prowl still turns to
+              -- the prowl page (8)
+              formKey = "keepFormPage",
+              formDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,stealth,form] 8; [actionbar:1,bonusbar:1/3] 1; default",
+              bothDriver = "[possessbar][overridebar][vehicleui] default; [actionbar:1,bonusbar:1/2/3] 1; [actionbar:1,stealth] 1; default" },
     WARRIOR = { key = "noStancePaging", driver = "[possessbar][overridebar][vehicleui][shapeshift] default; [actionbar:1,bonusbar:1/2/3] 1; default" },
 }
 local PAGE_SNIPPET = [[
@@ -1967,6 +1973,9 @@ local function ApplyClassPaging()
     local on = db.enabled and db[paging.key]
     -- a class whose default is paged by FlareUI too (druids' Prowl): the pager runs either way
     local driver = on and paging.driver or (db.enabled and paging.offDriver) or nil
+    if paging.formKey and db.enabled and db[paging.formKey] then
+        driver = on and paging.bothDriver or paging.formDriver
+    end
     if driver and not classPager then
         classPager = CreateFrame("Frame", nil, UIParent, "SecureHandlerStateTemplate")
         for n, button in ipairs(GetButtonsForBarKey("bar1")) do classPager:SetFrameRef("b" .. n, button) end
@@ -2053,52 +2062,7 @@ end
 --------------------------------------------------
 -- 13. PUBLIC API
 --------------------------------------------------
--- button text draws at frame level 500: the end caps' container goes above it. Gryphons Behind
--- Bars puts it under every bar instead (the bars sit at level 50 and up in the same strata).
-local GRYPHON_LEVEL_ABOVE = 501
-local GRYPHON_LEVEL_BEHIND = 1
-local function UpdateGryphonLayer(db)
-    local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
-    if not caps or not caps.SetFrameLevel then return end
-    if db and db.gryphonsBehind then
-        caps:SetFrameLevel(GRYPHON_LEVEL_BEHIND)
-    elseif caps:GetFrameLevel() < GRYPHON_LEVEL_ABOVE then
-        caps:SetFrameLevel(GRYPHON_LEVEL_ABOVE)
-    end
-    -- bar 1's page number and arrows (level 100 in Blizzard's XML) stay above the gryphons, or the
-    -- left one covers them; their arrow buttons go one higher
-    local pager = _G.MainActionBar.ActionBarPageNumber
-    if pager and pager.SetFrameLevel then
-        local level = math.max(pager:GetFrameLevel(), caps:GetFrameLevel() + 1)
-        pager:SetFrameLevel(level)
-        for _, button in ipairs({ pager.UpButton, pager.DownButton }) do
-            if button and button.SetFrameLevel then button:SetFrameLevel(level + 1) end
-        end
-    end
-end
-
--- On Forever each gryphon is its own Edit Mode system, but the main bar's OnShow still runs
--- UpdateEndCaps(hideBarArt): with Hide Bar Art on, that would keep the container hidden after Alt+Z
--- or a cinematic. It is shown again with the bar; each gryphon keeps its own visibility.
-local function KeepEndCapsWithBar(bar)
-    local caps = bar and bar.EndCaps
-    if not caps or caps:IsShown() or not bar:IsVisible() then return end
-    -- Blizzard keeps them hidden in the Gamepad UI
-    if ns.IsGamepadUI() then return end
-    local faction = UnitFactionGroup("player")
-    if not faction or faction == "Neutral" then return end
-    if InCombatLockdown() and caps:IsProtected() then return end
-    caps:Show()
-end
-
-local function HookEndCaps()
-    local bar = _G.MainActionBar
-    if not bar or bar.FlareUI_EndCapsHooked or type(bar.UpdateEndCaps) ~= "function" then return end
-    if _G.MAIN_ACTION_BAR_MANAGE_END_CAPS ~= false then return end   -- Retail-style bars manage them
-    bar.FlareUI_EndCapsHooked = true
-    hooksecurefunc(bar, "UpdateEndCaps", KeepEndCapsWithBar)
-    KeepEndCapsWithBar(bar)
-end
+-- (the gryphons, their layer, Scale and Alt+Z fix: Gryphons.lua, a Quality of Life feature)
 
 -- switching the option off restores Blizzard's default once, then leaves the CVar to the player. The
 -- mark is saved: the option or the whole module can go off across a reload (profile switch, module
@@ -2145,9 +2109,9 @@ function ActionBars:Refresh(event)
     ApplyClassPaging()
     if ActionBars.PaintEquippedAll then ActionBars.PaintEquippedAll() end
 
-    UpdateGryphonLayer(db)
+    -- (the gryphons sit at level 501, over this text, while not Behind Bars)
+    if ns.Gryphons then ns.Gryphons.UpdateLayer() end
     if ActionBars.ApplyTotemScale then ActionBars.ApplyTotemScale() end   -- a profile's totem bar Size
-    ActionBars.ApplyCapScales()   -- the gryphons' Size
     ActionBars.ApplyMenuBags()
     UpdateButtonArtAll()
     UpdateBordersAll()
@@ -2227,49 +2191,6 @@ function ActionBars.TotemSizeSetting()
 end
 
 --------------------------------------------------
--- 13b2. GRYPHON SIZE
--- Each gryphon is its own Edit Mode system with no Size of its own: FlareUI adds one to each dialog
--- (Visibility.lua, above Fading), 50-200%, on top of bar 1's scale (they sit inside it). 100% never
--- touches a gryphon; out of a fight only.
---------------------------------------------------
-ActionBars.CAP_FRAMES = { capLeft = "LeftEndCap", capRight = "RightEndCap" }
-function ActionBars.ApplyCapScales()
-    local db = GetBarConfig()
-    local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
-    if not (db and db.enabled and caps) then return end
-    if InCombatLockdown() then ActionBars._pendingCapScale = true return end
-    ActionBars._pendingCapScale = nil
-    local sizes = db.capScale or {}
-    for key, field in pairs(ActionBars.CAP_FRAMES) do
-        local cap = caps[field]
-        local scale = (sizes[key] or 100) / 100
-        if cap and not cap:IsForbidden() and (scale ~= 1 or cap.FlareUI_Scaled) then
-            -- its place on screen kept: at login Edit Mode places it before this scale, which
-            -- then stretched its offsets too
-            ns.SetSystemScale(cap, scale)
-            cap.FlareUI_Scaled = scale ~= 1 or nil
-        end
-    end
-end
-
-function ActionBars.CapSizeSetting(key)
-    local LEM = LibStub("FlareEditMode")
-    return {
-        name = L["Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 200, valueStep = 5,
-        formatter = function(value) return value end,   -- plain: "100%" clips the value box
-        get = function() local db = GetBarConfig(); return db and db.capScale and db.capScale[key] or 100 end,
-        set = function(_, value)
-            local db = GetBarConfig()
-            if not db then return end
-            db.capScale = db.capScale or {}
-            db.capScale[key] = value ~= 100 and value or nil
-            ActionBars.ApplyCapScales()
-        end,
-        hidden = function() local db = GetBarConfig(); return not (db and db.enabled) end,
-    }
-end
-
---------------------------------------------------
 -- 13c. BAG BAR SMALLER SIZE (the bag buttons beside the menu stop at Blizzard's 75%)
 -- Blizzard's Bags Size runs 75-200%. Smaller Size (Off, 50-70%) sits in the same dialog (Visibility.lua
 -- puts it above Fading) and wins over Blizzard's Size while set; Off hands the bar back to it. A hook
@@ -2323,7 +2244,6 @@ function ActionBars:Init()
 
     self:Refresh()
     ApplyBagBarSize()
-    HookEndCaps()
 
     -- hooked per button: the mixin's functions are copied onto each frame
     for _, btn in ipairs(GetAllActionButtons()) do
@@ -2376,7 +2296,6 @@ function ActionBars:OnCombatEnd()
     end
     if #pendingRanks > 0 then FlushRanks() end
     if self._pendingTotemScale then ApplyTotemScale() end
-    if self._pendingCapScale then ActionBars.ApplyCapScales() end
     if self._pendingBagSize then ApplyBagBarSize() end
 end
 

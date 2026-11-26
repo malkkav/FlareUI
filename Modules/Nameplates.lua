@@ -202,8 +202,7 @@ C.FRIENDLY = { friendlyPlayer = true, friendlyNpc = true }
 C.TYPE_KEYS = {
     plate = true, width = true, height = true, level = true, levelSide = true, barText = true, hideTextAtFull = true,
     healthColor = true, castbar = true, castHeight = true, debuffs = true, debuffSize = true, debuffMax = true,
-    buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true, clickThrough = true,
-    ccStyle = true, ccSwipe = true, ccTimer = true,
+    buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true,
     -- (every row on the Style tab is the type's own) the look rows and Name Only Size
     texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true,
     -- (every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
@@ -219,6 +218,8 @@ C.TYPE_KEYS = {
     nameAbove = true, nameOnlyFull = true, nameOnlyTarget = true, castGlow = true,
     -- the cast bar's own look; names by class on a full plate, guild colour, titles
     castTexture = true, castBorder = true, nameClassColor = true, guildColor = true, showTitles = true, showGuild = true,
+    -- Show Level in Name Only Mode (11-26): the level in front of the name, as Level: Follow Name
+    nameOnlyLevel = true,
 }
 -- these were one shared value in older versions: a preset reads the profile's old shared value, so every
 -- type keeps the look it had; a type's Custom keeps its own from then on
@@ -255,7 +256,7 @@ C.ENEMY_BASE = {
     castbar = true, castHeight = 12, castIcon = false, castTarget = false,
     kickReady = true, castKickMark = true, castTargetedFlash = true,
     debuffs = "mine", debuffSize = 18, debuffMax = 8, buffs = "off", buffSize = 18, buffMax = 3,
-    cc = false, ccSize = 24, defensives = false, clickThrough = false,
+    cc = false, ccSize = 24, defensives = false,
 }
 C.TYPE_BASE = {
     enemyPlayer = C.ENEMY_BASE, enemyNpc = C.ENEMY_BASE, peaceful = C.ENEMY_BASE,   -- (peaceful: NP.Peaceful)
@@ -269,7 +270,7 @@ C.TYPE_BASE = {
         castbar = false, castHeight = 10, castIcon = false, castTarget = false,
         kickReady = true, castKickMark = true, castTargetedFlash = true,
         debuffs = "off", debuffSize = 20, debuffMax = 6, buffs = "off", buffSize = 16, buffMax = 3, hideBuffs = "OFF",
-        cc = false, ccSize = 28, defensives = false, clickThrough = false,
+        cc = false, ccSize = 28, defensives = false,
     },
 }
 local function Defaults()
@@ -434,7 +435,20 @@ end
 NP.SameValue = Same
 function NP.MigratePresets()
     local db = DB()
-    if not db or db.presetsV1 then return end
+    if not db then return end
+    -- Click-Through was each type's own until 7.1 and is shared now (its row says "all plates"):
+    -- on for any type before, on for all of them now
+    if not db.clickThroughShared then
+        db.clickThroughShared = true
+        for _, own in pairs(db.types or {}) do
+            if type(own) == "table" and (own.clickThrough == true
+                or (type(own.custom) == "table" and own.custom.clickThrough == true)) then
+                db.clickThrough = true
+            end
+            if type(own) == "table" and type(own.custom) == "table" then own.custom.clickThrough = nil end
+        end
+    end
+    if db.presetsV1 then return end
     db.presetsV1 = true
     db.types = db.types or {}
     local function MigrateType(kind)
@@ -1341,7 +1355,7 @@ end
 -- set, they follow the plate's)
 local function AuraLook(size, isDebuff, db, big)
     local style, swipe, timer = db.auraStyle, db.auraSwipe, db.auraTimer
-    if big then style, swipe, timer = db.ccStyle or style, db.ccSwipe or swipe, db.ccTimer or timer end
+    -- (Crowd Control and Defensives use the Auras look: their own three rows were removed 11-26)
     local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, style or "square", nil,
         timer or "none", "target", { swipe = swipe or "both", timerColor = db.auraTimerColor ~= false })
     -- the debuff's type icon is for what you could dispel: not on an enemy's plate
@@ -1846,14 +1860,16 @@ function NP.Layout(p)
         p.cast.kickSpark:SetVertexColor(kick[1], kick[2], kick[3])
     end
 
-    NP.LayoutNameAbove(p, db)
-    LayoutAuras(p, db)
-    NP.PlaceBelow(p)
     -- Plate: Bar (all of the above), Name Only (the name alone, centred, in its colour) or Hidden
     -- (Show Plates in Combat: a Name Only type picked there gets its bar in a fight, NP.CombatFull)
     -- (and Show Target's Plate: a Name Only type gets it while it's your target)
+    -- (11-26, Ric / bearae: worked out before Names Above Plate, which reads it. It read the last layout's
+    -- answer, so a targeted Name Only plate lost its name above and an untargeted one showed it twice.)
     p.layFull = NP.ShowsFull(db.kind, p)
     p.nameOnly = db.plate == "name" and not p.layFull
+    NP.LayoutNameAbove(p, db)
+    LayoutAuras(p, db)
+    NP.PlaceBelow(p)
     p.hiddenPlate = db.plate == "hidden"
     p.health:SetShown(not p.nameOnly)
     if p.nameOnly then
@@ -1864,6 +1880,8 @@ function NP.Layout(p)
         p.levelArt:Hide()
         p.level:Hide()
         p.levelShown, p.levelAnchor = false, nil
+        -- Show Level (per type, off): the level in front of the name, as Level: Follow Name
+        p.levelFollow = db.nameOnlyLevel and true or false
         p.nameSlot = p.nameSlot or "middle"
         -- Show Name (per type): a player's full name (true), first (false) or last ("lastname")
         p.nameFull = db.nameOnlyFull == "lastname" and "lastname" or db.nameOnlyFull ~= false
@@ -4002,7 +4020,7 @@ end
 -- Clicking a part of the picture opens its setting (the panel's search jump)
 C.HITS = {
     { "name", "np.barText" }, { "level", "np.level" }, { "health", "np.healthColor" },
-    { "cast", "np.castbar" }, { "quest", "np.questMarks" }, { "questText", "np.questProgress" }, { "debuffIcon", "np.debuffs" },
+    { "cast", "np.castbar" }, { "quest", "np.questMarks" }, { "questText", "np.questMarks" }, { "debuffIcon", "np.debuffs" },
     { "buffIcon", "np.buffs" }, { "ccIcon", "np.cc" },
 }
 local function HitEnter(self)

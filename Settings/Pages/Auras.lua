@@ -39,7 +39,7 @@ local function TotemsOff()
     return not (S:GetPath("unitframes.enabled") and S:GetPath("unitframes.units.player.enabled"))
 end
 S:Row{ key = "au.totemShape", kind = "choice", section = "au.totems", path = "unitframes.totems.shape", ignoreModule = true,
-    choices = { "round", "square" }, apply = TotemsRefresh, disabled = TotemsOff,
+    choices = { "square", "round" }, apply = TotemsRefresh, disabled = TotemsOff,
     resetValue = function() return "round" end }
 S:Row{ key = "au.totemSwipe", kind = "choice", section = "au.totems", path = "unitframes.totems.swipe", ignoreModule = true,
     choices = { "none", "icon", "border", "both" }, apply = TotemsRefresh, disabled = TotemsOff,

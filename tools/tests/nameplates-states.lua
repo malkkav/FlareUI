@@ -158,10 +158,9 @@ do
     local base = plates.AuraLook(24, true, db)
     local same = plates.AuraLook(24, true, db, true)
     assert(same.timer == base.timer and same.swipe == base.swipe)
-    plates.TypeSet("enemyNpc", "ccTimer", "middle")
-    plates.TypeSet("enemyNpc", "ccSwipe", "icon")
-    local big, small = plates.AuraLook(24, true, db, true), plates.AuraLook(24, true, db)
-    assert(big.timer == "middle" and big.swipe == "icon" and small.timer == base.timer and small.swipe == base.swipe)
+    -- (11-26) the big icons use the Auras look: their own three rows are gone
+    local big = plates.AuraLook(24, true, db, true)
+    assert(big.timer == base.timer and big.swipe == base.swipe and big.style == base.style)
     ns.AuraLook = old
 end
 -- the arrow's bounce: from rest, 3 px towards the plate half way, back at rest after both ways
@@ -1796,4 +1795,23 @@ plates.StandDown()
 assert(not plates.PartsFor(gamePlate) and not next(callbacks) and size[1] == 110 and size[2] == 17)
 assert(cvars.nameplateSelectedScale == "1.3" and cvars.nameplateTargetRadialPosition == "0")
 assert(cvars.nameplateMinAlpha == "0.6" and cvars.nameplateNotSelectedAlpha == "0.5", "and back as they were")
+-- (11-26, Ric / bearae) Name Only + Show Target's Plate + Names Above Plate: the name above follows
+-- this layout's target state, not the last one's (it went missing on the target, twice off it)
+do
+    local seen = {}
+    local layAbove = plates.LayoutNameAbove
+    plates.LayoutNameAbove = function(pp, db)
+        seen[#seen + 1] = pp.layFull
+        return layAbove(pp, db)
+    end
+    local full = false
+    local showsFull = plates.ShowsFull
+    plates.ShowsFull = function() return full end
+    full = true
+    pcall(plates.Layout, p)
+    full = false
+    pcall(plates.Layout, p)
+    plates.ShowsFull, plates.LayoutNameAbove = showsFull, layAbove
+    assert(seen[1] == true and seen[2] == false, "Names Above Plate reads this layout's state")
+end
 print("PASS: nameplates migrate presets, draw preview states and claim, update and release live plates")

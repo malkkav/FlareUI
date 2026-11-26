@@ -3465,8 +3465,12 @@ end
 -- Classic combo points go with the style: on in the ring styles (round the ring), off in Addon Style
 local function UsesClassicCombo(f)
     local ringOn = ns.UFRing and ns.UFRing.Applies(f)
-    -- (Forever Style reads the mode too, so its gems can be turned off)
-    if ringOn and UF.RingComboMode(GetUnitDb(f.fuiUnit)) ~= "classic" then return false end
+    -- (Forever Style reads the mode too, so its gems can be turned off. It has no Modern strip: a
+    -- Modern saved in FlareUI Style is Classic there, as its dropdown shows. Before 11-26 that Modern
+    -- drew nothing at all on Forever Style.)
+    local mode = ringOn and UF.RingComboMode(GetUnitDb(f.fuiUnit))
+    if mode == "modern" and not IsFlareUIRing(f) then mode = "classic" end
+    if ringOn and mode ~= "classic" then return false end
     return (ringOn and GetClassicCombo()) and true or false
 end
 
@@ -5491,8 +5495,8 @@ local function LayoutFrame(f)
     UF.PlaceSlots(f, "power", power, mirror, onPlate, namePad, false)
     if f.ShiftManaText then UF.PlaceSlots(f, "mana", f.ShiftMana, mirror, onPlate, namePad, false) end
     if nameBox then
-        -- Show Name: off hides it
-        f.Name:SetShown(udb.showName ~= false)
+        -- (always shown: Forever Style follows Blizzard and has no name options, Malkkav 11-26)
+        f.Name:Show()
         f.Name:SetPoint("LEFT", nameBox, "LEFT", TEXT_INSET, 0)
         f.Name:SetPoint("RIGHT", nameBox, "RIGHT", -TEXT_INSET, 0)
         f.Name:SetJustifyH("CENTER")
@@ -6573,6 +6577,11 @@ function UF.BarTextSettings(unit, style)
             name = UF.BAR_TEXT_NAMES[bar], bar = bar, style = style, unit = unit,
             db = function() return GetUnitDb(unit) end,
             firstOnly = function() return UF.FirstNameOnly(unit) end,
+            -- (as UF.PlaceSlots draws them: mirrored off the plate)
+            mirrored = function()
+                local f = frames[unit]
+                return f and style() ~= "plate" and UF.LayoutMirrored(f) or false
+            end,
             changed = function()
                 local f = frames[unit]
                 if f then UF.Redraw(f) end
@@ -6752,14 +6761,11 @@ local function BuildSettings(unit)
             end }
     end
     -- (the ring styles show it in the ring's disc, which goes with it)
-    -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
-    settings[#settings + 1] = { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true,
-        get = function() return get("showName")() ~= false end, set = set("showName"),
-        hidden = function() return not onPlate() end }
+    -- (no Show Name: Forever Style's name box always shows the name, as Blizzard's, 11-26)
     settings[#settings + 1] = { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = defaults.showLevel ~= false, get = get("showLevel"), set = set("showLevel") }
     settings[#settings + 1] = UF.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover"))
     settings[#settings + 1] = (function()
-        local ret = { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+        local ret = { name = L["Level Disc Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
           formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
           set = function(layoutName, value) set("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
@@ -6799,7 +6805,7 @@ local function BuildSettings(unit)
         -- flips text order and bar fill so the frame faces the player frame
         settings[#settings + 1] = { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = defaults.mirror or false, get = function() local u = GetUnitDb(unit); return u and u.mirror or false end,
             set = function(_, value) local u = GetUnitDb(unit); if not u then return end; u.mirror = value; local f = frames[unit]; if f then UF.Redraw(f); AttachExtras(f) end end,
-            desc = L["The bars fill from the other side, and the texts swap sides, so the frame faces the player frame."] }
+            desc = L["The bars fill from the other side and their texts swap sides, so the frame faces the other way."] }
     end
     if unit == "player" then
         settings[#settings + 1] = { name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false,
@@ -6902,6 +6908,60 @@ local function BuildSettings(unit)
         lookItems[#lookItems + 1] = { name = L["Combat Glow"], kind = LEM.SettingType.Checkbox, default = true,
             desc = L["In a fight, the border and portrait pulse red. With aggro, the threat colour shows instead."],
             get = function() return UF.GlowOn(unit, "combatGlow") end, set = set("combatGlow") }
+    end
+    -- ICONS (11-26, E1): one switch per icon, ticked in Look's Icons dropdown (Core.lua
+    -- ns.MergeEditToggles); Pet Happiness stays its own dropdown in Look. Where they sit is fixed.
+    local icons = ICON_UI.List(unit)
+    if #icons > 0 then
+        local items = {}
+        for _, key in ipairs(icons) do
+            local def = ICON_UI.defs[key]
+            if key ~= "happiness" then
+            items[#items + 1] = { name = def.label, kind = LEM.SettingType.Checkbox, default = def.default ~= false, toggleGroup = "Icons",
+                hidden = (def.ring and function() return not (ns.UFRing and ns.UFRing.On()) end)
+                    or (def.noRing and function() return ns.UFRing and ns.UFRing.On() or false end) or nil,
+                get = function() return ICON_UI.Shown(unit, key) end,
+                set = function(_, value)
+                    local store = ICON_UI.Store(unit, key, true)
+                    if not store then return end
+                    store.shown = value
+                    local f = frames[unit]
+                    if f then UF.Redraw(f) end
+                end }
+            else
+                -- the pet's happiness face: one dropdown, Off or where it sits. The styled pet has no
+                -- Left, and on Forever Style's plate the face has a fixed spot: Off or Shown.
+                local function Places()
+                    local list = { { text = L["Off"], value = "OFF", isRadio = true } }
+                    if info.styledPet and onPlate() then
+                        list[2] = { text = L["Shown"], value = "ON", isRadio = true }
+                        return list
+                    end
+                    list[2] = { text = L["Centre"], value = "CENTER", isRadio = true }
+                    list[3] = { text = L["Right of the Frame"], value = "RIGHT", isRadio = true }
+                    if not info.styledPet then list[4] = { text = L["Left of the Frame"], value = "LEFT", isRadio = true } end
+                    return list
+                end
+                items[#items + 1] = { name = def.label, kind = LEM.SettingType.Dropdown,
+                    default = def.default == false and "OFF" or "RIGHT",
+                    values = Places,
+                    desc = L["Your pet's happiness face, and where it sits."],
+                    get = function()
+                        if not ICON_UI.Shown(unit, "happiness") then return "OFF" end
+                        if info.styledPet and onPlate() then return "ON" end
+                        return ICON_UI.HappinessPlace(unit)
+                    end,
+                    set = function(_, value)
+                        local store = ICON_UI.Store(unit, "happiness", true)
+                        if not store then return end
+                        store.shown = value ~= "OFF"
+                        if value ~= "OFF" and value ~= "ON" then store.place = value end
+                        local f = frames[unit]
+                        if f then UF.Redraw(f) end
+                    end }
+            end
+        end
+        for _, item in ipairs(items) do lookItems[#lookItems + 1] = item end
     end
     Section("Look", lookItems)
     Section("Behaviour", behaviourItems)
@@ -7027,7 +7087,7 @@ local function BuildSettings(unit)
             auraItems[#auraItems + 1] = { name = L["Only My Buffs"], kind = LEM.SettingType.Checkbox, default = false,
                 get = function() local u = GetUnitDb(unit); return u and u.onlyMyBuffs or false end, set = set("onlyMyBuffs"),
                 desc = L["Only the buffs you cast on yourself."] }
-            auraItems[#auraItems + 1] = { name = L["Show Weapon Enchants"], kind = LEM.SettingType.Checkbox, default = true,
+            auraItems[#auraItems + 1] = { name = L["Weapon Enchants"], search = L["Show Weapon Enchants"], kind = LEM.SettingType.Checkbox, default = true,
                 get = function() local u = GetUnitDb(unit); return not (u and u.showEnchants == false) end, set = set("showEnchants"),
                 desc = L["Poisons, sharpening stones, oils and shaman weapon spells, at the start of the buffs. They follow Hide Buffs too."] }
             auraItems[#auraItems + 1] = { name = L["Dispel Highlight"], kind = LEM.SettingType.Dropdown, default = "off",
@@ -7044,72 +7104,72 @@ local function BuildSettings(unit)
                 desc = L["A dispellable debuff on a friendly unit makes the frame's border pulse in its type's colour."],
                 get = function() local u = GetUnitDb(unit); return u and u.dispelHighlight or "off" end, set = set("dispelHighlight") }
         end
-        -- every debuff on yourself is yours to see: other units only
-        if unit ~= "player" then
+        -- every debuff on yourself is yours to see: other units only (not the pet: you almost never
+        -- debuff your own pet, so it only emptied the list, 11-26)
+        if unit ~= "player" and unit ~= "pet" then
             auraItems[#auraItems + 1] = { name = L["Only My Debuffs"], kind = LEM.SettingType.Checkbox, default = defaults.onlyMyDebuffs or false, get = get("onlyMyDebuffs"), set = set("onlyMyDebuffs") }
         end
         Section("Auras", ns.AuraOrder.With(auraItems, get, set))
     end
 
-    -- one switch per icon; where they sit is fixed
-    local icons = ICON_UI.List(unit)
-    if #icons > 0 then
-        local items = {}
-        for _, key in ipairs(icons) do
-            local def = ICON_UI.defs[key]
-            if key ~= "happiness" then
-            items[#items + 1] = { name = def.label, kind = LEM.SettingType.Checkbox, default = def.default ~= false,
-                hidden = (def.ring and function() return not (ns.UFRing and ns.UFRing.On()) end)
-                    or (def.noRing and function() return ns.UFRing and ns.UFRing.On() or false end) or nil,
-                get = function() return ICON_UI.Shown(unit, key) end,
-                set = function(_, value)
-                    local store = ICON_UI.Store(unit, key, true)
-                    if not store then return end
-                    store.shown = value
-                    local f = frames[unit]
-                    if f then UF.Redraw(f) end
-                end }
-            else
-                -- the pet's happiness face: one dropdown, Off or where it sits. The styled pet has no
-                -- Left, and on Forever Style's plate the face has a fixed spot: Off or Shown.
-                local function Places()
-                    local list = { { text = L["Off"], value = "OFF", isRadio = true } }
-                    if info.styledPet and onPlate() then
-                        list[2] = { text = L["Shown"], value = "ON", isRadio = true }
-                        return list
-                    end
-                    list[2] = { text = L["Centre"], value = "CENTER", isRadio = true }
-                    list[3] = { text = L["Right of the Frame"], value = "RIGHT", isRadio = true }
-                    if not info.styledPet then list[4] = { text = L["Left of the Frame"], value = "LEFT", isRadio = true } end
-                    return list
-                end
-                items[#items + 1] = { name = def.label, kind = LEM.SettingType.Dropdown,
-                    default = def.default == false and "OFF" or "RIGHT",
-                    values = Places,
-                    desc = L["Your pet's happiness face, and where it sits."],
-                    get = function()
-                        if not ICON_UI.Shown(unit, "happiness") then return "OFF" end
-                        if info.styledPet and onPlate() then return "ON" end
-                        return ICON_UI.HappinessPlace(unit)
-                    end,
-                    set = function(_, value)
-                        local store = ICON_UI.Store(unit, "happiness", true)
-                        if not store then return end
-                        store.shown = value ~= "OFF"
-                        if value ~= "OFF" and value ~= "ON" then store.place = value end
-                        local f = frames[unit]
-                        if f then UF.Redraw(f) end
-                    end }
-            end
-        end
-        Section("Icons", items)
-    end
     -- last: Fade Group (player and pet), Visibility, the fade speeds and Faded Opacity, as on the action bars (Visibility.lua)
     if ns.Visibility and ns.Visibility.UnitFrameSettings then
         Section("Fading", ns.Visibility:UnitFrameSettings(unit))
     end
     return settings
 end
+
+-- COPY LOOK TO ALL FRAMES (11-26, I1; tuska1): a button in each unit frame's Edit Mode dialog, next to
+-- Reset Settings. Copies this frame's look (Bar Texture, Border, Absorb Texture, Background, Class
+-- Colours, Bar Effects) to every other unit frame, the party (both styles), raid, boss and flag carrier
+-- frames, and the Resource Bars' health, power and mana bars, after a yes. Each frame keeps its own
+-- rows afterwards; one that has no such row ignores the value.
+UF.LOOK_KEYS = { "texture", "border", "absorbTexture", "bgOpacity", "classColor", "smoothBars", "barEdgeGlow", "damageTrail" }
+function UF.LookTargets()
+    local db = GetDb()
+    if not db then return {} end
+    local list = {}
+    for unit in pairs(UNITS) do
+        db.units = db.units or {}
+        db.units[unit] = db.units[unit] or {}
+        list[#list + 1] = db.units[unit]
+    end
+    db.party = db.party or {}
+    db.party.classic = db.party.classic or {}
+    db.party.raid = db.party.raid or {}
+    list[#list + 1], list[#list + 2] = db.party.classic, db.party.raid
+    for _, key in ipairs({ "raid", "boss", "flagCarriers" }) do
+        db[key] = db[key] or {}
+        list[#list + 1] = db[key]
+    end
+    local bars = db.resource and db.resource.bars
+    for _, key in ipairs({ "health", "power", "mana" }) do
+        if bars and bars[key] then list[#list + 1] = bars[key] end
+    end
+    return list
+end
+function UF.CopyLookToAll(fromUnit)
+    local from = GetUnitDb(fromUnit)
+    if not from or InCombatLockdown() then return false end
+    for _, target in ipairs(UF.LookTargets()) do
+        if target ~= from then
+            for _, key in ipairs(UF.LOOK_KEYS) do target[key] = from[key] end
+        end
+    end
+    UF:Refresh()
+    for _, m in ipairs({ ns.PartyFrames, ns.RaidFrames, ns.BossFrames, ns.FlagCarriers, ns.ResourceBars }) do
+        if m and m.Refresh then pcall(m.Refresh, m) end
+    end
+    return true
+end
+ns.Dialogs = ns.Dialogs or {}
+ns.Dialogs["FLAREUI_COPY_LOOK"] = {
+    text = L["Copy this frame's look to every other unit frame?\n\nBar Texture, Border, Absorb Texture, Background, Class Colours and Bar Effects."],
+    button1 = L["Copy"],
+    button2 = L["Cancel"],
+    OnAccept = function(unit) UF.CopyLookToAll(unit) end,
+    hideOnEscape = true,
+}
 
 -- Each frame's fonts: set on the Unit Frames page's Fonts tab, a section per frame
 -- (Settings/Pages/UnitFrames.lua). The texts a frame has, in order (key: a unit, "party", "raid",
@@ -7129,6 +7189,12 @@ end
 local function RegisterEditMode(f)
     LEM:AddFrame(f, OnFrameMoved, DEFAULT_POSITIONS[f.fuiUnit], "FlareUI " .. UNITS[f.fuiUnit].label)
     LEM:AddFrameSettings(f, BuildSettings(f.fuiUnit))
+    -- Copy Look to All Frames, beside Reset Settings (after a yes)
+    if LEM.AddFrameSettingsButtons then
+        local unit = f.fuiUnit
+        LEM:AddFrameSettingsButtons(f, { { text = L["Copy Look to All Frames"],
+            click = function() ns.ShowDialog("FLAREUI_COPY_LOOK", nil, unit) end } })
+    end
 end
 
 --------------------------------------------------
@@ -7252,12 +7318,13 @@ function UF:Init()
         for key, pos in pairs((ns.UFRing.DefaultPositions())) do DEFAULT_POSITIONS[key] = pos end
     end
 
+    -- Threat Glow (Look): the pet's own aggro on its border, in every style (11-26: the simple pet
+    -- frame had none; a frame's defaults are the same in every style)
+    UNITS.pet.threatGlow, UNITS.pet.indicators.threat = true, true
     -- Simple Pet Frame off: the pet is a small frame of the style, with its ring and own default place
     if ns.UFRing and ns.UFRing.PetStyled() then
         local pet = UNITS.pet
         pet.portrait, pet.styledPet = true, true
-        -- Threat Glow (Look): its own aggro, on the border and the ring
-        pet.threatGlow, pet.indicators.threat = true, true
         DEFAULT_POSITIONS.pet = ns.UFRing.PetPosition()
     end
     -- A pet saved before it had auras, or swapped back in from a stored setup, has none of these

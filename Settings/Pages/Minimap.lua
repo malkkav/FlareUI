@@ -38,12 +38,28 @@ S:Row{ key = "mm.style", kind = "styles", choices = { "square", "round" }, hideL
 -- Border: the square map's frame. Header is the metal frame with its title bar (minimap.squareHeader
 -- "art"); the others frame the map with no title bar (squareHeader "headerless"), in the heavy bronze
 -- or a FlareUI border (minimap.squareBorder). Live; the addon buttons move onto the new edge too.
+-- (11-26, SupS) then a line and every Shared Media border: laid out as Thin, they may not line up
 S:Row{ key = "mm.squareBorder", kind = "choice", section = "mm.styleSection",
-    choices = { "bronze", "header", "thick", "thin" },
+    choices = function()
+        local list = { "bronze", "header", "thin", "thick" }
+        local LSM = LibStub("LibSharedMedia-3.0", true)
+        local names = LSM and LSM:List("border") or {}
+        local extra = {}
+        for _, name in ipairs(names) do
+            if name ~= "None" and name ~= "FlareUI Thick" and name ~= "FlareUI Thin" then extra[#extra + 1] = { name, name } end
+        end
+        if #extra > 0 then
+            list[#list + 1] = { divider = true }
+            for _, c in ipairs(extra) do list[#list + 1] = c end
+        end
+        return list
+    end,
     get = function()
         if S:GetPath("minimap.squareHeader") == "art" then return "header" end
         local value = S:GetPath("minimap.squareBorder")
-        return (value == "thick" or value == "thin") and value or "bronze"
+        if value == "thick" or value == "thin" then return value end
+        if ns.Minimap and ns.Minimap.CustomBorderSpec and ns.Minimap.CustomBorderSpec(value) then return value end
+        return "bronze"
     end,
     set = function(value)
         S:SetPath("minimap.squareHeader", value == "header" and "art" or "headerless")
@@ -60,8 +76,11 @@ S:Row{ key = "mm.squareBorder", kind = "choice", section = "mm.styleSection",
 local BAR_VALUES = { "none", "gold", "bags", "durability", "fps", "latency", "coords", "coordsSimple", "xp", "friends", "guild" }
 -- the three cells on one line with no labels, laid out as the bar itself; pointing at
 -- one shows its Left / Center / Right text
--- the round map shows the Center cell only, inside the circle: Left and Right greyed there
-local function RoundMap() return S:GetPath("minimap.style") == "round" end
+-- the round map shows the Center cell only, inside the circle: Left and Right greyed there until
+-- Below the Map puts the bar under the map, where all three fit
+local function RoundMap()
+    return S:GetPath("minimap.style") == "round" and not S:GetPath("minimap.infoBarBelow")
+end
 for _, side in ipairs({ "Left", "Center", "Right" }) do
     S:Row{ key = "mm.bar" .. side, kind = "choice", third = true, bare = true,
         path = "minimap.infoBar." .. side:lower(), choices = BAR_VALUES, apply = Refresh,
@@ -99,7 +118,8 @@ S:Row{ key = "mm.drawerStyle", kind = "choice", tab = "buttons", reload = true,
         end
         return { "disabled", "sundial", "blizzard" }
     end }
-S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons", disabled = DrawerOff, half = true,
+-- (not greyed with the drawer Off: the button then sits on the minimap)
+S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons", half = true,
     apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }
 -- Minimap Icons: one dropdown of toggles for the four icons, in the order they stack on the map,
 -- bottom to top. Saved as before: minimap.sundial (off = false; a reload hides or shows it, and off

@@ -22,6 +22,8 @@ local ns = {
     L = setmetatable({}, { __index = function(_, key) return key end }),
     db = { profile = profile },
     modules = {},
+    -- the gryphons follow Quality of Life (Gryphons.lua), not Action Bars
+    Gryphons = { On = function() return GRYPHONS_ON ~= false end },
     RawHide = function(frame) frame:Hide() end,
     HideFrameSecurely = function(frame, on) frame.FlareUI_Hidden = on or nil end,
 }
@@ -370,6 +372,7 @@ manager:Show()
 assert(not manager:IsShown(), "Edit Mode's samples don't bring it back")
 env.EditModeManagerFrame:Hide()
 for _, key in ipairs({ "unitframes", "objectivetracker", "damagemeter", "chat" }) do profile[key].enabled = false end
+GRYPHONS_ON = false   -- (Quality of Life off too: the gryphons don't keep it loaded)
 ns.CooldownManager = nil
 assert(vis:ShouldLoad(), "loaded for this switch alone")
 vis:Refresh()

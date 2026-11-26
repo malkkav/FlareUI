@@ -58,16 +58,14 @@ local HOVER = {
     ["np.targetScale"] = { target = true }, ["np.border"] = { target = true },
     -- (threat rows show a plate that isn't your target: your target's own border wins over Threat Glow)
     ["np.threat"] = { threat = true, target = false }, ["np.role"] = { threat = true, target = false },
-    ["np.threatScale"] = { threat = true, target = false },
+    ["np.threatEffects"] = { threat = true, target = false },
     ["np.castbar"] = { cast = true }, ["np.castHeight"] = { cast = true }, ["np.castIcon"] = { cast = true },
     ["np.castTarget"] = { cast = true }, ["np.castImportant"] = { cast = true, important = true },
-    ["np.kickReady"] = { cast = true, kick = true }, ["np.execute"] = { execute = true },
+    ["np.kickReadyPick"] = { cast = true, kick = true }, ["np.execute"] = { execute = true },
     ["np.colorFocus"] = { focus = true }, ["np.questMarks"] = { quest = true }, ["np.comboPoints"] = { combo = true },
-    ["np.castTargetedFlash"] = { cast = true, targeted = true }, ["np.threatGlow"] = { threat = true, target = false },
-    ["np.aggroFlash"] = { threat = true, target = false },
+    ["np.castTargetedFlash"] = { cast = true, targeted = true },
     ["np.targetAlpha"] = { target = true }, ["np.targetArrows"] = { target = true }, ["np.targetArrowSide"] = { target = true },
-    ["np.targetBorder"] = { target = true }, ["np.targetBarColor"] = { target = true }, ["np.targetGlow"] = { target = true },
-    ["np.castKickMark"] = { cast = true },
+    ["np.targetHighlight"] = { target = true },
 }
 
 local function RefreshAll(draw)
@@ -473,32 +471,15 @@ local function TypeDefault(key)
     if not (np and np.PresetValue) then return nil end
     return np.PresetValue(np.C.DEFAULT_PRESET[PIN.kind] or "full", key, PIN.kind)
 end
--- NAME ONLY MODE: with it on, the type's other rows on its own tabs grey out (a
--- Name Only plate draws none of them), unless Show Plates in Combat or Show Target's Plate gives it its bar
-local OWN_TABS = { style = true, extras = true, cast = true, auras = true }
-local function NameOnlyLocked()
-    if TV("plate") ~= "name" or TV("nameOnlyTarget") then return false end
-    local v = S:GetPath("nameplates.combatPlates")
-    if type(v) == "string" then
-        for t in v:gmatch("[^,]+") do if t == PIN.kind then return false end end
-    end
-    return true
-end
+-- NAME ONLY MODE greys nothing (Malkkav 11-26): Show Plates in Combat and Show Target's Plate give a
+-- Name Only plate its bar back, so every row stays something the player may want to set
 -- (AstroFox) the Visibility tab is Blizzard's own nameplate settings, and In Combat keeps
 -- working with the module off: its rows stay usable then, so it can be switched back. Only these
 -- two act on FlareUI's plates alone.
-local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true }
+local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true, ["np.combatPlates"] = true }
 local function Row(def)
     def.apply = def.apply or Refresh
     if def.tab == "visibility" and not FLAREUI_ONLY[def.key] and def.ignoreModule == nil then def.ignoreModule = true end
-    if OWN_TABS[def.tab] and def.section ~= "np.nameOnlySection" and not def.inNameOnly then
-        local own = def.disabled
-        def.disabled = function()
-            if NameOnlyLocked() then return true end
-            if type(own) == "function" then return own() end
-            return own
-        end
-    end
     if def.path and not def.path:find("%.") then
         local np = NP()
         local key = def.path
@@ -719,23 +700,41 @@ Row{ key = "np.nameOnlyFull", kind = "choice", tab = "style", section = "np.name
     end,
     resetValue = function() return "fullname" end,
     hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
--- Colour Guild Members (Friendly Player only, off) and Show Titles (every
--- type; on for NPC types, off for players and Minor: Nameplates.lua NP.TitlesOn)
-Row{ key = "np.guildColor", path = "guildColor", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
+-- Colour Guild Members (Friendly Player only, off): a full row, as it shows on one type alone
+Row{ key = "np.guildColor", path = "guildColor", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
     hidden = function() return PIN.kind ~= "friendlyPlayer" end }
-Row{ key = "np.showTitles", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
-    get = function()
-        local v = TV("showTitles")
-        if v == nil then v = PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end
-        return v and true or false
+-- Under the Name: the old Show Titles (every type; on for NPC types, off for players and Minor:
+-- Nameplates.lua NP.TitlesOn) and Show Guild Name (the player types only: NPCs have no guild) as toggles
+local function PlayerKind() return PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer" end
+local function TitlesDefault() return PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end
+local UNDER_SPEC = { exclusive = { "none" }, tokens = { "title", "guild" }, empty = "none" }
+Row{ key = "np.underName", kind = "dropdown", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
+    toggles = UNDER_SPEC,
+    choices = function()
+        if PlayerKind() then return { "none", { divider = true }, "title", "guild" } end
+        return { "none", { divider = true }, "title" }
     end,
-    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "showTitles", on and true or false) end end,
-    resetValue = function() return PIN.kind == "friendlyNpc" or PIN.kind == "enemyNpc" end }
--- the player types only: NPCs have no guild
-Row{ key = "np.showGuild", path = "showGuild", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff,
-    hidden = function() return not (PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer") end }
+    get = function()
+        local list = {}
+        local titles = TV("showTitles")
+        if titles == nil then titles = TitlesDefault() end
+        if titles then list[#list + 1] = "title" end
+        if PlayerKind() and TV("showGuild") then list[#list + 1] = "guild" end
+        return #list > 0 and table.concat(list, ",") or "none"
+    end,
+    set = function(v)
+        local np = NP()
+        if not np then return end
+        local on = ns.Conditions.Set(v, UNDER_SPEC)
+        np.TypeSet(PIN.kind, "showTitles", on.title and true or false)
+        if PlayerKind() then np.TypeSet(PIN.kind, "showGuild", on.guild and true or false) end
+    end,
+    resetValue = function() return TitlesDefault() and "title" or "none" end }
+-- Show Level (off) beside Show Target's Plate
+Row{ key = "np.nameOnlyLevel", path = "nameOnlyLevel", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff }
 Row{ key = "np.nameOnlyTarget", path = "nameOnlyTarget", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff }
-Row{ key = "np.combatPlates", kind = "dropdown", tab = "style", section = "np.nameOnlySection",
+-- Show Plates in Combat (shared: one list of types) on the Visibility tab's Plates section
+Row{ key = "np.combatPlates", kind = "dropdown", tab = "visibility", section = "np.which",
     choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
     toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },
     get = function() return S:GetPath("nameplates.combatPlates") or "none" end,
@@ -805,13 +804,38 @@ end
 Row{ key = "np.targetArrows", kind = "choice", path = "targetArrows", choices = ArrowChoices, tab = "targeting", section = "np.highlights" }
 Row{ key = "np.targetArrowSide", kind = "choice", path = "targetArrowSide", choices = { "both", "left", "right", "top" }, tab = "targeting", section = "np.highlights",
     disabled = function() return TV("targetArrows") == "off" end }
-Row{ key = "np.targetBorder", path = "targetBorder", tab = "targeting", section = "np.highlights", half = true }
-Row{ key = "np.targetBarColor", path = "targetBarColor", tab = "targeting", section = "np.highlights", half = true }
-Row{ key = "np.targetGlow", path = "targetGlow", tab = "targeting", section = "np.highlights", half = true }
-Row{ key = "np.colorFocus", path = "colorFocus", tab = "targeting", section = "np.highlights", half = true }
+-- Target Highlight: the three switches (targetBorder, on unless false; targetBarColor; targetGlow) as
+-- toggles, the same control as Mouseover Highlight under it
+local TARGET_HL = { { "border", "targetBorder" }, { "bar", "targetBarColor" }, { "glow", "targetGlow" } }
+local TARGET_HL_SPEC = { exclusive = { "none" }, tokens = { "border", "bar", "glow" }, empty = "none" }
+local function TargetHLOn(key)
+    local v = S:GetPath("nameplates." .. key)
+    if key == "targetBorder" then return v ~= false end
+    return v and true or false
+end
+local function TargetHLValue(on)
+    local list = {}
+    for _, h in ipairs(TARGET_HL) do if on(h[2]) then list[#list + 1] = h[1] end end
+    return #list > 0 and table.concat(list, ",") or "none"
+end
+Row{ key = "np.targetHighlight", kind = "dropdown", tab = "targeting", section = "np.highlights", toggles = TARGET_HL_SPEC,
+    choices = { "none", { divider = true }, "border", "bar", "glow" },
+    get = function() return TargetHLValue(TargetHLOn) end,
+    set = function(v)
+        local on = ns.Conditions.Set(v, TARGET_HL_SPEC)
+        for _, h in ipairs(TARGET_HL) do S:SetPath("nameplates." .. h[2], on[h[1]] and true or false) end
+    end,
+    resetValue = function()
+        return TargetHLValue(function(key)
+            local d = S:DefaultPath("nameplates." .. key)
+            if key == "targetBorder" then return d ~= false end
+            return d and true or false
+        end)
+    end }
+Row{ key = "np.colorFocus", path = "colorFocus", tab = "targeting", section = "np.highlights" }
 -- Mouseover Highlight (shared): which parts light up under the mouse, Border and
 -- Bar by default (Nameplates.lua NP.HoverParts)
-Row{ key = "np.mouseoverHighlight", kind = "dropdown", tab = "targeting", section = "np.mouseoverSection",
+Row{ key = "np.mouseoverHighlight", kind = "dropdown", tab = "targeting", section = "np.highlights",
     choices = { "none", { divider = true }, "border", "bar", "glow" },
     toggles = { exclusive = { "none" }, tokens = { "border", "bar", "glow" }, empty = "none" },
     get = function() return S:GetPath("nameplates.mouseoverHighlight") or "border,bar" end,
@@ -836,23 +860,31 @@ do
     Row{ key = "np.comboPoints", tab = "extras", section = "np.marks", half = true, apply = Refresh,
         get = get, set = set, resetValue = function() return false end }
 end
--- Objective Icon (the saved quest switch, shared with Blizzard's plates) and Objective Progress (never
--- set, it follows the icon: NP.QuestParts). (#128) players never carry quest objectives: both
--- rows hide on the two player types
+-- Quest Marks: Icon (the saved quest switch, shared with Blizzard's plates, and the type's questIcon)
+-- and Progress (questProgress; never set, it follows the icon: NP.QuestParts) as toggles, each on its
+-- own. (#128) players never carry quest objectives: the row hides on the two player types
 local function PlayerType() return PIN.kind == "enemyPlayer" or PIN.kind == "friendlyPlayer" end
+local QUEST_SPEC = { exclusive = { "none" }, tokens = { "icon", "progress" }, empty = "none" }
 do
-    local get, set = TypeSwitch("nameplates.questMarks", "questIcon")
-    Row{ key = "np.questMarks", tab = "extras", section = "np.marks", half = true, apply = Refresh,
-        get = get, set = set, resetValue = function() return false end, hidden = PlayerType }
+    local iconGet, iconSet = TypeSwitch("nameplates.questMarks", "questIcon")
+    Row{ key = "np.questMarks", kind = "dropdown", tab = "extras", section = "np.marks", apply = Refresh, hidden = PlayerType,
+        toggles = QUEST_SPEC, choices = { "none", { divider = true }, "icon", "progress" },
+        get = function()
+            local list = {}
+            if iconGet() then list[#list + 1] = "icon" end
+            local v = TV("questProgress")
+            if v == nil then v = iconGet() end
+            if v then list[#list + 1] = "progress" end
+            return #list > 0 and table.concat(list, ",") or "none"
+        end,
+        set = function(v)
+            local on = ns.Conditions.Set(v, QUEST_SPEC)
+            iconSet(on.icon and true or false)
+            local np = NP()
+            if np then np.TypeSet(PIN.kind, "questProgress", on.progress and true or false) end
+        end,
+        resetValue = function() return "none" end }
 end
-Row{ key = "np.questProgress", tab = "extras", section = "np.marks", half = true, apply = Refresh, hidden = PlayerType,
-    get = function()
-        local v = TV("questProgress")
-        if v == nil then v = S:GetPath("nameplates.questMarks") and TV("questIcon") ~= false end
-        return v and true or false
-    end,
-    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "questProgress", on and true or false) end end,
-    resetValue = function() return false end }
 Row{ key = "np.threat", kind = "choice", path = "threat", choices = { "off", "groups", "always" }, tab = "extras", section = "np.threatSection" }
 Row{ key = "np.role", kind = "choice", path = "role", choices = { "auto", "tank", "damage" }, tab = "extras", section = "np.threatSection",
     apply = function()
@@ -860,9 +892,29 @@ Row{ key = "np.role", kind = "choice", path = "role", choices = { "auto", "tank"
         if np and np.UpdateRole then np.UpdateRole() end
         Refresh()
     end }
-Row{ key = "np.threatGlow", path = "threatGlow", tab = "extras", section = "np.threatSection", half = true }
-Row{ key = "np.aggroFlash", path = "aggroFlash", tab = "extras", section = "np.threatSection", half = true }
-Row{ key = "np.threatScale", path = "threatScale", tab = "extras", section = "np.threatSection", half = true }
+-- Threat Effects: Threat Glow, Aggro Flash and Threat Scale (each the type's own switch) as toggles
+local THREAT_FX = { { "glow", "threatGlow" }, { "flash", "aggroFlash" }, { "scale", "threatScale" } }
+local THREAT_FX_SPEC = { exclusive = { "none" }, tokens = { "glow", "flash", "scale" }, empty = "none" }
+local function TypeToggles(list, spec, defaults)
+    return function()
+        local on = {}
+        for _, t in ipairs(list) do if TV(t[2]) then on[#on + 1] = t[1] end end
+        return #on > 0 and table.concat(on, ",") or "none"
+    end, function(v)
+        local set, np = ns.Conditions.Set(v, spec), NP()
+        if not np then return end
+        for _, t in ipairs(list) do np.TypeSet(PIN.kind, t[2], set[t[1]] and true or false) end
+    end, function()
+        local on = {}
+        for _, t in ipairs(list) do if TypeDefault(t[2]) then on[#on + 1] = t[1] end end
+        return #on > 0 and table.concat(on, ",") or "none"
+    end
+end
+do
+    local get, set, reset = TypeToggles(THREAT_FX, THREAT_FX_SPEC)
+    Row{ key = "np.threatEffects", kind = "dropdown", tab = "extras", section = "np.threatSection", toggles = THREAT_FX_SPEC,
+        choices = { "none", { divider = true }, "glow", "flash", "scale" }, get = get, set = set, resetValue = reset }
+end
 -- (a switch before; Always and Off keep its saved true and false)
 Row{ key = "np.threatPercent", kind = "choice", choices = { "off", "groups", "instances", "always" }, tab = "extras", section = "np.threatSection",
     get = function()
@@ -902,21 +954,30 @@ Row{ key = "np.mobTypes", kind = "dropdown", tab = "extras", section = "np.speci
     resetValue = function() return "none" end }
 Row{ key = "np.mobTypesWhere", kind = "choice", path = "mobTypesWhere", choices = { "instances", "everywhere" }, tab = "extras", section = "np.specialColors",
     disabled = NoMobTypes }
--- Party Colour (the old Group Colour's saved switch) and Raid Colour (never set: follows it). They colour
--- names, so they count in Name Only Mode too (inNameOnly: not greyed there)
-Row{ key = "np.groupColor", path = "groupColor", tab = "extras", section = "np.specialColors", half = true, inNameOnly = true }
-Row{ key = "np.raidColor", tab = "extras", section = "np.specialColors", half = true, inNameOnly = true,
+-- Group Colours: Party (the old Group Colour's saved switch, groupColor) and Raid (raidColor, never set:
+-- follows it) as toggles. They colour names, so they count in Name Only Mode too
+local GROUP_SPEC = { exclusive = { "none" }, tokens = { "party", "raid" }, empty = "none" }
+Row{ key = "np.groupColors", kind = "dropdown", tab = "extras", section = "np.specialColors", toggles = GROUP_SPEC,
+    choices = { "none", { divider = true }, "party", "raid" },
     get = function()
-        local v = TV("raidColor")
-        if v == nil then v = TV("groupColor") end
-        return v and true or false
+        local list = {}
+        if TV("groupColor") then list[#list + 1] = "party" end
+        local raid = TV("raidColor")
+        if raid == nil then raid = TV("groupColor") end
+        if raid then list[#list + 1] = "raid" end
+        return #list > 0 and table.concat(list, ",") or "none"
     end,
-    set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "raidColor", on and true or false) end end,
-    resetValue = function() return false end }
+    set = function(v)
+        local on, np = ns.Conditions.Set(v, GROUP_SPEC), NP()
+        if not np then return end
+        np.TypeSet(PIN.kind, "groupColor", on.party and true or false)
+        np.TypeSet(PIN.kind, "raidColor", on.raid and true or false)
+    end,
+    resetValue = function() return "none" end }
 
 -- CAST BAR: the switch alone, then its frame and how it behaves
 local function NoCast() return not TV("castbar") end
-Row{ key = "np.castbar", path = "castbar", tab = "cast", section = "np.castSection" }
+Row{ key = "np.castbar", path = "castbar", tab = "cast", section = "np.castFrame", lead = true }
 -- the cast bar's own Bar Texture and Border, above Cast Bar Height: FlareUI Dark
 -- and FlareUI Thin by default, apart from the plate's (Nameplates.lua NP.CastTexture / NP.CastBorder)
 Row{ key = "np.castTexture", kind = "choice", tab = "cast", section = "np.castFrame", disabled = NoCast,
@@ -938,8 +999,14 @@ Row{ key = "np.castGlow", tab = "cast", section = "np.castFrame", half = true, d
     get = function() return ns.CastGlowOn(TV("castGlow")) end,
     set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "castGlow", on and true or false) end end,
     resetValue = function() return ns.CastGlowDefault() end }
-Row{ key = "np.kickReady", path = "kickReady", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
-Row{ key = "np.castKickMark", path = "castKickMark", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
+-- Kick Ready: Colour (kickReady) and Mark (castKickMark), each the type's own switch, as toggles
+do
+    local KICK = { { "colour", "kickReady" }, { "mark", "castKickMark" } }
+    local KICK_SPEC = { exclusive = { "none" }, tokens = { "colour", "mark" }, empty = "none" }
+    local get, set, reset = TypeToggles(KICK, KICK_SPEC)
+    Row{ key = "np.kickReadyPick", kind = "dropdown", tab = "cast", section = "np.castBehaviour", toggles = KICK_SPEC,
+        choices = { "none", { divider = true }, "colour", "mark" }, get = get, set = set, resetValue = reset, disabled = NoCast }
+end
 Row{ key = "np.castTargetedFlash", path = "castTargetedFlash", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
 Row{ key = "np.castImportant", path = "castImportant", tab = "cast", section = "np.castBehaviour", half = true, disabled = NoCast }
 
@@ -969,25 +1036,17 @@ Row{ key = "np.debuffSize", kind = "range", path = "debuffSize", choices = Steps
     disabled = function() return TV("debuffs") == "off" end }
 Row{ key = "np.debuffMax", kind = "range", path = "debuffMax", choices = Steps(1, 16, 1), tab = "auras", section = "np.debuffSection",
     disabled = function() return TV("debuffs") == "off" end }
--- AURA POSITIONS: shown only with both Buffs and Debuffs on (Nameplates.lua NP.AuraStack)
+-- Aura Positions: in the Auras look section, greyed until both Buffs and Debuffs are on
+-- (Nameplates.lua NP.AuraStack)
 Row{ key = "np.auraRows", kind = "choice", path = "auraRows", choices = { "one", "buffsTop", "debuffsTop" },
-    tab = "auras", section = "np.auraRowsSection",
-    hidden = function() return TV("buffs") == "off" or TV("debuffs") == "off" end }
+    tab = "auras", section = "np.auraLook",
+    disabled = function() return TV("buffs") == "off" or TV("debuffs") == "off" end }
 -- (lead: the two switches everything else in the section needs. Defensives first: they sit left of the plate,
 -- crowd control right)
 Row{ key = "np.defensives", path = "defensives", tab = "auras", section = "np.ccSection", half = true, lead = true }
 Row{ key = "np.cc", path = "cc", tab = "auras", section = "np.ccSection", half = true, lead = true }
+-- (their look is the Auras section's: their own shape, swipe and timer rows were removed 11-26)
 local function NoBigAuras() return not (TV("cc") or TV("defensives")) end
--- their own shape, swipe and timer; until picked they follow the Auras section's
-local function BigAuraRow(key, path, follows, default, choices)
-    Row{ key = key, kind = "choice", tab = "auras", section = "np.ccSection", choices = choices, disabled = NoBigAuras,
-        get = function() return TV(path) or TV(follows) or default end,
-        set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, path, v) end end,
-        resetValue = function() return TV(follows) or default end }
-end
-BigAuraRow("np.ccStyle", "ccStyle", "auraStyle", "square", { "square", "round" })
-BigAuraRow("np.ccSwipe", "ccSwipe", "auraSwipe", "both", { "none", "icon", "border", "both" })
-BigAuraRow("np.ccTimer", "ccTimer", "auraTimer", "none", { "none", "below", "bottom", "middle" })
 Row{ key = "np.ccSize", kind = "range", path = "ccSize", choices = Steps(16, 60, 2), tab = "auras", section = "np.ccSection",
     disabled = NoBigAuras }
 

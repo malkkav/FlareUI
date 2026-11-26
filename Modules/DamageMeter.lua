@@ -1342,15 +1342,17 @@ local function UpdateThreatView(window, view)
     end
     -- the scaled percent is your threat against the point you pull at (110% of the tank's in melee,
     -- 130% at range), so that point is your threat over it
-    local pull
+    local pull, near
     if me and not me.tanking and me.scaled > 0 then
         pull = me.value * 100 / me.scaled
-        if db.threatPullFlash and me.scaled >= PULL_WARN then me.warn = true end
+        near = me.scaled >= PULL_WARN
+        -- Pull Warning's Flash: your bar flashes
+        if db.threatPullFlash and near then me.warn = true end
     end
-    -- Pull Warning Sound: once as the warning starts, in a fight only (not for the settings' sample
-    -- rows); never while you hold the mob, as the warning itself. The combat flag may be secret (InFight).
+    -- Pull Warning's Sound (on its own too, 11-26): once as you near the pull, in a fight only (not for
+    -- the settings' sample rows); never while you hold the mob. The combat flag may be secret (InFight).
     local fighting = UnitAffectingCombat("player")
-    local warning = me and me.warn and canaccessvalue(fighting) and fighting or false
+    local warning = near and canaccessvalue(fighting) and fighting or false
     if warning and not DamageMeter.pullWarned and db.threatPullSound then
         PlaySound(SOUNDKIT.RAID_WARNING or 8959, "Master")
     end

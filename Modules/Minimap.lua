@@ -113,6 +113,26 @@ for _, spec in pairs(MM.SQUARE_BORDERS) do
         spec.style = style
     end
 end
+-- (11-26, SupS) any Shared Media border, picked under FlareUI Thick: laid out as Thin (its numbers),
+-- with a square mask. It may not line up with the map's edge: the player's pick (Malkkav).
+MM.customBorders = {}
+function MM.CustomBorderSpec(name)
+    if type(name) ~= "string" or name == "" or MM.SQUARE_BORDERS[name] then return nil end
+    local LSM = LibStub("LibSharedMedia-3.0", true)
+    if not (LSM and LSM:IsValid("border", name)) then return nil end
+    local spec = MM.customBorders[name]
+    if spec then return spec end
+    spec = {}
+    for k, v in pairs(MM.SQUARE_BORDERS.thin) do spec[k] = v end
+    spec.lsm, spec.edge, spec.mask = name, 12, nil
+    local style = {}
+    for k, v in pairs(HEADER_STYLES.headerless) do style[k] = v end
+    for _, k in ipairs({ "side", "headerTop", "band", "shift" }) do style[k] = spec[k] end
+    style.bronze, style.flare, style.border = false, spec, spec
+    spec.style = style
+    MM.customBorders[name] = spec
+    return spec
+end
 local BRONZE_ATLAS = "heavybronze-frame-basic"
 -- the bronze frame this far past the map frame's edges, per side: measured against Bordered's metal
 -- frame so both styles cover the same box
@@ -122,7 +142,7 @@ local function HeaderStyle(db)
     db = db or (ns.db and ns.db.profile and ns.db.profile.minimap)
     local style = HEADER_STYLES[MM.sampleHeader or (db and db.squareHeader) or "headerless"] or HEADER_STYLES.headerless
     -- Headerless: in the chosen border
-    local spec = style.bronze and db and MM.SQUARE_BORDERS[db.squareBorder]
+    local spec = style.bronze and db and (MM.SQUARE_BORDERS[db.squareBorder] or MM.CustomBorderSpec(db.squareBorder))
     return spec and spec.style or style
 end
 -- the border numbers in use (MM.SQUARE_BORDERS)
@@ -952,6 +972,8 @@ function Bar.PlaceRound(f)
     Bar.ROUND_CELL = Bar.ROUND_CELL or math.floor((MAP_SIZE - Bar.SUN_ROOM - HEADER_SIDE) / #Bar.SIDES)
     f:SetHeight(HEADER_HEIGHT)
     local width = Bar.ROUND_CELL * #Bar.SIDES
+    -- under the map: as wide as the map, so all three cells fit
+    if Bar.Below() then width = math.max(width, math.floor(MinimapFrame:GetWidth())) end
     f:ClearAllPoints()
     f:SetWidth(width)
     if Bar.Below() then
@@ -1064,8 +1086,9 @@ function Bar.Update()
     local picks = db and db.infoBar or {}
     local shown, every = false, nil
     for _, side in ipairs(Bar.SIDES) do
-        -- (the round map: the Center cell only)
-        local source = (MM.Frame or (not squareStyle and side == "center")) and Bar.sources[picks[side]]
+        -- (the round map: the Center cell only inside the circle; Below the Map has room for all three)
+        local source = (MM.Frame or (not squareStyle and (side == "center" or Bar.Below())))
+            and Bar.sources[picks[side]]
         Bar.picks[side] = source and picks[side] or nil
         if source then
             shown = true

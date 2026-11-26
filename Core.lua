@@ -558,6 +558,7 @@ local defaults = {
             autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
             keepStealthPage = false,    -- Keep Page 1 in Stealth: bar 1 holds page 1 (druids: Cat Form's) in Stealth / Prowl
             noStancePaging = false,     -- No Auto-Paging for Stances: warriors' bar 1 stays on its page
+            keepFormPage = false,       -- Keep Page 1 On Shapeshift: druids' bar 1 stays on page 1 in Cat and Bear Form
 
             -- Status colouring (one row sets both)
             colors = {
@@ -1008,7 +1009,6 @@ local defaults = {
             keepFocus = false,          -- Keep Quest Focus: a newly accepted quest gives the focus back
             showTags = true,
             showRecipes = true,
-            showCompleteTag = true,     -- Show Complete Tag: green title + "(Complete)" on finished quests
             frameStyle = "custom",      -- Frame Style: blizzard | flareui | custom (Modern; the default, older setups keep FlareUI: Core.lua audit1120) (ObjectiveTracker.lua Build.FrameStyle)
             hideScrollBar = false,      -- Hide Scroll Bar (FlareUI and Custom styles): no thumb; the mouse wheel still scrolls
             questIcons = false,         -- Quest Buttons > Quest Icon: Blizzard's round quest button before each title; click focuses
@@ -1065,7 +1065,7 @@ local defaults = {
             rarityIcon = true,          -- Rarity Icon: the gold elite / silver rare dragon on the bar's end
             castTargetedFlash = false, threatGlow = false, aggroFlash = false,
             defensives = false,         -- Defensives row (big and external defensives), left of the plate
-            clickThrough = false,       -- Click-Through (per type)
+            clickThrough = false,       -- Click-Through (all plates; per type before 7.1)
             -- Plate types (Nameplates.lua C.TYPE_KEYS): types[kind] = { preset = full | compact | tiny |
             -- name | custom, custom = { the type's own values } }; presets are C.PRESETS over the values
             -- here (Enemy Player / NPC Full, Friendly Player / NPC Name Only, Minor Full: C.DEFAULT_PRESET)
@@ -1161,7 +1161,6 @@ local defaults = {
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
             lootWindow = false,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
             lootWindowFreeSlots = false, -- Show Free Bag Slots at the loot window's foot
-            plateCombo = false,         -- Nameplate Combo Points: under Blizzard's plates, with the Nameplates module off (NameplateExtras.lua)
             lootWindowGrowth = "down",  -- Growth: "down" (the top edge at the Edit Mode spot) or "up" (the bottom edge)
             lootWindowOrder = "top",    -- Row Order: the first item in the "top" or the "bottom" row
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
@@ -2694,37 +2693,44 @@ do
         -- dropdowns
         "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
-        "Fade Group", "Visibility", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text",
+        "Fade Group", "Visibility", "Hide", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text",
         "Tint Health", "Combo Points",
         "Bar Texture", "Border", "Absorb Texture",
         -- the Cast Bar section's rows have no prefix: placed by their canon names
         "@Cast Bar Position", "@Cast Bar Texture", "@Cast Bar Border",
         "Buffs", "Debuffs", "@Aura Sort By", "Hide Buffs", "Dispel Icons", "Dispel Highlight", "Aura Swipe", "Aura Timer",
         "Pet Border", "Target Border",
+        -- the merged toggle dropdowns (ns.MergeEditToggles): Show first in Cast Bar, Text in Text, then
+        -- Bar Effects and Icons last of Look's dropdowns
+        "Show", "Bar Effects", "Icons", "Pet Happiness",
         -- sliders
         "Scale", "Size", "Width", "Height", "Portrait Scale", "Max Height", "Power Height",
         "Pet Frame Width", "Pet Frame Height", "Target Frame Width", "Target Frame Height",
         "Icon Size", "Icons per Row", "Totems per Row", "Max Icons", "Max Bars", "Frame Gap", "Group Gap", "Spacing", "Quest Spacing",
-        "Background", "@Cast Bar Background", "@Cast Bar Height", "Level Disc Size",
-        -- each aura kind's size, then how many (the Amount names until the Max Buffs / Max Debuffs rename)
-        "Buff Size", "Max Buffs", "Buff Amount", "Debuff Size", "Max Debuffs", "Debuff Amount",
+        "Background", "@Cast Bar Background", "@Cast Bar Height", "Level Disc Scale",
+        -- each aura kind's size, then how many
+        "Buff Size", "Max Buffs", "Debuff Size", "Max Debuffs",
         -- the Fading sections' sliders: Fade Delay (the chat and the meter) after Faded Opacity
-        "Faded Opacity", "Opacity", "Fade Delay", "Fade Old Lines", "Keep Messages Shown",
+        "Faded Opacity", "Opacity", "Fade Delay",
         -- switches
         -- first of their sections' switches: Range Check (Look) and Show Level (Frame)
         -- the resource bars' two texts right under the sliders, before Range Check
         "Bar Text", "Show Timer",
-        "Range Check", "Show Name", "Show Level", "Show Combat Text", "Show Threat", "Threat Text",
-        "Sort by Role", "Show Player", "Show When Solo", "Show My Frame in a Party", "Group Numbers", "Main Tank Frames", "Show My Frame in a Raid", "Show Target Markers",
+        "Range Check", "Show Name", "Show Level", "Show Combat Text", "Threat Text", "Values on Mouseover",
+        "Sort by Role", "Show Player", "Show When Solo", "Show Player Frame in a Party", "Group Numbers", "Main Tank Frames", "Show Player Frame in a Raid", "Show Target Markers",
         "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
         "Show Icon", "Show Spell Timer", "Center Spell Name", "Edge Glow", "Show Latency", "Show Spell Pushback",
         "Class Colours", "Threat Glow", "Combat Glow", "Bar Animations", "Bar Edge Glow", "Damage Trail",
         -- the aura filters together, then the sort switches
-        "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Dispellable Debuffs Only", "Show Weapon Enchants",
+        "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Weapon Enchants",
         "Reverse Order", "Your Auras First",
+        -- the chat's Fading switches
+        "Fade Old Lines", "Keep Messages Shown",
     }
-    local LEAD = { "Cast Bar" }
+    -- a switch that shows the rows under it goes first in its section (Loot Rolls' Fade in Combat shows
+    -- its Faded Opacity)
+    local LEAD = { "Cast Bar", "Fade in Combat" }
     -- "Name@switch": the place of a name that is a dropdown on some frames and a switch on others
     local canon, lead   -- localized name -> place, built on first use (the locale is loaded by then)
     local function KindRank(kind)
@@ -2763,6 +2769,128 @@ do
     end
 end
 
+-- TOGGLE DROPDOWNS IN EDIT MODE (settings audit 11-26, E1-E4): switches about one thing become one
+-- dropdown of toggles, on every frame at once. Each switch keeps its own get, set, default and hidden;
+-- the dropdown ticks them (a hidden one leaves the list). Found by name, in the sections below; a
+-- section needs two or more of a group, else its switch stays as it is.
+--   Bar Effects: Bar Animations, Bar Edge Glow, Damage Trail (any section)
+--   Show: the cast bar's Show Icon, Show Spell Timer, Center Spell Name, Edge Glow, Show Latency,
+--         Show Spell Pushback (Cast Bar, and the player cast bar's Look and Behaviour)
+--   Text: the timer bars' Show Name, Show Timer, Show Icon (Text)
+--   Icons: every switch in the Icons part a frame hands over with toggleGroup = "Icons"
+do
+    local GROUPS = {
+        { name = "Bar Effects", members = { { "Bar Animations" }, { "Bar Edge Glow" }, { "Damage Trail" } } },
+        { name = "Show", sections = { ["Cast Bar"] = true, Look = true, Behaviour = true },
+          members = { { "Show Icon", "Icon" }, { "Show Spell Timer", "Spell Timer" }, { "Center Spell Name", "Centred Spell Name" },
+                      { "Edge Glow", "Edge Glow" }, { "Show Latency", "Latency" }, { "Show Spell Pushback", "Spell Pushback" } } },
+        { name = "Text", sections = { Text = true },
+          members = { { "Show Name", "Name" }, { "Show Timer", "Timer" }, { "Show Icon", "Icon" } } },
+    }
+    -- (the phrase list reads L["..."] literals: tools/enus.js)
+    ns.EDIT_TOGGLE_WORDS = function()
+        local L = ns.L
+        return L["Bar Effects"], L["Show"], L["Text"], L["Icons"], L["Icon"], L["Spell Timer"], L["Centred Spell Name"],
+            L["Latency"], L["Spell Pushback"], L["Name"], L["Timer"]
+    end
+    local function Hidden(item)
+        local h = item.hidden
+        if type(h) == "function" then
+            local LEM = LibStub("FlareEditMode")
+            return h(LEM.GetActiveLayoutName and LEM:GetActiveLayoutName() or nil) and true or false
+        end
+        return h and true or false
+    end
+    local function Merge(name, list)
+        local L = ns.L
+        local descs = {}
+        for _, m in ipairs(list) do
+            if m.item.desc then descs[#descs + 1] = "* " .. m.text .. ": " .. m.item.desc end
+        end
+        local searches = {}
+        for _, m in ipairs(list) do searches[#searches + 1] = m.item.name end
+        return {
+            name = L[name], kind = LibStub("FlareEditMode").SettingType.Dropdown, multiple = true, toggleMerge = true,
+            search = table.concat(searches, ", "),
+            desc = #descs > 0 and table.concat(descs, "\n") or nil,
+            values = function()
+                local values = {}
+                for i, m in ipairs(list) do
+                    if not Hidden(m.item) then values[#values + 1] = { text = m.text, value = i } end
+                end
+                return values
+            end,
+            get = function(layoutName)
+                local on = {}
+                for i, m in ipairs(list) do
+                    if not Hidden(m.item) and m.item.get(layoutName) then on[#on + 1] = i end
+                end
+                return on
+            end,
+            set = function(layoutName, value, fromReset)
+                for i, m in ipairs(list) do
+                    if fromReset then
+                        m.item.set(layoutName, m.item.default, true)
+                    elseif i == value then
+                        m.item.set(layoutName, not m.item.get(layoutName))
+                    end
+                end
+            end,
+            hidden = function()
+                for _, m in ipairs(list) do if not Hidden(m.item) then return false end end
+                return true
+            end,
+        }
+    end
+    function ns.MergeEditToggles(section, items)
+        local L = ns.L
+        local T = LibStub("FlareEditMode").SettingType
+        local function Take(name, found)
+            if #found < 2 then return end
+            local first
+            for _, m in ipairs(found) do
+                for i, item in ipairs(items) do
+                    if item == m.item then
+                        if not first or i < first then first = i end
+                        break
+                    end
+                end
+            end
+            local taken = {}
+            for _, m in ipairs(found) do taken[m.item] = true end
+            local merged = Merge(name, found)
+            local out = {}
+            for i, item in ipairs(items) do
+                if i == first then out[#out + 1] = merged end
+                if not taken[item] then out[#out + 1] = item end
+            end
+            for i = #items, 1, -1 do items[i] = nil end
+            for i, item in ipairs(out) do items[i] = item end
+        end
+        for _, group in ipairs(GROUPS) do
+            if not group.sections or group.sections[section] then
+                local found = {}
+                for _, member in ipairs(group.members) do
+                    for _, item in ipairs(items) do
+                        if item.kind == T.Checkbox and item.name == L[member[1]] and not item.toggleMerge then
+                            found[#found + 1] = { item = item, text = L[member[2] or member[1]] }
+                            break
+                        end
+                    end
+                end
+                Take(group.name, found)
+            end
+        end
+        -- Icons: the switches a frame marks
+        local icons = {}
+        for _, item in ipairs(items) do
+            if item.kind == T.Checkbox and item.toggleGroup == "Icons" then icons[#icons + 1] = { item = item, text = item.name } end
+        end
+        Take("Icons", icons)
+        return items
+    end
+end
+
 -- Edit Mode dialogs in collapsible sections, in a fixed order for every FlareUI frame:
 --   (Party / Raid / Boss: the group)  Frame  Look  Cast Bar  Auras  Icons  Pet  Target  Fading
 -- One section open at a time, each frame's own for the session: the dialog opens the
@@ -2779,6 +2907,7 @@ function ns.EditSections()
         return hidden and true or false
     end
     local settings = {}
+    local look   -- this dialog's Look section: { items, own, at = its title's index in settings }
     local function Section(key, items)
         -- a unit frame's Portrait, Flip Portrait and Mirror Bars (ns.SplitFrameItems), first in Look
         if key == "Look" and ns.lookCarry then
@@ -2787,9 +2916,35 @@ function ns.EditSections()
             for i = #carry, 1, -1 do table.insert(items, 1, carry[i]) end
         end
         if #items == 0 then return end
+        -- (11-26, E1) the Icons section's switches become one Icons dropdown in Look, after Look's own
+        -- dropdowns and sliders (its other rows, Pet Happiness, go with it); no Look: an Icons section
+        if key == "Icons" and look then
+            for _, item in ipairs(items) do
+                if item.kind == LEM.SettingType.Checkbox then item.toggleGroup = "Icons" end
+            end
+            ns.MergeEditToggles(key, items)
+            ns.OrderEditSettings(items)
+            local at = look.at
+            for _, item in ipairs(look.items) do
+                if item.kind ~= LEM.SettingType.Checkbox then at = at + 1 end
+            end
+            for _, item in ipairs(items) do
+                local i = #look.items + 1
+                look.items[i], look.own[i] = item, item.hidden
+                item.hidden = function(...)
+                    if not open.Look then return true end
+                    return IsHidden(look.own[i], ...)
+                end
+                at = at + 1
+                table.insert(settings, at, item)
+            end
+            return
+        end
+        ns.MergeEditToggles(key, items)   -- related switches as one dropdown of toggles (11-26)
         ns.OrderEditSettings(items)   -- dropdowns, sliders, switches; the same order on every frame
         local own = {}
         for i, item in ipairs(items) do own[i] = item.hidden end
+        if key == "Look" then look = { items = items, own = own, at = #settings + 1 } end
         settings[#settings + 1] = { name = "|cffffd100" .. ns.L[key] .. "|r", kind = LEM.SettingType.Expander, default = false,
             editSection = key,
             get = function() return open[key] or false end,
@@ -2824,12 +2979,11 @@ end
 -- Threat, Five-Second Rule, the swing timers' marks...).
 do
     local PARTS = {
-        size = { "Scale", "Width", "Height", "Portrait Scale", "Power Height", "Size",
-                 "Power Bar for Mana Users Only", "Only Mana Power Bars" },
+        size = { "Scale", "Width", "Height", "Portrait Scale", "Power Height", "Size", "Only Mana Power Bars" },
         -- the frame's look picks: first in its Look section (ns.EditSections takes them there)
-        look = { "Portrait", "Flip Portrait", "Mirror Bars" },
-        text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text", "Show Name", "Show Level", "Show Combat Text", "Show Threat",
-                 "Threat Text", "Bar Text", "Show Timer", "Level Disc Size", "Values on Mouseover" },
+        look = { "Portrait", "Flip Portrait", "Mirror Bars", "Combo Points" },
+        text = { "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text", "Show Name", "Show Level", "Show Combat Text",
+                 "Threat Text", "Bar Text", "Show Timer", "Show Icon", "Level Disc Scale", "Values on Mouseover" },
     }
     -- the section titles reach ns.L as variables (EditSections): listed here for the phrase list
     -- (tools/enus.js reads L["..."] literals)

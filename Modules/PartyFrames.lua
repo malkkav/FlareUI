@@ -1323,6 +1323,15 @@ end
 -- Where a place's auras start and which way they grow
 local SIDE_GAP = 4   -- beside the frame
 local EDGE_GAP = K and K.AURA_GAP or 2   -- above and below it, as on the unit frames
+-- the room the cast bar takes on its side (Cast Bar > Position: Above or Below) while it shows, else nil:
+-- the auras on that side move past it, as on every frame with a cast bar
+function PF.CastRoom(f, top)
+    if not (f.Cast and f.Cast:IsShown() and f.Cast.isEnabled()) then return nil end
+    local st = TS(f)
+    if (st.castbarPosition == "TOP") ~= top then return nil end
+    -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
+    return (st.castHeight or 16) + 2 * K.CAST_GAP
+end
 local function AuraAnchor(f, pos)
     local gap, inset = SIDE_GAP, 2
     if EDGE_PLACES[pos] then gap = EDGE_GAP end
@@ -1333,21 +1342,18 @@ local function AuraAnchor(f, pos)
         point, rel, relPoint, x, y, growH, growV = "TOPLEFT", f, "TOPRIGHT", gap, -K.INSET, H.Right, H.Down
     elseif pos == "LEFT" then
         point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "TOPLEFT", -gap, -K.INSET, H.Left, H.Down
-    elseif pos == "ABOVE" then
-        point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET + RingClear(f, true, gap), gap, H.Right, H.Up
-    elseif pos == "ABOVE_RIGHT" then
-        point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", f, "TOPRIGHT", -K.INSET - RingClear(f, false, gap), gap, H.Left, H.Up
-    elseif pos == "ABOVE_WIDE" then
-        -- the whole width, from the left (past the ring when it is on the left)
-        point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET + RingClear(f, true, gap), gap, H.Right, H.Up
-    elseif pos == "BELOW" or pos == "BELOW_RIGHT" or pos == "BELOW_WIDE" then
-        -- under the frame, pushed below the cast bar while it shows
-        local below = gap
-        if f.Cast and f.Cast:IsShown() and f.Cast.isEnabled() then
-            local st = TS(f)
-            -- the cast bar's gap from the frame, the bar, and the same gap again before the auras
-            below = (st.castHeight or 16) + 2 * K.CAST_GAP
+    elseif pos == "ABOVE" or pos == "ABOVE_RIGHT" or pos == "ABOVE_WIDE" then
+        -- over the frame, pushed above the cast bar while it shows there
+        local above = PF.CastRoom(f, true) or gap
+        if pos == "ABOVE_RIGHT" then
+            point, rel, relPoint, x, y, growH, growV = "BOTTOMRIGHT", f, "TOPRIGHT", -K.INSET - RingClear(f, false, above), above, H.Left, H.Up
+        else
+            -- (ABOVE_WIDE: the whole width, from the left, past the ring when it is on the left)
+            point, rel, relPoint, x, y, growH, growV = "BOTTOMLEFT", f, "TOPLEFT", K.INSET + RingClear(f, true, above), above, H.Right, H.Up
         end
+    elseif pos == "BELOW" or pos == "BELOW_RIGHT" or pos == "BELOW_WIDE" then
+        -- under the frame, pushed below the cast bar while it shows there
+        local below = PF.CastRoom(f, false) or gap
         if pos == "BELOW_RIGHT" then
             point, rel, relPoint, x, y, growH, growV = "TOPRIGHT", f, "BOTTOMRIGHT", -K.INSET - RingClear(f, false, below), -below, H.Left, H.Down
         else
@@ -2014,8 +2020,9 @@ local function LayoutTexts(f)
     local health, power = f.Health, f.Power
     local T = K.TEXT_INSET
     f.Name:ClearAllPoints()
-    -- Show Name: off hides it on the party, raid and boss frames
-    f.Name:SetShown(st.showName ~= false)
+    -- Show Name: off hides it on the raid tiles (raid frames, party Raid Style); Forever Style's name box
+    -- always shows it
+    f.Name:SetShown(not raid and OnPlate(f) or st.showName ~= false)
     if not levelOnRing then f.Level:ClearAllPoints() end
     f.HealthText:ClearAllPoints()
     f.PowerText:ClearAllPoints()
@@ -2188,8 +2195,7 @@ function PF.LayoutSlotTexts(f)
     -- the name: the plate keeps its name box (LayoutTexts); off it, in the slot holding a name pick,
     -- stopping short of the text across the bar
     f.btFullName = true
-    -- (Forever Style's name box: Show Name picks which name, as Raid Style's)
-    if plate and not raid and st.nameShown then f.btFullName = BT.FullOf(st.nameShown) end
+    -- (Forever Style's name box: always the full name, no option, 11-26)
     if plate or raid then return end   -- (Raid Style: on top of the tile, as LayoutTexts placed it)
     local slots, texts = PF.TileSlots(f, "health"), PF.TileSlotTexts(f, "health")
     local nameSlot, pick
@@ -2460,11 +2466,11 @@ local function LayoutMember(f)
         end
         local castStyle = CastStyle(st, f)
         castStyle.fontKey = PF.FontKey(f)
-        -- Above on the boss and flag carrier frames (their Cast Bar > Position); the party's is always below
+        -- Above or Below (Cast Bar > Position: party, boss and flag carrier frames)
         K.LayoutCastBar(f.Cast, castStyle, f, st.castbarPosition == "TOP" and "TOP" or "BOTTOM", leftExtra, rightExtra)
-        -- the auras below move down while it shows (in a fight too: they are not protected)
+        -- the auras on its side move past it while it shows (in a fight too: they are not protected)
         f.Cast.onShownChanged = f.Cast.onShownChanged or function()
-            for _, pos in ipairs(BELOW_PLACES) do
+            for _, pos in ipairs(st.castbarPosition == "TOP" and ABOVE_PLACES or BELOW_PLACES) do
                 local entry = f.AuraPos and f.AuraPos[pos]
                 if entry and entry.container:IsShown() then
                     local point, rel, relPoint, x, y = AuraAnchor(f, pos)
@@ -2488,7 +2494,8 @@ end
 local SIDE = { STACK_GAP = 2 }
 function SIDE.BottomY(st, owner)
     local y = -PET_GAP - LanesExtent(st, BELOW_PLACES)
-    if owner.Cast and owner.Cast.isEnabled() then y = y - (st.castHeight or 16) - K.CAST_GAP - K.INSET end
+    -- (a cast bar Above leaves the bottom row where it is)
+    if owner.Cast and owner.Cast.isEnabled() and st.castbarPosition ~= "TOP" then y = y - (st.castHeight or 16) - K.CAST_GAP - K.INSET end
     return y
 end
 function SIDE.RightX(st)
@@ -3613,7 +3620,7 @@ local function BuildSettings()
           -- only with Show Player, as Hide Player Frame in a Party: without it, your own frame could vanish
           hidden = function() return not getP("showPlayer", showPlayerDefault)() end,
           desc = L["Your party frame shows even when you're not in a group, so you can click-cast on yourself."] },
-        { name = L["Show My Frame in a Party"], kind = LEM.SettingType.Checkbox, default = true,   -- (saved the other way round: hidePlayerInParty)
+        { name = L["Show Player Frame in a Party"], kind = LEM.SettingType.Checkbox, default = true,   -- (saved the other way round: hidePlayerInParty)
           get = function(...) return not getP("hidePlayerInParty", false)(...) end,
           set = function(_, value)
               local party = GetPartyDb()
@@ -3695,14 +3702,15 @@ local function BuildSettings()
         ns.NameAbove.Setting({ db = function() return (S()) end, changed = function() Refresh() end,
             hidden = function() return IsRaidStyle() or onPlate() end }),
         -- (Classic off the plate: the name is a Health Text pick)
-        -- (Forever Style's name box and Raid Style: one dropdown, Off and which name)
+        -- (Raid Style only: one dropdown, Off and which name. Forever Style's name box has no name
+        -- options: it always shows the full name, as Blizzard's, Malkkav 11-26)
         ns.BarText.ShowNameSetting({ db = function() return (S()) end, changed = function() Refresh() end,
-            hidden = function() return not onPlate() and not IsRaidStyle() end,
+            hidden = function() return not IsRaidStyle() end,
             first = function() return IsRaidStyle() and ns.BarText.OldFirstOnly() end }),
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = getS("showLevel"), set = setS("showLevel") },
         K.ValuesOnHoverSetting(getS("valuesOnHover"), setS("valuesOnHover")),
-        -- Level Disc Size (per frame): the ring styles' level disc, with Show Level on
-        { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+        -- Level Disc Scale (per frame): the ring styles' level disc, with Show Level on
+        { name = L["Level Disc Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
           formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local v = getS("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
           set = function(layoutName, value) setS("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
@@ -3788,6 +3796,10 @@ local function BuildSettings()
           desc = L["The cast bar's border. Frame Border matches the frame's own border."] },
         { name = L["Height"], canon = "Cast Bar Height", search = L["Cast Bar Height"], kind = LEM.SettingType.Slider, default = D.castHeight, minValue = 8, maxValue = 40, valueStep = 1,
           get = getS("castHeight"), set = setS("castHeight"), hidden = noCast },
+        -- (11-26) Above or Below, as the boss and flag carrier frames; the auras on that side move past it
+        { name = L["Position"], canon = "Cast Bar Position", search = L["Cast Bar Position"], kind = LEM.SettingType.Dropdown, default = "BOTTOM",
+          values = { { text = L["Above"], value = "TOP", isRadio = true }, { text = L["Below"], value = "BOTTOM", isRadio = true } },
+          get = function() return getS("castbarPosition")() or "BOTTOM" end, set = setS("castbarPosition"), hidden = noCast },
         (function()
             -- the cast bar's own Background (as on the unit frames); unset, the frame's
             local item = K.BgOpacitySetting(K.BAR_BG_OPACITY,

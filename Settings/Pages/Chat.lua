@@ -67,7 +67,7 @@ S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", 
 -- from the chat's Border (Chat.lua Chat.EditBoxBorder)
 S:Row{ key = "ch.editBoxStyle", kind = "choice", path = "chat.editBoxStyle", choices = { "flareui", "modern" },
     apply = Refresh, section = "ch.editBoxSection" }
-S:Row{ key = "ch.editBoxBorder", kind = "choice", choices = { "none", "thick", "thin" }, apply = Refresh, section = "ch.editBoxSection",
+S:Row{ key = "ch.editBoxBorder", kind = "choice", choices = { "none", "thin", "thick" }, apply = Refresh, section = "ch.editBoxSection",
     get = function() return ns.Chat and ns.Chat.EditBoxBorder(S:GetPath("chat")) or "thin" end,
     set = function(v) S:SetPath("chat.editBoxBorder", v) end,
     resetValue = function() return "thin" end,
@@ -128,13 +128,25 @@ S:Row{ key = "ch.icons", kind = "dropdown", tab = "tweaks", section = "ch.format
         for _, key in ipairs(CHAT_ICONS) do S:SetPath("chat." .. key, set[key] and true or false) end
     end,
     resetValue = function() return "none" end }
--- in pairs: names | NPCs, whispers | time, ...;
--- the level last
-Format("formatPlayer", "formatPlayer")
-Format("formatNPC", "formatNPC")
+-- Names: Better Player Names (formatPlayer), Better NPC Names (formatNPC) and Level Before Names
+-- (showLevel) as toggles, beside Icons; then Whisper Markers | Better Timestamps
+local NAMES = { { "player", "formatPlayer" }, { "npc", "formatNPC" }, { "level", "showLevel" } }
+local NAMES_SPEC = { exclusive = { "none" }, tokens = { "player", "npc", "level" }, empty = "none" }
+local function NamesValue(read)
+    local on = {}
+    for _, n in ipairs(NAMES) do if read("chat." .. n[2]) then on[#on + 1] = n[1] end end
+    return #on > 0 and table.concat(on, ",") or "none"
+end
+S:Row{ key = "ch.names", kind = "dropdown", tab = "tweaks", section = "ch.formatting", toggles = NAMES_SPEC, apply = Refresh,
+    choices = { "none", { divider = true }, "player", "npc", "level" },
+    get = function() return NamesValue(function(p) return S:GetPath(p) end) end,
+    set = function(value)
+        local on = ns.Conditions.Set(value, NAMES_SPEC)
+        for _, n in ipairs(NAMES) do S:SetPath("chat." .. n[2], on[n[1]] and true or false) end
+    end,
+    resetValue = function() return NamesValue(function(p) return S:DefaultPath(p) end) end }
 Format("whisperMarkers", "whisperMarkers")
 Format("timestamps", "betterTimestamps")
-Format("levels", "showLevel")
 
 S:FontRows{ module = "ch", tab = "fonts", section = "ch.fonts", apply = Refresh, fonts = {
     { key = "text", path = "chat.chatFont" },

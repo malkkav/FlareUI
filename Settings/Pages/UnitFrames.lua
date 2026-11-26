@@ -82,7 +82,7 @@ S:Row{
 local function ModernStyle() return not (ns.UFRing and ns.UFRing.Style() ~= "addon") end
 S:Row{ key = "uf.simplePet", path = "unitframes.simplePet", reload = true, half = true, hidden = ModernStyle }
 S:Row{ key = "uf.simpleTargetOf", path = "unitframes.simpleTargetOf", reload = true, half = true, hidden = ModernStyle }
--- (Level Disc Size: each frame's Edit Mode Text section)
+-- (Level Disc Scale: each frame's Edit Mode Text section)
 S:Row{ key = "uf.auraShape", kind = "choice", path = "unitframes.auraStyle", choices = { "square", "round" }, apply = Refresh }
 S:Row{ key = "uf.auraSwipe", kind = "choice", path = "unitframes.auraSwipe", choices = { "none", "icon", "border", "both" }, apply = Refresh }
 S:Row{ key = "uf.auraTimer", kind = "choice", path = "unitframes.auraTimer", choices = { "none", "below", "bottom", "middle" }, apply = Refresh }   -- (Off first in every dropdown)
@@ -161,6 +161,10 @@ for _, frame in ipairs(FONT_FRAMES) do
             noSize = element == "level",
             font = function() return UFM.FontDb(key, element) end,
             default = function() return ns.UFFontDefault(key, element) end,
+            -- (11-26, Aphoex) the player frame's Cast Name and Spell Timer style the cast bar on the player
+            -- frame; with the Player Cast Bar on, its own section (Player Cast Bar) holds them, so they hide here
+            hidden = key == "player" and (element == "cast" or element == "castTime")
+                and function() return S:GetPath("unitframes.playerCastbar.enabled") and true or false end or nil,
         }
     end
     S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts,

@@ -1,3 +1,104 @@
+# FlareUI 7.1
+
+A big tidy-up of the settings: fewer rows, clearer names and a smarter Info Panel. Plus a batch of fixes from Discord.
+
+**Restart the game fully after updating.** This version adds a new file, and a /reload doesn't load it.
+
+**We need your help testing:**
+- **Forever Style, rogues and druids:** build combo points on a target. They should show round the target's portrait.
+- **Edit Mode:** open any unit frame. Check the new **Icons**, **Bar Effects** and cast bar **Show** lists.
+- **Friendly Name Only plates with Show Target's Plate:** target a player, then clear the target. The name should show once, every time.
+- **Druids with Keep Page 1 > On Shapeshift:** go into Cat and Bear Form. Action Bar 1 should stay on its first page.
+
+## Heads up
+Some things change even if you change nothing:
+- **Nameplates, Click-Through:** now one setting for all plates. If you had it on for any plate type, it's now on for all of them.
+- **Nameplates, Name Only Mode:** no longer greys out the other options. Show Plates in Combat and Show Target's Plate still give the plate its bar.
+- **Nameplates, Crowd Control and Defensives:** their icons use the Auras look. Their own Aura Icon Shape, Aura Swipe and Aura Timer are gone.
+- **Forever Style:** the name box always shows the full name, as on Blizzard's frames. Show Name is gone from Forever Style.
+- **Swing bars:** Waiting State, Queued Attack Colour and Stand-Still Zone are always on.
+- **Swing bars, Off-Hand Swing:** shows only with a weapon in your off hand.
+- **Quest Tracker:** finished quests always show "(Complete)".
+- **Buff Reminders:** the In Dungeons and In Raids timings are gone. Remind Before It Ends counts everywhere.
+- **Gryphons:** now part of Quality of Life. They work with Action Bars off, and go back to Blizzard's with Quality of Life off.
+
+## Highlights
+- **Info Panel:** a small grey line under each option's title shows its default, whether it needs a reload, and what it needs to be on (in orange while that greys it out). Choice names in lists are gold, and every description was rewritten to be shorter and clearer.
+- **Edit Mode, unit frames:** related switches are now one dropdown each, on every frame:
+  - **Bar Effects:** Bar Animations, Bar Edge Glow, Damage Trail
+  - **Icons:** resting, leader, PvP, ready check, raid markers and the rest, now in Look
+  - **Show** (cast bars): Icon, Spell Timer, Centred Spell Name, Edge Glow, Latency, Spell Pushback
+  - **Text** (swing, flight, seal and duration bars): Name, Timer, Icon
+- **Copy Look to All Frames:** a button in each unit frame's Edit Mode window. It copies that frame's Bar Texture, Border, Absorb Texture, Background, Class Colours and Bar Effects to every other frame.
+
+## New
+
+### Unit Frames
+- Party: cast bar **Position** (Above or Below). Auras on that side move past it.
+- Flag carriers: **Range Check** (off) and, in Modern Style, **Portrait** (None or Class Icon).
+- Main tank targets: **Target Border** and **Show Target Markers**, as on party targets.
+- Pet: **Threat Glow** in every style, the simple pet frame too.
+
+### Resource Bars
+- Health, power and mana bars: **Values on Mouseover**.
+- Druid Mana: **In Caster Form** is now a choice in its **Visibility** list.
+
+### Nameplates
+- Name Only Mode: **Show Level**, the level in front of the name.
+
+### Action Bars
+- **Keep Page 1** gets **On Shapeshift** for druids' Cat and Bear Form (off).
+
+### Minimap
+- **Border:** your Shared Media borders, under a line below FlareUI Thick. They may not line up with the map's edge.
+- Round minimap: with **Below the Map** on, the Info Bar can use all three cells.
+
+## Changed
+
+### Settings, merged into one dropdown each
+- Action Bars: **Keep Page 1** (In Stealth, In Stances, On Shapeshift) and Fake Cooldown Manager **Bars**.
+- Nameplates: **Target Highlight**, **Threat Effects**, **Quest Marks** (Icon, Progress), **Kick Ready** (Colour, Mark), **Group Colours** (Party, Raid) and **Under the Name** (Title, Guild).
+- Meters: **Pull Warning** (Flash, Sound; the sound can play on its own now) and **Auto Reset**.
+- Chat: **Names** (Better Player Names, Better NPC Names, Level Before Names).
+- Tooltips: **Guild** (Off, Name, Name and Rank).
+- General: **Language**, with Game Language first.
+- Bags & Looting: **Loot Window** (Off, Grow Down, Grow Up). Elixirs: **All in Your Bags** is now the top choice of **Elixirs and More**.
+- Quality of Life: **Rumble** (Alerts, Procs). Buff Reminders: **Hide** (In Rested Areas, While Mounted) in Edit Mode.
+
+### Settings, moved and renamed
+- Quality of Life: Extras and Systems are one **Extras** tab. General: the General tab is now **Account**, and fonts are split into **Global Font** and **Game Fonts**.
+- **Fake CM** is now **Fake Cooldown Manager** everywhere. Its note says why you'd use it over Blizzard's.
+- Sizes in % are now **Scale** (Combat Text, Drawer Button, Name Only, Level Disc).
+- Nameplate Font is now **World Names Font**: it sets the names over characters in the world and on Blizzard's nameplates.
+- Nameplates: Health Text is **Bar Text**, Threat Percentage is **Threat Text**. Show Plates in Combat moved to Visibility.
+- Tooltips: Coloured Borders and Class-Coloured Names moved to the first tab.
+- Raid: the group order row is now **Group Order**, and Groups is **Orientation**.
+- Many smaller regroups, so every section reads in the same order.
+
+### Unit Frames
+- **Bar Text** on mirrored frames: Left and Right in the menu are now the screen's sides. Your frames look the same as before.
+- Edit Mode: **Combo Points** moved to Look. Opacity on Buff Reminders moved to Fading.
+
+### Removed
+- Pet: **Only My Debuffs** (it only emptied the list).
+- Target and target of target: **Has a Target** in Visibility (always true on those frames).
+
+## Fixed
+
+### Unit Frames
+- Forever Style: combo points didn't show on the target frame.
+- The player frame's **Cast Name** and **Spell Timer** fonts showed while the Player Cast Bar was on, though they don't style it. They now hide then; the bar's fonts are under **Player Cast Bar**.
+
+### Nameplates
+- Friendly Name Only plates with **Show Target's Plate** and **Names Above Plate**: the name went missing on your target and showed twice after.
+
+### Minimap
+- The **FlareUI Minimap Button** switch was greyed out with Drawer Style Off.
+
+### Edit Mode
+- Raid: two rows were called Sort By.
+- Loot Rolls: **Faded Opacity** showed above the switch that turns it on.
+
 # FlareUI 7.0.18
 
 Dragons for Modern frames, and the end of blocked bag items (we hope, for real this time).
@@ -314,57 +415,3 @@ Some things look different even if you change nothing:
 
 ### Quality of Life
 - A hidden **Raid Manager** still showed with Action Bars off, or when you joined a group in a fight.
-
-# FlareUI 7.0.14
-
-The blocked bag clicks: potions, recipes, crates and gear that the game refused to use after a visit to the bank. It's the worst bug FlareUI ever had.
-
-**A HUGE thank you to parchinskiy,** who hunted it down test after test until it had nowhere left to hide. Awesome work!
-
-**We need your help testing:**
-- **Bags:** use items after you visit the bank, with **Crafting Bag in Backpack** and **Keyring in Backpack** on. If one is still blocked, send us what `/fui errors` shows.
-- **Crafting Bag in Backpack:** move, split, search and use items in its section.
-- **Bank:** buying bank slots, and opening it twice in a row.
-- **Controller:** radials on your bar if you play on two computers.
-- **Nameplates:** combo points with your own plate width.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Nameplates:** combo points follow the plate's width. A width of 150 looks as before. Wider plates get bigger points, narrower ones smaller.
-- **Bags & Looting:** switching **Combined Backpack** in FlareUI's settings asks for a reload.
-- **Dispel icons:** enemies' debuffs no longer show one on the target, focus and boss frames.
-
-## New
-
-### Quality of Life
-- **Nameplate Combo Points** (off): combo points under your target, on Blizzard's own nameplates. It's on the Gameplay tab while FlareUI's Nameplates are off.
-
-### Radial Menu
-- **Pet commands** (Attack, Follow, the stances and the rest of your pet's bar): first under Pet Spells.
-
-## Changed
-
-### Nameplates
-- Bigger maximum sizes: height 50, cast bar 40, buffs and debuffs 50, crowd control and defensives 60.
-- Plates grow and shrink smoothly with **Target Scale**.
-
-### Chat
-- **Fade Delay** shows in Edit Mode with any Visibility while **Fade Old Lines** is on.
-
-## Fixed
-
-### Bags
-- Items blocked after a visit to the bank:
-  - The crafting bag in the backpack no longer opens Blizzard's bag window. By parchinskiy.
-  - Keyring in the backpack: FlareUI cleans up after itself when it opens Blizzard's window.
-  - Bags that open with the character window or the guild bank no longer add to it.
-
-### Radial Menu
-- Radials on the controller bar broke when you played on two computers. They go by the radial's name now: give it the same name on both.
-
-### Auras
-- Dispel icons showed on enemies' debuffs.
-
-### Performance
-- **Minimap:** with the coordinates on the Info Bar, less memory while you stand still.
-- The language files are smaller: phrases nothing uses any more are gone.

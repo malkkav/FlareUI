@@ -115,7 +115,7 @@ assert(row("ab.xpBubbles"):Get() == "10" and setting("actionbars.xpbar.bubbles")
 set("ab.xpQuest", "zone")
 assert(row("ab.xpQuest"):Get() == "zone" and setting("actionbars.xpbar.questXP"))
 set("qt.sort", "progress")
-assert(row("qt.zoneHeaders"):IsDisabled(), "no headings while the zones are mixed")
+assert(not row("qt.zoneHeaders"):IsDisabled(), "(11-26) never greyed: its text says it needs a zone sort")
 set("qt.sort", "zone")
 assert(not row("qt.zoneHeaders"):IsDisabled())
 set("ab.hideKeybinds", false)
@@ -203,18 +203,27 @@ assert(row("au.totemShape"):Get() == "square" and setting("unitframes.totems.sha
 set("br.upkeepPick", "camping,durability")
 assert(row("br.upkeepPick"):Get() == "durability,camping" and setting("auras.reminder.gathering") == false)
 -- (11-25) Consumables to Watch: food, flask and elixirs, each on its own
-assert(row("br.consumables"):Get() == "none" and row("br.elixirSource"):IsDisabled())
+assert(row("br.consumables"):Get() == "none" and row("br.elixirs"):IsDisabled() and row("br.consumablesWhere"):IsDisabled())
 set("br.consumables", "food")
 assert(row("br.consumables"):Get() == "food" and setting("auras.reminder.consumables") == "instance")
+assert(not row("br.consumablesWhere"):IsDisabled())
+-- (11-26) Elixirs and More: All in Your Bags on top replaces Elixirs to Watch
+set("br.consumables", "food,elixirs")
+set("br.elixirs", "bags")
+assert(row("br.elixirs"):Get() == "bags" and setting("auras.reminder.elixirSource") == "bags")
+set("br.elixirs", "none")
+assert(setting("auras.reminder.elixirSource") == "ticked" and row("br.elixirs"):Get() == "none")
+set("br.consumables", "food")
 assert(setting("auras.reminder.food") == true and setting("auras.reminder.flask") == false and setting("auras.reminder.elixirOn") == false)
-assert(row("br.elixirSource"):IsDisabled() and row("br.elixirMode"):IsDisabled() and row("br.elixirs"):IsDisabled(), "no elixirs")
+assert(row("br.elixirMode"):IsDisabled() and row("br.elixirs"):IsDisabled(), "no elixirs")
 set("br.consumables", "none")
 assert(setting("auras.reminder.consumables") == "off" and row("br.consumables"):Get() == "none")
 set("br.consumables", "food,flask,elixirs")
 assert(row("br.consumables"):Get() == "food,flask,elixirs" and setting("auras.reminder.consumables") == "instance")
-assert(not row("br.elixirSource"):IsDisabled())
-set("br.elixirSource", "bags")
-assert(row("br.elixirs"):IsDisabled() and calls.reminders == 5)
+assert(not row("br.elixirs"):IsDisabled() and not row("br.elixirMode"):IsDisabled())
+local before = calls.reminders
+set("br.elixirs", "bags")
+assert(calls.reminders == before + 1, "a change refreshes the reminders")
 local owned = row("au.hidePick"):Choices()
 assert(#owned == 3 and owned[2].divider and owned[3].value == 103)
 row("au.hidePick"):Set(103)
@@ -242,12 +251,12 @@ assert(shadow:Get() == "strong" and ns.UnitFrames.FontDb("player", "auras").shad
 S:ResetAllFonts()
 assert(shadow:Get() == "none" and not S:AnyFontChanged(), "reset restores path and per-frame font defaults")
 
-assert(row("language.override"):IsDisabled())
-set("language.useGame", false)
+-- (11-26) one Language list: Game Language first, then each language
+assert(row("language.override"):Get() == "game" and not row("language.override"):IsDisabled())
 set("language.override", "frFR")
-assert(not row("language.override"):IsDisabled() and ns.db.global.language == "frFR" and S.pending.language)
-set("language.useGame", true)
-assert(not S.pending.language, "returning to the game's language clears the reload")
+assert(ns.db.global.useGameLanguage == false and ns.db.global.language == "frFR" and S.pending.language)
+set("language.override", "game")
+assert(ns.db.global.useGameLanguage == true and not S.pending.language, "returning to the game's language clears the reload")
 set("qol.move", true)
 assert(setting("tweaks.moveAnyFrame") and setting("tweaks.moveLootToasts"))
 set("qol.uiScale", "custom")
@@ -293,6 +302,43 @@ do
     ui:flushTimers()
     assert(#logged == 1 and logged[1] == "Cooldown Manager switch: stayed off")
     E.SetCVar, ns.LogError, ns.CooldownManager = setCVar, log, cm
+end
+
+-- (11-26) the panel's new toggle dropdowns write the old switches, each on its own
+do
+    set("ab.keepPage", "stealth,shapeshift")
+    assert(setting("actionbars.keepStealthPage") == true and setting("actionbars.noStancePaging") == false
+        and setting("actionbars.keepFormPage") == true)
+    set("ab.fcmBars", "bar2,bar5")
+    assert(setting("fcm.bars.bar2.enabled") == true and setting("fcm.bars.bar1.enabled") == false
+        and row("ab.fcmBars"):Get() == "bar2,bar5")
+    set("ab.fcmBars", "none")
+    set("tt.guild", "rank")
+    assert(setting("tooltips.showGuild") == true and setting("tooltips.showGuildRank") == true)
+    set("tt.guild", "off")
+    assert(setting("tooltips.showGuild") == false and row("tt.guild"):Get() == "off")
+    set("dm.pullWarning", "sound")
+    assert(setting("damagemeter.threatPullFlash") == false and setting("damagemeter.threatPullSound") == true)
+    set("dm.autoReset", "group")
+    assert(setting("damagemeter.resetOnInstance") == false and setting("damagemeter.resetOnGroupLeave") == true)
+    set("ch.names", "npc,level")
+    assert(setting("chat.formatPlayer") == false and setting("chat.formatNPC") == true and setting("chat.showLevel") == true)
+    set("qol.rumble", "procs")
+    assert(setting("tweaks.rumbleAlerts") == false and setting("tweaks.rumbleProcs") == true)
+    set("bl.lootWindow", "up")
+    assert(setting("tweaks.lootWindow") == true and setting("tweaks.lootWindowGrowth") == "up")
+    set("bl.lootWindow", "off")
+end
+
+-- (11-26, I2/I3) the Info Panel's meta line and gold choice names
+do
+    local meta = S:RowMeta(row("qol.uiScale"))
+    assert(meta and meta:find("Needs a reload", 1, true) and meta:find("All characters", 1, true), tostring(meta))
+    local feed = S:RowMeta(row("bl.lootFeedMoney"))
+    assert(feed == nil or not feed:find("Needs a reload", 1, true))
+    assert(S:Format("Pick one:\n* Fast: quick\n* Slow: calm"):find("|cffffd100Fast|r:", 1, true))
+    assert(S:Format("* First: at the start"):find("^%* |cffffd100First|r:"))
+    assert(S:RowMeta(row("ab.fcmSetup")) == nil, "buttons have no meta line")
 end
 
 print("PASS: settings pages preserve saved values, dependencies and live callbacks")
