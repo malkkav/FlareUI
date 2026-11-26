@@ -369,26 +369,28 @@ do
     party.raid.icons = raidIcons
 end
 
--- a tile with the Elite & Rare skull (the boss frames'): gold or silver border with it, bronze without it
--- and in the ring styles
+-- a tile with Elite & Rare (the boss frames'): the dragon, the border bronze for every unit (11-26: no
+-- gold or silver any more); no dragon for the rest and in the ring styles
 do
-    local tile = { fuiUnit = a.fuiUnit, Border = env.CreateFrame("Frame", nil, a), ClassIcon = a:CreateTexture() }
+    local tile = { fuiUnit = a.fuiUnit, Border = env.CreateFrame("Frame", nil, a), Overlay = env.CreateFrame("Frame", nil, a), ClassIcon = a:CreateTexture() }
+    local function dragon() return tile.FUIDragon and tile.FUIDragon.kind end
     local classify, kind = env.UnitClassification, nil
     env.UnitClassification = function() return kind end
-    local rank = ns.UnitFrames.RANK_BORDER
-    local function at(c)
+    tile.Border:SetBackdropBorderColor(0.1, 0.2, 0.3, 1)
+    -- the border keeps whatever colour it had: the dragon alone shows the rank
+    local function at()
         pf.UpdateClassIcon(tile)
         local r, g, b = tile.Border:GetBackdropBorderColor()
-        return r == c.r and g == c.g and b == c.b
+        return r == 0.1 and g == 0.2 and b == 0.3
     end
     kind = "worldboss"
-    assert(at(rank.elite) and tile.ClassIcon:IsShown())
+    assert(at() and dragon() == "Boss" and not tile.ClassIcon:IsShown())
     kind = "rareelite"
-    assert(at(rank.rare))
+    assert(at() and dragon() == "Rare")
     tile.ringKind = "boss"
-    assert(at(ns.BORDER_COLOR) and not tile.ClassIcon:IsShown())
+    assert(at() and dragon() == nil)
     tile.ringKind, kind = nil, "normal"
-    assert(at(ns.BORDER_COLOR))
+    assert(at() and dragon() == nil)
     env.UnitClassification = classify
 end
 print("PASS: party frames live health, role/order, secure registration, pets, targets and Edit Mode")

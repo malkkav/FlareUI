@@ -28,9 +28,9 @@ local PF = ns.PartyFrames
 local Tile = PF and PF.Tile
 
 local MAX_BOSSES = 5
-local BASE_POSITION = { point = "RIGHT", x = -10, y = -11 }
+local BASE_POSITION = { point = "RIGHT", x = -26, y = -11 }   -- Addon Style; Malkkav's spot (11-26)
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
-local DEFAULT_POSITION = { point = "RIGHT", x = -10, y = -11 }
+local DEFAULT_POSITION = { point = "RIGHT", x = -26, y = -11 }
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 
 local HOSTILE_RGB = { 0.87, 0.27, 0.27 }

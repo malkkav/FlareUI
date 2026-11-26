@@ -709,10 +709,11 @@ local function GetBorderFile(name)
     return LSM:Fetch("border", name) or BORDER_FILE
 end
 
--- fixed bronze at rest (an elite's or rare's own colour: UF.SetBorderRank), a status colour (threat) otherwise
+-- fixed bronze at rest, a status colour (threat) otherwise (elites and rares show the dragon,
+-- UnitFramesDragon.lua, not a border colour: Malkkav 11-26)
 -- (each tint forgets the glow UF.SetBorderGlow remembers, so its next call sets the border again)
 local function ResetBorderTint(border)
-    local c = border.fuiRank and UF.RANK_BORDER[border.fuiRank] or DEFAULT_BORDER_COLOR
+    local c = DEFAULT_BORDER_COLOR
     border.fuiGlow = nil
     border:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
 end
@@ -720,17 +721,6 @@ end
 local function SetBorderTint(border, r, g, b)
     border.fuiGlow = nil
     border:SetBackdropBorderColor(r, g, b, 1)
-end
-
--- Elite & Rare: off the ring styles the frame's border at rest is gold for an
--- elite, silver for a rare; kind nil: bronze. A glow keeps the border, which comes back to this after it.
-UF.RANK_BORDER = { elite = { r = 1, g = 0.82, b = 0.25, a = 1 }, rare = { r = 0.80, g = 0.83, b = 0.87, a = 1 } }
-function UF.SetBorderRank(border, kind)
-    if not border or border.fuiRank == kind then return end
-    border.fuiRank = kind
-    if border.fuiGlow == true then return end
-    local c = kind and UF.RANK_BORDER[kind] or DEFAULT_BORDER_COLOR
-    border:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
 end
 
 -- Threat Glow / Combat Glow: the frame's own border in a colour, pulsing (the soft
@@ -1936,6 +1926,7 @@ UF.INTERRUPT_HOLD, UF.INTERRUPT_COLOR = 0.7, { 0.85, 0.12, 0.10 }
 function UF.EndCastFlash(cast)
     if cast.flashTimer then cast.flashTimer:Cancel() cast.flashTimer = nil end
     if cast.FadeAnim and cast.FadeAnim:IsPlaying() then cast.FadeAnim:Stop() end   -- back to full alpha
+    if cast.fuiLook then cast.fuiLook.edge:Show() end   -- (Edge Glow, hidden by the flash)
     if not cast.flashing then return end
     cast.flashing = nil
     if cast.FlashFill then cast.FlashFill:Hide() end
@@ -1957,6 +1948,7 @@ function UF.FinishCast(cast, channel)
         cast.FlashFill:SetVertexColor(cast:GetStatusBarColor())
         cast.FlashFill:Show()
         cast:GetStatusBarTexture():SetAlpha(0)
+        if cast.fuiLook then cast.fuiLook.edge:Hide() end   -- (as in FlashInterrupted)
     end
     cast.Time:Hide()
     UF.HideCastExtras(cast)
@@ -2005,6 +1997,8 @@ function UF.FlashInterrupted(cast, by, failed)
     cast.FlashFill:SetVertexColor(c[1], c[2], c[3])
     cast.FlashFill:Show()
     cast:GetStatusBarTexture():SetAlpha(0)
+    -- Edge Glow sits on the hidden fill's front: it goes with it (EndCastFlash shows it again)
+    if cast.fuiLook then cast.fuiLook.edge:Hide() end
     cast.Time:Hide()
     UF.HideCastExtras(cast)
     if failed then
@@ -2624,17 +2618,9 @@ local function UpdatePortrait(f)
     local unit = not f.fuiSample and UnitExists(f.fuiUnit) and f.fuiUnit or "player"
     local tex = portrait.Tex
     if ns.UFRing and ns.UFRing.SyncBack then ns.UFRing.SyncBack(f, mode) end
-    local class
-    if mode == "class" then
-        local isPlayer = UnitIsPlayer(unit)
-        if canaccessvalue(isPlayer) and isPlayer then
-            local _, classFile = UnitClass(unit)
-            if canaccessvalue(classFile) then class = classFile end
-        end
-    end
-    if class then
+    -- Class Icon on a player, enemies too (ns.PaintClassIcon); else the 2D picture
+    if mode == "class" and ns.PaintClassIcon(tex, unit) then
         portrait:SetScript("OnUpdate", nil)
-        tex:SetAtlas(GetClassAtlas(class), false, nil, true)   -- reset coords: SetAtlas keeps a 3D flip otherwise
     else
         SetPortraitTexture(tex, unit, true)
         local udb = GetUnitDb(f.fuiUnit)
@@ -5022,16 +5008,15 @@ function UpdateIndicators(f)
         end
     end
     if f.ClassIcon then
-        -- the level disc's skull: as it is for rares, gold for elites and bosses
+        -- Addon Style: Blizzard's dragon on the frame's outer end (UnitFramesDragon.lua). Not on Edit
+        -- Mode's samples (only the boss tiles show it there). The ring styles have their own dragon.
         local c = readable(UnitClassification(unit))
         local kind = (c == "elite" or c == "worldboss") and "elite" or (c == "rare" or c == "rareelite") and "rare" or nil
-        if kind and ICON_UI.Shown(unit, "classification") and ICON_UI.ClassArt(f.ClassIcon, kind) then
-            f.ClassIcon:Show()
-        else
-            kind = nil
-            f.ClassIcon:Hide()
-        end
-        UF.SetBorderRank(f.Border, not (ns.UFRing and ns.UFRing.Applies(f)) and kind or nil)
+        local ring = ns.UFRing and ns.UFRing.Applies(f)
+        if not ICON_UI.Shown(unit, "classification") then kind = nil end
+        f.ClassIcon:Hide()
+        local dragon = kind and not ring and not ns.EditPreviewing() and ns.UFDragon.Kind(unit) or nil
+        ns.UFDragon.Set(f, dragon, UF.LayoutMirrored(f) and "RIGHT" or "LEFT")
     end
     if f.QuestIcon then
         local show = ICON_UI.QuestShown(unit)
@@ -5062,16 +5047,8 @@ function UpdateIndicators(f)
     end
 end
 
--- The Elite & Rare icon: Blizzard's high-level skull, gold for an elite (false without the art)
+-- The Elite & Rare icon's spot (the ring style's rare star sits there; Addon Style shows the dragon)
 ICON_UI.CLASS_SKULL = "UI-HUD-UnitFrame-Target-HighLevelTarget_Icon"
-ICON_UI.ELITE_GOLD = { 1, 0.82, 0.25 }
-function ICON_UI.ClassArt(tex, kind)
-    if not HasAtlas(ICON_UI.CLASS_SKULL) then return false end
-    tex:SetAtlas(ICON_UI.CLASS_SKULL, false)
-    local gold = ICON_UI.ELITE_GOLD
-    if kind == "elite" then tex:SetVertexColor(gold[1], gold[2], gold[3]) else tex:SetVertexColor(1, 1, 1) end
-    return true
-end
 
 -- The PvP timer (Addon Style): Blizzard's countdown to the flag dropping, readable values only; a
 -- sample in Edit Mode
@@ -5139,8 +5116,8 @@ function ICON_UI.PreviewIcon(f, key)
             SetIconArt(region, "UI-HUD-UnitFrame-SmallCircle-Alliance", "Interface\\TargetingFrame\\UI-PVP-Alliance")
         end
     elseif key == "classification" then
-        if not ICON_UI.ClassArt(region, "elite") then return end
-        UF.SetBorderRank(f.Border, "elite")
+        -- no sample dragon on target and focus (Malkkav 11-25: only the boss tiles preview it)
+        return
     elseif key == "quest" then
         SetIconArt(region, QUEST_ATLAS, QUEST_FILE)
     elseif key == "raidIcon" then
@@ -6685,8 +6662,8 @@ local function BuildSettings(unit)
             end, onPlate)
     end
     -- (no Portrait Size: FlareUI Style's ring follows the frame's height, UnitFramesRing.lua RingDiameter)
-    -- (the styled pet always shows its own portrait)
-    if info.portrait and not info.styledPet then
+    -- (the styled pet always shows its own portrait; the styled target of target and of focus pick 2D or Class Icon)
+    if info.portrait and not (info.styledPet and unit == "pet") then
         -- "3d" is the stored name of the 2D picture (kept for saved setups)
         local portraitValues = {
             { text = L["None"],       value = "none",  isRadio = true },
@@ -7185,7 +7162,7 @@ UF.Kit = {
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
     CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
-    ClassArt = ICON_UI.ClassArt, CLASS_SKULL = ICON_UI.CLASS_SKULL, CLASS_ICON_SIZE = ICON_SIZE.classification,
+    CLASS_SKULL = ICON_UI.CLASS_SKULL, CLASS_ICON_SIZE = ICON_SIZE.classification,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,
     CreateManaCost = UF.CreateManaCost, CostsMana = CostsMana,
@@ -7194,7 +7171,7 @@ UF.Kit = {
     BarLook = UF.BarLook, BarLookUpdate = UF.BarLookUpdate, PowerEdgeAlpha = UF.PowerEdgeAlpha,
     CreateOverAbsorb = UF.CreateOverAbsorb, PlaceOverAbsorb = UF.PlaceOverAbsorb, SetOverAbsorb = UF.SetOverAbsorb, SetShieldGlow = UF.SetShieldGlow, HideShieldGlow = UF.HideShieldGlow,
     BuildTextureValues = BuildTextureValues, BuildBorderValues = BuildBorderValues, BuildAbsorbValues = BuildTextureValues, EditSections = EditSections,
-    ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow, SetBorderRank = UF.SetBorderRank,
+    ThreatColor = ThreatColor, SetBorderGlow = UF.SetBorderGlow,
 }
 
 function UF:Refresh()

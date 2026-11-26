@@ -723,13 +723,6 @@ ns.Copy = {
             tags = { "category filters", "bag filter", "bag categories", "sections", "quest items", "materials", "junk", "equipment sets", "gear sets", "drawer" },
             tip = L["Category Rows need the combined backpack. In a narrow backpack or separate bags, the filters sit in a drawer. Click the lit filter again, or right-click it, to clear it."],
         },
-        ["bl.bagWithCharacter"] = {
-            desc = L["Your bags open with the character window and close with it."],
-            label = L["Open with Character Window"],
-            section = "bl.tools",
-            tags = { "open bags", "character pane", "character frame", "auto open" },
-            tip = L["The bank and guild bank always open your bags."],
-        },
         ["bl.bankAddonNote"] = {
             kind = "text",
             label = L["Another Bag Addon"],

@@ -327,19 +327,22 @@ assert(target.Cast.flashing and target.Cast.Text:GetText() == "Interrupted")
 target.Cast.flashTimer.callback()
 assert(not target.Cast:IsShown())
 
--- Elite & Rare (11-24): gold border for an elite, silver for a rare, bronze for the rest; a glow keeps the
--- border and gives it back to the rank; off with the icon's switch.
+-- Elite & Rare (dragon 11-25): the dragon for an elite, rare or boss and none for the rest; the border
+-- stays bronze for all (11-26: no gold or silver any more), a glow gives it back bronze; off with the
+-- icon's switch.
 do
-    local border, rank = target.Border, UF.RANK_BORDER
+    local border = target.Border
     local function at(c) local r, g, b = border:GetBackdropBorderColor() return r == c.r and g == c.g and b == c.b end
     local function classify(kind)
         state.target.classification = kind
         target:RunScript("OnEvent", "UNIT_CLASSIFICATION_CHANGED", "target")
     end
-    for kind, color in pairs({ elite = rank.elite, worldboss = rank.elite, rare = rank.rare, rareelite = rank.rare, normal = ns.BORDER_COLOR }) do
+    for _, kind in ipairs({ "elite", "worldboss", "rare", "rareelite", "normal" }) do
         classify(kind)
-        assert(at(color), kind)
-        assert(target.ClassIcon:IsShown() == (kind ~= "normal"), kind)
+        assert(at(ns.BORDER_COLOR), kind)
+        local dragon = target.FUIDragon and target.FUIDragon.kind
+        assert(dragon == ({ elite = "Elite", worldboss = "Boss", rare = "Rare", rareelite = "Rare" })[kind], kind)
+        assert(not target.ClassIcon:IsShown(), kind)
     end
     classify("elite")
     UF.SetBorderGlow(border, 1, 0, 0)
@@ -347,13 +350,20 @@ do
     classify("rare")
     assert(at({ r = 1, g = 0, b = 0 }), "the glow keeps the border")
     UF.SetBorderGlow(border)
-    assert(at(rank.rare), "the border comes back to the rank")
+    assert(at(ns.BORDER_COLOR), "the border comes back bronze")
     targetDb.icons.classification = { shown = false }
     classify("elite")
-    assert(at(ns.BORDER_COLOR) and not target.ClassIcon:IsShown())
+    assert(at(ns.BORDER_COLOR) and not target.ClassIcon:IsShown() and target.FUIDragon.kind == nil)
     targetDb.icons.classification = nil
+    -- Edit Mode (11-25): no dragon on the target, even on a real elite (only the boss samples show one)
+    ui.editing = true
+    classify("elite")
+    assert(target.FUIDragon.kind == nil and not target.ClassIcon:IsShown())
+    ui.editing = false
+    classify("elite")
+    assert(target.FUIDragon.kind == "Elite")
     classify(nil)
-    assert(at(ns.BORDER_COLOR) and player.Border.fuiRank == nil)
+    assert(at(ns.BORDER_COLOR))
 end
 
 -- the name above sits over the ring and the elite dragon (11-24)

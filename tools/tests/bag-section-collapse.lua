@@ -157,7 +157,7 @@ local function startSession(char, bagsClosed)
     env.FlareTestNS = ns
     setfenv(assert(loadstring(H.read('Modules/Bags.lua'), '@Modules/Bags.lua')), env)('FlareUI', ns)
     Bags = ns.Bags
-    Bags.DecorateButton, Bags.PlaceBagButtons, Bags.FollowWindows = noop, noop, noop
+    Bags.DecorateButton, Bags.PlaceBagButtons = noop, noop
     Bags.StyleMoney, Bags.StyleFreeSlots, Bags.GoldList.Hook, Bags.Bank.Hook, Bags.Sort.Hook = noop, noop, noop, noop, noop
     Bags:Init()
     env.UpdateContainerFrameAnchors()

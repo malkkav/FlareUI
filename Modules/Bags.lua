@@ -2379,7 +2379,6 @@ function Bags:Init()
     RefreshBagClickProxies()
     EventRegistry:RegisterCallback("QuickKeybindFrame.QuickKeybindModeEnabled", RefreshBagClickProxies, self)
     EventRegistry:RegisterCallback("QuickKeybindFrame.QuickKeybindModeDisabled", RefreshBagClickProxies, self)
-    Bags.FollowWindows()   -- section 4c
     Bags.Sort.Hook()       -- section 4d
     Bags.StyleFreeSlots()
     Bags.StyleMoney()
@@ -2597,55 +2596,6 @@ function Bags:Refresh()
     ParkExtraWindows()
     if next(openedForBackpack) then QueueBackpackExtraSync() end
     Bags.Bank.Refresh()
-end
-
---------------------------------------------------
--- 4c. BAGS WITH OTHER WINDOWS
--- The personal bank already opens and closes bags through Blizzard's own handlers.
--- FlareUI opens them for the guild bank and, optionally, the character window; bags opened by the player
--- stay open when the window closes. Which window opened them is kept here, not in Blizzard's
--- FRAME_THAT_OPENED_BAGS: the bank reads that one too (see Bags.CleanFlags).
--- Not in the Gamepad UI, whose bags are its own.
---------------------------------------------------
-local function OpenWith(frame)
-    if GamepadUI() or not OpenAllBags then return end
-    -- after the window's own OnShow (the panel manager may still be placing it)
-    C_Timer.After(0, function()
-        if not frame:IsShown() or (IsAnyBagOpen and IsAnyBagOpen()) then return end
-        Bags.openedWith = frame
-        OpenAllBags()
-        Bags.CleanFlags()
-    end)
-end
-
--- CloseAllBags without its own note: the backpack, every bag, the keyring
-local function CloseWith(frame)
-    if Bags.openedWith ~= frame then return end
-    Bags.openedWith = nil
-    if GamepadUI() or not CloseBackpack then return end
-    CloseBackpack()
-    for i = 1, NUM_TOTAL_BAG_FRAMES or 5 do CloseBag(i) end
-    local keyring = KeyringID()
-    if keyring and C_ActionBar and C_ActionBar.ShouldShowKeyring and C_ActionBar.ShouldShowKeyring() then CloseBag(keyring) end
-    Bags.CleanFlags()
-end
-
-local function Follow(frame, wanted)
-    if type(frame) ~= "table" or not frame.HookScript or frame.FlareUI_BagsFollow then return end
-    frame.FlareUI_BagsFollow = true
-    frame:HookScript("OnShow", function(f) if not wanted or wanted() then OpenWith(f) end end)
-    frame:HookScript("OnHide", CloseWith)
-end
-
-function Bags.FollowWindows()
-    Follow(_G.CharacterFrame, function()
-        local db = GetDb()
-        return db and db.bagWithCharacter
-    end)
-    -- the guild bank loads on demand
-    if EventUtil and EventUtil.ContinueOnAddOnLoaded then
-        EventUtil.ContinueOnAddOnLoaded("Blizzard_GuildBankUI", function() Follow(_G.GuildBankFrame) end)
-    end
 end
 
 --------------------------------------------------

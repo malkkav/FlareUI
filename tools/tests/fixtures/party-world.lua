@@ -143,6 +143,7 @@ if ... then dofile("tools/tests/fixtures/aura-containers.lua")(env) end
 ui:load("Modules/BarText.lua", ns)
 ui:load("Modules/UnitFrames.lua", ns)
 ui:load("Modules/UnitFramesRing.lua", ns)
+ui:load("Modules/UnitFramesDragon.lua", ns)
 ui:load("Modules/PartyFrames.lua", ns)
 
 -- Exercise secure snippets as plain Lua and model the roster assignments supplied by the client.

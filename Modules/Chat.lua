@@ -3426,6 +3426,21 @@ function Chat.SampleEditArt(eb, db)
     eb.Bg:SetShown(not show)
 end
 
+-- An idle IM-style edit box (see StyleEditBox): hidden under the window when it sits Inside, else
+-- Blizzard's own idle look (ChatFrameEditBoxMixin:Deactivate: 0.35, LOW), also after a move out
+Chat.IM_IDLE_ALPHA = 0.35
+function Chat.IdleIMBox(eb, db)
+    if C_CVar.GetCVar("chatStyle") ~= "im" or eb.isGM then return end
+    local gamepad = ns.IsGamepadUI()
+    if not db or (db.editBoxPosition or "inside") == "inside" then
+        eb:SetAlpha(0)
+        if not gamepad then eb:SetFrameStrata("BACKGROUND") end
+    else
+        eb:SetAlpha(Chat.IM_IDLE_ALPHA)
+        if not gamepad then eb:SetFrameStrata("LOW") end
+    end
+end
+
 function Chat:StyleEditBox(chatFrame, db)
     if not chatFrame or chatFrame:IsForbidden() then return end
     local eb = chatFrame.editBox or _G[chatFrame:GetName() .. "EditBox"]
@@ -3464,23 +3479,16 @@ function Chat:StyleEditBox(chatFrame, db)
     end
     if eb.headerSuffix then eb.headerSuffix:Hide(); if eb.headerSuffix.SetAlpha then eb.headerSuffix:SetAlpha(0) end; if eb.headerSuffix.SetTexture then eb.headerSuffix:SetTexture(nil) end end
 
-    -- In IM style the idle edit box is invisible and below the chat window, so a click on a link
-    -- under it reaches the link; ActivateChat restores both. Never touch its mouse or hook
-    -- ActivateChat: both stopped Enter from opening the chat. The Gamepad UI keeps its strata.
+    -- In IM style the idle edit box over the window's last lines (Edit Box Position Inside) is invisible
+    -- and below the chat window, so a click on a link under it reaches the link; ActivateChat restores
+    -- both. Above or Below the window there is nothing under it: Blizzard's own idle box stays (faint,
+    -- clickable; GitHub #199). Never touch its mouse or hook ActivateChat: both stopped Enter from
+    -- opening the chat. The Gamepad UI keeps its strata.
     if not eb.FlareUI_IMHooked then
         eb.FlareUI_IMHooked = true
-        local gamepad = ns.IsGamepadUI()
-        hooksecurefunc(eb, "Deactivate", function(self)
-            if C_CVar.GetCVar("chatStyle") == "im" and not self.isGM then
-                self:SetAlpha(0)
-                if not gamepad then self:SetFrameStrata("BACKGROUND") end
-            end
-        end)
-        if C_CVar.GetCVar("chatStyle") == "im" and eb ~= ACTIVE_CHAT_EDIT_BOX then
-            eb:SetAlpha(0)
-            if not gamepad then eb:SetFrameStrata("BACKGROUND") end
-        end
+        hooksecurefunc(eb, "Deactivate", function(self) Chat.IdleIMBox(self, GetDb()) end)
     end
+    if eb ~= ACTIVE_CHAT_EDIT_BOX then Chat.IdleIMBox(eb, db) end
 
     -- Edit Box Position. Outside the window it is as wide as the border, EDIT_BOX_GAP away (its
     -- backdrop reaches 2 px past the box).

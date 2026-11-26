@@ -5,7 +5,7 @@ ui:installGroupHeaders()
 ui:load("ProfileLayout.lua", ns)
 local db = ns.db.profile.unitframes.boss
 db.buffs, db.debuffs, db.portrait = "RIGHT", "LEFT", "model"
-unit.boss1 = { name = "Dreadseer", level = -1, health = 80, power = 35, hostile = true }
+unit.boss1 = { name = "Dreadseer", level = -1, health = 80, power = 35, hostile = true, classification = "worldboss" }
 unit.boss3 = { name = "Guardian", level = -1, health = 55, power = 60, hostile = true, mark = 3 }
 local container = E.CreateFrame("Frame", "BossTargetFrameContainer", E.UIParent)
 local blizzardBoss = E.CreateFrame("Frame", "Boss1TargetFrame", container)
@@ -34,6 +34,9 @@ assert(c.TargetHighlight:GetAlpha() == 1 and a.TargetHighlight:GetAlpha() == 0)
 unit.boss3.mark = 8
 ui:emit("RAID_TARGET_UPDATE")
 assert(c.RaidIcon.raidMark == 8 and c.RaidIcon:IsShown())
+-- Elite & Rare (11-25): the winged dragon on a boss, on the tile's right end (the tiles are mirrored)
+assert(a.FUIDragon and a.FUIDragon.kind == "Boss" and a.FUIDragon.side == "RIGHT" and not a.ClassIcon:IsShown())
+assert(not (c.FUIDragon and c.FUIDragon.kind), "a normal unit: no dragon")
 
 local oldHeight = holder:GetHeight()
 option("Cast Bar").set("Modern", false)
@@ -47,6 +50,7 @@ assert(select(4, holder:GetPoint()) == -111 and select(5, holder:GetPoint()) == 
 ui.editing = true
 edit.callbacks.enter()
 assert(not a.unitWatched and b:IsShown() and b.Name:GetText() == "Ragnaros")
+assert(b.FUIDragon and b.FUIDragon.kind == "Boss", "the sample bosses show the dragon in Edit Mode")
 ui.editing = false
 edit.callbacks.exit()
 assert(a.unitWatched and not b:IsShown() and a.Name:GetText() == "Dreadseer")

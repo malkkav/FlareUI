@@ -114,12 +114,10 @@ S:Row{ key = "bl.bagPlainEmpty", half = true, tab = "bags", path = "tweaks.bagPl
 
 -- BAGS: tweaks -----------------------------------
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
--- the bags open and close with the character window (Bags.lua 4c; the bank and guild bank always do)
-S:Row{ key = "bl.bagWithCharacter", half = true, tab = "bags", path = "tweaks.bagWithCharacter" }
 -- Blizzard's clean-up each time the bags open
 S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
 -- clams, loot bags and opened lockboxes open themselves (Bags.lua 1d; not beside another bag addon)
-S:Row{ key = "bl.bagAutoOpen", half = true, tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
+S:Row{ key = "bl.bagAutoOpen", tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
     apply = function() if ns.Bags and ns.Bags.AutoOpen then ns.Bags.AutoOpen.Next() end end }
 
 -- LOOTING ----------------------------------------

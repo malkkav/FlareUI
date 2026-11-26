@@ -1,3 +1,51 @@
+# FlareUI 7.0.18
+
+Dragons for Modern frames, and the end of blocked bag items (we hope, for real this time).
+
+**Restart the game fully after updating.** This version brings new art files, and a /reload doesn't load them.
+
+**We need your help testing:**
+- **Bags:** visit the guild bank, then your bank. Afterwards, right-click a potion or a recipe in your bags. It should work.
+- **Druids:** fly from Moonglade to Rut'theran twice. The second flight should count down.
+- **Portrait > Class Icon:** target an enemy player. You should see their class icon, not their face.
+- **Cast bar with Edge Glow:** get a cast interrupted. The glow should go away with the cast.
+
+## Heads up
+Some things change even if you change nothing:
+- **Bags:** FlareUI no longer opens your bags with the guild bank. Press B to open them there.
+- **Open with Character Window** is gone from Bags & Looting. Your bags no longer open with the character window.
+- **Modern frames:** elites, rares and bosses no longer get a gold or silver border. The border stays bronze, and a dragon shows instead (see Changed).
+- **Modern boss frames and flag carriers** start a few pixels further left. Only if you never moved them.
+
+## New
+
+### Unit Frames
+- Target of Target and Target of Focus: **Portrait** (2D or Class Icon) in Edit Mode, in FlareUI Style and Forever Style, with **Simple Target of Target** off.
+
+## Changed
+
+### Unit Frames
+- Modern, **Elite & Rare** icon: Blizzard's dragon now wraps around the outer end of the target, focus and boss frames, instead of the skull.
+  - Gold for elites
+  - Silver for rares
+  - Gold with wings for bosses
+
+## Fixed
+
+### Bags & Looting
+- Items in your bags could not be used after a bank visit, until you typed /reload. The cause was FlareUI opening your bags for the guild bank or the character window.
+- Buying a bank tab or a guild bank tab was blocked after the same visits.
+
+### Unit Frames
+- **Portrait > Class Icon** showed the 2D picture on enemy players.
+- Cast bars: **Edge Glow** stayed on the bar after a cast was interrupted or failed.
+
+### Chat
+- IM chat style: with **Edit Box Position** Above or Below, the chat box disappeared when you stopped typing. It now stays, faint and clickable, as in Blizzard's IM style. Inside works as before.
+
+### Resource Bars
+- **Flight Timer:** the druid flight from Moonglade never counted down. It is now learned like any other flight.
+
 # FlareUI 7.0.17
 
 New unit frame art, a combat ring you can't miss, and a pile of fixes from Discord and GitHub.
@@ -320,113 +368,3 @@ Some things look or work differently even if you change nothing:
 ### Performance
 - **Minimap:** with the coordinates on the Info Bar, less memory while you stand still.
 - The language files are smaller: phrases nothing uses any more are gone.
-
-# FlareUI 7.0.13
-
-A fix for the battleground errors that came with 7.0.12, and a check of every part of FlareUI, with more than 50 fixes.
-
-**We need your help testing:**
-- **Battlegrounds:** tell us if you still see "cannot be accessed while tainted" errors.
-- **Bags:** item clicks after a visit to the bank, with **Move Any Window** on.
-- **Groups:** party and raid frames, with **Always Show** auras and after a /reload in a raid.
-- **Action bars** that fade to nothing: clicking, dragging spells and starting fights.
-- **Controller, rogues and warriors:** the radial in a fight, and **Kick Ready** on your higher ranks.
-
-## Heads up
-Some things look or work differently even if you change nothing:
-- **Chat:** windows keep 128 lines again. The 500 lines of 7.0.12 caused the battleground errors.
-- **Bags:** with **Move Any Window** on, a bag's title only drags. The bag menu (Assign To, Ignore This Bag) opens with a left-click on the bag's icon.
-- **Action bars:** a bar faded to nothing, without Mouseover, takes no clicks, drags or tooltips. Its keys still work. In a fight it takes clicks, except on Never.
-- **Nameplates:** the game's own fades (distance, not your target) are off, so only FlareUI's options fade plates. Plates you leave to Blizzard lose them too.
-- **Nameplates:** a dead mob's plate goes at once. A dead player's stays.
-- **Edit Mode layouts:** in a layout where you never moved a frame, it can go back to the spot it has in another layout.
-
-## New
-
-### Quality of Life
-- **Mail Address Book:** **Remove from the List**, in its menu.
-
-## Changed
-
-### Bags & Looting
-- **Loot Window:** while you are the Master Looter, Blizzard's loot window takes over, with its assign menu.
-- **Combine Empty Slots:** free slots in a soul bag or another special bag are counted apart. Locked slots aren't counted.
-- **Delete Junk When Full** keeps:
-  - Soulbound greys worth nothing, and pieces of equipment sets
-  - Greys in bags set to ignore junk selling, and in special bags
-
-### Cooldowns
-- **Enable Blizzard Cooldown Manager** tells you why when it can't change.
-
-### Edit Mode
-- **FlareUI Settings** in a frame's dialog asks you to save or revert your Edit Mode changes first. It used to drop them.
-
-## Fixed
-
-### Chat
-- Errors in battlegrounds, blamed on other addons.
-
-### Bags & Looting
-- **Delete Junk When Full** deleted junk for loot you couldn't take yet: locked, yours to hand out, or double-clicked. It also ignored room in the crafting bag and keyring.
-- **Plain Empty Slots** hid the padlock on locked slots.
-- **Loot Roll Window:** a roll stays while the game still has it open, and never shows an impossible time.
-
-### Nameplates
-- Errors in fights with **Tint Health** on By Health, and on enemy players in battlegrounds.
-- A tapped mob no longer keeps a threat colour or number.
-- **Kick Ready** no longer marks friends' casts.
-- No debuff type icon on enemy plates.
-- The target arrows no longer move in steps.
-
-### Unit Frames
-- **Kick Ready** works for rogues from level 26 and warriors from 32, on nameplates too.
-- Pointing at a faded frame's buffs and debuffs brings the frame back.
-- **Totems:** with Aura Timer on None, the time is hidden.
-
-### Party and raid frames
-- **Always Show** auras from other players show.
-- Everyone's buffs show when they share a place with the debuffs.
-- A /reload in a raid made up to twice the frames it needed.
-- After quick group changes, a frame could show the wrong player.
-- Ready check marks no longer stay with the next player.
-- Blizzard's hidden party and raid frames no longer work in the background.
-
-### Radial Menu
-- Changes made before a fight, such as joining a group or looting potions, are there when it starts.
-- A radial that was empty opens once it has something to show.
-- Macros that share a name each run their own.
-
-### Buff Reminders
-- Demonic Sacrifice only shows with Demonic Pact.
-- Reminders on Mouseover appear.
-- **Never Remind Me** stays with its own custom reminder when you remove another.
-
-### Meters
-- A separate threat window froze while the meter was faded out.
-- **Report to Chat** on Deaths sends the time of each death.
-
-### Cooldowns
-- The icons no longer jump after an **Icon Shape** change. By Nico-Mayer.
-
-### Resource Bars
-- The swing bar knows you are attacking after a /reload.
-- **Seals:** no gap beside the icon.
-- **XP bar:** a fight in Edit Mode shows the real bar.
-
-### Minimap
-- Edit Mode's Icon Size comes back after the map fades.
-- **Square:** gathering addons see the map under your mouse again.
-
-### Quest Tracker
-- Scrolling and then clicking opened the wrong quest.
-
-### Quality of Life
-- **Accept Summons:** a summon you declined no longer makes it take the next one at once.
-- Changing a setting on the vendor's Buyback tab could buy back the wrong item.
-
-### Settings
-- In Edit Mode, a fight no longer takes your keys, and the dialog's X works.
-- **Reset FlareUI** can still undo the nameplate and UI Scale settings FlareUI changed.
-- Long tab names no longer overlap.
-- Frames keep their spots in a third Edit Mode layout.
-- `/fui errors` counts repeated errors, and says more about blocked bag clicks.

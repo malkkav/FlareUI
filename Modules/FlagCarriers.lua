@@ -36,8 +36,8 @@ local CARRIERS = 2   -- a battleground's flag carriers: one per side
 local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,BackdropTemplate"
 -- Edit Mode keeps a reference to this table: ApplyPosition refills it for the style in use
 -- (Addon Style's spot here, the ring styles' in UnitFramesRing.lua TILE_POSITIONS.flag)
-local BASE_POSITION = { point = "RIGHT", x = -36, y = 173 }
-local DEFAULT_POSITION = { point = "RIGHT", x = -36, y = 173 }
+local BASE_POSITION = { point = "RIGHT", x = -32, y = 173 }   -- Malkkav's spot (11-26)
+local DEFAULT_POSITION = { point = "RIGHT", x = -32, y = 173 }
 
 -- Edit Mode samples: two carriers, one per side
 local SAMPLES = {

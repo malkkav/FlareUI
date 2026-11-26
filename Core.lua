@@ -77,6 +77,26 @@ function ns.PowerColor(token, powerType)
     if c and c.r then return c.r, c.g, c.b end
 end
 
+-- Portrait > Class Icon: the unit's class icon on tex; false when it isn't a player (the caller shows
+-- the 2D picture). The game hides an enemy player's class from addons (a secret): the secret still
+-- joins into a secret atlas name, and SetAtlas takes it, so the icon shows without reading the class.
+-- (After EllesmereUI's portraits, idea only.)
+do
+    local function SecretClassAtlas(tex, classFile)
+        tex:SetTexCoord(0, 1, 0, 1)
+        tex:SetAtlas("classicon-" .. classFile)
+    end
+    function ns.PaintClassIcon(tex, unit)
+        local isPlayer = UnitIsPlayer(unit)
+        if not (canaccessvalue(isPlayer) and isPlayer) then return false end
+        local _, classFile = UnitClass(unit)
+        if not canaccessvalue(classFile) then return (pcall(SecretClassAtlas, tex, classFile)) end
+        if not classFile then return false end
+        tex:SetAtlas(GetClassAtlas(classFile), false, nil, true)   -- reset coords: SetAtlas keeps a 3D flip otherwise
+        return true
+    end
+end
+
 -- An enemy's level colour as Blizzard's target frame has it: the server's difficulty for the unit
 -- (the level formula when that can't be read)
 function ns.LevelDifficultyColor(unit, level)
@@ -1111,7 +1131,6 @@ local defaults = {
             bankGaps = false,           -- Bank Window: each bank bag starts a new row, with a gap
             bankTight = false,          -- Bank Window: slots 5 apart, as in the backpack, not Blizzard's 13/10
             bagView = "all",            -- Bag View: "all" | "filters" (Category Filters, Bags.lua 4b) | "rows" | "rowsSets" (Category Rows, + a row per equipment set; Bags.lua 1)
-            bagWithCharacter = false,   -- Open with Character Window: the bags open and close with it (Bags.lua 4c)
             bagAutoSort = false,        -- Sort Bags on Open: Blizzard's clean-up each time the bags open (Bags.lua 4d)
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
             bagItemFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },

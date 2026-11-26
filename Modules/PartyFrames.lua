@@ -707,23 +707,16 @@ function PF.UpdatePvP(f)
     PF.PaintFaction(icon, canaccessvalue(faction) and faction or nil)
 end
 
--- the Elite & Rare skull (ctx.classIcon; Addon Style)
-function PF.ClassKind(c)
-    return (c == "elite" or c == "worldboss") and "elite" or (c == "rare" or c == "rareelite") and "rare" or nil
+-- Elite & Rare (ctx.classIcon; Addon Style): Blizzard's dragon on the tile's outer end
+-- (UnitFramesDragon.lua). dragon: the kind to show ("Elite", "Rare", "Boss" or nil)
+function PF.SetDragon(f, dragon)
+    if f.ClassIcon then f.ClassIcon:Hide() end
+    local on = dragon ~= nil and not f.ringKind and IconShown("classification", f)
+    ns.UFDragon.Set(f, on and dragon or nil, Mirrored(f) and "RIGHT" or "LEFT")
 end
 function PF.UpdateClassIcon(f)
-    local icon = f.ClassIcon
-    if not icon then return end
-    if f.ringKind or not IconShown("classification", f) then
-        icon:Hide()
-        K.SetBorderRank(f.Border)
-        return
-    end
-    local c = UnitClassification(f.fuiUnit)
-    local kind = canaccessvalue(c) and PF.ClassKind(c) or nil
-    local shown = kind ~= nil and K.ClassArt(icon, kind) or false
-    icon:SetShown(shown)
-    K.SetBorderRank(f.Border, shown and kind or nil)
+    if not f.ClassIcon then return end
+    PF.SetDragon(f, ns.UFDragon.Kind(f.fuiUnit))
 end
 
 -- Blizzard's role icon routine (keeps a secret role secret), handed a stand-in frame; the plain
@@ -1022,17 +1015,12 @@ local function UpdatePortrait(f)
     local unit = (UnitExists(f.fuiUnit) and not IsEditing() and not f.fuiSample) and f.fuiUnit or "player"
     local tex = portrait.Tex
     if ns.UFRing and ns.UFRing.SyncBack then ns.UFRing.SyncBack(f, mode) end
-    local class
-    if mode == "class" then
-        local isPlayer = UnitIsPlayer(unit)
-        if canaccessvalue(isPlayer) and isPlayer then
-            local _, classFile = UnitClass(unit)
-            if canaccessvalue(classFile) then class = classFile end
-        end
-        if IsEditing() and f.preview and f.preview.class then class = f.preview.class end
-    end
-    if class then
-        tex:SetAtlas(GetClassAtlas(class), false, nil, true)
+    -- Class Icon on a player, enemies too (ns.PaintClassIcon); a preview's sample class while editing
+    local previewClass = mode == "class" and IsEditing() and f.preview and f.preview.class
+    if previewClass then
+        tex:SetAtlas(GetClassAtlas(previewClass), false, nil, true)
+    elseif mode == "class" and ns.PaintClassIcon(tex, unit) then
+        -- (painted)
     elseif IsEditing() and f.preview and f.preview.portrait then
         tex:SetTexture(f.preview.portrait)
         tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -3140,11 +3128,8 @@ ApplyPreview = function(f)
         end)
     end
     if f.ClassIcon then
-        ShowIcon("classification", f.ClassIcon, function()
-            local kind = not f.ringKind and PF.ClassKind(data.classification)
-            return kind and K.ClassArt(f.ClassIcon, kind) or false
-        end)
-        K.SetBorderRank(f.Border, f.ClassIcon:IsShown() and PF.ClassKind(data.classification) or nil)
+        -- the sample bosses' dragon (the only Edit Mode sample that shows one)
+        PF.SetDragon(f, ns.UFDragon.SampleKind(data.classification))
     end
     ShowIcon("raidIcon", f.RaidIcon, function()
         if not data.marker then return false end

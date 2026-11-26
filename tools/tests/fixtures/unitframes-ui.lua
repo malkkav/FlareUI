@@ -82,6 +82,7 @@ return function(db)
     for key, value in pairs(doubles) do ns[key] = value end
     ui:load("Modules/BarText.lua", ns)
     ui:load("Modules/UnitFramesRing.lua", ns)
+    ui:load("Modules/UnitFramesDragon.lua", ns)
     ui:load("Modules/UnitFrames.lua", ns)
     return ui, ns
 end

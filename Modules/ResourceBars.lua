@@ -1944,15 +1944,37 @@ function Flight.Init()
         end
     end
     if C_GossipInfo and C_GossipInfo.SelectOption then hooksecurefunc(C_GossipInfo, "SelectOption", Talked) end
-    -- (Blizzard's window picks by the answer's place)
+    -- (Blizzard's window picks by the answer's place.) A flight answer closes the talk before this
+    -- post-hook runs, so the answers are read when the talk opens (Flight.options) as well
     if C_GossipInfo and C_GossipInfo.SelectOptionByIndex and C_GossipInfo.GetOptions then
         hooksecurefunc(C_GossipInfo, "SelectOptionByIndex", function(index)
             local ok, options = pcall(C_GossipInfo.GetOptions)
-            for _, option in ipairs(ok and options or {}) do
-                if option.orderIndex == index then Talked(option.gossipOptionID) return end
+            for _, list in ipairs({ ok and options or {}, Flight.options or {} }) do
+                for _, option in ipairs(list) do
+                    if option.orderIndex == index then Talked(option.gossipOptionID) return end
+                end
             end
         end)
     end
+    -- A talk that closes right before a flight with no answer caught: the flight is known by where it
+    -- leaves from (map and faction; the druids' Moonglade flight has one way out per faction. The idea
+    -- after DaylightUI, which names those flights by the map you leave from.)
+    local talk = CreateFrame("Frame")
+    for _, event in ipairs({ "GOSSIP_SHOW", "GOSSIP_CLOSED" }) do pcall(talk.RegisterEvent, talk, event) end
+    talk:SetScript("OnEvent", function(_, event)
+        if event == "GOSSIP_SHOW" then
+            local ok, options = pcall(function() return C_GossipInfo.GetOptions() end)
+            Flight.options = ok and type(options) == "table" and options or nil
+            return
+        end
+        Flight.options = nil
+        if Flight.talk and GetTime() - Flight.talk.at < FLIGHT_CATCH then return end
+        local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+        local faction = UnitFactionGroup and UnitFactionGroup("player")
+        if canaccessvalue(map) and type(map) == "number" and canaccessvalue(faction) and type(faction) == "string" then
+            Flight.talk = { key = ("from %d %s"):format(map, faction), at = GetTime(), gossip = true }
+        end
+    end)
     if TaxiRequestEarlyLanding then
         hooksecurefunc("TaxiRequestEarlyLanding", function() if Flight.now then Flight.now.keep = false end end)
     end

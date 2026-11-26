@@ -177,7 +177,7 @@ env.C_PaperDollInfo = { GetInspectItemLevel = function(unit) assert(unit == "tar
 local db = {
     bagView = "all", bagFilters = "buttons", bagAutoSort = true, bagAutoOpen = true, bagButtons = true,
     bagJunkIcon = true, bagItemLevel = true, bagUncollected = true, bagBoE = true, bagPlainEmpty = true,
-    bagWithCharacter = true, bankColumns = 10, bankGaps = true, bankTight = true,
+    bankColumns = 10, bankGaps = true, bankTight = true,
     bagItemFont = { face = "Test", flags = "NONE", size = 15 },
     bagMoneyFont = { face = "Test", size = 13 },
 }
@@ -347,35 +347,28 @@ ui:flushTimers()
 assert(#opens == 2, "a locked or unchanged item is skipped for the session")
 
 ui:emit("PLAYER_LOGIN")
--- opens the bags and closes them again, without Blizzard's own note of who did (the bank reads that one)
-env.OpenAllBags = function(...) assert(select("#", ...) == 0) ui.openOwner = character end
-env.CloseAllBags = function() error("CloseAllBags writes Blizzard's note") end
-local closeBackpack, closeBag, anyOpen = env.CloseBackpack, env.CloseBag, env.IsAnyBagOpen
-local cleaned, closed = {}, {}
-env.ContainerFrameSettingsManager = { bagSetupDirty = false, bagsShown = {} }
-ns.CleanField = function(t, key) assert(t == env.ContainerFrameSettingsManager) cleaned[key] = true end
-env.IsAnyBagOpen = function() return true end
-character:Show()
-ui:flushTimers()
-assert(not ui.openOwner, "bags already open stay the player's")
-env.CloseBackpack = function() ui.closeOwner = character end
-env.CloseBag = function(id) closed[id] = true end
-character:Hide()
-assert(not ui.closeOwner)
+-- the character window never opens or closes the bags (GitHub #200): Blizzard's openers run from
+-- FlareUI leave the crafting bag window FlareUI's, and the next bank visit blocks every item use
+local openAll, closeBackpack, anyOpen = env.OpenAllBags, env.CloseBackpack, env.IsAnyBagOpen
+env.OpenAllBags = function() error("FlareUI opened the bags") end
+env.CloseBackpack = function() error("FlareUI closed the backpack") end
 env.IsAnyBagOpen = function() return false end
 character:Show()
 ui:flushTimers()
-assert(ui.openOwner == character)
-assert(cleaned.bagSetupDirty and cleaned.bagsShown)
--- a flag that is up (the bags need setting up again) stays
-cleaned, env.ContainerFrameSettingsManager.bagSetupDirty = {}, true
-bags.CleanFlags()
-assert(not cleaned.bagSetupDirty and cleaned.bagsShown)
 local headLabel = ui:find(function(w) return w:GetParent() == head and w:GetText() == "39" end)
 assert(headLabel and headLabel:IsShown())
 character:Hide()
-assert(ui.closeOwner == character and closed[1] and closed[5])
-env.CloseBackpack, env.CloseBag, env.IsAnyBagOpen = closeBackpack, closeBag, anyOpen
+ui:flushTimers()
+-- CleanFlags (after FlareUI's own keyring window): Blizzard's notes emptied, a flag that is up stays
+local cleaned = {}
+env.ContainerFrameSettingsManager = { bagSetupDirty = false, bagsShown = {} }
+ns.CleanField = function(t, key) assert(t == env.ContainerFrameSettingsManager) cleaned[key] = true end
+bags.CleanFlags()
+assert(cleaned.bagSetupDirty and cleaned.bagsShown)
+cleaned, env.ContainerFrameSettingsManager.bagSetupDirty = {}, true
+bags.CleanFlags()
+assert(not cleaned.bagSetupDirty and cleaned.bagsShown)
+env.OpenAllBags, env.CloseBackpack, env.IsAnyBagOpen = openAll, closeBackpack, anyOpen
 env.ContainerFrameSettingsManager, ns.CleanField = nil, nil
 addonLoaded.Blizzard_InspectUI()
 ui:emit("INSPECT_READY")

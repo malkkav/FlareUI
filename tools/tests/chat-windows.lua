@@ -440,6 +440,22 @@ env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusGained", eb)
 assert(select(5, trade.visibleLines[1]:GetPoint()) == 32)
 env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusLost", eb)
 assert(select(5, trade.visibleLines[1]:GetPoint()) == 0)
+-- the idle IM box: hidden under the window's lines when Inside; Above or Below, Blizzard's faint
+-- clickable box stays (GitHub #199), also after the box moves out
+chat.IdleIMBox(eb, db)
+assert(eb:GetAlpha() == 0 and eb:GetFrameStrata() == "BACKGROUND", "Inside: out of the links' way")
+db.editBoxPosition = "below"
+chat.IdleIMBox(eb, db)
+assert(eb:GetAlpha() == chat.IM_IDLE_ALPHA and eb:GetFrameStrata() == "LOW", "Below: Blizzard's idle box")
+eb:SetAlpha(1)
+eb:Deactivate()
+assert(eb:GetAlpha() == chat.IM_IDLE_ALPHA, "the Deactivate hook reads the position too")
+eb.isGM = true
+eb:SetAlpha(1)
+chat.IdleIMBox(eb, db)
+assert(eb:GetAlpha() == 1, "a GM whisper box is Blizzard's")
+eb.isGM = nil
+db.editBoxPosition = "inside"
 
 cv.chatStyle = "classic"
 db.fadeLines, db.increaseLineHeight, db.editBoxPosition, db.hideCombatLog = false, false, "above", true

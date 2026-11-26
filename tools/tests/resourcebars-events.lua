@@ -283,6 +283,23 @@ do
     assert(flight.now.key == "gossip 512" and flight.now.dest == "Rut'theran Village")
     onTaxi = false
     handler()
+    -- (11-26, Kahuna) in the game the flight answer closes the talk before the hook asks: the answers
+    -- read when it opened still name it
+    ui.time = ui.time + 60
+    ui:emit("GOSSIP_SHOW")
+    options = {}
+    local closed = fly(function() env.C_GossipInfo.SelectOptionByIndex(3) ui:emit("GOSSIP_CLOSED") end, 93)
+    assert(closed.key == "gossip 512" and closed.total == 94, "known after the talk closed")
+    -- no answer caught at all: the talk that closed names it by the map and faction it leaves from
+    ui.time = ui.time + 60
+    env.C_Map = env.C_Map or {}
+    env.C_Map.GetBestMapForUnit = function() return 1450 end
+    env.UnitFactionGroup = function() return "Alliance" end
+    local fromMap = fly(function() ui:emit("GOSSIP_SHOW") ui:emit("GOSSIP_CLOSED") end, 96)
+    assert(fromMap.key == "from 1450 Alliance" and not fromMap.total)
+    ui.time = ui.time + 60
+    local again = fly(function() ui:emit("GOSSIP_SHOW") ui:emit("GOSSIP_CLOSED") end, 95)
+    assert(again.total == 96 and again.dest == "Rut'theran Village", "the second one counts down")
     env.C_Timer.After, ns.db.global = after, global
 end
 
