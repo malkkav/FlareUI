@@ -34,7 +34,7 @@ local names = {
     [10938] = "Fortitude", [1243] = "Fortitude", [10952] = "Inner Fire",
     [883] = "Call Pet", [982] = "Revive Pet", [136] = "Mend Pet", [13165] = "Aspect of the Hawk",
     [19705] = "Well Fed", [688] = "Summon Imp", [697] = "Summon Voidwalker",
-    [11730] = "Create Healthstone", [19746] = "Concentration Aura",
+    [11730] = "Create Healthstone", [10054] = "Conjure Mana Ruby", [19746] = "Concentration Aura",
 }
 env.UnitName = function(unit) return unit == "party1" and "Mira" or "Alba" end
 env.UnitClass = function(unit)
@@ -380,6 +380,21 @@ br.Resolve()
 br.Update()
 assert(iconFor("sacrifice"))
 pet, known[18788], known[425464] = false, nil, nil
+
+-- a mage with no mana gem in the bags: a click conjures the best one known
+do
+    class, known = "MAGE", { [10054] = true }
+    br.Resolve()
+    br.Update()
+    assert(iconFor("manaGem"):GetAttribute("spell") == "Conjure Mana Ruby")
+    bag[5513] = 1                     -- a Mana Jade counts too
+    br.Update()
+    assert(not iconFor("manaGem"))
+    bag[5513], known = nil, {}        -- no Conjure spell known: no reminder
+    br.Resolve()
+    br.Update()
+    assert(not iconFor("manaGem"))
+end
 
 class = "ROGUE"
 gear[16], gear[17], bag[8928], bag[8985], known = 100, 200, 2, 3, { [2842] = true }
