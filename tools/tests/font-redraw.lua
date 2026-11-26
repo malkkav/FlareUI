@@ -60,13 +60,14 @@ local function Refuse(fontString, method)
     end
 end
 
-local locked = FakeString("X.ttf", 13, "")
+local locked, first, second = FakeString("X.ttf", 13, ""), FakeString("X.ttf", 13, ""), FakeString("Y.ttf", 9, "")
 Refuse(locked, "GetFont")
 R.strings[locked] = { path = "X.ttf", size = 13, flags = "" }
-local before = #a.calls
+R.strings[first] = { path = "X.ttf", size = 13, flags = "" }
+R.strings[second] = { path = "Y.ttf", size = 9, flags = "" }
 check(pcall(R.All), "a text the client refuses doesn't stop the pass")
-check(#locked.calls == 0 and #a.calls == before + 2 and #b.calls == before + 2, "the other texts are still redrawn")
-R.strings[locked] = nil
+check(#locked.calls == 0 and #first.calls == 2 and #second.calls == 2, "the other texts are still redrawn")
+R.strings[locked], R.strings[first], R.strings[second] = nil, nil, nil
 
 local late, waitingToo = FakeString("Base.ttf", 13, ""), FakeString("Base.ttf", 13, "")
 function late:SetFont() return false end
