@@ -45,48 +45,9 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
-    ["ab.xpTooltip"] = "7.0",
-    ["au.totemShape"] = "7.0",
-    ["bl.bagReverse"] = "7.0",
-    ["bl.lootWindow"] = "7.0",
-    ["bl.lootWindowFreeSlots"] = "7.0",
-    ["bl.lootWindowGrowth"] = "7.0",
-    ["bl.lootWindowOrder"] = "7.0",
-    ["cdm.em.barMax"] = "7.0",
-    ["cdm.em.barSort"] = "7.0",
-    ["ch.editBoxBorder"] = "7.0",
-    ["ch.editBoxStyle"] = "7.0",
-    ["fonts.outline"] = "7.0",
-    ["mm.barBelow"] = "7.0",
-    ["np.auraRows"] = "7.0",
-    ["np.auraStyle"] = "7.0",
-    ["np.auraSwipe"] = "7.0",
-    ["np.auraTimer"] = "7.0",
-    ["np.auraTimerColor"] = "7.0",
-    ["np.castBorder"] = "7.0",
-    ["np.castGlow"] = "7.0",
-    ["np.castTexture"] = "7.0",
-    ["np.ccStyle"] = "7.0",
-    ["np.ccSwipe"] = "7.0",
-    ["np.ccTimer"] = "7.0",
-    ["np.combatPlates"] = "7.0",
-    ["np.font.nameOnly"] = "7.0",
-    ["np.guildColor"] = "7.0",
-    ["np.mouseoverHighlight"] = "7.0",
-    ["np.nameAbove"] = "7.0",
-    ["np.nameClassColor"] = "7.0",
-    ["np.nameOnlyFull"] = "7.0",
-    ["np.nameOnlyMode"] = "7.0",
-    ["np.nameOnlySize"] = "7.0",
-    ["np.nameOnlyTarget"] = "7.0",
-    ["np.peacefulNames"] = "7.0",
-    ["np.showGuild"] = "7.0",
-    ["np.showTitles"] = "7.0",
-    ["np.threatPercent"] = "7.0",
-    ["qol.flightDestinations"] = "7.0",
-    ["qol.plateCombo"] = "7.0",
-    ["rm.spellRank"] = "7.0",
-    ["tt.healingDamage"] = "7.0",
+    ["ab.keepPage"] = "7.1",
+    ["dm.pullWarning"] = "7.1",
+    ["np.nameOnlyLevel"] = "7.1",
 }
 
 --------------------------------------------------
@@ -378,8 +339,18 @@ function Row:IsDisabled()
     -- (inverseParent: a row that greys while its parent is ON sits under it too; its own
     -- disabled check decides)
     local parent = not self.inverseParent and self.parent and Settings.rows[self.parent]
-    if parent and not parent:Get() then return true end
+    if parent and not Settings.IsOnValue(parent:Get()) then return true end
     return false
+end
+
+-- A parent's value counts as off when it is false/nil, or a dropdown's "none" / "off" / "disabled"
+-- first choice, or 0 (Lua alone reads those as on, so children of a dropdown never greyed)
+local OFF_VALUES = { none = true, off = true, disabled = true, [""] = true }
+function Settings.IsOnValue(value)
+    if not value then return false end
+    if value == 0 then return false end
+    if type(value) == "string" and OFF_VALUES[value] then return false end
+    return true
 end
 
 -- invert: a Show switch over a saved "hide" value (Show Keybind Text over hideHotkeys): the
@@ -1055,6 +1026,72 @@ end
 -- Colours `code` spans of the copy in Blizzard's gold
 function Settings:Format(text)
     if not text then return text end
-    return (text:gsub("`([^`]+)`", "|cffffd100%1|r"))
+    text = text:gsub("`([^`]+)`", "|cffffd100%1|r")
+    -- (11-26, I3) a list's choice names in gold by themselves: "* Name: what it does"
+    text = ("\n" .. text):gsub("\n%* ([^:\n|]+):", "\n* |cffffd100%1|r:"):sub(2)
+    return text
+end
+
+-- THE INFO PANEL'S META LINE (11-26, I2): a short grey line under the title, built from the row itself,
+-- so the texts need no "needs a reload" or "for every character" tips. Nil when there is nothing to say.
+--   Default: the row's own default, by its choice name (On / Off for a switch)
+--   Needs a reload: reload rows
+--   Needs <module or row> on: the module or the parent row that greys it (orange while it does)
+--   All characters: account = true rows (saved for the whole account)
+local function DefaultLabel(row)
+    local ok, d = pcall(function()
+        if row.resetValue then return row.resetValue() end
+        if row.path then return Settings:DefaultPath(row.path) end
+    end)
+    if not ok or d == nil then return nil end
+    if row.invert and type(d) == "boolean" then d = not d end
+    local kind = row.kind
+    if kind == nil or kind == "toggle" then
+        if type(d) ~= "boolean" then return nil end
+        return d and L["On"] or L["Off"]
+    end
+    if kind ~= "choice" and kind ~= "dropdown" and kind ~= "range" then return nil end
+    local okC, choices = pcall(row.Choices, row)
+    if not okC then return nil end
+    local names, wanted = {}, {}
+    if kind == "dropdown" and type(d) == "string" then
+        for token in d:gmatch("[^,]+") do wanted[#wanted + 1] = token end
+    else
+        wanted[1] = d
+    end
+    for _, w in ipairs(wanted) do
+        for _, c in ipairs(choices) do
+            if not c.divider and c.value == w then names[#names + 1] = c.text break end
+        end
+    end
+    if #names == 0 then return nil end
+    return table.concat(names, ", ")
+end
+function Settings:RowMeta(row)
+    if not row or row.kind == "text" or row.kind == "button" or row.kind == "buttons" or row.kind == "legend" then return nil end
+    local parts = {}
+    local d = DefaultLabel(row)
+    if d then parts[#parts + 1] = L["Default: %s"]:format(d) end
+    if row.reload or row.reloadNote then parts[#parts + 1] = L["Needs a reload"] end
+    if row.account then parts[#parts + 1] = L["All characters"] end
+    -- what greys it: its module, else the row it needs
+    local module = not row.ignoreModule and self.modules[row.module]
+    local need
+    if module and module.IsOn and not module:IsOn() then need = module:Title() end
+    local parent = not need and not row.inverseParent and row.parent and self.rows[row.parent]
+    if parent and not Settings.IsOnValue(parent:Get()) then need = parent:Label() end
+    -- needs: the key of the row it needs (its label is shown), or a text
+    if not need and row.needs then
+        local needed = self.rows[row.needs]
+        need = needed and needed:Label() or row.needs
+    end
+    local text = table.concat(parts, ". ")
+    if need and need ~= "" then
+        local greyed = row:IsDisabled()
+        local n = L["Needs %s on"]:format(need)
+        if greyed then n = "|cffff9933" .. n .. "|r" end
+        text = text ~= "" and (text .. ". " .. n) or n
+    end
+    return text ~= "" and text or nil
 end
 

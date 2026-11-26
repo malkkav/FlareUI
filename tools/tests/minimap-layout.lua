@@ -130,7 +130,8 @@ env.C_AddOns.GetAddOnMetadata = function(name) return name end
         ["AceEvent-3.0"] = { Embed = function(_, mod)
             function mod:RegisterEvent(event, method) case.epochs[event] = method end
         end },
-        ["LibSharedMedia-3.0"] = { Fetch = function(_, _, name) return "Media/" .. name end },
+        ["LibSharedMedia-3.0"] = { Fetch = function(_, _, name) return "Media/" .. name end,
+            IsValid = function(_, kind, name) return kind == "border" and (name == "Pixel Edge" or name:find("^FlareUI") ~= nil) end },
         ["LibDBIcon-1.0"] = {
             GetButtonList = function() return { "RegisteredAddon" } end,
             GetMinimapButton = function(_, name) if name == "RegisteredAddon" then return libButton end end,
@@ -545,4 +546,12 @@ round.db.durability, round.db.finderEye = false, false
 round.ns.MinimapDurability.Update()
 round.ns.MinimapEye.Update()
 assert(renv.DurabilityFrame:GetAlpha() == 1 and nativeEye:GetAlpha() == 1)
+-- (11-26, SupS) a Shared Media border on the square map: laid out as Thin, no corner mask
+do
+    local MMx = round.ns.Minimap
+    local spec = MMx.CustomBorderSpec("Pixel Edge")
+    assert(spec and spec.lsm == "Pixel Edge" and spec.mask == nil and spec.style.flare == spec)
+    assert(MMx.CustomBorderSpec("thin") == nil and MMx.CustomBorderSpec("Not There") == nil)
+    assert(MMx.CustomBorderSpec("Pixel Edge") == spec, "made once")
+end
 print("PASS: minimap borders, info bar, pings, scanning, HUD handoff and edge icons")

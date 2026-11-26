@@ -8,7 +8,7 @@ local L = ns.L
 -- only: the row hides itself as a fight starts (a state driver), and it reads auras only while the
 -- game lets addons read them. Known spells only, at your highest rank. Also: paladin blessings, picked per member (Blessing: Automatic gives warriors,
 -- rogues and hunters Might and everyone else Wisdom, or one for all); a hunter's or warlock's pet
--- missing or dead (Pet Reminders, on); food, flask and elixir buffs (Consumables: off, in dungeons
+-- missing or dead (Pet Reminders, on); a mage's mana gem missing from the bags; food, flask and elixir buffs (Consumables: off, in dungeons
 -- and raids, or always; Food and Flask each with a box; the elixirs ticked or those in your bags, each
 -- or any one of them; a click drinks what you carry). When It Shows: Solo / Party / Raid, Hide in Rested
 -- Areas, Only When You're the Only Provider (a group buff no one else of your class gives). Alerts: a
@@ -60,6 +60,8 @@ local REMINDERS = {
         { key = "intellect", cast = INTELLECT, buffs = Join(INTELLECT, { 23028 }), group = true, casters = true },
         -- one armor of any kind
         { key = "armor", cast = { 22783, 22782, 6117, 10220, 10219, 7320, 7302, 7301, 7300, 168 } },
+        -- a mana gem in the bags, any of them (Ruby, Citrine, Jade, Agate); a click conjures the best one known
+        { key = "manaGem", manaGem = true, cast = { 10054, 10053, 3552, 759 }, items = { 8008, 8007, 5513, 5514 } },
     },
     DRUID = {
         { key = "wild", cast = WILD, buffs = Join(WILD, { 21850, 21849 }), group = true },
@@ -1691,6 +1693,12 @@ local function Check(entry, before)
         end
         return 1, 1, "player"
     end
+    if def.manaGem then
+        for _, id in ipairs(def.items) do
+            if ItemCount(id) > 0 then return 0, 1 end
+        end
+        return 1, 1, "player"
+    end
     if def.bag then
         -- while levelling, with the bag on you: fewer than three Well-Rested stacks
         if UnitLevel("player") >= 60 or (C_Item.GetItemCount and C_Item.GetItemCount(SLEEPING_BAG) or 0) == 0 then return 0, 1 end
@@ -2289,11 +2297,8 @@ function BR.Update(context)
         end
     elseif ShowsHere(db) and not UnitIsDeadOrGhost("player") and not AurasLocked() and not UnitOnTaxi("player")
             and not (db.hideMounted and IsMounted()) then
-        -- Remind Before It Ends, or its dungeon / raid choice when set ("same" or none: the main one)
+        -- Remind Before It Ends (its In Dungeons / In Raids overrides were removed in 7.1)
         local minutes = db.before or 2
-        local inInstance, kind = IsInInstance()
-        local special = inInstance and ((kind == "party" and db.beforeDungeon) or (kind == "raid" and db.beforeRaid))
-        if type(special) == "number" then minutes = special end
         local before = minutes * 60
         for _, entry in ipairs(active) do
             if Enabled(entry) then
@@ -2697,12 +2702,14 @@ local function BuildSettings()
                   elseif a[1] == value then SetBool(a[1])(nil, not Bool(a[1], a[2])()) end
               end
           end },
-        -- the whole frame's opacity (out of Fading: it isn't a faded state)
+    })
+    -- Hide: one dropdown of toggles over Hide in Rested Areas and Hide While Mounted
+    local HIDES = { { "rested", "hideRested" }, { "mounted", "hideMounted" } }
+    Section("Fading", {
+        -- the whole frame's opacity, in Fading as on every other frame
         { name = L["Opacity"], kind = LEM.SettingType.Slider, default = 100, minValue = 20, maxValue = 100, valueStep = 5,
           -- plain numbers, as Faded Opacity: "100%" runs past the dialog's edge
           get = get("alpha", 100), set = set("alpha") },
-    })
-    Section("Fading", {
         { name = L["Visibility"], kind = LEM.SettingType.Dropdown, multiple = true,
           values = { { text = L["Solo"], value = "solo" }, { text = L["In a Party"], value = "party" },
                      { text = L["In a Raid"], value = "raid" } },
@@ -2722,12 +2729,23 @@ local function BuildSettings()
               end
               Redraw()
           end },
-        { name = L["Hide in Rested Areas"], kind = LEM.SettingType.Checkbox, default = false,
-          desc = L["Nothing shows in towns and inns."],
-          get = function() local db = GetDb(); return db and db.hideRested or false end, set = set("hideRested") },
-        { name = L["Hide While Mounted"], kind = LEM.SettingType.Checkbox, default = false,
-          desc = L["No reminders while you ride."],
-          get = function() local db = GetDb(); return db and db.hideMounted or false end, set = set("hideMounted") },
+        { name = L["Hide"], kind = LEM.SettingType.Dropdown, multiple = true,
+          values = { { text = L["In Rested Areas"], value = "rested" }, { text = L["While Mounted"], value = "mounted" } },
+          desc = L["When the reminders stay hidden:\n* In Rested Areas: in towns and inns\n* While Mounted: while you ride"],
+          get = function()
+              local db, list = GetDb(), {}
+              for _, h in ipairs(HIDES) do if db and db[h[2]] then list[#list + 1] = h[1] end end
+              return list
+          end,
+          set = function(_, value, fromReset)
+              local db = GetDb()
+              if not db then return end
+              for _, h in ipairs(HIDES) do
+                  if fromReset then db[h[2]] = nil
+                  elseif h[1] == value then db[h[2]] = not db[h[2]] or nil end
+              end
+              Redraw()
+          end },
         -- Show Speed and Hide Speed (an unset one reads the single fadeSpeed of older profiles)
         { name = L["Show Speed"], kind = LEM.SettingType.Dropdown, default = "instant",
           values = { { text = L["Instant"], value = "instant", isRadio = true }, { text = L["Fast"], value = "fast", isRadio = true },

@@ -248,7 +248,9 @@ function R.minimap(outer, spec)
         c:Box('mapHeader', x - 2, y - 2, size + 4, 29, 'FlareUI Frames', 1)
     elseif style == 'square' then
         -- the square map's Border: the bronze drawn as FlareUI Frames here, or FlareUI Thick / Thin
-        local edge = ({ thick = 'FlareUI Thick', thin = 'FlareUI Thin' })[border] or 'FlareUI Frames'
+        -- (a Shared Media border: its own name, 11-26)
+        local edge = ({ thick = 'FlareUI Thick', thin = 'FlareUI Thin' })[border]
+            or (border ~= 'bronze' and border ~= 'header' and border) or 'FlareUI Frames'
         c:Box('mapBorder', x - 4, y - 4, size + 8, size + 8, edge, 0)
         c:Box('mapHeader', x + 2, y + 2, size - 4, 25, 'FlareUI Thin', 0.9)
     else
@@ -635,7 +637,7 @@ function R.tracker(c, spec)
     for i, title in ipairs({ L["A Threat Within"], L["Kobold Camp Cleanup"] }) do
         local text = (Get('objectivetracker.hideLevel') and '' or '[5] ') .. title .. (Get('objectivetracker.showTags') and ' [G]' or '')
         -- the first quest is finished: Show Complete Tag adds the green "(Complete)"
-        if i == 1 and Get('objectivetracker.showCompleteTag') ~= false then
+        if i == 1 then
             local tc = colors.TITLE_DONE
             text = text .. (' |cff%02x%02x%02x'):format(tc[1] * 255, tc[2] * 255, tc[3] * 255) .. L["(Complete)"] .. '|r'
         end
@@ -697,7 +699,7 @@ function R.meter(c, spec)
         local line = c:Texture('pullLine', 'Interface\\Buttons\\WHITE8X8', c.width - 42, 60, 2, 94)
         line:SetVertexColor(1, 0.2, 0.1)
     end
-    if spec.key == 'dm.pullFlash' and Get('damagemeter.threatPullFlash') then
+    if spec.key == 'dm.pullWarning' and Get('damagemeter.threatPullFlash') then
         local flash = c:Texture('pullFlash', 'Interface\\Buttons\\WHITE8X8', 10, 61, c.width - 20, 27, true)
         flash:SetDrawLayer('OVERLAY', 6); flash:SetVertexColor(1, 0.15, 0.1); flash:SetBlendMode('ADD')
         local elapsed = 0
@@ -1283,7 +1285,11 @@ end
 -- Row Order and Growth
 function R.lootWindow(c, spec)
     Heading(c,L["Loot Window"])
-    if spec.key == 'bl.lootWindow' and not Get('tweaks.lootWindow') then c:Text('lootWinOff',L["Disabled"],12,90); return end
+    -- Loot Window's own choices (Off, Grow Down, Grow Up): the one pointed at
+    local growthPick = spec.key == 'bl.lootWindow' and (spec.value == 'down' or spec.value == 'up') and spec.value or nil
+    if spec.key == 'bl.lootWindow' and (spec.value == 'off' or (not growthPick and not Get('tweaks.lootWindow'))) then
+        c:Text('lootWinOff',L["Disabled"],12,90); return
+    end
     local LSM = LibStub('LibSharedMedia-3.0')
     local x, w = 8, c.width - 16
     -- LootWindow.lua's sizes, a little smaller to fit the canvas: header 30, row 41 + 3 gap, icon 31
@@ -1316,7 +1322,7 @@ function R.lootWindow(c, spec)
     local foot = Get('tweaks.lootWindowFreeSlots') and 26 or 0
     if foot > 0 then table.remove(rows, 1) end
     -- Growth's own picture: a short loot, so the edge the window stays on shows
-    if spec.key == 'bl.lootWindowGrowth' then for i = #rows, 3, -1 do rows[i] = nil end end
+    if growthPick then for i = #rows, 3, -1 do rows[i] = nil end end
     -- Row Order Bottom to Top: the first row at the bottom
     if Get('tweaks.lootWindowOrder') == 'bottom' then
         for i = 1, math.floor(#rows / 2) do rows[i], rows[#rows - i + 1] = rows[#rows - i + 1], rows[i] end
@@ -1324,7 +1330,7 @@ function R.lootWindow(c, spec)
 
     local height = TOP + #rows * ROW_H + (#rows - 1) * GAP + foot + PAD
     -- Growth Up: the window stands on the bottom of the picture, room above it to grow
-    if Get('tweaks.lootWindowGrowth') == 'up' then wy = math.max(wy, c.height - height - 8) end
+    if (growthPick or Get('tweaks.lootWindowGrowth')) == 'up' then wy = math.max(wy, c.height - height - 8) end
     local box = c:Box('lootWinPanel', x, wy, w, height, border, 0)
     box:SetBackdropBorderColor(bc.r * 0.75, bc.g * 0.75, bc.b * 0.75, bc.a)
     if not box.rock then
@@ -1444,7 +1450,7 @@ function R.minimapDrawer(c, spec)
 end
 
 local ITEM_TOOLTIP = { ['tt.shortItemStats'] = true, ['tt.ids'] = true, ['tt.itemLevel'] = true }
-local THREAT_KEYS = { ['dm.threatValue'] = true, ['dm.pullLine'] = true, ['dm.pullFlash'] = true, ['dm.tankLead'] = true, ['dm.threatOverview'] = true }
+local THREAT_KEYS = { ['dm.threatValue'] = true, ['dm.pullLine'] = true, ['dm.pullWarning'] = true, ['dm.tankLead'] = true, ['dm.threatOverview'] = true }
 local OWN = {
     tooltip = { 'Tooltips', function(spec) return spec.key == 'tt.compareShift' and 'compare' or spec.key == 'tt.healingDamage' and 'healing'
         or ITEM_TOOLTIP[spec.key] and 'item' or 'unit' end },

@@ -104,14 +104,25 @@ Show("tt.showOther", "tooltips.visibility.other")
 local ids = Both({ "tooltips.showItemID", "tooltips.showSpellID" })
 local borders = Both({ "tooltips.borderByReaction", "tooltips.borderByClass", "tooltips.borderByQuality" })
 local function Tweak(row) row.half = true; row.tab = "tweaks"; S:Row(row) end
-Tweak{ key = "tt.borders", get = borders.get, set = borders.set, apply = Refresh }
-Tweak{ key = "tt.classNames", apply = Refresh,
+-- Coloured Borders | Class-Coloured Names: the look, on the first tab with Scale and Background Opacity
+S:Row{ key = "tt.borders", half = true, get = borders.get, set = borders.set, apply = Refresh }
+S:Row{ key = "tt.classNames", half = true, apply = Refresh,
     get = function() return S:GetPath("tooltips.nameColor") == "class" end,
     set = function(on) S:SetPath("tooltips.nameColor", on and "class" or "none") end }
-Tweak{ key = "tt.showGuild", path = "tooltips.showGuild", apply = Refresh }
--- greyed while the guild line is off (no indent)
-Tweak{ key = "tt.showGuildRank", path = "tooltips.showGuildRank", apply = Refresh,
-    disabled = function() return S:GetPath("tooltips.showGuild") == false end }
+-- Guild: Off, Name or Name and Rank, one choice over Show Guild Name (on unless false) and Show Guild Ranks
+S:Row{ key = "tt.guild", kind = "choice", tab = "tweaks", choices = { "off", "name", "rank" }, apply = Refresh,
+    get = function()
+        if S:GetPath("tooltips.showGuild") == false then return "off" end
+        return S:GetPath("tooltips.showGuildRank") and "rank" or "name"
+    end,
+    set = function(v)
+        S:SetPath("tooltips.showGuild", v ~= "off")
+        S:SetPath("tooltips.showGuildRank", v == "rank")
+    end,
+    resetValue = function()
+        if S:DefaultPath("tooltips.showGuild") == false then return "off" end
+        return S:DefaultPath("tooltips.showGuildRank") and "rank" or "name"
+    end }
 Tweak{ key = "tt.showPvP", path = "tooltips.showPvP", apply = Refresh }
 Tweak{ key = "tt.showFaction", path = "tooltips.showFaction", apply = Refresh }
 Tweak{ key = "tt.showTarget", path = "tooltips.showTarget", apply = Refresh }
@@ -121,7 +132,7 @@ Tweak{ key = "tt.itemLevel", path = "tooltips.itemLevel" }
 Tweak{ key = "tt.compareShift", path = "tooltips.compareShift", apply = Refresh }
 Tweak{ key = "tt.shortItemStats", path = "tooltips.shortItemStats" }
 -- after the switches (rank 3.5), beside Simplified Item Stats, greyed while it is off (no indent)
-Tweak{ key = "tt.healingDamage", kind = "choice", path = "tooltips.healingDamage", rank = 3.5,
+Tweak{ key = "tt.healingDamage", kind = "choice", path = "tooltips.healingDamage", rank = 3.5, needs = "tt.shortItemStats",
     choices = { "off", "damage", "power" },
     disabled = function() return not S:GetPath("tooltips.shortItemStats") end }
 

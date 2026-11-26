@@ -130,8 +130,9 @@ set("level", "discRight")
 assert(row("level"):Get() == "discRight" and NP.TypeDB("enemyNpc").levelSide == "right")
 set("nameAbove", "right:fullname")
 assert(row("nameAbove"):Get() == "right:fullname")
+-- (11-26) Name Only greys nothing: the plate can show in combat or on the target
 set("nameOnlyMode", true)
-assert(row("width"):IsDisabled() and not row("nameOnlySize"):IsDisabled())
+assert(not row("width"):IsDisabled() and not row("nameOnlySize"):IsDisabled())
 set("combatPlates", "enemyNpc")
 assert(not row("width"):IsDisabled() and row("combatPlates"):Get() == "enemyNpc")
 assert(side.reset:IsEnabled() and side.undo:IsEnabled() and NP.PresetOf("enemyNpc") == "custom")
@@ -156,26 +157,46 @@ side.undo:Click()
 assert(NP.PresetOf("enemyNpc") == "full" and NP.TypeDB("enemyNpc").width ~= 170)
 NP.TypeStore("minor").preset, NP.TypeStore("minor").custom = nil, nil
 
--- Crowd Control: the two switches lead the section, and the rest grey out with both off
+-- Crowd Control: the two switches lead the section, and its size greys out with both off (11-26: its
+-- own shape, swipe and timer rows are gone, it uses the Auras look)
 do
     for _, key in ipairs({ "cc", "defensives" }) do NP.TypeSet("enemyNpc", key, false) end
-    for _, key in ipairs({ "ccStyle", "ccSwipe", "ccTimer", "ccSize" }) do assert(row(key):IsDisabled(), key) end
+    assert(row("ccSize"):IsDisabled() and not S.rows["np.ccStyle"])
     NP.TypeSet("enemyNpc", "cc", true)
-    assert(not row("ccTimer"):IsDisabled() and row("ccTimer"):Get() == (NP.TypeDB("enemyNpc").auraTimer or "none"), "follows Auras")
-    set("ccTimer", "middle")
-    assert(row("ccTimer"):Get() == "middle" and NP.TypeDB("enemyNpc").auraTimer ~= "middle")
+    assert(not row("ccSize"):IsDisabled())
+    NP.TypeStore("enemyNpc").preset, NP.TypeStore("enemyNpc").custom = nil, nil
+end
+-- (11-26) Aura Positions greys, not hides, until both Buffs and Debuffs are on
+do
+    NP.TypeSet("enemyNpc", "buffs", "off")
+    assert(not row("auraRows"):IsHidden() and row("auraRows"):IsDisabled())
     NP.TypeStore("enemyNpc").preset, NP.TypeStore("enemyNpc").custom = nil, nil
 end
 P:Open("np", "extras")
 assert(not row("questMarks"):IsHidden() and row("mobTypesWhere"):IsDisabled())
-widgetFor("questMarks").control:Click()
-widgetFor("questMarks"):RunScript("OnLeave")
-assert(row("questMarks"):Get() and side.sample.states.quest and not side.sample.states.combo,
-    "toggling Objective Icon refreshes the selected profile in the pinned preview")
+set("questMarks", "icon")
+assert(row("questMarks"):Get() == "icon" and side.sample.states.quest and not side.sample.states.combo,
+    "Quest Marks' Icon refreshes the pinned preview")
 set("comboPoints", true)
 set("mobTypes", "boss,caster")
 assert(not row("mobTypesWhere"):IsDisabled() and row("mobTypes"):Get() == "boss,caster")
-assert(row("questProgress"):Get() and side.sample.states.quest and side.sample.states.combo)
+assert(row("questMarks"):Get() == "icon" and side.sample.states.quest and side.sample.states.combo)
+-- Progress on its own, with no icon
+set("questMarks", "progress")
+assert(row("questMarks"):Get() == "progress" and NP.TypeDB("enemyNpc").questProgress == true)
+set("questMarks", "icon")
+-- (11-26) toggle dropdowns over the old switches, each still saved on its own
+set("threatEffects", "glow,scale")
+assert(NP.TypeDB("enemyNpc").threatGlow == true and NP.TypeDB("enemyNpc").aggroFlash == false and NP.TypeDB("enemyNpc").threatScale == true)
+set("kickReadyPick", "mark")
+assert(NP.TypeDB("enemyNpc").kickReady == false and NP.TypeDB("enemyNpc").castKickMark == true)
+set("groupColors", "raid")
+assert(NP.TypeDB("enemyNpc").groupColor == false and NP.TypeDB("enemyNpc").raidColor == true and row("groupColors"):Get() == "raid")
+set("targetHighlight", "none")
+assert(S:GetPath("nameplates.targetBorder") == false and row("targetHighlight"):Get() == "none")
+set("targetHighlight", "border,glow")
+assert(S:GetPath("nameplates.targetBorder") == true and S:GetPath("nameplates.targetGlow") == true)
+NP.TypeStore("enemyNpc").preset, NP.TypeStore("enemyNpc").custom = nil, nil
 widgetFor("threat"):RunScript("OnEnter")
 assert(side.sample.states.threat and side.sample.states.target == false, "the Threat row previews a non-target threat plate")
 ns.NameplatesPinned.Hover(nil)
@@ -184,9 +205,13 @@ assert(not side.sample.states.threat and side.sample.states.target)
 assert(row("nameOnlyFull"):IsHidden(), "an NPC type has no full name")
 -- (11-23) the new rows: guild colour only for Friendly Player, titles on for NPC types, the cast bar's
 -- own texture and border with their defaults, class-coloured names off
-assert(row("guildColor"):IsHidden() and not row("showTitles"):IsHidden() and row("showTitles"):Get() == true)
+assert(row("guildColor"):IsHidden() and row("underName"):Get() == "title")
 assert(not row("nameClassColor"):Get())
-assert(row("showGuild"):IsHidden(), "NPCs have no guild")
+do
+    local values = {}
+    for _, c in ipairs(row("underName"):Choices()) do if c.value then values[#values + 1] = c.value end end
+    assert(table.concat(values, ",") == "none,title", "NPCs have no guild")
+end
 assert(row("castTexture"):Get() == "FlareUI Dark" and row("castBorder"):Get() == "FlareUI Frames")
 assert(row("mouseoverHighlight"):Get() == "border,bar", "Mouseover Highlight starts on Border and Bar")
 side.unitGroup.cells[1]:Click()
@@ -202,14 +227,17 @@ do
     assert(pick:Get() == "firstname")
     pick:Set("fullname")
 end
-assert(row("showTitles"):Get() == false, "players start without titles")
+assert(row("underName"):Get() == "none", "players start without titles")
 -- (11-25, #192) Party and Raid Colour count in Name Only Mode: not greyed there
 do
     NP.TypeSet("enemyPlayer", "plate", "name")
-    assert(not row("groupColor"):IsDisabled() and not row("raidColor"):IsDisabled() and row("debuffs"):IsDisabled())
+    assert(not row("groupColors"):IsDisabled() and not row("debuffs"):IsDisabled())
     NP.TypeStore("enemyPlayer").preset, NP.TypeStore("enemyPlayer").custom = nil, nil
 end
-assert(not row("showGuild"):IsHidden() and not row("showGuild"):Get(), "players: Show Guild Name, off")
+set("underName", "guild")
+
+assert(row("underName"):Get() == "guild", "players: Under the Name has Guild")
+set("underName", "none")
 side.unitGroup.cells[2]:Click()
 
 P:Open("np", "targeting")
@@ -232,9 +260,9 @@ ns.NameplatesPinned.Hover(nil)
 assert(not side.sample.states.cast, "clearing the row preview restores the selected type's states")
 P:Open("np", "auras")
 set("buffs", "off")
-assert(row("auraRows"):IsHidden() and row("buffSize"):IsDisabled())
+assert(row("auraRows"):IsDisabled() and not row("auraRows"):IsHidden() and row("buffSize"):IsDisabled())
 set("buffs", "all")
-assert(not row("auraRows"):IsHidden())
+assert(not row("auraRows"):IsDisabled())
 
 P:Open("np", "visibility")
 set("enemyShow", "combat")

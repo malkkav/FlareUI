@@ -303,4 +303,18 @@ do
     env.C_Timer.After, ns.db.global = after, global
 end
 
+-- (11-26, Ballsy) the off-hand swing bar only with a weapon in the off hand
+do
+    local inv, item = env.GetInventoryItemID, env.C_Item
+    local slot17
+    env.GetInventoryItemID = function(_, slot) if slot == 17 then return slot17 end end
+    env.C_Item = setmetatable({ GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 1 and 2 or 4 end }, { __index = item })
+    slot17 = nil
+    assert(rb.OffHandWeapon() == false, "nothing in the off hand")
+    slot17 = 2
+    assert(rb.OffHandWeapon() == false, "a shield")
+    slot17 = 1
+    assert(rb.OffHandWeapon() == true, "a weapon")
+    env.GetInventoryItemID, env.C_Item = inv, item
+end
 print("PASS: resource health, shapeshift power, swing timing, mirror timers and Edit Mode")

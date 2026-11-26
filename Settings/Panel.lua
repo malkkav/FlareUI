@@ -693,10 +693,17 @@ local function ShowVisual(row, value)
     preview.title:SetPoint("RIGHT", -PAD, 0)
 end
 
-local function ShowPreview(title, desc, tip)
+local function ShowPreview(title, desc, tip, meta)
     preview.title:SetText(title or "")
+    -- (11-26, I2) the meta line under the title; the description moves up when there is none
+    preview.meta:SetText(meta or "")
+    preview.desc:ClearAllPoints()
+    preview.desc:SetPoint("TOPLEFT", meta and preview.meta or preview.title, "BOTTOMLEFT", 0, meta and -6 or -8)
+    preview.desc:SetPoint("RIGHT", -PAD, 0)
     preview.desc:SetText(S:Format(desc) or "")
     preview.tip:SetText(tip and (L["Tip:"] .. " " .. S:Format(tip)) or "")
+    -- (I3) a thin bronze line before the tip
+    preview.tipLine:SetShown(tip ~= nil and tip ~= "")
 end
 
 -- nothing hovered: the picture and a hint
@@ -721,7 +728,7 @@ local function ShowModulePreview()
         return
     end
     ShowPreview(S:WindowText("infoPanelNothingHovered", L["Info Panel"]),
-        S:WindowText("infoPanelNothingHovered2", L["Hover any option to see how it works!"]))
+        S:WindowText("infoPanelNothingHovered2", L["Point at any option to see what it does."]))
 end
 
 -- title: the row's info text, else its label, else its section title
@@ -733,7 +740,7 @@ local function ShowRowPreview(row, value)
     if not title or title == "" then
         title = row.section and ns.Copy and ns.Copy.sections and ns.Copy.sections[row.section]
     end
-    ShowPreview(title, row:Description(), row:Tip())
+    ShowPreview(title, row:Description(), row:Tip(), S:RowMeta(row))
 end
 
 --------------------------------------------------
@@ -3380,15 +3387,28 @@ local function BuildWindow()
     preview.title:SetTextColor(TITLE_YELLOW[1], TITLE_YELLOW[2], TITLE_YELLOW[3])
     preview.title:SetPoint("TOPLEFT", preview.picture, "BOTTOMLEFT", 0, -12)
     preview.title:SetPoint("RIGHT", -PAD, 0)
+    -- (11-26, I2) the meta line: default, reload, what it needs, small and grey (S:RowMeta)
+    preview.meta = Text(right, "GameFontHighlightSmall")
+    preview.meta:SetPoint("TOPLEFT", preview.title, "BOTTOMLEFT", 0, -3)
+    preview.meta:SetPoint("RIGHT", -PAD, 0)
+    preview.meta:SetTextColor(0.56, 0.53, 0.46)
     preview.desc = Text(right, "GameFontHighlight")
     preview.desc:SetPoint("TOPLEFT", preview.title, "BOTTOMLEFT", 0, -8)
     preview.desc:SetPoint("RIGHT", -PAD, 0)
     preview.desc:SetSpacing(3)
     preview.desc:SetTextColor(0.85, 0.85, 0.85)
+    -- (I3) the tip: a thin bronze line over it, in a soft beige (gold competed with the title)
+    preview.tipLine = right:CreateTexture(nil, "ARTWORK")
+    preview.tipLine:SetHeight(1)
+    preview.tipLine:SetColorTexture(0.65, 0.49, 0.27, 0.45)
+    preview.tipLine:SetPoint("TOPLEFT", preview.desc, "BOTTOMLEFT", 0, -8)
+    preview.tipLine:SetPoint("RIGHT", -PAD, 0)
+    preview.tipLine:Hide()
     preview.tip = Text(right, "GameFontNormalSmall")
-    preview.tip:SetPoint("TOPLEFT", preview.desc, "BOTTOMLEFT", 0, -10)
+    preview.tip:SetPoint("TOPLEFT", preview.tipLine, "BOTTOMLEFT", 0, -6)
     preview.tip:SetPoint("RIGHT", -PAD, 0)
     preview.tip:SetSpacing(2)
+    preview.tip:SetTextColor(0.81, 0.75, 0.63)
 
     -- reload bar, hanging below the window
     local footer = CreateFrame("Frame", nil, frame, "BackdropTemplate")

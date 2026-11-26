@@ -375,14 +375,27 @@ function BT.Summary(slots, only)
     return table.concat(parts, "  " .. (ns.DOT or "\194\183") .. "  ")   -- a middle dot between the slots (Core.lua ns.DOT)
 end
 -- o: name, bar, db() (the stored table), style() ("plain", "plate", "bar"), firstOnly() (optional),
--- oldKey (optional), changed() after a pick or a reset
+-- oldKey (optional), changed() after a pick or a reset, mirrored() (optional: the frame draws its
+-- texts mirrored, stored Left on the screen's right)
+-- (11-26, Sharkounet) the menu follows the screen's sides: on a mirrored frame its Left is the stored
+-- Right and the other way round. What is saved doesn't change, so every frame looks as it did.
+BT.SCREEN_SWAP = { left = "right", middle = "middle", right = "left" }
 function BT.Setting(o)
     local LEM = LibStub("FlareEditMode")
     local function FirstOnly() return o.firstOnly and o.firstOnly() or nil end
+    local function Mirrored() return o.mirrored and o.mirrored() and true or false end
+    -- the stored slot behind a slot on the screen
+    local function Stored(slot) return Mirrored() and BT.SCREEN_SWAP[slot] or slot end
     local function Slots() return BT.Slots(o.db(), o.bar, o.style(), FirstOnly(), o.oldKey, o.unit) end
+    -- the slots by screen side, for the closed box's summary
+    local function ScreenSlots()
+        local s = Slots()
+        if not Mirrored() then return s end
+        return { left = s.right, middle = s.middle, right = s.left }
+    end
     -- the slots this style offers (raid tiles: Centre only, its ticks straight in the menu)
     local function SlotList() return BT.STYLE_SLOTS[o.style()] end
-    local function Summary() return BT.Summary(Slots(), SlotList()) end
+    local function Summary() return BT.Summary(ScreenSlots(), SlotList()) end
     local function Picked(slot, value)
         for _, v in ipairs(BT.Picked(o.db(), o.bar, slot, o.style(), FirstOnly(), o.oldKey, o.unit)) do
             if v == value then return true end
@@ -395,11 +408,13 @@ function BT.Setting(o)
     end
     return {
         name = o.name, kind = LEM.SettingType.Dropdown,
-        desc = o.desc or L["Left, Middle and Right: what each part of the bar shows. Several numbers show together, split by /. A name stands alone."],
+        desc = o.desc or L["Left, Centre and Right: what each part of the bar shows. Several numbers show together, split by /. A name stands alone."],
         generator = function(owner, rootDescription)
             local list = SlotList()
-            for _, slot in ipairs(list or BT.SLOTS) do
-                local sub = (list and #list == 1) and rootDescription or rootDescription:CreateButton(BT.MENU_SLOTS[slot])
+            for _, shown in ipairs(list or BT.SLOTS) do
+                -- (the menu's side is the screen's; the stored slot may be the other one)
+                local slot = (list and #list == 1) and shown or Stored(shown)
+                local sub = (list and #list == 1) and rootDescription or rootDescription:CreateButton(BT.MENU_SLOTS[shown])
                 for _, v in ipairs(BT.Values(o.bar, o.style())) do
                     local value, label = v.value, v.text
                     local box = sub:CreateCheckbox(label, function() return Picked(slot, value) end, function()

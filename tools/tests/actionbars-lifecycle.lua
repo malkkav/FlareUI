@@ -12,7 +12,7 @@ local character, dbCallbacks, moduleEvents = {}, {}, {}
 local ns = {
     modules = {},
     L = setmetatable({}, { __index = function(_, key) return key end }),
-    db = { profile = { actionbars = db, fcm = fcm }, global = {} },
+    db = { profile = { actionbars = db, fcm = fcm, tweaks = { enabled = true } }, global = {} },
     BORDER_COLOR = { r = 0.6, g = 0.5, b = 0.3, a = 1 },
     SetFont = function(widget, ...) widget:SetFont(...) end,
     GetFontPath = function(face) return "Fonts/" .. face end,
@@ -150,6 +150,8 @@ function bag:UpdateSystemSettingSize() self:SetScale(0.75) end
 local totem = env.CreateFrame("Frame", "MultiCastActionBarFrame", env.UIParent)
 
 ui:load("Modules/ActionBars.lua", ns)
+-- the gryphons are Quality of Life's own (Gryphons.lua), loaded after the bars as in the TOC
+ui:load("Modules/Gryphons.lua", ns)
 local bars = ns.ActionBars
 function bars:RegisterEvent(event, callback) moduleEvents[event] = callback end
 function bars:SecureHook(...) return env.hooksecurefunc(...) end
@@ -161,6 +163,7 @@ end
 ui:emit("PLAYER_LOGIN")
 assert(cvar == "0" and ns.db.global.autoPushSet)
 bars:Init()
+ui:emit("PLAYER_ENTERING_WORLD")
 assert(a.SlotArt:IsShown() and not a.SlotBackground:IsShown() and a.NormalTexture:GetAlpha() == 0)
 assert(a:GetScale() == 1.2 and a.FlareUI_Border:IsShown() and a.FlareUI_CountdownLift == a.cooldown:GetCountdownFontString():GetParent())
 assert(a.HotKey:GetText() == "SN+" and b.HotKey:GetText() == "M5")
@@ -219,12 +222,13 @@ assert(not a:IsMouseEnabled() and refresh == 2)
 -- Settings can be saved in combat and applied when the secure widgets can change again.
 ui.combat = true
 bars.TotemSizeSetting().set(nil, 125)
-bars.CapSizeSetting("capLeft").set(nil, 150)
+ns.Gryphons.SizeSetting("capLeft").set(nil, 150)
 bars.BagBarSizeSetting().set(nil, 55)
 assert(totem:GetScale() == 1 and caps.LeftEndCap:GetScale() == 1 and bag:GetScale() == 1)
 assert(not bars:SetFCM_UnlockMode(true))
 ui.combat = false
 send("PLAYER_REGEN_ENABLED")
+ui:emit("PLAYER_REGEN_ENABLED")
 assert(totem:GetScale() == 1.25 and caps.LeftEndCap:GetScale() == 1.5 and bag:GetScale() == 0.55)
 assert(caps.LeftEndCap.keptPlace, "the gryphon keeps its place on screen")
 bag:UpdateSystemSettingSize()
@@ -253,6 +257,14 @@ do
     bars.CheckClassPage()
     assert(#drivers == 2, "not in a fight")
     ui.combat = false
+    -- (11-26) Keep Page 1 On Shapeshift: Cat and Bear stay on page 1; with In Stealth, Prowl too
+    db.keepFormPage = true
+    bars:Refresh()
+    assert(drivers[#drivers]:find("bonusbar:1/2/3] 1", 1, true), drivers[#drivers])
+    db.keepStealthPage = false
+    bars:Refresh()
+    assert(drivers[#drivers]:find("bonusbar:1/3] 1", 1, true) and drivers[#drivers]:find("stealth,form] 8", 1, true), drivers[#drivers])
+    db.keepFormPage = nil
     env.UnitClass, env.RegisterStateDriver = class, register
     db.keepStealthPage = false
     bars:Refresh()

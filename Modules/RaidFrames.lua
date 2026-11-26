@@ -277,6 +277,21 @@ function TT.Update(t)
     t.Health:SetValue(UnitHealth(unit))
     t.Health:SetStatusBarColor(K.HealthBarColor(unit, ns.ClassColorsOn(GetDb()), GetDb()))   -- (Health Colour: the raid's)
     t.Name:SetText(ns.UnitDisplayName(unit))
+    TT.UpdateMarker(t, unit)
+end
+-- Show Target Markers (off): the raid marker of what the tank is targeting, on the frame's right border
+-- (a secret index goes to the texture unread)
+function TT.UpdateMarker(t, unit)
+    local icon = t.RaidIcon
+    if not icon then return end
+    local db = GetDb()
+    local mt = db and db.mainTanks
+    if not (mt and mt.targetMarkers) then icon:Hide() return end
+    local index = GetRaidTargetIndex(unit)
+    local show
+    if not canaccessvalue(index) then show = true else show = index ~= nil and index > 0 end
+    if show then SetRaidTargetIconTexture(icon, index) end
+    icon:SetShown(show)
 end
 
 function TT.Create(f)
@@ -297,6 +312,13 @@ function TT.Create(f)
     t.Name:SetPoint("RIGHT", -4, 0)
     t.Name:SetJustifyH("LEFT")
     t.Name:SetWordWrap(false)
+    -- (11-26, as Party Targets) Target Border and Show Target Markers
+    t.Border = CreateFrame("Frame", nil, t, "BackdropTemplate")
+    t.Border:SetAllPoints()
+    t.Border:SetFrameLevel(t:GetFrameLevel() + 2)
+    t.RaidIcon = overlay:CreateTexture(nil, "OVERLAY", nil, 4)
+    t.RaidIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+    t.RaidIcon:Hide()
     t:SetScript("OnShow", TT.Update)
     if type(t.SetRolesets) == "function" then pcall(t.SetRolesets, t, "unitFrames") end
     -- click-casting on a main tank's target too, as on every other tile
@@ -364,7 +386,17 @@ function TT.Layout()
         else
             t:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -TT.GAP)
         end
-        t:SetSize(TT.Size(w, hh))
+        local tw, th = TT.Size(w, hh)
+        t:SetSize(tw, th)
+        -- Target Border (None until picked: the look they always had)
+        local mt = db and db.mainTanks
+        if t.Border then K.ApplyBorderStyle(t.Border, K.GetBorderFile(mt and mt.targetBorder or "None"), th) end
+        if t.RaidIcon then
+            local size = math.max(10, math.min(22, math.floor(th * 0.72)))
+            t.RaidIcon:SetSize(size, size)
+            t.RaidIcon:ClearAllPoints()
+            t.RaidIcon:SetPoint("CENTER", t, "RIGHT", 0, 0)
+        end
         t.Health:SetStatusBarTexture(tex)
         K.ApplyFont(t.Name, K.Font("raid", "names"), -2)
         local unit = f:GetAttribute("unit")
@@ -960,12 +992,12 @@ local function BuildSettings()
           desc = L["Which way the raid grows as groups join. Rows grow down or up, columns right or left. The main tank frames follow rows."],
           get = get("grow", "CENTER"), set = set("grow") },
         -- ("Group Order": "Sort By" is the aura order everywhere else; found by "Sort By" too)
-        { name = L["Sort By"], search = L["Group Order"], kind = LEM.SettingType.Dropdown, default = "GROUP",
+        { name = L["Group Order"], search = L["Sort By"], kind = LEM.SettingType.Dropdown, default = "GROUP",
           values = { { text = L["Group"], value = "GROUP", isRadio = true }, { text = L["Role"], value = "ROLE", isRadio = true },
                      { text = L["Class"], value = "CLASS", isRadio = true } },
           desc = L["Group keeps each raid group together. Role and Class fill rows of five, tanks or classes first."],
           get = get("sort", "GROUP"), set = set("sort") },
-        { name = L["Groups"], kind = LEM.SettingType.Dropdown, default = "ROWS",
+        { name = L["Orientation"], search = L["Groups"], kind = LEM.SettingType.Dropdown, default = "ROWS",
           values = { { text = L["Rows"], value = "ROWS", isRadio = true }, { text = L["Columns"], value = "COLUMNS", isRadio = true } },
           get = get("orientation", "ROWS"),
           -- (Growth's choices read Right / Left for columns: the dialog redraws them)
@@ -993,7 +1025,7 @@ local function BuildSettings()
           end,
           desc = L["The raid's main tanks in a small frame of their own (set by the raid leader)."] },
         -- as the party frames' Show My Frame in a Party (saved the other way round: hidePlayerInRaid)
-        { name = L["Show My Frame in a Raid"], kind = LEM.SettingType.Checkbox, default = true,
+        { name = L["Show Player Frame in a Raid"], kind = LEM.SettingType.Checkbox, default = true,
           get = function(...) return not get("hidePlayerInRaid", false)(...) end,
           set = function(_, value)
               local db = GetDb()
@@ -1126,6 +1158,14 @@ local function BuildTankSettings()
           formatter = function(value) return value == 0 and L["Auto"] or value end,
           get = function() return get("targetHeight", 0)() or 0 end,
           set = function(layoutName, value) set("targetHeight")(layoutName, value ~= 0 and value or nil) end,
+          hidden = function() return TT.Place() == "OFF" end },
+        -- (11-26, as Party Targets) Target Border (None until picked) and Show Target Markers (off)
+        { name = L["Target Border"], kind = LEM.SettingType.Dropdown, default = "None", values = K.BuildBorderValues(false),
+          get = get("targetBorder", "None"), set = set("targetBorder"),
+          hidden = function() return TT.Place() == "OFF" end },
+        { name = L["Show Target Markers"], kind = LEM.SettingType.Checkbox, default = false,
+          get = function() return get("targetMarkers", false)() == true end, set = set("targetMarkers"),
+          desc = L["The raid marker of what each main tank is targeting, on their target's frame."],
           hidden = function() return TT.Place() == "OFF" end },
     })
     Section("Size", {

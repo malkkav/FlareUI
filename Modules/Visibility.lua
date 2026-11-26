@@ -84,8 +84,9 @@ local ELEMENTS = {
     -- mana: Missing Mana too (the player frame only)
     { key = "uf_player", delay = 0, unit = "player", module = "unitframes", own = true, instant = true, health = "player", mana = true },
     { key = "uf_pet", delay = 0, unit = "pet", module = "unitframes", own = true, instant = true, health = "pet" },
-    { key = "uf_target", unit = "target", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
-    { key = "uf_targettarget", unit = "targettarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
+    -- (noTarget: Has a Target is always true on these two, so it isn't offered, 11-26)
+    { key = "uf_target", unit = "target", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true, noTarget = true },
+    { key = "uf_targettarget", unit = "targettarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true, noTarget = true },
     { key = "uf_focus", unit = "focus", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_focustarget", unit = "focustarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     -- the FlareUI Player Cast Bar: Visibility and Faded Opacity only. Not with Cinematic, which fades it
@@ -502,6 +503,8 @@ local function ElementOn(e)
         local db = ns.db and ns.db.profile and ns.db.profile[e.module]
         return db and db.enabled or false
     end
+    -- the gryphons are Quality of Life's (Gryphons.lua), not the action bars'
+    if e.cap then return ns.Gryphons and ns.Gryphons.On() or false end
     return ActionBarsOn()
 end
 
@@ -1207,6 +1210,11 @@ local function BuildElementSettings(key)
                         if v.isDivider then table_insert(values, i, { text = L["Only When in Use"], value = "inuse", isRadio = true }) break end
                     end
                 end
+                if e and e.noTarget then
+                    for i = #values, 1, -1 do
+                        if values[i].value == "hastarget" then table.remove(values, i) end
+                    end
+                end
                 return values
             end)(),
             get = function() return ShowSelection(key) end,
@@ -1490,8 +1498,8 @@ local function AddEditModeSettings()
                     table_insert(rows, 1, ns.ActionBars.TotemSizeSetting())
                 end
                 -- the gryphons: a Size each (Blizzard gives them none)
-                if e.cap and ns.ActionBars and ns.ActionBars.CapSizeSetting then
-                    table_insert(rows, 1, ns.ActionBars.CapSizeSetting(e.key))
+                if e.cap and ns.Gryphons then
+                    table_insert(rows, 1, ns.Gryphons.SizeSetting(e.key))
                 end
                 -- the bag buttons: sizes below Blizzard's 75%
                 if e.key == "bags" and ns.ActionBars and ns.ActionBars.BagBarSizeSetting then
@@ -1527,7 +1535,7 @@ function Visibility:ShouldLoad()
         if ElementOn(e) then return true end
     end
     local db = GetDb()
-    return db and db.hideRaidManager or false
+    return db and (db.hideRaidManager or (db.hideEndCaps and ns.Gryphons and ns.Gryphons.On())) or false
 end
 
 local HIDE_KEYS = {
@@ -1537,9 +1545,11 @@ local HIDE_KEYS = {
 }
 
 -- Whether FlareUI may hide what this setting is for: Blizzard's bars go with Action Bars; the raid manager is a
--- Quality of Life switch and needs no module
+-- Quality of Life switch and needs no module; the gryphons go with Quality of Life (Gryphons.lua)
 function Visibility.HidesOn(settingKey)
-    return settingKey == "hideRaidManager" or ActionBarsOn() and Visibility:ShouldLoad()
+    if settingKey == "hideRaidManager" then return true end
+    if settingKey == "hideEndCaps" then return ns.Gryphons and ns.Gryphons.On() or false end
+    return ActionBarsOn() and Visibility:ShouldLoad()
 end
 
 --------------------------------------------------

@@ -374,19 +374,20 @@ local function BuildSettings()
                 Refresh()
             end, onPlate),
         -- the unit frames' Left / Middle / Right text slots (an old choice converts once, BarText.lua)
+        -- (the menu's Left and Right are the screen's: mirrored off the plate, PartyFrames.lua Sides)
         ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "boss", db = GetDb, changed = Refresh,
-            style = function() return onPlate() and "plate" or "plain" end }),
+            style = function() return onPlate() and "plate" or "plain" end,
+            mirrored = function() return ctx.mirror and not onPlate() or false end }),
         ns.BarText.Setting({ name = L["Power Text"], bar = "power", unit = "boss", db = GetDb, changed = Refresh,
-            style = function() return onPlate() and "plate" or "plain" end }),
+            style = function() return onPlate() and "plate" or "plain" end,
+            mirrored = function() return ctx.mirror and not onPlate() or false end }),
         -- Name Above Frames (BarText.lua): not on Forever Style's plate (its name box)
         ns.NameAbove.Setting({ db = GetDb, changed = Refresh, hidden = onPlate }),
-        -- (Forever Style's name box only: elsewhere the name is a Health Text pick)
-        { name = L["Show Name"], kind = LEM.SettingType.Checkbox, default = true, get = function() return get("showName")() ~= false end, set = set("showName"),
-          hidden = function() return not onPlate() end },
+        -- (no Show Name: Forever Style's name box always shows the name, as Blizzard's, 11-26)
         { name = L["Show Level"], kind = LEM.SettingType.Checkbox, default = D.showLevel ~= false, get = get("showLevel"), set = set("showLevel") },
         K.ValuesOnHoverSetting(get("valuesOnHover"), set("valuesOnHover")),
-        -- Level Disc Size (per frame): the ring styles' level disc, with Show Level on
-        { name = L["Level Disc Size"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
+        -- Level Disc Scale (per frame): the ring styles' level disc, with Show Level on
+        { name = L["Level Disc Scale"], kind = LEM.SettingType.Slider, default = 100, minValue = 50, maxValue = 100, valueStep = 5,
           formatter = function(value) return value end,   -- plain: "100%" clips the value box
           get = function() local v = get("levelSize")(); return math.floor((tonumber(v) or 1) * 100 + 0.5) end,
           set = function(layoutName, value) set("levelSize")(layoutName, value ~= 100 and value / 100 or nil) end,
@@ -400,7 +401,7 @@ local function BuildSettings()
           hidden = function() return not RingStyle() end },
         { name = L["Mirror Bars"], kind = LEM.SettingType.Checkbox, default = D.mirror ~= false,
           get = function() return get("mirror")() ~= false end, set = set("mirror"),
-          desc = L["Laid out like the target frame: portrait on the right, bars filling from the right. In FlareUI and Forever Style, only the bars flip."] },
+          desc = L["The bars fill from the other side and their texts swap sides, so the frame faces the other way."] },
         -- None / 2D; the ring always has a (2D) portrait, so the row hides in the ring styles
         { name = L["Portrait"], kind = LEM.SettingType.Dropdown, default = "none",
           values = { { text = L["None"], value = "none", isRadio = true }, { text = L["2D"], value = "3d", isRadio = true } },

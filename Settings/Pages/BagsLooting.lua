@@ -51,10 +51,10 @@ S:Row{ key = "bl.bagCombined", lead = true, tab = "bags", disabled = BagAddon,  
     end }
 local BAG_COLUMNS = { { 0, L["Default"] } }
 for n = 6, 20 do BAG_COLUMNS[#BAG_COLUMNS + 1] = { n, tostring(n) } end
-S:Row{ key = "bl.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS,
+S:Row{ key = "bl.bagColumns", kind = "range", tab = "bags", path = "tweaks.bagColumns", choices = BAG_COLUMNS, needs = "bl.bagCombined",
     apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "bl.bagGaps", half = true, tab = "bags", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined }
-S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined }
+S:Row{ key = "bl.bagGaps", half = true, tab = "bags", path = "tweaks.bagGaps", apply = RefreshBags, disabled = NotCombined, needs = "bl.bagCombined" }
+S:Row{ key = "bl.bagButtons", half = true, tab = "bags", path = "tweaks.bagButtons", apply = RefreshBags, disabled = NotCombined, needs = "bl.bagCombined" }
 -- the keyring and the crafting bag as sections of the combined backpack (Bags.lua 0)
 S:Row{ key = "bl.bagKeyring", half = true, tab = "bags", path = "tweaks.bagKeyring", apply = RefreshBags, disabled = NotCombined }
 S:Row{ key = "bl.bagReagent", half = true, tab = "bags", path = "tweaks.bagReagent", apply = RefreshBags, disabled = NotCombined }
@@ -130,17 +130,30 @@ S:Row{ key = "bl.lootRolls", tab = "looting", path = "tweaks.lootRolls", reload 
 -- Loot Window (PR #146 by Xentinus; built like the loot roll window, no look options of
 -- its own): FlareUI's loot window in place of Blizzard's (LootWindow.lua). Its item marks follow the
 -- Bags options; Show Free Bag Slots, Growth and Row Order are its extras. On and off take a reload.
-S:Row{ key = "bl.lootWindow", half = true, tab = "looting", path = "tweaks.lootWindow", reload = true }
-S:Row{ key = "bl.lootWindowFreeSlots", half = true, tab = "looting", path = "tweaks.lootWindowFreeSlots",
-    disabled = function() return not S:GetPath("tweaks.lootWindow") end,
-    apply = function() if ns.LootWindow and ns.LootWindow.Refresh then ns.LootWindow:Refresh() end end }
--- Growth (which edge stays at the Edit Mode spot) and Row Order (where the first item goes): a half
--- pair under the two switches (rank 3: a choice row would sort above them), live
-S:Row{ key = "bl.lootWindowGrowth", kind = "choice", half = true, rank = 3, tab = "looting", path = "tweaks.lootWindowGrowth",
-    choices = { "down", "up" }, disabled = function() return not S:GetPath("tweaks.lootWindow") end,
-    apply = function() if ns.LootWindow and ns.LootWindow.Replace then ns.LootWindow:Replace() end end }
-S:Row{ key = "bl.lootWindowOrder", kind = "choice", half = true, rank = 3, tab = "looting", path = "tweaks.lootWindowOrder",
+-- Loot Window: Off, Grow Down or Grow Up, one choice over the switch (tweaks.lootWindow) and Growth
+-- (tweaks.lootWindowGrowth: which edge stays at the Edit Mode spot), as Loot Feed. Turning it on or off
+-- asks for a reload; the growth is live. Then Row Order and Show Free Bag Slots.
+local startWindow
+S:Row{ key = "bl.lootWindow", kind = "choice", tab = "looting", choices = { "off", "down", "up" },
+    get = function()
+        if not S:GetPath("tweaks.lootWindow") then return "off" end
+        return S:GetPath("tweaks.lootWindowGrowth") == "up" and "up" or "down"
+    end,
+    set = function(v)
+        if startWindow == nil then startWindow = S:GetPath("tweaks.lootWindow") and true or false end
+        S:SetPath("tweaks.lootWindow", v ~= "off")
+        if v ~= "off" then S:SetPath("tweaks.lootWindowGrowth", v) end
+    end,
+    resetValue = function() return "off" end,
+    apply = function(v)
+        S:TrackReload("bl.lootWindow", v ~= "off", startWindow)
+        if v ~= "off" and ns.LootWindow and ns.LootWindow.Replace then ns.LootWindow:Replace() end
+    end }
+S:Row{ key = "bl.lootWindowOrder", kind = "choice", tab = "looting", path = "tweaks.lootWindowOrder",
     choices = { "top", "bottom" }, disabled = function() return not S:GetPath("tweaks.lootWindow") end,
+    apply = function() if ns.LootWindow and ns.LootWindow.Refresh then ns.LootWindow:Refresh() end end }
+S:Row{ key = "bl.lootWindowFreeSlots", tab = "looting", path = "tweaks.lootWindowFreeSlots",
+    disabled = function() return not S:GetPath("tweaks.lootWindow") end,
     apply = function() if ns.LootWindow and ns.LootWindow.Refresh then ns.LootWindow:Refresh() end end }
 -- Loot Feed: what you loot floats up beside you (LootFeed.lua); placed in Edit Mode
 -- Loot Feed: Off, Square Icons or Round Icons. Saved as before: tweaks.lootFeed,
@@ -203,7 +216,7 @@ S:FontRows{ module = "bl", tab = "fonts", section = "bl.fonts", fonts = {
     -- Item Level's numbers, in the bags, on the character sheet and in the loot window: shown while
     -- it's on
     { key = "itemLevel", path = "tweaks.bagItemLevelFont", optional = true,
-      hidden = function() return not (S:GetPath("tweaks.bagItemLevel") or S:GetPath("tweaks.bagBoE")) end },
+      disabled = function() return not (S:GetPath("tweaks.bagItemLevel") or S:GetPath("tweaks.bagBoE")) end },
     -- the free bag slots on the backpack button (too small to read)
     { key = "freeSlots", path = "tweaks.bagFreeSlotsFont", optional = true },
     -- the gold, silver and copper at the bags' foot

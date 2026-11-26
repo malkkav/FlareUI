@@ -81,8 +81,22 @@ end
 S:Row{ key = "dm.barTexture", kind = "choice", path = "damagemeter.barTexture", choices = BarTextures,
     apply = Refresh, section = "dm.frame" }
 
-S:Row{ key = "dm.resetOnInstance", path = "damagemeter.resetOnInstance", section = "dm.tweaks", half = true }
-S:Row{ key = "dm.resetOnGroupLeave", path = "damagemeter.resetOnGroupLeave", section = "dm.tweaks", half = true }
+-- Auto Reset: Reset on Entering a Dungeon and Reset on Leaving a Group as toggles
+local RESETS = { { "dungeon", "resetOnInstance" }, { "group", "resetOnGroupLeave" } }
+local RESET_SPEC = { exclusive = { "none" }, tokens = { "dungeon", "group" }, empty = "none" }
+local function ResetValue(read)
+    local on = {}
+    for _, r in ipairs(RESETS) do if read("damagemeter." .. r[2]) then on[#on + 1] = r[1] end end
+    return #on > 0 and table.concat(on, ",") or "none"
+end
+S:Row{ key = "dm.autoReset", kind = "dropdown", section = "dm.tweaks", toggles = RESET_SPEC,
+    choices = { "none", { divider = true }, "dungeon", "group" },
+    get = function() return ResetValue(function(p) return S:GetPath(p) end) end,
+    set = function(v)
+        local on = ns.Conditions.Set(v, RESET_SPEC)
+        for _, r in ipairs(RESETS) do S:SetPath("damagemeter." .. r[2], on[r[1]] and true or false) end
+    end,
+    resetValue = function() return ResetValue(function(p) return S:DefaultPath(p) end) end }
 S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
     disabled = function() return ChatOff() or InChat() end }   -- (greyed with Chat off: turning Chat on makes it work)
 S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
@@ -116,9 +130,7 @@ end
 -- Threat Meter: Threat Text, then Separate Window | Threat View in Combat, side by side
 -- and exclusive: turning one on turns the other off (no indent, no greying). Threat Bars, a section
 -- of their own: Tank's Lead | Pull Warning, Pull Aggro Line
-S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
-    choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
--- Threat Window: one choice over
+-- Threat Window (where threat shows) first, Threat Text second: one choice over
 -- damagemeter.threatWindow and damagemeter.autoThreat. Separate Window appears right above or below
 -- the meter (DamageMeter.PlaceThreatWindow)
 S:Row{ key = "dm.threatMode", kind = "choice", tab = "threat", section = "dm.threat", choices = { "off", "window", "combat" },
@@ -135,12 +147,26 @@ S:Row{ key = "dm.threatMode", kind = "choice", tab = "threat", section = "dm.thr
         Refresh()
         if value == "window" and ns.DamageMeter and ns.DamageMeter.PlaceThreatWindow then ns.DamageMeter.PlaceThreatWindow() end
     end }
+S:Row{ key = "dm.threatValue", kind = "choice", path = "damagemeter.threatValueDisplay",
+    choices = { "both", "percent", "value" }, apply = PreviewThreat, tab = "threat", section = "dm.threat" }
 S:Row{ key = "dm.tankLead", path = "damagemeter.threatTankLead", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
-S:Row{ key = "dm.pullFlash", path = "damagemeter.threatPullFlash", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
 S:Row{ key = "dm.pullLine", path = "damagemeter.threatPullLine", apply = PreviewThreat, tab = "threat", section = "dm.threatBars", half = true }
--- a sound as Pull Warning starts; greyed with Pull Warning off
-S:Row{ key = "dm.pullSound", path = "damagemeter.threatPullSound", tab = "threat", section = "dm.threatBars", half = true,
-    disabled = function() return not S:GetPath("damagemeter.threatPullFlash") end }
+-- Pull Warning: Flash (threatPullFlash) and Sound (threatPullSound) as toggles, each on its own
+local PULL = { { "flash", "threatPullFlash" }, { "sound", "threatPullSound" } }
+local PULL_SPEC = { exclusive = { "none" }, tokens = { "flash", "sound" }, empty = "none" }
+local function PullValue(read)
+    local on = {}
+    for _, p in ipairs(PULL) do if read("damagemeter." .. p[2]) then on[#on + 1] = p[1] end end
+    return #on > 0 and table.concat(on, ",") or "none"
+end
+S:Row{ key = "dm.pullWarning", kind = "dropdown", tab = "threat", section = "dm.threatBars", toggles = PULL_SPEC,
+    choices = { "none", { divider = true }, "flash", "sound" }, apply = PreviewThreat,
+    get = function() return PullValue(function(p) return S:GetPath(p) end) end,
+    set = function(v)
+        local on = ns.Conditions.Set(v, PULL_SPEC)
+        for _, p in ipairs(PULL) do S:SetPath("damagemeter." .. p[2], on[p[1]] and true or false) end
+    end,
+    resetValue = function() return PullValue(function(p) return S:DefaultPath(p) end) end }
 
 S:FontRows{ module = "dm", tab = "fonts", section = "dm.fonts", apply = Refresh, fonts = {
     { key = "header", path = "damagemeter.headerFont" },

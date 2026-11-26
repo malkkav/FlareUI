@@ -311,8 +311,21 @@ end
 -- Attack speeds are secret while unit stats are restricted: the last readable answer stands in;
 -- with none yet the bar shows
 local hasWeapon = {}
+-- (11-26, Ballsy) the off-hand bar only with a weapon in the off hand: no item there, or a shield or a
+-- held-in-off-hand item (not a weapon), and it stays hidden whatever the attack speed says
+function RB.OffHandWeapon()
+    local id = GetInventoryItemID("player", INVSLOT_OFFHAND or 17)
+    if not canaccessvalue(id) then return nil end   -- (hidden: the attack speed decides)
+    if id == nil then return false end
+    local getInfo = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+    if not getInfo then return nil end
+    local classID = select(6, getInfo(id))
+    if not canaccessvalue(classID) or classID == nil then return nil end
+    return classID == (Enum.ItemClass and Enum.ItemClass.Weapon or 2)
+end
 local function HasSwingWeapon(swingType)
     if not (SWING and swingType) then return false end
+    if swingType == SWING.OffHand and RB.OffHandWeapon() == false then return false end
     if swingType ~= SWING.OffHand and swingType ~= SWING.Ranged then return true end
     local _, off, ranged = UnitAttackSpeed("player")
     local speed = swingType == SWING.OffHand and off or ranged
@@ -375,7 +388,7 @@ local function ShouldShow(holder)
     -- a swing proves the weapon, so no availability check (attack speeds can be secret); Waiting
     -- State keeps the bar up while auto attack is on
     if RB.InUse(holder.key) then
-        return (holder.swingEnd or holder.swingHold or (cfg.waiting and AutoAttacking(holder.key))) and true or false
+        return (holder.swingEnd or holder.swingHold or AutoAttacking(holder.key)) and true or false
     end
     -- the Show conditions fade the bar (Visibility.lua)
     return IsAvailable(holder)
@@ -584,7 +597,7 @@ local function SwingZone(holder)
     local zone = holder.StandStill
     if not zone then return end
     local cfg, d = Cfg(holder.key), holder.swingDuration
-    if cfg and cfg.standStill and d and d > 0 then
+    if cfg and d and d > 0 then
         local z = RBC.zone
         if z then zone:SetColorTexture(z[1], z[2], z[3], 0.35) end
         zone:SetWidth(math_max(1, holder.Bar:GetWidth() * math_min(STAND_STILL / d, 1)))
@@ -597,7 +610,7 @@ end
 -- An idle swing bar: empty, or with Waiting State full and grey while auto attack is on
 local function SwingIdle(holder)
     local cfg = Cfg(holder.key)
-    holder.waiting = (cfg and cfg.waiting and AutoAttacking(holder.key)) and true or false
+    holder.waiting = (cfg and AutoAttacking(holder.key)) and true or false
     holder.Bar:SetMinMaxValues(0, 1)
     holder.Bar:SetValue(holder.waiting and 1 or 0)
     holder.Text:SetText(holder.waiting and L["Waiting"] or "")
@@ -767,7 +780,7 @@ local function ApplyPreview(holder)
         holder.swingEnd = nil
         holder.Spark:Show()
         holder.Label:SetText(BARS[holder.key].text)
-        holder.waiting = cfg.waiting and true or false
+        holder.waiting = true
         holder.queued = nil   -- (the sample in its own colour; asked again after Edit Mode)
         if holder.waiting then
             bar:SetValue(1)
@@ -780,7 +793,7 @@ local function ApplyPreview(holder)
         SetSwingRange(holder, false)
         -- Stand-Still Zone on a sample 2.5 s swing
         if holder.StandStill then
-            if cfg.standStill and not holder.waiting then
+            if not holder.waiting then
                 local z = RBC.zone
                 if z then holder.StandStill:SetColorTexture(z[1], z[2], z[3], 0.35) end
                 holder.StandStill:SetWidth(math_max(1, bar:GetWidth() * STAND_STILL / 2.5))
@@ -960,6 +973,8 @@ local function LayoutBar(holder)
             fs:SetJustifyH(at)
             fs:SetPoint(at, bar, at, (at == "LEFT" and K.TEXT_INSET) or (at == "RIGHT" and -K.TEXT_INSET) or 0, 0)
         end
+        -- Values on Mouseover (off, 11-26): the bar's texts only while you point at it, as on the unit frames
+        if K.ValuesOnHover then K.ValuesOnHover(holder, cfg.valuesOnHover, { texts.left, texts.middle, texts.right }) end
     else
         holder.Text:SetJustifyH("CENTER")
         holder.Text:SetPoint("CENTER", bar, "CENTER", 0, 0)
@@ -1320,6 +1335,8 @@ local function BuildSettings(key)
             db = function() return Cfg(key) end,
             changed = function() Relayout(key) end,
         }))
+        -- Values on Mouseover (off), as on every unit frame's Text section
+        add(K.ValuesOnHoverSetting(get("valuesOnHover", false), set("valuesOnHover")))
     end
     if info.kind == "power" or info.kind == "mana" then
         add({ name = L["Five-Second Rule"], kind = LEM.SettingType.Checkbox, default = false, get = get("fsr", false), set = set("fsr"),
@@ -1330,22 +1347,13 @@ local function BuildSettings(key)
         add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
               desc = L["A spark crosses the bar during the global cooldown."] })
     end
-    -- the main-hand bar's colour per queued attack (on by default), colours in Bar Colours
-    if key == "swingMain" then
-        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = true, get = get("queueTint", true), set = set("queueTint"),
-              desc = L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, the bar takes its colour (set in Bar Colours)."] })
-    end
-    if key == "swingRanged" then
-        add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("standStill", true), set = set("standStill"),
-              desc = L["Marks the swing's last half second. Auto Shot and wands need you to stand still then."] })
-    end
+    -- (Queued Attack Colour, Stand-Still Zone and Waiting State are always on since 11-26: readability
+    -- aids with no switch; saved values from before are ignored.)
     if info.kind == "swing" then
         -- the out-of-range colour, as the unit frames' range fading (in Frame: it changes what the
         -- bar tells you, not how it looks)
         add({ name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
               desc = L["The bar turns red while your target is out of reach of this attack."] })
-        add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = true, get = get("waiting", true), set = set("waiting"),
-              desc = L["When auto attack is on but you can't swing (the target is out of reach), the bar shows full and grey, with Waiting."] })
     end
     -- the swing, flight, seal and duration bars' two texts, each on its own. In Frame: what a bar
     -- tells you belongs with the bar, not with its look.
@@ -1360,12 +1368,7 @@ local function BuildSettings(key)
                   or info.kind == "timer" and L["The time left on the right of the bar."]
                   or L["The seconds left on the right of the bar (and Waiting)."] })
     end
-    -- Show in Caster Form (off): the Druid Mana bar in every form, for players whose
-    -- power bar is off (IsAvailable)
-    if info.kind == "mana" then
-        add({ name = L["Show in Caster Form"], kind = LEM.SettingType.Checkbox, default = false, get = get("casterForm", false), set = set("casterForm"),
-              desc = L["The bar stays up in caster form too, not only in Bear and Cat Form."] })
-    end
+    -- (Show in Caster Form is a choice in its Visibility list since 11-26: Fading below)
     -- Show Icon (off): the seal's icon at the bar's left end
     if info.kind == "seal" then
         add({ name = L["Show Icon"], kind = LEM.SettingType.Checkbox, default = false, get = get("showIcon", false), set = set("showIcon"),
@@ -1431,7 +1434,37 @@ local function BuildSettings(key)
     Section("Behaviour", behaviourItems)
     -- last: Fade Group, Visibility, Show Speed, Hide Speed and Faded Opacity, as on the action bars (Visibility.lua)
     if ns.Visibility and ns.Visibility.ResourceBarSettings then
-        Section("Fading", ns.Visibility:ResourceBarSettings(key))
+        local rows = ns.Visibility:ResourceBarSettings(key)
+        -- the Druid Mana bar: In Caster Form (casterForm, off) under a line in its Visibility list: the bar
+        -- stays up in caster form too, not only in Bear and Cat Form (IsAvailable)
+        if info.kind == "mana" then
+            for _, row in ipairs(rows) do
+                if row.multiple and row.kind == LEM.SettingType.Dropdown then
+                    local values, showGet, showSet = row.values, row.get, row.set
+                    local casterGet, casterSet = get("casterForm", false), set("casterForm")
+                    row.values = function()
+                        local list = {}
+                        for _, v in ipairs(type(values) == "function" and values() or values or {}) do list[#list + 1] = v end
+                        list[#list + 1] = { isDivider = true }
+                        list[#list + 1] = { text = L["In Caster Form"], value = "casterForm" }
+                        return list
+                    end
+                    row.get = function(...)
+                        local picked = {}
+                        for _, v in ipairs(showGet(...) or {}) do picked[#picked + 1] = v end
+                        if casterGet() then picked[#picked + 1] = "casterForm" end
+                        return picked
+                    end
+                    row.set = function(layoutName, value, ...)
+                        if value == "casterForm" then return casterSet(layoutName, not casterGet()) end
+                        return showSet(layoutName, value, ...)
+                    end
+                    row.desc = (row.desc and (row.desc .. "\n") or "") .. L["In Caster Form: the bar stays up in caster form too, not only in Bear and Cat Form."]
+                    break
+                end
+            end
+        end
+        Section("Fading", rows)
     end
     return settings
 end
@@ -1561,7 +1594,7 @@ function RB.UpdateQueued()
     end
     local key
     local cfg = Cfg("swingMain")
-    if isCurrent and cfg and cfg.queueTint then
+    if isCurrent and cfg then
         for i, s in ipairs(RB.QUEUED_SPELLS) do
             local name = names[i]
             if name and readable(isCurrent(name)) then key = s[2] break end

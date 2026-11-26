@@ -1066,7 +1066,7 @@ function Ring.LayoutLevel(f, g)
     g = g or Geometry(f)
     local e = BLIZZ[Kind(f)].level
     local placed = PlaceRegion(f, g, ring.Disc, e)
-    -- Level Disc Size (each frame's Edit Mode Text section; unset, the old shared size)
+    -- Level Disc Scale (each frame's Edit Mode Text section; unset, the old shared size)
     local db, own = GetDb(), Db(f)
     local size = math.min(1, math.max(0.5, tonumber(own and own.levelSize) or tonumber(db and db.levelSize) or 1))
     -- a little under its atlas size, round the same centre
@@ -1936,7 +1936,9 @@ function Ring.PlaceCombo(combo, f)
         local y = (math.sin(a) * c.radius * c.scale + c.shift[2]) * k
         if g.side == "LEFT" then x = -x end
         point:ClearAllPoints()
-        point:SetPoint("CENTER", f.RingFrame, "CENTER", x / s, y / s)
+        -- round the painted ring (ring.Centre, where the art sits since the 11-25 art), not the ring
+        -- frame: on Forever Style the two are apart and the gems landed off the ring (11-26)
+        point:SetPoint("CENTER", f.RingFrame.Centre or f.RingFrame, "CENTER", x / s, y / s)
     end
     return true
 end

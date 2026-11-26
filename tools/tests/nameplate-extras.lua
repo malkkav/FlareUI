@@ -141,19 +141,16 @@ do
     ui:emit("PLAYER_TARGET_CHANGED")
     assert(math.abs(row:GetScale() - 1.1) < 0.001)
 end
--- BLIZZARD'S PLATES (11-24, kiwi): Quality of Life's switch, only with the Nameplates module off
+-- BLIZZARD'S PLATES (11-24, kiwi): always, with the Nameplates module off
 do
     NP.ready, db.enabled, parts = nil, false, nil
     local casts = env.CreateFrame("Frame", nil, plate)
     local healthBar = env.CreateFrame("StatusBar", nil, plate)
     for _, f in ipairs({ plate, casts, healthBar }) do f.IsForbidden = function() return false end end
     plate.UnitFrame = { IsForbidden = function() return false end, CastBarsContainer = casts, HealthBarsContainer = { healthBar = healthBar } }
-    NP.ApplyCombo()
-    assert(not row:IsShown(), "off")
-    tweaks.plateCombo = true
-    NP.ApplyCombo()
-    assert(not row:IsShown(), "Quality of Life is off")
-    tweaks.enabled = true
+    -- (11-26) always on Blizzard's plates, with no option and whatever Quality of Life is
+    tweaks.enabled = false
+    row:Hide()   -- (the module going off takes a reload: the row starts hidden)
     NP.ApplyCombo()
     assert(row:IsShown() and select(2, row:GetPoint()) == casts)
     casts.IsForbidden = function() return true end
@@ -170,7 +167,7 @@ do
     NP.OtherAddon, db.enabled = nil, true
     NP.ApplyCombo()
     assert(not row:IsShown(), "the module is on: its own Combo Points decide")
-    tweaks.enabled, tweaks.plateCombo, plate.UnitFrame = false, nil, nil
+    tweaks.enabled, plate.UnitFrame = false, nil
     NP.ready, NP.standDown, parts = true, true, ours
 end
 
