@@ -147,7 +147,9 @@ do
     local casts = env.CreateFrame("Frame", nil, plate)
     local healthBar = env.CreateFrame("StatusBar", nil, plate)
     for _, f in ipairs({ plate, casts, healthBar }) do f.IsForbidden = function() return false end end
-    plate.UnitFrame = { IsForbidden = function() return false end, CastBarsContainer = casts, HealthBarsContainer = { healthBar = healthBar } }
+    local onPlate, shown = true, true
+    plate.UnitFrame = { IsForbidden = function() return false end, CastBarsContainer = casts, HealthBarsContainer = { healthBar = healthBar },
+        GetParent = function() return onPlate and plate or env.UIParent end, IsShown = function() return shown end }
     -- (11-26) always on Blizzard's plates, with no option and whatever Quality of Life is
     tweaks.enabled = false
     row:Hide()   -- (the module going off takes a reload: the row starts hidden)
@@ -161,6 +163,17 @@ do
     ui:emit("PLAYER_TARGET_CHANGED")
     assert(not row:IsShown(), "a plate we may not touch")
     plate.UnitFrame.IsForbidden = function() return false end
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(row:IsShown())
+    onPlate = false
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(not row:IsShown(), "another addon took Blizzard's frame off its plate")
+    onPlate, shown = true, false
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(not row:IsShown(), "another addon hid Blizzard's frame")
+    shown = true
+    ui:emit("PLAYER_TARGET_CHANGED")
+    assert(row:IsShown(), "Blizzard's frame is back: so are the points")
     NP.OtherAddon = function() return "Plater" end
     NP.ApplyCombo()
     assert(not row:IsShown(), "another nameplate addon")

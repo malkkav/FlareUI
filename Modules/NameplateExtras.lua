@@ -136,6 +136,7 @@ end
 function NP.BlizzardComboAnchor(plate)
     local unitFrame = plate.UnitFrame
     if not unitFrame or unitFrame:IsForbidden() then return nil end
+    if unitFrame:GetParent() ~= plate or not unitFrame:IsShown() then return nil end
     local casts = unitFrame.CastBarsContainer
     if casts and not casts:IsForbidden() then return casts end
     local bar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
