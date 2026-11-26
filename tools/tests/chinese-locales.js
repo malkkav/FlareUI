@@ -28,11 +28,15 @@ const required = new Set([
   'Everything starts switched off. This short tour shows you what each part does, and you choose the ones you want as you go.',
   'Show Me Around',
   "Skip, I know what I'm doing",
-  'Use the Game Language',
-  'Match the language selected in World of Warcraft.',
+  'Game Language',
+  "The language of FlareUI's text. Game Language follows the language World of Warcraft uses.",
   'When and Where',
   'Consumables',
-  'Food and Flask',
+  'Food',
+  'Flask',
+  '1080p at 125%',
+  '1440p at 125%',
+  'MAX',
 ]);
 // The guided setup is the first screen new users see. Keep every literal
 // phrase in it translated when the tour changes, not just its title/buttons.
@@ -44,7 +48,7 @@ const tokens = {
   format: /%(?:[-+0#]*\d*(?:\.\d+)?[cdiouxXeEfgGqs%])/g,
   named: /\{[A-Za-z][A-Za-z0-9_]*\}/g,
   colours: /\|c[0-9a-fA-F]{8}|\|r/g,
-  commands: /\/(?:fui(?:\s+(?:cm|errors(?:\s+clear)?|pad|scale(?:\s+reset)?|tour))?|way|oom|reload|rl|cheer|macro)\b/g,
+  commands: /\/(?:fui(?:\s+(?:cm|errors(?:\s+clear)?|kb|pad|scale(?:\s+reset)?|tour))?|cdm|kb|way|oom|reload|rl|cheer|macro)\b/g,
   hotkeys: /\b(?:Ctrl|Alt|Shift|Esc)\b/g,
   product: /\bFlareUI\b/g,
   newline: /\n/g,
@@ -64,8 +68,8 @@ for (const locale of ['zhCN', 'zhTW']) {
       errors.push(`${locale}: missing translation for ${JSON.stringify(key)}`);
     }
   }
-  const linkedTip = values.get('Where it shows is set by Consumables on the When and Where tab, as for Food and Flask.');
-  for (const label of ['When and Where', 'Consumables', 'Food and Flask']) {
+  const linkedTip = values.get('Where it shows is set by Consumables on the When and Where tab, as for food and flasks.');
+  for (const label of ['When and Where', 'Consumables', 'Food', 'Flask']) {
     const translatedLabel = values.get(label);
     if (translatedLabel && linkedTip && !linkedTip.includes(translatedLabel)) {
       errors.push(`${locale}: the consumables tip does not match the displayed ${JSON.stringify(label)} label`);
@@ -73,10 +77,27 @@ for (const locale of ['zhCN', 'zhTW']) {
   }
   // These descriptions direct the player to a named tab, so the translated
   // tab name needs to match the one shown in the UI.
+  const chatNamesDescription = "How names show in chat:\n* Better Player Names: in their class colour, without the realm. Say lines start with a clickable [Say]\n* Better NPC Names: NPC speech starts with an orange [Name] instead of \"Name says:\"\n* Level Before Names: the sender's level, when known";
   const namedLabels = [
     ['On a ready check, every reminder glows for a few seconds and the sound plays.', 'Ready Check'],
-    ['Shows the Fake CM bars and makes them clickable, so you can place spells.', 'Fake CM'],
-    ['Always clears the others; nothing ticked means Always. Fake CM Setup Mode always shows them.', 'Fake CM Setup Mode'],
+    ["The language of FlareUI's text. Game Language follows the language World of Warcraft uses.", 'Game Language'],
+    ['Always clears the others. Nothing ticked means Always. Setup Mode always shows the bars.', 'Setup Mode'],
+    ['Needs Combined Backpack on.', 'Combined Backpack'],
+    ['Needs Simplified Item Stats on.', 'Simplified Item Stats'],
+    ['Needs Skin Cooldown Manager on.', 'Skin Cooldown Manager'],
+    ['Take the name out of Bar Text if you only want it above.', 'Bar Text'],
+    ['Tooltips at your mouse use `Offset X` and `Offset Y` instead.', 'Offset X'],
+    ['Tooltips at your mouse use `Offset X` and `Offset Y` instead.', 'Offset Y'],
+    ["With `Meter Tab in the Chat`, the meter uses the chat's frame.", 'Meter Tab in the Chat'],
+    ["The lines under the name:\n* Title: a player's title, or an NPC's role such as General Goods\n* Guild: a player's guild", 'Title'],
+    ['Title starts on for NPCs, off for players and Minor.', 'Title'],
+    [chatNamesDescription, 'Better Player Names'],
+    [chatNamesDescription, 'Better NPC Names'],
+    [chatNamesDescription, 'Level Before Names'],
+    ['With Category Rows, each section fills this way under its header.', 'Category Rows'],
+    ['Where the loot starts:\n* Top to Bottom: the first item at the top, the next below it\n* Bottom to Top: the first item at the bottom, the next above it', 'Bottom to Top'],
+    ['Poisons, sharpening stones, oils and shaman weapon spells, at the start of the buffs. They follow Hide Buffs too.', 'Hide Buffs'],
+    ["The unit frames' bar effects, as many as you like:\n* Bar Animations: health glides to its new value\n* Bar Edge Glow: a glow at the front of the bar\n* Damage Trail: lost health fades away behind the bar", 'Damage Trail'],
     ['A sound as Pull Warning starts, so you hear it without watching the meter.', 'Pull Warning'],
     ['Needs Pull Warning. It plays once each time, and never while you hold the mob.', 'Pull Warning'],
     ['A new one hides on every frame. Its Hide On list below picks where.', 'Hide On'],
