@@ -144,7 +144,8 @@ local C = {
     -- folder names of other nameplate addons: the module stands down while one is loaded (the
     -- runtime check in Claim catches the rest)
     OTHER_ADDONS = { "Plater", "Kui_Nameplates", "TidyPlates_ThreatPlates", "TidyPlates", "NeatPlates",
-                     "BetterBlizzPlates", "EllesmereUINameplates", "nPlates", "DaylightUI_Nameplates" },
+                     "BetterBlizzPlates", "EllesmereUINameplates", "nPlates", "DaylightUI_Nameplates",
+                     "Platynator", "MFNameplates" },
     -- Blizzard's nameplate CVars the Visibility tab shows (the game saves them itself)
     CVARS = { "nameplateShowAll", "nameplateShowEnemies", "nameplateShowEnemyMinions", "nameplateShowEnemyMinus",
               "nameplateShowFriendlyPlayers", "nameplateShowFriendlyNpcs" },
