@@ -8,7 +8,7 @@ local L = ns.L
 -- only: the row hides itself as a fight starts (a state driver), and it reads auras only while the
 -- game lets addons read them. Known spells only, at your highest rank. Also: paladin blessings, picked per member (Blessing: Automatic gives warriors,
 -- rogues and hunters Might and everyone else Wisdom, or one for all); a hunter's or warlock's pet
--- missing or dead (Pet Reminders, on); food, flask and elixir buffs (Consumables: off, in dungeons
+-- missing or dead (Pet Reminders, on); a mage's mana gem missing from the bags; food, flask and elixir buffs (Consumables: off, in dungeons
 -- and raids, or always; Food and Flask each with a box; the elixirs ticked or those in your bags, each
 -- or any one of them; a click drinks what you carry). When It Shows: Solo / Party / Raid, Hide in Rested
 -- Areas, Only When You're the Only Provider (a group buff no one else of your class gives). Alerts: a
@@ -60,6 +60,8 @@ local REMINDERS = {
         { key = "intellect", cast = INTELLECT, buffs = Join(INTELLECT, { 23028 }), group = true, casters = true },
         -- one armor of any kind
         { key = "armor", cast = { 22783, 22782, 6117, 10220, 10219, 7320, 7302, 7301, 7300, 168 } },
+        -- a mana gem in the bags, any of them (Ruby, Citrine, Jade, Agate); a click conjures the best one known
+        { key = "manaGem", manaGem = true, cast = { 10054, 10053, 3552, 759 }, items = { 8008, 8007, 5513, 5514 } },
     },
     DRUID = {
         { key = "wild", cast = WILD, buffs = Join(WILD, { 21850, 21849 }), group = true },
@@ -1688,6 +1690,12 @@ local function Check(entry, before)
     if def.healthstone then
         for _, id in ipairs(HEALTHSTONES) do
             if (C_Item.GetItemCount and C_Item.GetItemCount(id) or 0) > 0 then return 0, 1 end
+        end
+        return 1, 1, "player"
+    end
+    if def.manaGem then
+        for _, id in ipairs(def.items) do
+            if ItemCount(id) > 0 then return 0, 1 end
         end
         return 1, 1, "player"
     end
