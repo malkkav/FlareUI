@@ -1018,8 +1018,8 @@ end
 function Tweaks:CanCopySync()
     local db = GetDb()
     local account = db and db.syncUI and GetSyncStore()
-    return account ~= nil and account.source ~= nil and not IsSource(account)
-        and type(account.snapshot) == "table" and account.snapshot.savedAt ~= nil
+    return account and account.source ~= nil and not IsSource(account)
+        and type(account.snapshot) == "table" and account.snapshot.savedAt ~= nil or false
 end
 
 -- The once-per-character question, at the first login after the source saved a snapshot. Either answer

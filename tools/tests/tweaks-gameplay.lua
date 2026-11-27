@@ -129,6 +129,18 @@ env.C_PetInfo = { CanPetEatItem = function(id) return id == 123 end }
 ui:load("Modules/TweaksCVars.lua", ns)
 ui:load("Modules/Tweaks.lua", ns)
 local tweaks = ns.Tweaks
+
+-- Copy Now is unavailable until sync is enabled and another character has saved a snapshot.
+do
+    db.syncUI = false
+    assert(tweaks:CanCopySync() == false, "disabled sync must not try to read an account snapshot")
+    db.syncUI = nil
+    assert(tweaks:CanCopySync() == false, "an unset sync option cannot be copied")
+    db.syncUI = true
+    assert(tweaks:CanCopySync() == false, "sync without a source cannot be copied")
+    db.syncUI = nil
+end
+
 assert(tweaks:ShouldLoad())
 tweaks:Init()
 assert(cv.cameraDistanceMaxZoomFactor == "2.6" and cv.cameraZoomSpeed == "50")
