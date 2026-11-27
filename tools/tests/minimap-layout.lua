@@ -467,6 +467,24 @@ ui:flushTimers()
 ui:flushTimers()
 assert(not minimap.MapAway() and map.mask == wantedMask)
 
+-- a Shared Media map border: the Info Bar's plates are boxes in it, under the cells
+do
+    db.infoBarBox, db.squareBorder = true, "Pixel Edge"
+    minimap:Refresh()
+    local box = assert(bar.Boxes)[1]
+    assert(box:IsShown() and not bar.Plates[1]:IsShown())
+    assert(not bar.Boxes[2]:IsShown())                  -- one box for the run of three cells
+    assert(box:GetBackdrop().edgeFile == "Media/Pixel Edge")
+    assert(box:GetBackdrop().edgeSize == math.min(minimap.SquareBorder().edge, bar:GetHeight() / 2))
+    assert(box:GetFrameLevel() < bar:GetFrameLevel())
+    db.infoBarBox = false                               -- Show Box off: the text alone
+    minimap:Refresh()
+    assert(not box:IsShown() and not bar.Plates[1]:IsShown())
+    db.infoBarBox, db.squareBorder = true, "thin"       -- FlareUI's own borders keep the plate
+    minimap:Refresh()
+    assert(bar.Plates[1]:IsShown() and not box:IsShown())
+end
+
 db.style = "round"
 minimap:Refresh()
 assert(minimap.IsSquare(), "style changes wait for reload")

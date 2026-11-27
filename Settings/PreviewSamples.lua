@@ -307,7 +307,9 @@ function R.minimap(outer, spec)
             local bx = x + (size - bw) / 2
             local by = below and y + size + 2 or (round and y + size - 52 or y + size - 22)
             if Get('minimap.infoBarBox', true) ~= false then
-                local plate = c:Box('infoBar', bx, by, bw, 18, 'FlareUI Thin', 0.85)
+                -- under a Shared Media map border, a box in that border (Minimap.lua Bar.Boxes)
+                local shared = look == 'headerless' and border ~= 'bronze' and border ~= 'thick' and border ~= 'thin' and border
+                local plate = c:Box('infoBar', bx, by, bw, 18, shared or 'FlareUI Thin', shared and 1 or 0.85)
                 plate:SetFrameLevel(c.overlay:GetFrameLevel() + 1)
             end
             local function Cell(id, value, cx, justify, w)
