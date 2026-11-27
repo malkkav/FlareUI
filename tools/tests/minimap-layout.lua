@@ -467,6 +467,24 @@ ui:flushTimers()
 ui:flushTimers()
 assert(not minimap.MapAway() and map.mask == wantedMask)
 
+-- a Shared Media map border: the Info Bar's plates are boxes in it, under the cells
+do
+    db.infoBarBox, db.squareBorder = true, "Pixel Edge"
+    minimap:Refresh()
+    local box = assert(bar.Boxes)[1]
+    assert(box:IsShown() and not bar.Plates[1]:IsShown())
+    assert(not bar.Boxes[2]:IsShown())                  -- one box for the run of three cells
+    assert(box:GetBackdrop().edgeFile == "Media/Pixel Edge")
+    assert(box:GetBackdrop().edgeSize == math.min(minimap.SquareBorder().edge, bar:GetHeight() / 2))
+    assert(box:GetFrameLevel() < bar:GetFrameLevel())
+    db.infoBarBox = false                               -- Show Box off: the text alone
+    minimap:Refresh()
+    assert(not box:IsShown() and not bar.Plates[1]:IsShown())
+    db.infoBarBox, db.squareBorder = true, "thin"       -- FlareUI's own borders keep the plate
+    minimap:Refresh()
+    assert(bar.Plates[1]:IsShown() and not box:IsShown())
+end
+
 db.style = "round"
 minimap:Refresh()
 assert(minimap.IsSquare(), "style changes wait for reload")
@@ -546,11 +564,13 @@ round.db.durability, round.db.finderEye = false, false
 round.ns.MinimapDurability.Update()
 round.ns.MinimapEye.Update()
 assert(renv.DurabilityFrame:GetAlpha() == 1 and nativeEye:GetAlpha() == 1)
--- (11-26, SupS) a Shared Media border on the square map: laid out as Thin, no corner mask
+-- (11-26, SupS) a Shared Media border on the square map: laid out as Thick, at 16 px
 do
     local MMx = round.ns.Minimap
     local spec = MMx.CustomBorderSpec("Pixel Edge")
-    assert(spec and spec.lsm == "Pixel Edge" and spec.mask == nil and spec.style.flare == spec)
+    local thick = MMx.SQUARE_BORDERS.thick
+    assert(spec and spec.lsm == "Pixel Edge" and spec.style.flare == spec)
+    assert(spec.edge == 16 and spec.grow == thick.grow and spec.mask == thick.mask)
     assert(MMx.CustomBorderSpec("thin") == nil and MMx.CustomBorderSpec("Not There") == nil)
     assert(MMx.CustomBorderSpec("Pixel Edge") == spec, "made once")
 end

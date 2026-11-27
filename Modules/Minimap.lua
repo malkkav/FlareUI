@@ -113,8 +113,9 @@ for _, spec in pairs(MM.SQUARE_BORDERS) do
         spec.style = style
     end
 end
--- (11-26, SupS) any Shared Media border, picked under FlareUI Thick: laid out as Thin (its numbers),
--- with a square mask. It may not line up with the map's edge: the player's pick (Malkkav).
+-- (11-26, SupS) any Shared Media border, picked under FlareUI Thick: laid out as Thick (its numbers and
+-- its corner mask), at 16 px as on the other frames (ns.BorderEdgeSize). As Thin at 12 it came out
+-- thinner, with a gap to the map. It may not line up with the map's edge: the player's pick (Malkkav).
 MM.customBorders = {}
 function MM.CustomBorderSpec(name)
     if type(name) ~= "string" or name == "" or MM.SQUARE_BORDERS[name] then return nil end
@@ -123,8 +124,8 @@ function MM.CustomBorderSpec(name)
     local spec = MM.customBorders[name]
     if spec then return spec end
     spec = {}
-    for k, v in pairs(MM.SQUARE_BORDERS.thin) do spec[k] = v end
-    spec.lsm, spec.edge, spec.mask = name, 12, nil
+    for k, v in pairs(MM.SQUARE_BORDERS.thick) do spec[k] = v end
+    spec.lsm, spec.edge = name, ns.BorderEdgeSize(LSM:Fetch("border", name), 16)
     local style = {}
     for k, v in pairs(HEADER_STYLES.headerless) do style[k] = v end
     for _, k in ipairs({ "side", "headerTop", "band", "shift" }) do style[k] = spec[k] end
@@ -984,6 +985,35 @@ function Bar.PlaceRound(f)
     return width
 end
 
+-- Under a Shared Media map border the plates are black boxes in that border, as on the chat and meter
+-- frames: Forever's bronze plate clashed with it. One per plate, made on first use, a level under the
+-- bar so its dividers and cells draw over them (Bar.Place raises the bar each time).
+Bar.BOX_INSET = 3
+function Bar.Boxes(f)
+    if not f.Boxes then
+        f.Boxes = {}
+        for i = 1, #f.Plates do f.Boxes[i] = CreateFrame("Frame", nil, f, "BackdropTemplate") end
+    end
+    local level = math.max(0, f:GetFrameLevel() - 1)
+    for _, b in ipairs(f.Boxes) do b:SetFrameLevel(level) end
+    return f.Boxes
+end
+
+-- a box in the map's border (MM.CustomBorderSpec), set again only for a new border or bar height. The
+-- edge at most half the bar's height, or its corners overlap.
+function Bar.StyleBox(b, spec)
+    if b.spec == spec and b.barHeight == Bar.height then return end
+    b.spec, b.barHeight = spec, Bar.height
+    local inset = Bar.BOX_INSET
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = LibStub("LibSharedMedia-3.0"):Fetch("border", spec.lsm),
+        edgeSize = math.min(spec.edge, Bar.height / 2),
+        insets = { left = inset, right = inset, top = inset, bottom = inset } })
+    b:SetBackdropColor(0, 0, 0, 1)
+    local c = ns.BORDER_COLOR
+    b:SetBackdropBorderColor(c.r, c.g, c.b, 1)
+end
+
 function Bar.Place()
     local f = Bar.frame
     local style = HeaderStyle()
@@ -1063,22 +1093,30 @@ function Bar.Place()
         line:SetPoint("CENTER", f, "LEFT", center[i] + width[i] / 2, 0)
         line:SetShown(box and used[i] and used[i + 1] or false)
     end
-    -- the plates: one per run of cells in use, from its first cell's left edge to its last one's right
+    -- the plates: one per run of cells in use, from its first cell's left edge to its last one's right;
+    -- under a Shared Media map border, boxes in it (Bar.Boxes)
+    local flare = squareStyle and style.flare
+    local mapBorder = flare and MM.customBorders[flare.lsm] == flare and flare
+    local plates = mapBorder and Bar.Boxes(f) or f.Plates
     local n, i = 0, 1
     while i <= #Bar.SIDES do
         if box and used[i] then
             local first = i
             while i < #Bar.SIDES and used[i + 1] do i = i + 1 end
             n = n + 1
-            local plate = f.Plates[n]
+            local plate = plates[n]
             plate:ClearAllPoints()
             plate:SetPoint("TOPLEFT", f, "TOPLEFT", center[first] - width[first] / 2, 0)
             plate:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", center[i] + width[i] / 2, 0)
+            if mapBorder then Bar.StyleBox(plate, mapBorder) end
             plate:Show()
         end
         i = i + 1
     end
-    for k = n + 1, #f.Plates do f.Plates[k]:Hide() end
+    for k = n + 1, #plates do plates[k]:Hide() end
+    -- the other kind hidden: a change of the map's border swaps them
+    local others = mapBorder and f.Plates or f.Boxes
+    if others then for _, plate in ipairs(others) do plate:Hide() end end
 end
 
 function Bar.Update()
