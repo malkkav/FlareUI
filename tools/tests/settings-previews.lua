@@ -155,6 +155,15 @@ draw("lootFeed", "bl.lootFeedQuality", 3, "tweaks.lootFeedQuality")
 assert(text(o.feedText1, "Robes of the Archmage") and not text(o.feedText1, "Linen Cloth") and c.used > 0)
 c.frame:RunScript("OnUpdate", 2.75)
 assert(o.feedText1:GetAlpha() == 0.5)
+-- (chiefballsy, 7.1) the icons take the feed's own shape: Round Icons draws the round border
+ns.modules = ns.modules or {}
+ui:load("Modules/LootFeed.lua", ns)
+profile.tweaks.lootFeed, profile.tweaks.lootFeedQuality = true, 0
+draw("lootFeed", "bl.lootFeed", "round")
+assert(o.feedLine1.border:GetAtlas() == "talents-node-circle-gray", "Round Icons previews round")
+draw("lootFeed", "bl.lootFeed", "square")
+assert(o.feedLine1.border:GetTexture():find("IconBorder", 1, true), "Square Icons previews square")
+profile.tweaks.lootFeed, profile.tweaks.lootFeedQuality = nil, nil
 draw("lootRolls", "bl.lootRolls")
 assert(text(o.rollsOff, "Disabled"))
 draw("lootRolls", "bl.lootRolls", true, "tweaks.lootRolls")

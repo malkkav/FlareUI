@@ -145,10 +145,10 @@ ns.Copy = {
             tip = L["Try one group for your bottom bars and another for your side bars."],
         },
         ["ab.bar.show"] = {
-            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
+            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["In a Battleground"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
             desc = L["When this bar shows. Any ticked condition shows it."],
             label = L["Visibility"],
-            tags = { "show condition", "show", "view conditions", "show when" },
+            tags = { "show condition", "show", "view conditions", "show when", "battleground", "pvp", "arena" },
             tip = L["Always clears the others; nothing ticked means Always. Opening your spellbook always shows it."],
         },
         ["ab.borderlessMenu"] = {
@@ -197,6 +197,13 @@ ns.Copy = {
             section = "ab.fcmAbout",
             text = L["Spare action bars as a cooldown tracker. Blizzard's Cooldown Manager only tracks the spells Blizzard lists; this tracks anything you can put on a bar, in your order.\n* Picked bars can't be clicked and show only when Visibility says.\n* A button flashes when its cooldown ends.\n* Drag a spell onto them to change it, or use Setup Mode (`/fui cm`).\n* Edit Mode always shows them: move and size them as any action bar."],
         },
+        ["ab.fcmOnlyReady"] = {
+            desc = L["Hides a spell while it's on cooldown and shows it again when it's ready to use."],
+            label = L["Show Only When Ready"],
+            section = "ab.fakeCooldownManager",
+            tags = { "only when ready", "hide on cooldown", "ready", "cooldown", "available" },
+            tip = L["Its spot stays empty while it's hidden. The global cooldown doesn't count."],
+        },
         ["ab.fcmSetup"] = {
             desc = L["Shows the Fake Cooldown Manager bars and makes them clickable, so you can place spells."],
             label = L["Setup Mode"],
@@ -205,7 +212,7 @@ ns.Copy = {
             tip = L["`/fui cm` does the same. A reload ends it."],
         },
         ["ab.fcmShow"] = {
-            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
+            choices = { L["Always"], L["Mouseover"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["In a Battleground"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
             desc = L["When the Fake Cooldown Manager bars show. Any ticked condition shows them."],
             label = L["Visibility"],
             section = "ab.fakeCooldownManager",
@@ -1082,6 +1089,14 @@ ns.Copy = {
             section = "ch.formatting",
             tags = { "short channel names" },
         },
+        ["ch.chatStyle"] = {
+            choices = { L["IM Style"], L["Classic Style"] },
+            desc = L["Blizzard's Chat Style, from Options > Social:\n* IM Style: the edit box stays in view, and you type in the chat you last used\n* Classic Style: the edit box shows when you press Enter and hides after you send"],
+            label = L["Chat Style"],
+            section = "ch.editBoxSection",
+            tags = { "chat style", "im style", "classic style", "edit box always visible", "edit box hidden", "instant messenger" },
+            tip = L["With Position on Inside, an idle IM box hides under the chat. The Gamepad UI always uses IM Style."],
+        },
         ["ch.combatLog"] = {
             desc = L["Removes the Combat Log tab."],
             label = L["Hide Combat Log"],
@@ -1161,6 +1176,7 @@ ns.Copy = {
             desc = L["Messages in every chat window."],
             label = L["Chat Text"],
             section = "ch.fonts",
+            tip = L["For one window's size, right-click its tab and pick Font Size. Pick this size there to follow this again."],
         },
         ["ch.formattingNote"] = {
             kind = "text",
@@ -1310,7 +1326,7 @@ ns.Copy = {
             tags = { "fade speed", "min alpha", "transparency" },
         },
         ["dm.em.show"] = {
-            desc = L["When the meter or the threat window shows. Any ticked condition shows it.\n* Never: the meter shows only in Edit Mode, or at its Faded Opacity\n* In an Instance: in dungeons, raids, battlegrounds and arenas\n* Same as Meter: the threat window shows and fades with the meter"],
+            desc = L["When the meter or the threat window shows. Any ticked condition shows it.\n* Never: the meter shows only in Edit Mode, or at its Faded Opacity\n* In an Instance: in dungeons and raids\n* In a Battleground: in battlegrounds and arenas\n* Same as Meter: the threat window shows and fades with the meter"],
             label = L["Visibility"],
             tags = { "show", "view conditions", "show on mouseover", "hidden", "threat visibility" },
             tip = L["With the Meter tab in the chat, the meter fades with the chat."],
@@ -1510,6 +1526,13 @@ ns.Copy = {
             label = L["Right"],
             section = "mm.infoBar",
             tip = L["Bags counts used and total slots. Durability is your most worn piece. Coords (Simple) drops the decimals: 45, 62 instead of 45.3, 62.1. Friends and Guild count who is online: point at them to see who."],
+        },
+        ["mm.buttonsHover"] = {
+            desc = L["Hides the addon buttons on the minimap's edge until you point at the minimap or at one of them."],
+            label = L["Only on Mouseover"],
+            section = "mm.addonButtons",
+            tags = { "minimap buttons", "hide buttons", "addon buttons", "mouseover", "show on hover" },
+            tip = L["Buttons in the drawer aren't affected. Use Addons in the Drawer to pick which stay on the edge."],
         },
         ["mm.clockStats"] = {
             desc = L["Adds your framerate and latency to the clock's tooltip."],
@@ -2202,6 +2225,12 @@ ns.Copy = {
             tags = { "better camera", "camera speed", "zoom faster", "mouse wheel" },
             tip = L["Faster speeds also move the camera further with each turn of the wheel. In Gamepad mode the camera keeps Blizzard's speed."],
         },
+        ["qol.copyNow"] = {
+            desc = L["Copies all of the source's settings to this character now."],
+            label = L["Copy Now"],
+            section = "qol.syncBlizzUi",
+            tip = L["Greyed out on the source itself, and until the source has logged in with this on."],
+        },
         ["qol.craftTotal"] = {
             desc = L["When you craft several of an item, your cast bar also shows the time left for all of them, like 0:12 (1:02)."],
             label = L["Craft Batch Time"],
@@ -2324,6 +2353,13 @@ ns.Copy = {
             section = "qol.controller",
             tip = L["When off, D-pad Up gives the controller FlareUI's tracker."],
         },
+        ["qol.plateCombo"] = {
+            desc = L["Shows combo points under your target's nameplate, on Blizzard's own nameplates."],
+            label = L["Nameplate Combo Points"],
+            section = "qol.other",
+            tags = { "combo points", "nameplates" },
+            tip = L["Leave it off if another addon already puts combo points on your nameplates."],
+        },
         ["qol.repair"] = {
             desc = L["Repairs your gear at vendors that can."],
             label = L["Auto Repair"],
@@ -2355,20 +2391,16 @@ ns.Copy = {
             tip = L["Turning it off puts your game setting back."],
         },
         ["qol.source"] = {
-            desc = L["Every other character copies its settings from this one."],
+            desc = L["Your other characters copy their settings from this one."],
             label = L["Make This Character the Source"],
             section = "qol.syncBlizzUi",
         },
         ["qol.sync"] = {
-            desc = L["Copies one character's Blizzard settings to all others:\n* Interface options\n* Edit Mode layout\n* Chat and bag settings"],
+            desc = L["Copies one character's Blizzard settings to your others:\n* Interface options\n* Edit Mode layout\n* Chat and bag settings"],
             label = L["Sync Blizzard UI"],
             reload = true,
             section = "qol.syncBlizzUi",
-        },
-        ["qol.syncHideAlerts"] = {
-            desc = L["Hides the pop-up that asks you to reload after a sync. Synced settings take effect at your next reload."],
-            label = L["Hide Pop-up Alerts"],
-            section = "qol.syncBlizzUi",
+            tip = L["Each other character asks once, at its next login. After that, it only copies when you click Copy Now."],
         },
         ["qol.taxiMap"] = {
             desc = L["Opens the flight map as soon as you talk to a flight master, unless they have a quest for you."],
@@ -2597,7 +2629,7 @@ ns.Copy = {
             label = L["Height"],
         },
         ["rb.*.show"] = {
-            choices = { L["Always"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
+            choices = { L["Always"], L["In Combat"], L["Has a Target"], L["Attackable Target"], L["In a Group"], L["In an Instance"], L["In a Battleground"], L["Not Mounted"], L["In a Capital City"], L["Not in a Capital City"] },
             desc = L["When the bar shows. Any ticked condition shows it."],
             label = L["Visibility"],
             tags = { "show condition", "show", "view conditions", "show when" },

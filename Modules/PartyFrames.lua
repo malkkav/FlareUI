@@ -3904,6 +3904,10 @@ local function BuildSettings()
           get = function() return getS("targetMarkers")() == true end, set = setS("targetMarkers"), hidden = noTargets,
           desc = L["The raid marker of what each member is targeting, on the right edge of its frame."] },
     })
+    -- last: Visibility, the fade speeds and Faded Opacity, as on the unit frames (Visibility.lua)
+    if ns.Visibility and ns.Visibility.GroupFrameSettings then
+        Section("Fading", ns.Visibility:GroupFrameSettings("party"))
+    end
     return settings
 end
 
@@ -4128,6 +4132,8 @@ function PF:Init()
         return
     end
     self.initialized = true
+    -- its Fading (Visibility.lua): the holder exists now
+    if ns.Visibility and ns.Visibility.Refresh then C_Timer.After(0, function() ns.Visibility:Refresh() end) end
 
     -- Left of the Frame is not offered: saved auras there move to the right (off when taken)
     local party = GetPartyDb()

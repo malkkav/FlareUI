@@ -155,7 +155,7 @@ assert(partyFrame:GetFrameStrata() == "MEDIUM" and stacks == 1)
 edit.callbacks.enter()
 assert(stacks == 1 and holder:GetFrameStrata() == "LOW")
 assert(not group1:IsShown() and holder.sampleLabels[1]:IsShown() and not holder.sampleLabels[6]:IsShown())
-option(holder, "Sample Raid").set("Modern", "small")
+option(holder, "Raid Size").set("Modern", "small")
 assert(holder.sampleLabels[2]:IsShown() and not holder.sampleLabels[3]:IsShown())
 option(tanks, "Tank Targets").set("Modern", "BOTTOM")
 local sampleTarget = ui:find(function(frame) return frame:GetParent() == tanks and frame.SampleTarget and frame:IsVisible() end)
@@ -172,5 +172,28 @@ ui.combat = false
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(group1[1]:GetWidth() == 115)
 assert(db.spacing == 10 + ns.UnitFrames.Kit.INSET * 2, "later refreshes do not repeat migration")
+
+-- (Malkkav 11-27) Width, Height and Power Height per raid size: a size takes its own copy once changed
+-- (Raid Size picks which one the Size section sets); the others keep the shared values; in a raid the
+-- group's size picks them
+do
+    local RF = ns.RaidFrames
+    assert(db.sizes and db.sizes.small and db.sizes.small.width == 115, "the Width set above went to the size picked (10)")
+    local shared = db.width
+    ui.editing = true
+    edit.callbacks.enter()
+    option(holder, "Raid Size").set("Modern", "large")
+    assert(option(holder, "Width").get() == shared, "a size never changed shows the shared Width")
+    option(holder, "Width").set("Modern", 70)
+    assert(db.sizes.large.width == 70 and db.width == shared, "its own copy; the shared value stays")
+    ui.editing = false
+    edit.callbacks.exit()
+    E.GetNumGroupMembers = function() return 30 end
+    assert(RF.SizeTier() == "large" and RF.SizeValue("width") == 70)
+    E.GetNumGroupMembers = function() return 18 end
+    assert(RF.SizeTier() == "medium" and RF.SizeValue("width") == shared, "medium: never changed, the shared Width")
+    E.GetNumGroupMembers = function() return 8 end
+    assert(RF.SizeTier() == "small" and RF.SizeValue("width") == 115)
+end
 
 print("PASS: raid lifecycle, headers, tank targets, Edit Mode and combat deferral")

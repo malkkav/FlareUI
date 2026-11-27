@@ -34,13 +34,17 @@ end
 local MEDIA         = "Interface\\AddOns\\FlareUI\\Media\\Auras\\"
 -- Square: the classic icon bevel; round: the radial menu's rim. Both grey art, tinted.
 local SQUARE_BORDER = MEDIA .. "IconBorder"
-local SQUARE_INSET  = 6 / 128     -- the icon starts this far in, under the bevel's inner line
+-- the icon starts this far in, under the bevel's inner line (11-26: the band squeezed from 7 to 6 of 64 px,
+-- Development/Tools/aura-border-thin, so the inset by 6/7 too)
+local SQUARE_INSET  = 6 / 128 * 6 / 7
 local SQUARE_MASK   = MEDIA .. "IconMask"   -- the icon clipped to the bevel's 45 degree corners
 -- bronze, lifted as the tint multiplies the grey art
-local SQUARE_TINT   = { 0.80, 0.60, 0.34 }   -- palette bronze4 (was 0.72, 0.56, 0.38)
+-- the action bars' border colour (ns.BORDER_COLOR, ActionBars.lua FlareUI Borders); was 0.80, 0.60, 0.34,
+-- a brighter bronze than the bars (Malkkav 11-27)
+local SQUARE_TINT   = { ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b }
 local ROUND_BORDER  = "talents-node-circle-gray"
 local ROUND_MASK    = "talents-node-circle-mask"
-local ROUND_TINT    = { 0.80, 0.60, 0.34 }   -- palette bronze4
+local ROUND_TINT    = SQUARE_TINT   -- (the action bars' border colour too, 11-27; was 0.80, 0.60, 0.34)
 -- Border swipe outlines: a swipe takes a file, not an atlas
 local SWIPE_SQUARE  = MEDIA .. "BorderThick"         -- 5 px wider inward than the border art
 local SWIPE_ROUND   = MEDIA .. "BorderRoundThick"

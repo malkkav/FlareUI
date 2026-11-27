@@ -1,6 +1,55 @@
 # FlareUI changelog history
 
-Versions 7.0.14 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.15 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.15
+
+A hotfix for the Lua error when you change target in a fight (our own doing, from 7.0.14), plus a few fixes and small additions.
+
+**We need your help testing:**
+- **Dispel icons:** change target in a fight with debuffs up. Friends show the icons, enemies don't.
+- **Raid Manager:** join a group in and out of a fight, with it hidden.
+- **Druids:** **Mana on Shapeshift** with Smooth Animated Bars.
+- **Nameplates:** the colours in **Name Only Mode**.
+
+## Heads up
+Some things look different even if you change nothing:
+- **Name Only Mode:** titles and guilds take the name's colour, and names take the colours Blizzard gives them. Colours you picked yourself stay.
+- **Raid Manager:** if you hid it but play without our Action Bars, it's hidden now.
+- **Bags & Looting:** with a font picked for Item Level, the BoE mark takes it too.
+
+## New
+
+### Nameplates
+- **Copy From**, in Plate Setup: puts another unit's whole setup on the one you're editing. Undo Changes takes it back.
+
+## Changed
+
+### Nameplates
+- **Name Only Mode:** Blizzard's colours for names, titles and guilds.
+
+### Unit Frames
+- **Only Mana Power Bars** (off) works in every party style, Forever Style too.
+- A **Frame Style** you pick waits for the reload. By mateuszmalek.
+
+### Bags & Looting
+- The BoE mark takes the Item Level font, in the bags and the loot window.
+
+### Languages
+- **Russian:** shorter names for the Nameplates tabs and Plate Setup.
+
+## Fixed
+
+### Unit Frames
+- A Lua error each time you changed target in a fight.
+- The player and target frames got shorter when you switched **Frame Style** and back. By mateuszmalek.
+- **Smooth Animated Bars** left out the **Mana on Shapeshift** bar.
+
+### Nameplates
+- The target arrows hitched at each end of their bounce.
+
+### Quality of Life
+- A hidden **Raid Manager** still showed with Action Bars off, or when you joined a group in a fight.
 
 # FlareUI 7.0.14
 

@@ -3337,6 +3337,18 @@ function Chat.MisspelledRedrawSoon(eb)
     end)
 end
 
+-- The edit box header's font: the chosen font, or its Cyrillic twin when the header holds Russian
+-- letters ("Tell Имя:"); runs after each new header text, before Blizzard measures its width
+function Chat.HeaderFont(header)
+    local font = header and header.FlareUI_HeaderFont
+    if not font then return end
+    local want = ns.CyrillicPick(header:GetText(), font.path)
+    if header.FlareUI_HeaderPath == want then return end
+    header.FlareUI_HeaderPath = want
+    ns.SetFont(header, want, font.size, font.flags)
+    ns.ApplyShadow(header, font.fontDb)
+end
+
 function Chat.MisspelledFollow(eb)
     if not (_G.Misspelled and C_AddOns.IsAddOnLoaded("MisspelledForever")) then return end
     if not eb.FlareUI_MisspelledHooked then
@@ -3527,7 +3539,18 @@ function Chat:StyleEditBox(chatFrame, db)
     local path, size, flags = GetFontData(db.editBoxFont)
     ns.SetFont(eb, path, size, flags)
     ns.ApplyShadow(eb, db.editBoxFont)
-    if eb.header then ns.SetFont(eb.header, path, size, flags); ns.ApplyShadow(eb.header, db.editBoxFont) end
+    if eb.header then
+        -- (aleksandr, 7.1) "Tell Имя:" is drawn in one font, so a Russian name took the Latin-only
+        -- font and drew boxes; the header picks again on each new text (Chat.HeaderFont)
+        eb.header.FlareUI_HeaderFont = { path = path, size = size, flags = flags, fontDb = db.editBoxFont }
+        eb.header.FlareUI_HeaderPath = nil
+        if not eb.header.FlareUI_HeaderHooked then
+            eb.header.FlareUI_HeaderHooked = true
+            hooksecurefunc(eb.header, "SetText", Chat.HeaderFont)
+            if eb.header.SetFormattedText then hooksecurefunc(eb.header, "SetFormattedText", Chat.HeaderFont) end
+        end
+        Chat.HeaderFont(eb.header)
+    end
     -- Misspelled: Forever's marks follow the box's new place and font
     Chat.MisspelledFollow(eb)
 end
@@ -3759,9 +3782,26 @@ local function CreateOrGetSkinFrame(chatFrame)
     return skin
 end
 
--- A window's message font: FlareUI's chat font (Settings > Chat > Fonts), the same in every window
+-- A window's message font: FlareUI's chat font (Settings > Chat > Fonts), at the window's own size when
+-- one was picked from its tab's Font Size menu (db.windowFontSize, by window ID; inflowon 11-27)
 function Chat:MessageFont(chatFrame, db)
-    return GetFontData(db.chatFont)
+    local path, size, flags = GetFontData(db.chatFont)
+    local id = chatFrame and chatFrame.GetID and chatFrame:GetID()
+    local own = id and db.windowFontSize and db.windowFontSize[id]
+    return path, own or size, flags
+end
+
+-- Blizzard's Font Size (a tab's right-click menu): that window keeps the size picked; picking the Fonts
+-- tab's size again makes it follow that one. (Before, FlareUI put its own size back at once.)
+function Chat.WindowFontSizePicked(chatFrame, size)
+    local db = GetDb()
+    if not (db and db.enabled and chatFrame and chatFrame.GetID and type(size) == "number") then return end
+    local id = chatFrame:GetID()
+    local _, shared = GetFontData(db.chatFont)
+    db.windowFontSize = db.windowFontSize or {}
+    db.windowFontSize[id] = math_abs(size - shared) > 0.1 and size or nil
+    if not next(db.windowFontSize) then db.windowFontSize = nil end
+    Chat:ApplyMessageFont(chatFrame, db)
 end
 
 -- Increase Line Height: this much over the window's own spacing. Off never touches a window it didn't change.
@@ -4666,7 +4706,26 @@ function Chat:ShouldLoad()
             global.chatStyleBeforeGamepad = nil
         end
     end
+    -- a Chat Style picked last session that the logout didn't write (a crash): set before the chat runs
+    Chat.ApplyWantedChatStyle()
     return not other
+end
+
+-- Chat Style (settings, Chat > Edit Box): Blizzard's chatStyle CVar, IM or Classic. Picked in the
+-- panel, it's saved as wanted and written as the session ends (a reload), never live: a change while
+-- you play runs Blizzard's chat code inside FlareUI's call and taints the edit box (see the Gamepad
+-- note above). In the Gamepad UI the keyboard style is the one kept for after it.
+function Chat.ApplyWantedChatStyle()
+    local global = ns.db and ns.db.global
+    local wanted = global and global.chatStyleWanted
+    if not wanted then return end
+    global.chatStyleWanted = nil
+    if wanted ~= "im" and wanted ~= "classic" then return end
+    if global.chatStyleBeforeGamepad then
+        global.chatStyleBeforeGamepad = wanted
+    elseif C_CVar.GetCVar("chatStyle") ~= wanted then
+        C_CVar.SetCVar("chatStyle", wanted)
+    end
 end
 
 -- Whisper Sound (Tweaks): a sound as a whisper comes in, the Buff Reminders' choices
@@ -4691,7 +4750,10 @@ function Chat:Init()
     Chat:ApplyGamepadChatStyle()
     local ending = CreateFrame("Frame")
     ending:RegisterEvent("PLAYER_LOGOUT")
-    ending:SetScript("OnEvent", function() if ns.IsGamepadUI() then Chat:ApplyGamepadChatStyle() end end)
+    ending:SetScript("OnEvent", function()
+        if ns.IsGamepadUI() then Chat:ApplyGamepadChatStyle() end
+        Chat.ApplyWantedChatStyle()
+    end)
     SetupGamepadTabHints()
     -- Blizzard's own fading is off per frame (StyleChatFrame); never blank the FCF_Fade* globals
     Chat:ProtectButtons()
@@ -4708,6 +4770,13 @@ function Chat:Init()
     Chat:SecureHook("FCF_SelectDockFrame", function(view)
         Chat:StyleHeaderButtons(view)
     end)
+    -- a tab's Font Size menu: that window keeps its own size (Chat.WindowFontSizePicked)
+    if _G.FCF_SetChatWindowFontSize then
+        hooksecurefunc("FCF_SetChatWindowFontSize", function(menu, chatFrame, size)
+            chatFrame = chatFrame or (FCF_GetCurrentChatFrame and FCF_GetCurrentChatFrame())
+            Chat.WindowFontSizePicked(chatFrame, size or (menu and menu.value))
+        end)
+    end
     -- a tab switch shows the new window as the old one was
     hooksecurefunc("FCFDock_SelectWindow", function(dock, chatFrame)
         if dock == _G.GENERAL_CHAT_DOCK then

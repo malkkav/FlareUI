@@ -412,6 +412,19 @@ chat.otherAddon, otherAddon = nil, true
 assert(not chat:ShouldLoad() and chat:GetOtherChatAddon() == "Another chat")
 assert(cvars.chatStyle == "classic" and cvars.chatBubbles == "1", "competing chat addon restores original settings")
 
+-- Chat Style picked in the panel: written once as the session ends, never live
+ns.db.global.chatStyleWanted = "im"
+chat.ApplyWantedChatStyle()
+assert(cvars.chatStyle == "im" and not ns.db.global.chatStyleWanted)
+ns.db.global.chatStyleWanted = "bogus"
+chat.ApplyWantedChatStyle()
+assert(cvars.chatStyle == "im" and not ns.db.global.chatStyleWanted)
+-- in the Gamepad UI the pick becomes the keyboard style kept for after it
+ns.db.global.chatStyleBeforeGamepad, ns.db.global.chatStyleWanted = "im", "classic"
+chat.ApplyWantedChatStyle()
+assert(cvars.chatStyle == "im" and ns.db.global.chatStyleBeforeGamepad == "classic")
+ns.db.global.chatStyleBeforeGamepad, cvars.chatStyle = nil, "classic"
+
 chat.otherAddon, otherAddon = nil, false
 -- a hidden line: the time in front (Better Timestamps, Blizzard's own stamps off), the text never read
 do

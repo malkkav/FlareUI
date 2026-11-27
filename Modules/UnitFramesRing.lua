@@ -741,6 +741,37 @@ local function SetHit(hit, shown, f, g, dx, dy, w, h)
     hit:SetShown(shown and true or false)
 end
 
+-- (Malkkav 11-27) Edit Mode's box round the whole frame, portrait and level disc in it (both styles): only
+-- the box's outline grows, from the frame to the farthest edge of the portrait's and disc's click areas,
+-- which sit where the art does. The frame keeps its size, so its saved spot and the snapping don't change.
+-- Read in Edit Mode only (out of a fight); back on the frame outside it.
+function Ring.FitSelection(f)
+    local selection = f and type(LEM.frameSelections) == "table" and LEM.frameSelections[f]
+    if not selection then return end
+    local ring = f.RingFrame
+    local fl, fr, ft, fb = f:GetLeft(), f:GetRight(), f:GetTop(), f:GetBottom()
+    local l, r, t, b = fl, fr, ft, fb
+    if LEM:IsInEditMode() and ring and ring:IsShown() and fl and fr and ft and fb then
+        for _, hit in ipairs({ ring.Hit, ring.DiscHit }) do
+            if hit and hit:IsShown() then
+                local hl, hr, ht, hb = hit:GetLeft(), hit:GetRight(), hit:GetTop(), hit:GetBottom()
+                if hl and hr and ht and hb then
+                    l, r, t, b = math.min(l, hl), math.max(r, hr), math.max(t, ht), math.min(b, hb)
+                end
+            end
+        end
+    end
+    selection:ClearAllPoints()
+    if l == fl and r == fr and t == ft and b == fb then
+        selection:SetAllPoints(f)
+    else
+        selection:SetPoint("TOPLEFT", f, "TOPLEFT", l - fl, t - ft)
+        selection:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", r - fr, b - fb)
+    end
+end
+LEM:RegisterCallback("enter", function() for f in pairs(frames) do Ring.FitSelection(f) end end)
+LEM:RegisterCallback("exit", function() for f in pairs(frames) do Ring.FitSelection(f) end end)
+
 -- The frame runs on under the ring, which hid its end until the frame faded. A round hole cut in
 -- everything there (under the rim, so no gap shows) leaves nothing to see through the portrait.
 -- CLAMPTOWHITE: past the mask's own square nothing is cut, however wide the frame.
@@ -1017,6 +1048,7 @@ function Ring.Layout(f)
     for holder in pairs(ring.DispelTints or {}) do pcall(Ring.SyncDispelTint, ring, holder) end
     if ring.Hit then
         SetHit(ring.Hit, true, f, g, 0, 0, g.D, g.D)
+        Ring.FitSelection(f)
     end
 
     local size = g.D * PORTRAIT_SHARE
@@ -1087,6 +1119,7 @@ function Ring.LayoutLevel(f, g)
         if dx then SetHit(ring.DiscHit, ring.Disc:IsShown(), f, g, dx, dy, dw * size, dh * size)
         else SetHit(ring.DiscHit, false) end
     end
+    Ring.FitSelection(f)   -- (the portrait and the disc placed: Edit Mode's box round them)
     f.Level:SetParent(ring.Disc)
     f.Level:ClearAllPoints()
     f.Level:SetJustifyH("CENTER")
@@ -1496,6 +1529,7 @@ function Ring.Reset(f)
     RemoveBarHole(ring)
     if ring.Hit then SetHit(ring.Hit, false) end
     if ring.DiscHit then SetHit(ring.DiscHit, false) end
+    Ring.FitSelection(f)   -- (no ring: the box back on the frame)
     f.Level:SetAlpha(1)
     f.Portrait:SetFrameLevel(level + 1)
     f.Overlay:SetFrameLevel(level + 5)

@@ -277,6 +277,24 @@ assert(bar:GetAlpha() == 0 and cluster.MinimapContainer.PlayerCoords:GetAlpha() 
 cluster.mouseOver = true
 cluster:RunScript("OnEnter")
 assert(bar:GetAlpha() == 1 and bar.Plates[1]:IsShown() and not bar.Plates[2]:IsShown())
+-- (deroostr 11-27) Addon Buttons Only on Mouseover: the buttons on the edge see-through until you point at
+-- the map, and back for good when it's off
+do
+    db.buttonsHover = true
+    cluster.mouseOver = false
+    minimap:Refresh()
+    assert(square.libButton:GetAlpha() == 0, "hidden while the pointer is away")
+    cluster.mouseOver = true
+    cluster:RunScript("OnEnter")
+    assert(square.libButton:GetAlpha() == 1, "shown while pointing at the map")
+    db.buttonsHover = false
+    minimap:Refresh()
+    cluster.mouseOver = false
+    minimap:Refresh()
+    assert(square.libButton:GetAlpha() == 1, "off: always shown")
+    cluster.mouseOver = true
+    cluster:RunScript("OnEnter")   -- (as before this block: pointing at the map)
+end
 ui.free, ui.money = 0, 10005
 ui:emit("BAG_UPDATE_DELAYED")
 assert(square:barText("|cffff404022/22"))

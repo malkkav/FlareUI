@@ -388,7 +388,7 @@ local function ShouldShow(holder)
     -- a swing proves the weapon, so no availability check (attack speeds can be secret); Waiting
     -- State keeps the bar up while auto attack is on
     if RB.InUse(holder.key) then
-        return (holder.swingEnd or holder.swingHold or AutoAttacking(holder.key)) and true or false
+        return (holder.swingEnd or holder.swingHold or (cfg.waiting and AutoAttacking(holder.key))) and true or false
     end
     -- the Show conditions fade the bar (Visibility.lua)
     return IsAvailable(holder)
@@ -597,7 +597,7 @@ local function SwingZone(holder)
     local zone = holder.StandStill
     if not zone then return end
     local cfg, d = Cfg(holder.key), holder.swingDuration
-    if cfg and d and d > 0 then
+    if cfg and cfg.standStill and d and d > 0 then
         local z = RBC.zone
         if z then zone:SetColorTexture(z[1], z[2], z[3], 0.35) end
         zone:SetWidth(math_max(1, holder.Bar:GetWidth() * math_min(STAND_STILL / d, 1)))
@@ -610,7 +610,7 @@ end
 -- An idle swing bar: empty, or with Waiting State full and grey while auto attack is on
 local function SwingIdle(holder)
     local cfg = Cfg(holder.key)
-    holder.waiting = (cfg and AutoAttacking(holder.key)) and true or false
+    holder.waiting = (cfg and cfg.waiting and AutoAttacking(holder.key)) and true or false
     holder.Bar:SetMinMaxValues(0, 1)
     holder.Bar:SetValue(holder.waiting and 1 or 0)
     holder.Text:SetText(holder.waiting and L["Waiting"] or "")
@@ -780,7 +780,7 @@ local function ApplyPreview(holder)
         holder.swingEnd = nil
         holder.Spark:Show()
         holder.Label:SetText(BARS[holder.key].text)
-        holder.waiting = true
+        holder.waiting = cfg.waiting and true or false
         holder.queued = nil   -- (the sample in its own colour; asked again after Edit Mode)
         if holder.waiting then
             bar:SetValue(1)
@@ -793,7 +793,7 @@ local function ApplyPreview(holder)
         SetSwingRange(holder, false)
         -- Stand-Still Zone on a sample 2.5 s swing
         if holder.StandStill then
-            if not holder.waiting then
+            if cfg.standStill and not holder.waiting then
                 local z = RBC.zone
                 if z then holder.StandStill:SetColorTexture(z[1], z[2], z[3], 0.35) end
                 holder.StandStill:SetWidth(math_max(1, bar:GetWidth() * STAND_STILL / 2.5))
@@ -1347,13 +1347,23 @@ local function BuildSettings(key)
         add({ name = L["GCD Spark"], kind = LEM.SettingType.Checkbox, default = false, get = get("gcd", false), set = set("gcd"),
               desc = L["A spark crosses the bar during the global cooldown."] })
     end
-    -- (Queued Attack Colour, Stand-Still Zone and Waiting State are always on since 11-26: readability
-    -- aids with no switch; saved values from before are ignored.)
+    -- (Malkkav 11-27: 7.1 made these three always on, players asked for them back) the main-hand bar's
+    -- colour per queued attack (on by default), colours in Bar Colours
+    if key == "swingMain" then
+        add({ name = L["Queued Attack Colour"], kind = LEM.SettingType.Checkbox, default = true, get = get("queueTint", true), set = set("queueTint"),
+              desc = L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, the bar takes its colour (set in Bar Colours)."] })
+    end
+    if key == "swingRanged" then
+        add({ name = L["Stand-Still Zone"], kind = LEM.SettingType.Checkbox, default = true, get = get("standStill", true), set = set("standStill"),
+              desc = L["Marks the swing's last half second. Auto Shot and wands need you to stand still then."] })
+    end
     if info.kind == "swing" then
         -- the out-of-range colour, as the unit frames' range fading (in Frame: it changes what the
         -- bar tells you, not how it looks)
         add({ name = L["Range Check"], kind = LEM.SettingType.Checkbox, default = true, get = get("rangeCheck", true), set = set("rangeCheck"),
               desc = L["The bar turns red while your target is out of reach of this attack."] })
+        add({ name = L["Waiting State"], kind = LEM.SettingType.Checkbox, default = true, get = get("waiting", true), set = set("waiting"),
+              desc = L["When auto attack is on but you can't swing (the target is out of reach), the bar shows full and grey, with Waiting."] })
     end
     -- the swing, flight, seal and duration bars' two texts, each on its own. In Frame: what a bar
     -- tells you belongs with the bar, not with its look.
@@ -1594,7 +1604,7 @@ function RB.UpdateQueued()
     end
     local key
     local cfg = Cfg("swingMain")
-    if isCurrent and cfg then
+    if isCurrent and cfg and cfg.queueTint then
         for i, s in ipairs(RB.QUEUED_SPELLS) do
             local name = names[i]
             if name and readable(isCurrent(name)) then key = s[2] break end

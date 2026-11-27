@@ -45,9 +45,13 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 -- FlareUI's version starts with it, until the player has opened the row's page once (db.global.newSeen).
 -- Filled by tools/newtags.js on each release.
 Settings.NEW = {
+    ["ab.fcmOnlyReady"] = "7.1",
     ["ab.keepPage"] = "7.1",
+    ["ch.chatStyle"] = "7.1",
     ["dm.pullWarning"] = "7.1",
+    ["mm.buttonsHover"] = "7.1",
     ["np.nameOnlyLevel"] = "7.1",
+    ["qol.copyNow"] = "7.1",
 }
 
 --------------------------------------------------

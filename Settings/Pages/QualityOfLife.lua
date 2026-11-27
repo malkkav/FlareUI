@@ -48,6 +48,12 @@ S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", section = "qol.other
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.deleteJunkWhenFull" }
 S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.alertSounds" }
+-- the one exception to "nameplates only on the Nameplates page": combo points under Blizzard's plates,
+-- for those who keep the module off. Gone while it's on: it has its own (np.comboPoints).
+S:Row{ key = "qol.plateCombo", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.plateCombo",
+    apply = function() if ns.Nameplates and ns.Nameplates.ApplyCombo then ns.Nameplates.ApplyCombo() end end,
+    hidden = function() return S:GetPath("nameplates.enabled") and true or false end,
+    disabled = function() return ns.Nameplates and ns.Nameplates.OtherAddon and ns.Nameplates.OtherAddon() and true or false end }
 -- (Nameplate Combo Points is gone: Blizzard's plates always show them, NameplateExtras.lua)
 -- EXTRAS (tab key "interface"): Hide Clutter, then Camera and Controller (11-26: the Systems tab joined it)
 S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }

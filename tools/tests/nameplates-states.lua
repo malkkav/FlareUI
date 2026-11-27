@@ -33,6 +33,7 @@ env.UnitIsUnit = function(a, b) return a == b end
 env.UnitIsGameObject = function(unit) return units[unit].object end
 env.UnitNameplateShowsWidgetsOnly = function(unit) return units[unit].widget end
 env.UnitName = function() return "Juniper" end
+env.UnitGUID = function() return "Player-1-0001" end
 env.C_DurationUtil = { CreateDurationTextBinding = function() end }
 env.C_AddOns.IsAddOnLoaded = function() return false end
 env.GetCVarBool = function() return true end
@@ -228,6 +229,14 @@ do
     assert(p.root:GetHeight() == 16 + 6 and Offset(p.levelInner) == 3, "the level box too")
     -- (the kit's backdrop is 4 px round a 14 px cast bar)
     assert(Offset(p.cast.Border) == 1, "the cast bar's border too")
+    -- (11-27) with the icon on, the divider between the icon and the bar: the cast border's own art
+    plates.TypeSet("enemyNpc", "castIcon", true)
+    plates.DrawSample(f, { cast = true })
+    local divider = p.cast.FlareUI_Divider
+    assert(divider and divider:IsShown(), "the icon divider on the plate's cast bar")
+    plates.TypeSet("enemyNpc", "castIcon", false)
+    plates.DrawSample(f, { cast = true })
+    assert(not divider:IsShown(), "no icon, no divider")
     -- a border with art we don't know: as far as its background always reached
     plates.TypeSet("enemyNpc", "border", "Other")
     plates.DrawSample(f, { cast = true })
@@ -1820,4 +1829,15 @@ do
     plates.ShowsFull, plates.LayoutNameAbove = showsFull, layAbove
     assert(seen[1] == true and seen[2] == false, "Names Above Plate reads this layout's state")
 end
+-- (11-26) the zoom backup: a setting saved per character is backed up per character, and one backed
+-- up account-wide before moves to the character
+do
+    local tweaks = ns.Tweaks
+    ns.Tweaks = { SavedPerCharacter = function(name) return name == "perChar" end }
+    local global, char = { perChar = "0.8", shared = "1.2" }, {}
+    assert(plates.ZoomBackupFor("perChar", global, char) == char and char.perChar == "0.8" and global.perChar == nil)
+    assert(plates.ZoomBackupFor("shared", global, char) == global and global.shared == "1.2")
+    ns.Tweaks = tweaks
+end
+
 print("PASS: nameplates migrate presets, draw preview states and claim, update and release live plates")

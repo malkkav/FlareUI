@@ -65,6 +65,21 @@ S:Row{ key = "ch.editBoxOpacity", kind = "range", path = "chat.editBoxOpacity", 
 -- Edit Box Style: FlareUI (Blizzard's own art, always) or Modern (default, a dark
 -- box). Edit Box Border: Modern's edge only, hidden with FlareUI; unset, it reads the edge the box had
 -- from the chat's Border (Chat.lua Chat.EditBoxBorder)
+-- Chat Style: Blizzard's own IM / Classic (the chatStyle CVar, Options > Social), first in the
+-- section. Saved as wanted and written at the reload (Modules/Chat.lua Chat.ApplyWantedChatStyle);
+-- greyed in the Gamepad UI, which always runs IM style
+S:Row{ key = "ch.chatStyle", kind = "choice", choices = { "im", "classic" }, reload = true, section = "ch.editBoxSection",
+    get = function()
+        local global = ns.db.global
+        return global.chatStyleWanted or global.chatStyleBeforeGamepad or (C_CVar and C_CVar.GetCVar("chatStyle")) or "im"
+    end,
+    set = function(v)
+        local global = ns.db.global
+        local now = global.chatStyleBeforeGamepad or (C_CVar and C_CVar.GetCVar("chatStyle")) or "im"
+        global.chatStyleWanted = v ~= now and v or nil
+    end,
+    disabled = function() return ns.IsGamepadUI() end,
+    resetValue = function() return "im" end }
 S:Row{ key = "ch.editBoxStyle", kind = "choice", path = "chat.editBoxStyle", choices = { "flareui", "modern" },
     apply = Refresh, section = "ch.editBoxSection" }
 S:Row{ key = "ch.editBoxBorder", kind = "choice", choices = { "none", "thin", "thick" }, apply = Refresh, section = "ch.editBoxSection",

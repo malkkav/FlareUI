@@ -371,6 +371,44 @@ env.EditModeManagerFrame:Show()
 manager:Show()
 assert(not manager:IsShown(), "Edit Mode's samples don't bring it back")
 env.EditModeManagerFrame:Hide()
+
+-- In a Battleground: battlegrounds and arenas, split off In an Instance (dungeons and raids)
+local kind
+env.IsInInstance = function() return kind ~= nil, kind end
+kind = "pvp"
+assert(vis.ShowRule("pvp") and not vis.ShowRule("instance"))
+kind = "arena"
+assert(vis.ShowRule("pvp") and not vis.ShowRule("instance"))
+kind = "party"
+assert(vis.ShowRule("instance") and not vis.ShowRule("pvp"))
+kind = nil
+assert(not vis.ShowRule("instance") and not vis.ShowRule("pvp"))
+-- saved In an Instance gets In a Battleground once, so nothing changes for anyone
+local old = { elements = { meter = { show = "mouseover,instance" }, chat = { show = "combat" } },
+              groups = { { show = "instance" }, {} } }
+profile.fcm = { show = "instance,pvp" }
+vis.MigratePvpSplit(old)
+assert(old.pvpSplit and old.elements.meter.show == "mouseover,instance,pvp" and old.elements.chat.show == "combat")
+assert(old.groups[1].show == "instance,pvp" and profile.fcm.show == "instance,pvp")
+profile.fcm = nil
+
+-- the party, raid and boss frames fade their holder; on Never their tiles take no clicks
+profile.unitframes.raid = { enabled = true }
+assert(#vis:GroupFrameSettings("flagCarriers") == 5, "flag carriers have the same Fading rows")
+local raid, tanks = frame("FlareUI_Raid"), frame("FlareUI_RaidTanks")
+local header = frame(nil, raid)
+local tile = frame(nil, header)
+tile:SetAttribute("unit", "raid1")
+vis:SetShow("uf_raid", "never")
+assert(raid:GetAlpha() == 0 and tanks:GetAlpha() == 0 and not tile:IsMouseEnabled())
+vis:SetShow("uf_raid", "always")
+assert(raid:GetAlpha() == 1 and tanks:GetAlpha() == 1 and tile:IsMouseEnabled())
+local rows = vis:GroupFrameSettings("raid")
+assert(#rows == 5 and rows[1].name == "Visibility")
+profile.unitframes.raid.enabled = false
+vis:SetShow("uf_raid", "never")
+assert(raid:GetAlpha() == 1, "left alone with the raid frames off")
+
 for _, key in ipairs({ "unitframes", "objectivetracker", "damagemeter", "chat" }) do profile[key].enabled = false end
 GRYPHONS_ON = false   -- (Quality of Life off too: the gryphons don't keep it loaded)
 ns.CooldownManager = nil

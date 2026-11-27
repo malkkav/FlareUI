@@ -228,6 +228,10 @@ local ns = {
     GetFontPath = function(face) return "Fonts/" .. face end,
     SetFont = function(widget, ...) widget:SetFont(...) end,
     ApplyShadow = noop,
+    CyrillicPick = function(text, path)
+        if text:find("[\208\209]") then return "Cyrillic/" .. path end
+        return path
+    end,
     BorderEdgeSize = function(_, size) return size end,
     CopyStrata = function(widget, reference) widget:SetFrameStrata(reference:GetFrameStrata()) end,
     BronzeIcon = { Apply = function(icon, file) icon:SetTexture(file) end, Paint = noop },
@@ -625,5 +629,26 @@ do
     chat:UpdateTabFonts(db)
     assert(general.FlareUI_CopyButton:IsShown() and (hooks.FCF_DockUpdate or 0) > (updates or 0))
     ui.gamepad = true
+end
+-- (aleksandr, 7.1) the edit box header takes the Cyrillic twin while it holds a Russian name, and
+-- goes back to the chosen font for the next header
+do
+    local header = general.editBox.header
+    local chosen = header:GetFont()
+    header:SetFormattedText("Tell %s:", "Имя")
+    assert(header:GetFont() == "Cyrillic/" .. chosen, "a Russian whisper name takes the twin")
+    header:SetText("Say:")
+    assert(header:GetFont() == chosen, "the next header goes back to the chosen font")
+end
+-- (inflowon, 11-27) a tab's Font Size menu: that window keeps its own size, the others the Fonts tab's;
+-- picking the Fonts tab's size again makes it follow that one
+do
+    chat.WindowFontSizePicked(general, 10)
+    assert(select(2, general:GetFont()) == 10 and db.windowFontSize[general:GetID()] == 10)
+    assert(select(2, trade:GetFont()) == 16, "the other windows keep the Fonts tab's size")
+    general:SetFont("Fonts/Other", 20, "")   -- anything else setting it gets the window's size back
+    assert(select(2, general:GetFont()) == 10)
+    chat.WindowFontSizePicked(general, 16)
+    assert(db.windowFontSize == nil and select(2, general:GetFont()) == 16, "the shared size again: follows it")
 end
 print("PASS: chat window styling, dock tabs, edit box history, previews and independent fading")

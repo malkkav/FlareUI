@@ -653,6 +653,24 @@ local function Release(card)
     end
 end
 
+-- (siiloquin, 11-27) Shift (Blizzard's Compare Items key) over the rest of the card shows the item with
+-- the comparison, as over its icon; let go, everyone's rolls again. Blizzard adds the comparison only
+-- as a tooltip is made, so a Shift pressed or let go while pointing makes it again (MODIFIER_STATE_CHANGED,
+-- listened to only while pointing at a card).
+function LR.CardTooltip(card)
+    local s = card.session
+    if not s then return end
+    local rolling = not s.sample and s.status == "rolling" and s.rollID or nil
+    if (s.link or rolling) and IsModifiedClick("COMPAREITEMS") then
+        ItemTooltip(card, s.link, rolling)
+    else
+        RollsTooltip(card, s.link or s.name, s.drop and s.drop.rollInfos)
+    end
+end
+function LR.WatchCompare(card, on)
+    if on then card:RegisterEvent("MODIFIER_STATE_CHANGED") else card:UnregisterEvent("MODIFIER_STATE_CHANGED") end
+end
+
 -- the item icon with its tooltip and links; everyone's roll on the rest of the card
 local function ItemParts(card, size)
     Box(card)
@@ -661,17 +679,26 @@ local function ItemParts(card, size)
     card.icon:SetScript("OnEnter", function(self)
         local s = card.session
         if s then ItemTooltip(self, s.link, not s.sample and s.status == "rolling" and s.rollID or nil) end
+        LR.WatchCompare(card, true)
     end)
-    card.icon:SetScript("OnLeave", GameTooltip_Hide)
+    card.icon:SetScript("OnLeave", function() GameTooltip_Hide(); LR.WatchCompare(card, false) end)
     card.icon:SetScript("OnClick", function()
         local s = card.session
         if s and s.link then HandleModifiedItemClick(s.link) end
     end)
     card:SetScript("OnEnter", function(self)
-        local s = self.session
-        if s then RollsTooltip(self, s.link or s.name, s.drop and s.drop.rollInfos) end
+        LR.CardTooltip(self)
+        LR.WatchCompare(self, true)
     end)
-    card:SetScript("OnLeave", GameTooltip_Hide)
+    card:SetScript("OnLeave", function(self) GameTooltip_Hide(); LR.WatchCompare(self, false) end)
+    -- Shift pressed or let go while pointing: the tooltip again, with or without the comparison
+    card:SetScript("OnEvent", function(self)
+        if self.icon:IsMouseOver() then
+            self.icon:GetScript("OnEnter")(self.icon)
+        elseif self:IsMouseOver() then
+            LR.CardTooltip(self)
+        end
+    end)
     card.name = Text(card, "GameFontNormal")
     card.name:SetJustifyH("LEFT")
     card.name:SetWordWrap(false)
@@ -1068,6 +1095,15 @@ local function Place(s, big, y, instant)
     return frame
 end
 
+-- Close: every roll not waiting for your choice goes, as with each row's x (Refresh hides an empty window)
+function LR.CloseAll()
+    for _, sess in pairs(sessions) do
+        if not (sess.status == "rolling" and sess.choice == nil and not sess.sample) then sess.dismissed = true end
+    end
+    GameTooltip:Hide()
+    Refresh()
+end
+
 function Refresh()
     if not win then return end
     local open, rest, lost, listed, active = {}, {}, {}, {}, 0
@@ -1200,6 +1236,18 @@ local function HideSamples(quiet)
     if not quiet then
         Refresh()
         LR.UpdateFade()
+    end
+end
+
+-- (Malkkav 11-27) in Edit Mode the window and its box go one layer down, behind Blizzard's Edit Mode dialog
+-- (both were DIALOG and drew mixed together); out of it, back above every window for real rolls
+function LR.EditStrata(editing)
+    local strata = editing and "HIGH" or "DIALOG"
+    if win then win:SetFrameStrata(strata) end
+    local selection = holder and LEM.frameSelections and LEM.frameSelections[holder]
+    if selection then
+        selection:SetFrameStrata(strata)
+        if win then selection:SetFrameLevel(win:GetFrameLevel() + 20) end
     end
 end
 
@@ -1467,6 +1515,12 @@ function LR.StyleTitle()
     if ns.ApplyShadow then ns.ApplyShadow(title, font) end
     local c = font.color or { r = 0.80, g = 0.60, b = 0.34 }
     title:SetTextColor(c.r, c.g, c.b, c.a or 1)
+    -- the close cross as tall as the title's capitals (as LootWindow.lua StyleTitle)
+    local close = win.close
+    if close and close.icon then
+        local size = math.floor((font.size or 12) * 0.95 + 0.5)
+        close.icon:SetSize(size, size)
+    end
 end
 
 -- Bags & Looting > Fonts > Loot Rolls changed: every text in the window, live
@@ -1518,8 +1572,18 @@ function LR:Init()
         end, L["Loot History"])
         historyButton:SetSize(22, 22)
         historyButton.icon:SetSize(11, 11)   -- the meter's segments icon, drawn as there
-        historyButton:SetPoint("CENTER", win, "TOPRIGHT", -21.5, -15)
+        -- (left of the close cross, 11-27; was -21.5 alone)
+        historyButton:SetPoint("CENTER", win, "TOPRIGHT", -36, -15)
     end
+    -- (Malkkav 11-27) Close, as the Loot Window's: the bronze cross 16 px from the right, as tall as the
+    -- title's capitals. Blizzard's roll frames have no close, only your choice or the timer: so it clears
+    -- every roll you already answered or that ended (as each row's own x), and the window goes when
+    -- nothing is left. A roll still waiting for your choice stays.
+    local close = HeaderButton(win, "Interface\\AddOns\\FlareUI\\Media\\Icons\\Close.tga", function() LR.CloseAll() end, L["Close"])
+    close:SetSize(20, 20)
+    close.icon:SetSize(11, 11)
+    close:SetPoint("CENTER", win, "TOPRIGHT", -16, -15)
+    win.close = close
     -- the chat's and Damage Meter's header separator (Blizzard's tooltip divider)
     local line = win:CreateTexture(nil, "OVERLAY")
     line:SetTexture("Interface\\Common\\UI-TooltipDivider-Transparent")
@@ -1571,9 +1635,9 @@ function LR:Init()
     Section("Fading", LR.FadeSettings())
     LEM:AddFrameSettings(holder, settings)
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
-    LEM:RegisterCallback("enter", ShowSamples)
+    LEM:RegisterCallback("enter", function() LR.EditStrata(true); ShowSamples() end)
     -- out of Edit Mode: back to the header box on its saved spot
-    LEM:RegisterCallback("exit", function() HideSamples(); ApplyPosition() end)
+    LEM:RegisterCallback("exit", function() HideSamples(); ApplyPosition(); LR.EditStrata(false) end)
 
     local events = CreateFrame("Frame")
     for _, event in ipairs({ "START_LOOT_ROLL", "CONFIRM_LOOT_ROLL", "CANCEL_LOOT_ROLL", "CANCEL_ALL_LOOT_ROLLS", "PLAYER_ENTERING_WORLD",

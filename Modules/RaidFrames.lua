@@ -170,9 +170,28 @@ local function IsEditing()
     return ns.EditPreviewing()
 end
 
-local function TileSize()
+-- (e_kul and others, Malkkav 11-27) Width, Height and Power Height per raid size: Raid Size (Edit Mode's
+-- sample) picks which size the Size section sets. A size takes its own copy (db.sizes[tier]) only once
+-- changed; until then it uses the shared values, so nobody's frames change. In a raid the size in use comes
+-- from the group (up to 10, up to 25, more); a change of size lays the frames out again, after a fight.
+RF.SIZE_KEYS = { width = true, height = true, powerHeight = true }
+function RF.SizeTier()
+    if IsEditing() then return sampleRaid end
+    local n = GetNumGroupMembers and GetNumGroupMembers() or 0
+    if not (type(n) == "number") then n = 0 end
+    return n <= 10 and "small" or n <= 25 and "medium" or "large"
+end
+-- a Size value: the size in use's own, else the shared one
+function RF.SizeValue(key, tier)
     local db = GetDb()
-    return (db and db.width) or DEFAULT_W, (db and db.height) or DEFAULT_H
+    if not db then return nil end
+    local own = db.sizes and db.sizes[tier or RF.SizeTier()]
+    if own and own[key] ~= nil then return own[key] end
+    return db[key]
+end
+
+local function TileSize()
+    return RF.SizeValue("width") or DEFAULT_W, RF.SizeValue("height") or DEFAULT_H
 end
 
 local function TankSize()
@@ -195,6 +214,10 @@ local function View(sizeFn, own)
         if not db then return nil end
         if key == "width" then return (sizeFn()) end
         if key == "height" then return (select(2, sizeFn())) end
+        -- (the raid's own Power Height per raid size; the main tanks keep their own first)
+        if key == "powerHeight" and not (own and db.mainTanks and db.mainTanks.powerHeight ~= nil) then
+            return RF.SizeValue("powerHeight")
+        end
         if FIXED[key] ~= nil then return FIXED[key] end
         if own and own[key] and db.mainTanks and db.mainTanks[key] ~= nil then return db.mainTanks[key] end
         return db[key]
@@ -968,12 +991,36 @@ local function BuildSettings()
             Refresh()
         end
     end
+    -- the Size section's Width, Height and Power Height for the Raid Size picked: its own copy once changed
+    local function sizeGet(key, default)
+        return function()
+            local v = RF.SizeValue(key, sampleRaid)
+            if v == nil then return default end
+            return v
+        end
+    end
+    local function sizeSet(key)
+        return function(_, value)
+            local db = GetDb()
+            if not db then return end
+            db.sizes = db.sizes or {}
+            local own = db.sizes[sampleRaid]
+            if not own then
+                own = {}
+                for k in pairs(RF.SIZE_KEYS) do own[k] = db[k] end
+                db.sizes[sampleRaid] = own
+            end
+            own[key] = value
+            Refresh()
+        end
+    end
     local Section, settings = K.EditSections()
     Section("Raid", {
-        { name = L["Sample Raid"], kind = LEM.SettingType.Dropdown, default = "medium",
-          values = { { text = L["10 Players"], value = "small", isRadio = true }, { text = L["25 Players"], value = "medium", isRadio = true },
-                     { text = L["40 Players"], value = "large", isRadio = true } },
-          desc = L["Edit Mode only: how many sample players show, to see the raid grow from the middle."],
+        -- (11-27: was Sample Raid; it also picks which raid size the Size section sets)
+        { name = L["Raid Size"], search = L["Sample Raid"], kind = LEM.SettingType.Dropdown, default = "medium",
+          values = { { text = L["Up to 10 Players"], value = "small", isRadio = true }, { text = L["Up to 25 Players"], value = "medium", isRadio = true },
+                     { text = L["Up to 40 Players"], value = "large", isRadio = true } },
+          desc = L["The raid size you're setting up: its sample shows, and Width, Height and Power Height are for raids of this size."],
           get = function() return sampleRaid end,
           set = function(_, value)
               sampleRaid = value
@@ -1038,12 +1085,13 @@ local function BuildSettings()
 
     -- the frame's own rows: Size and Text here, Behaviour after Look (Core.lua ns.SplitFrameItems)
     local frameItems = {
+        -- (per Raid Size: RF.SizeValue)
         { name = L["Width"], kind = LEM.SettingType.Slider, default = DEFAULT_W, minValue = 40, maxValue = 200, valueStep = 1,
-          get = get("width", DEFAULT_W), set = set("width") },
+          get = sizeGet("width", DEFAULT_W), set = sizeSet("width") },
         { name = L["Height"], kind = LEM.SettingType.Slider, default = DEFAULT_H, minValue = 20, maxValue = 100, valueStep = 1,
-          get = get("height", DEFAULT_H), set = set("height") },
+          get = sizeGet("height", DEFAULT_H), set = sizeSet("height") },
         { name = L["Power Height"], search = L["Power Bar Height"], kind = LEM.SettingType.Slider, default = d.powerHeight or 4, minValue = 0, maxValue = 15, valueStep = 1,
-          get = get("powerHeight", 4), set = set("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
+          get = sizeGet("powerHeight", 4), set = sizeSet("powerHeight"), formatter = function(value) return value == 0 and _G.OFF or value end },
         -- the unit frames picker with the Centre slot only, as the party Raid Style
         -- (PartyFrames.lua PF.MidOn); the old Health / Power Text choice converts once
         ns.BarText.Setting({ name = L["Health Text"], bar = "health", unit = "raid", db = GetDb, changed = function() Refresh() end,
@@ -1105,6 +1153,10 @@ local function BuildSettings()
             end }
     end
     Section("Icons", iconItems)
+    -- last: Visibility, the fade speeds and Faded Opacity (Visibility.lua); the main tanks fade with it
+    if ns.Visibility and ns.Visibility.GroupFrameSettings then
+        Section("Fading", ns.Visibility:GroupFrameSettings("raid"))
+    end
     return settings
 end
 
@@ -1194,6 +1246,15 @@ function RF:OnGlobalEvent(event, ...)
     end
     if IsEditing() then return end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        -- a new raid size: its own Width, Height and Power Height (Refresh waits out a fight)
+        local tier = RF.SizeTier()
+        if RF.lastTier ~= tier then
+
+            RF.lastTier = tier
+            local db = GetDb()
+            -- (the first size seen too: at login the group may not be known yet when the frames are laid out)
+            if db and db.sizes and next(db.sizes) then Refresh() end
+        end
         -- one pass for a burst (a raid forming); tiles the headers gave a new unit since it began
         -- were already drawn in full (SetTileUnit)
         if not rosterPending then
@@ -1325,6 +1386,8 @@ function RF:Init()
         return
     end
     self.initialized = true
+    -- its Fading (Visibility.lua): the holder exists now
+    if ns.Visibility and ns.Visibility.Refresh then C_Timer.After(0, function() ns.Visibility:Refresh() end) end
 
     holder = CreateFrame("Frame", "FlareUI_Raid", UIParent, "SecureHandlerStateTemplate")
     holder:SetFrameStrata("LOW")

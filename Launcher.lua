@@ -23,8 +23,37 @@ local function PrintCommands()
     Line("/fui errors", L["Errors FlareUI caught, to copy into a bug report (\"/fui errors clear\" empties the list)."])
     local qol = ns.db and ns.db.profile.tweaks
     if qol and qol.enabled and qol.way then Line("/way", L["Place a map pin (type it alone for the formats)."]) end
+    Line("/fui profile <name>", L["Switch to another profile, as in Settings > Profiles (a macro can do it)."])
     Line("/fui scale reset", L["Turns FlareUI's UI Scale off, back to Blizzard's own scale."])
     Line("/rl", L["Reload UI shortcut."])
+end
+
+-- (toonic 11-27) /fui profile <name>: the profile switch of Settings > Profiles, for a macro (a radial, a
+-- key). The name as a profile has it, any case, quotes allowed; the reload is asked for as there.
+function ns.ProfileCommand(arg)
+    local db = ns.db
+    if not (db and db.GetProfiles and db.SetProfile) then return end
+    -- (quotes round the name allowed: /fui profile "TV")
+    local want = (arg or ""):match("^%s*(.-)%s*$"):gsub("^[\"']", ""):gsub("[\"']$", "")
+    local names = db:GetProfiles()
+    table.sort(names)
+    if want == "" then
+        print("|cff00ccffFlareUI:|r " .. L["Your profiles:"] .. " " .. table.concat(names, ", "))
+        return
+    end
+    local found
+    for _, name in ipairs(names) do
+        if name:lower() == want:lower() then found = name break end
+    end
+    if not found then
+        print("|cff00ccffFlareUI:|r " .. L["No profile named %s. Your profiles:"]:format(want) .. " " .. table.concat(names, ", "))
+    elseif found == db:GetCurrentProfile() then
+        print("|cff00ccffFlareUI:|r " .. L["Already on profile %s."]:format(found))
+    elseif InCombatLockdown() then
+        print("|cff00ccffFlareUI:|r " .. L["Profiles can't be switched in combat."])
+    else
+        db:SetProfile(found)
+    end
 end
 
 --------------------------------------------------
@@ -200,6 +229,8 @@ loader:SetScript("OnEvent", function(self)
             ns.SettingsPanel:Open("br")   -- the Buff Reminders page (a command, not another button)
         elseif msg == "kb" then
             ns.OpenQuickKeybind()
+        elseif msg == "profile" or msg:find("^profile%s") then
+            ns.ProfileCommand(raw:sub(9))   -- (the name's own case)
         elseif msg == "perf" or msg:find("^perf%s") then
             ns.Perf.Command(raw:sub(5))   -- keeps the recording name's case
         elseif msg == "fadedebug" then

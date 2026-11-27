@@ -378,6 +378,25 @@ function CM.LinePoint(i, count, stride, step, lineStep, horizontal, reversed)
     return "LEFT", across, along
 end
 
+-- From the Middle with fewer icons than a full line (johnivve, 7.1): Blizzard sizes the viewer to the
+-- spells it tracks, and Edit Mode keeps it pinned by its saved point, so a viewer pinned by its left
+-- edge shrinks to the left and the icons centred in it went with it. As Cooldown Manager Centered
+-- does, the line centres on where a full line (Blizzard's Columns) would stand: this shifts it by half
+-- the missing length, away from the pinned edge. A viewer pinned by its centre needs nothing.
+function CM.LineShift(point, size, full, horizontal)
+    if type(point) ~= "string" or type(size) ~= "number" or type(full) ~= "number" then return 0, 0 end
+    local extra = (full - size) / 2
+    if extra <= 0.5 then return 0, 0 end
+    if horizontal then
+        if point:find("LEFT", 1, true) then return extra, 0 end
+        if point:find("RIGHT", 1, true) then return -extra, 0 end
+    else
+        if point:find("TOP", 1, true) then return 0, -extra end
+        if point:find("BOTTOM", 1, true) then return 0, extra end
+    end
+    return 0, 0
+end
+
 -- Is the frame still where FlareUI put it (Blizzard's layout has not placed it since)?
 local function Own(p, viewer, point, relative, x, y)
     return p.moved and point == p.movedPoint and relative == viewer
@@ -451,16 +470,27 @@ local function Arrange(name)
     local reversed = viewer.iconDirection ~= nil and viewer.iconDirection ~= 1
     if bars then reversed = grow == "START" end
     arranged[name] = true
+    -- (centred lines: their place against a full line, CM.LineShift)
+    local dx, dy = 0, 0
+    local limit = Number(viewer.iconLimit)
+    if not bars and grow == "CENTER" and limit and limit > 0 then
+        local pinned = viewer:GetPoint(1)
+        local size = Number(horizontal and viewer:GetWidth() or viewer:GetHeight())
+        local pad = Number(horizontal and viewer.childXPadding or viewer.childYPadding) or 0
+        dx, dy = CM.LineShift(Readable(pinned) and pinned or nil, size, limit * step - pad, horizontal)
+    end
     if GROW_LINES[GROW_KEYS[name]] then
-        local stride = Number(viewer.stride) or Number(viewer.iconLimit) or count
+        local stride = Number(viewer.stride) or limit or count
         local lineStep = (horizontal and height or width) + (Number(horizontal and viewer.childYPadding or viewer.childXPadding) or 0)
         for i, item in ipairs(showing) do
-            Move(item, viewer, CM.LinePoint(i, count, math.max(1, stride), step, lineStep, horizontal, reversed))
+            local point, x, y = CM.LinePoint(i, count, math.max(1, stride), step, lineStep, horizontal, reversed)
+            Move(item, viewer, point, x + dx, y + dy)
         end
         return
     end
     for i, item in ipairs(showing) do
-        Move(item, viewer, CM.GrowPoint(grow, i, count, step, horizontal, reversed))
+        local point, x, y = CM.GrowPoint(grow, i, count, step, horizontal, reversed)
+        Move(item, viewer, point, x + dx, y + dy)
     end
 end
 

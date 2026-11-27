@@ -536,6 +536,10 @@ local function BuildSettings()
           hidden = function() return not RingStyle() end },
         { name = L["Raid Markers"], kind = LEM.SettingType.Checkbox, default = D.raidIcon ~= false, get = get("raidIcon"), set = set("raidIcon") },
     })
+    -- last: Visibility, the fade speeds and Faded Opacity (Visibility.lua)
+    if ns.Visibility and ns.Visibility.GroupFrameSettings then
+        Section("Fading", ns.Visibility:GroupFrameSettings("boss"))
+    end
     return settings
 end
 
@@ -600,6 +604,8 @@ function BF:Init()
         return
     end
     self.initialized = true
+    -- its Fading (Visibility.lua): the holder exists now
+    if ns.Visibility and ns.Visibility.Refresh then C_Timer.After(0, function() ns.Visibility:Refresh() end) end
 
     -- Right of the Frame is not offered: saved auras there move to the left (off when taken)
     local db = GetDb()

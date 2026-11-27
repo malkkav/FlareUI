@@ -195,6 +195,26 @@ a.cooldown:RunScript("OnCooldownDone")
 assert(a.FlareUI_ReadyBurst.ProcStartAnim:IsPlaying() and a.icon.desaturation == 0)
 a.FlareUI_ReadyBurst.ProcStartAnim:RunScript("OnFinished")
 assert(not a.FlareUI_ReadyBurst:IsShown())
+-- (projektxiii 11-27) Show Only When Ready: see-through on a real cooldown, not on the global one, back
+-- when ready; every button shows in Setup Mode
+fcm.onlyReady = true
+slot[1].cooldown = { isActive = true, duration = 1.5, startTime = 120 }
+env.ActionButton_UpdateCooldown(a)
+assert(a:GetAlpha() == 1, "the global cooldown doesn't hide it")
+slot[1].cooldown = { isActive = true, duration = 8, startTime = 130 }
+env.ActionButton_UpdateCooldown(a)
+assert(a:GetAlpha() == 0 and a.FlareUI_ReadyHidden, "hidden on its cooldown")
+bars.fcm.unlockMode = true   -- (as Setup Mode sets it, then repaints)
+bars.PaintReadyAll()
+assert(a:GetAlpha() == 1, "Setup Mode shows it")
+bars.fcm.unlockMode = false
+bars.PaintReadyAll()
+assert(a:GetAlpha() == 0)
+slot[1].cooldown, ui.time = nil, 140
+a.cooldown:RunScript("OnCooldownDone")
+assert(a:GetAlpha() == 1 and not a.FlareUI_ReadyHidden, "back when ready")
+a.FlareUI_ReadyBurst.ProcStartAnim:RunScript("OnFinished")
+fcm.onlyReady = nil
 slot[1].range = false
 a:UpdateAction()
 assert(a.FlareUI_ColorState == "range")

@@ -62,14 +62,13 @@ S:Row{
     apply = function() ns.ShowDialog("FLAREUI_SYNC_SOURCE") end,
 }
 
--- Hide Pop-up Alerts (off): syncs happen without their reload pop-up, on every character (account-wide);
--- the pop-up's Hide These Alerts turns it on
+-- Copy Now: the only way a character copies after its one question at login (Tweaks.AskSync, 11-26)
 S:Row{
-    key = "qol.syncHideAlerts", module = "language", tab = "account", parent = "qol.sync", section = "qol.syncBlizzUi", account = true,
-    get = function() return ns.db and ns.db.global and ns.db.global.syncHideAlerts == true or false end,
-    set = function(on) if ns.db and ns.db.global then ns.db.global.syncHideAlerts = on and true or nil end end,
-    resetValue = function() return false end,
-    disabled = function() return not S:GetPath("tweaks.syncUI") end,
+    key = "qol.copyNow", kind = "button", module = "language", tab = "account", parent = "qol.sync", section = "qol.syncBlizzUi",
+    buttonText = L["Copy Now"],
+    fitButtonText = true,
+    disabled = function() return not (ns.Tweaks and ns.Tweaks.CanCopySync and ns.Tweaks:CanCopySync()) end,
+    apply = function() if ns.Tweaks and ns.Tweaks.CopySyncNow then ns.Tweaks:CopySyncNow() end end,
 }
 
 -- one switch for moving windows and placing loot rolls / toasts

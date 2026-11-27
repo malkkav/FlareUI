@@ -11,6 +11,7 @@ env.GameTooltip.SetLootRollItem = function(self, id) self.rollID = id end
 env.GameTooltip.SetHyperlink = function(self, link) self.link = link end
 env.GameTooltip.AddDoubleLine = function(self, left, right) self:AddLine(left .. "=" .. right) end
 env.GameTooltip_Hide = function() env.GameTooltip:Hide() end
+env.IsModifiedClick = function(action) return action == "COMPAREITEMS" and env.shiftDown == true end
 env.HandleModifiedItemClick = function(link) ui.modifiedLink = link end
 env.NEED, env.GREED, env.PASS = "Need", "Greed", "Pass"
 env.INVTYPE_WAIST = "Waist"
@@ -158,7 +159,7 @@ assert(nativeContainer:GetHeight() == 1)
 assert(not win:IsShown() and edit.holder:GetPoint() == "TOP")
 -- (11-23: no Background Opacity; an old saved value no longer applies, the rock is always full)
 assert(select(2, win.title:GetFont()) == 16 and win.skin[1]:GetAlpha() == 1)
-local history = ui:find(function(w) return w:GetParent() == win and w:IsObjectType("Button") end)
+local history = ui:find(function(w) return w:GetParent() == win and w:IsObjectType("Button") and w ~= win.close end)
 history:RunScript("OnEnter")
 assert(env.GameTooltip:GetText() == "Loot History")
 history:Click()
@@ -264,6 +265,7 @@ assert(not win:IsShown())
 
 callbacks.enter()
 assert(lr.previewing and win:IsShown() and edit.holder:GetHeight() > 26)
+assert(win:GetFrameStrata() == "HIGH", "behind Blizzard's Edit Mode dialog (11-27)")
 assert(ui:find(function(w) return w.session and w.session.sample and w:IsVisible() end))
 edit.scale.set(nil, 125)
 assert(edit.scale.get() == 125 and win:GetScale() == 1.25)
@@ -271,6 +273,7 @@ edit.move(nil, "Modern", "TOP", 17, -129)
 assert(tweaks.moverLayouts.Modern.loot.x == 17)
 callbacks.exit()
 assert(not lr.previewing and edit.holder:GetHeight() == 26 * 1.25)
+assert(win:GetFrameStrata() == "DIALOG", "out of Edit Mode: above every window again")
 assert(lr.ApplyOpacity == nil and win.skin[1]:GetAlpha() == 1)
 -- Fade in Combat (11-24): off until picked, back under the pointer, in a roll's last seconds and after the fight
 do
@@ -342,6 +345,19 @@ do
     assert(tonumber(card.timeText:GetText()) <= 10, "our own clock")
     advance(21)
     assert(card.session and card.session.status == "rolling" and card.session.choice == nil)
+    -- (siiloquin, 11-27) Shift over the row: the item (Blizzard adds the comparison), else everyone's rolls;
+    -- pressing or letting go of Shift while pointing makes the tooltip again
+    env.GameTooltip.rollID = nil
+    env.shiftDown = false
+    card:RunScript("OnEnter")
+    assert(env.GameTooltip.rollID == nil, "no Shift: the rolls")
+    env.shiftDown = true
+    card.IsMouseOver = function() return true end
+    card.icon.IsMouseOver = function() return false end
+    card:RunScript("OnEvent", "MODIFIER_STATE_CHANGED")
+    assert(env.GameTooltip.rollID == 41, "Shift: the item, with its comparison")
+    card:RunScript("OnLeave")
+    env.shiftDown = false
     card:RunScript("OnUpdate", 0.02)
     assert(card.timeText:GetText() == 0 or card.timeText:GetText() == "0")
     open = false
@@ -362,4 +378,31 @@ end
 tweaks.lootRollFont.size = 17
 lr:ApplyFont()
 assert(select(2, first.name:GetFont()) == 17)
+-- (11-27) the header's Close: rolls that ended go, as with their own x; one still waiting for your choice stays
+do
+    local active = env.GetActiveLootRollIDs
+    links[71], names[71], links[72], names[72] = "|Hitem:171:0|h[Gem]|h", "Gem", "|Hitem:172:0|h[Cloak]|h", "Cloak"
+    env.GetActiveLootRollIDs = function() return { 71, 72 } end
+    ui:emit("START_LOOT_ROLL", 71, 30000)
+    ui:emit("START_LOOT_ROLL", 72, 30000)
+    advance(0.3)
+    -- (the history knows who took it: the roll ends as a row of its own, as roll 21's did)
+    local taker = { playerName = "Needle", playerClass = "MAGE", state = 0, roll = 70, isWinner = true }
+    drops[#drops + 1] = { lootListKey = 71, itemHyperlink = links[71], startTime = 1000, playerRollState = 0, winner = taker,
+        rollInfos = { taker } }
+    ui:emit("LOOT_HISTORY_UPDATE_DROP", 5, #drops)
+    env.GetActiveLootRollIDs = function() return { 72 } end
+    ui:emit("CANCEL_LOOT_ROLL", 71)
+    ui:emit("LOOT_HISTORY_UPDATE_ENCOUNTER", 5)
+    advance(0.1)
+    local ended = ui:find(function(w) return w:IsVisible() and w.session and w.session.rollID == 71 end)
+    local endedSession = ended and ended.session
+    win.close:Click()
+    assert(endedSession and endedSession.status ~= "rolling", "the roll ended as a row of its own")
+    assert(endedSession.dismissed, "an ended roll goes")
+    assert(not ui:find(function(w) return w:IsVisible() and w.session and w.session.rollID == 71 end))
+    assert(ui:find(function(w) return w:IsVisible() and w.session and w.session.rollID == 72 end), "a roll waiting for your choice stays")
+    env.GetActiveLootRollIDs = active
+end
+
 print("PASS: loot rolls, bind confirmation, duplicate drops, outcomes, keyboard/gamepad and Edit Mode")

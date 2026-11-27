@@ -24,6 +24,10 @@ local ns = {
     GetWantedFont = function(frame) return frame:GetFont() end,
     GetFontPath = function(face) return "Fonts/" .. face end,
     CyrillicTwin = function(face) return "Cyrillic/" .. face end,
+    HasCyrillic = function(text)
+        if text == "hidden" then return nil end
+        return text:find("[\208\209]") ~= nil
+    end,
     CopyStrata = function(frame, other) frame:SetFrameStrata(other:GetFrameStrata()) end,
     ApplyShadow = noop, FadeTime = function(speed) return speed == "fast" and 0.2 or 0 end,
     CharDB = function() return saved end,
@@ -205,6 +209,11 @@ row:GetName():SetText("2. Имя")
 assert(row:GetName():GetFont():find("Cyrillic/", 1, true), "a Russian name takes the twin")
 row:GetName():SetText("3. Aeloria")
 assert(not row:GetName():GetFont():find("Cyrillic/", 1, true), "a Latin name goes back")
+-- (aleksandr, 7.1) a name that can't be read (in a group) takes the twin: it may be Russian
+row:GetName():SetText("hidden")
+assert(row:GetName():GetFont():find("Cyrillic/", 1, true), "an unreadable name takes the twin")
+row:GetName():SetText("4. Aeloria")
+assert(not row:GetName():GetFont():find("Cyrillic/", 1, true), "a readable Latin name goes back after it")
 title.TypeName:SetText("Damage Done to Enemy")
 assert(title:GetWidth() >= #title.TypeName:GetText() * 6)
 local settings = window.SettingsDropdown

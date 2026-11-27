@@ -143,24 +143,29 @@ local function Fill(line, icon, text, r, g, b)
     if r then line.text:SetTextColor(r, g, b) end
     -- the border: the shape picked, in the line's colour (an item's quality, a skill's blue)
     local db = GetDb()
-    local round = db and db.lootFeedIcons == "round"
-    local border, mask = line.border, line.mask
+    local border = line.border
+    LF.Shape(line.icon, line.mask, border, db and db.lootFeedIcons == "round", ICON)
+    if r then border:SetVertexColor(r, g, b) end
+    border:SetShown(line.icon:IsShown())
+end
+
+-- An icon's shape and border, square or round (also drawn by the settings preview, PreviewSamples.lua)
+function LF.Shape(icon, mask, border, round, size)
     border:ClearAllPoints()
     if round then
         mask:SetAtlas("talents-node-circle-mask", TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
         border:SetAtlas("talents-node-circle-gray", TextureKitConstants and TextureKitConstants.IgnoreAtlasSize)
-        border:SetPoint("TOPLEFT", line.icon, "TOPLEFT", -2, 2)
-        border:SetPoint("BOTTOMRIGHT", line.icon, "BOTTOMRIGHT", 2, -2)
+        border:SetPoint("TOPLEFT", icon, "TOPLEFT", -2, 2)
+        border:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 2, -2)
     else
         mask:SetTexture("Interface\\AddOns\\FlareUI\\Media\\Auras\\IconMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         border:SetTexture("Interface\\AddOns\\FlareUI\\Media\\Auras\\IconBorder")
-        -- the bevel's opening is 6/128 in from its edge: the icon fills it
-        local out = ICON * (6 / 116)
-        border:SetPoint("TOPLEFT", line.icon, "TOPLEFT", -out, out)
-        border:SetPoint("BOTTOMRIGHT", line.icon, "BOTTOMRIGHT", out, -out)
+        -- the bevel's opening: the icon fills it (out = how far the border reaches past the icon)
+        local inset = 6 / 128 * 6 / 7   -- (Auras.lua SQUARE_INSET: the thinner bevel, 11-26)
+        local out = size * inset / (1 - 2 * inset)
+        border:SetPoint("TOPLEFT", icon, "TOPLEFT", -out, out)
+        border:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", out, -out)
     end
-    if r then border:SetVertexColor(r, g, b) end
-    border:SetShown(line.icon:IsShown())
 end
 
 local function Release(i)
@@ -493,10 +498,14 @@ function LF:Init()
     }))
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
     -- At the Cursor: nothing to place, so Edit Mode leaves the frame out
+    -- (Malkkav 11-27) in Edit Mode one layer down, behind Blizzard's Edit Mode dialog (DIALOG), as Loot Rolls;
+    -- out of it, above every window again
     LEM:RegisterCallback("enter", function()
+        holder:SetFrameStrata("HIGH")
         if AtCursor() then holder:Hide() else holder:Show(); ShowPreview() end
     end)
     LEM:RegisterCallback("exit", function()
+        holder:SetFrameStrata("FULLSCREEN_DIALOG")
         if holder.preview then holder.preview:Hide() end
         holder:Show()
         if not AtCursor() then ApplyPosition() end

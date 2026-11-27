@@ -813,20 +813,13 @@ local function ApplyBarFont(entry, db)
     DamageMeter.ApplyBarTexture(statusBar, db)
 end
 
--- Whether a text has Russian letters (Cyrillic's UTF-8 lead bytes); nil when it can't be read
-function DamageMeter.HasCyrillic(text)
-    if not canaccessvalue(text) or type(text) ~= "string" then return nil end
-    return text:find("[\208\209]") ~= nil
-end
-
--- A row's name font: the Cyrillic twin for a name with Russian letters, else the chosen font. A
--- name that can't be read keeps the font it has.
+-- A row's name font: the chosen font for a name with no Russian letters, else the Cyrillic twin.
+-- (aleksandr, 7.1) In a group the names can't be read, so those rows take the twin: it has both
+-- alphabets, where the chosen font drew a hidden Russian name as boxes.
 function DamageMeter.RowNameFont(fs)
     local font = fs and fs.FlareUI_RowFont
     if not font then return end
-    local cyr = DamageMeter.HasCyrillic(fs:GetText())
-    if cyr == nil and fs.FlareUI_RowPath then return end
-    local want = cyr and font.twin or font.path
+    local want = (ns.HasCyrillic(fs:GetText()) == false) and font.path or font.twin
     if fs.FlareUI_RowPath == want then return end
     fs.FlareUI_RowPath = want
     ns.SetFontFamily(fs, want, font.size, font.flags)

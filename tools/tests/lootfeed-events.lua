@@ -45,8 +45,9 @@ local holder = env.FlareUI_LootFeed
 assert(holder:GetWidth() == 220 and edit.scale.get() == 100)
 callbacks.enter()
 assert(not holder:IsShown(), "cursor mode has nothing to place")
+assert(holder:GetFrameStrata() == "HIGH", "behind Blizzard's Edit Mode dialog (11-27)")
 callbacks.exit()
-assert(holder:IsShown())
+assert(holder:IsShown() and holder:GetFrameStrata() == "FULLSCREEN_DIALOG", "out of Edit Mode: above every window again")
 
 local function textIs(text)
     return ui:find(function(w) return w:GetParent() == holder and w:IsVisible() and w.text and w.text:GetText() == text end)

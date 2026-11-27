@@ -581,6 +581,7 @@ local defaults = {
         fcm = {
             bars = FCMBars(),           -- Fake CM is on while a bar is picked
             show = "combat",            -- always, or toggles joined by commas (ns.Conditions, Modules/Visibility.lua)
+            onlyReady = false,          -- Show Only When Ready: a button on cooldown see-through (ActionBars.PaintReady)
         },
 
         -- [[ DAMAGE METER MODULE ]]
@@ -633,6 +634,7 @@ local defaults = {
             drawerStyle = "sundial",    -- Drawer Style: disabled / sundial / blizzard (MinimapBag.lua)
             sundial = true,             -- Sundial (Map Tools): the day/night badge shown (MinimapBag.lua)
             infoBarHover = false,       -- Info Bar On Mouseover: the bar only while pointing at the map
+            buttonsHover = false,       -- Addon Buttons Only on Mouseover: edge buttons only while pointing at the map (Minimap.lua MM.ButtonsHover)
             infoBarBox = true,          -- Info Bar Show Box: the plates behind the cells
             infoBarBelow = false,       -- Info Bar Below the Map: under the map's frame, not over it
             barFont = { face = "__global", size = 11, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Info Bar font, as Info Text
@@ -1164,6 +1166,7 @@ local defaults = {
             lootWindowGrowth = "down",  -- Growth: "down" (the top edge at the Edit Mode spot) or "up" (the bottom edge)
             lootWindowOrder = "top",    -- Row Order: the first item in the "top" or the "bottom" row
             alertSounds = false,        -- Alert Sounds: taskbar flash + Master-channel sound
+            plateCombo = false,         -- Nameplate Combo Points: under Blizzard's plates, with the Nameplates module off (NameplateExtras.lua)
             gamepadPrompt = false,      -- Gamepad mode prompt: offer Blizzard's Gamepad UI on a controller press
             rumbleAlerts = false,       -- Rumble on alerts: the controller rumbles for ready checks, queue invites ...
             rumbleProcs = false,        -- Rumble on procs: a short rumble when a spell lights up
@@ -1533,6 +1536,20 @@ function ns.CyrillicTwin(path)
     local twin = ns.CYRILLIC_TWINS[path:lower():gsub("/", "\\")]
     if twin and C_UIFileAsset and C_UIFileAsset.IsKnownFile and C_UIFileAsset.IsKnownFile(twin) then return twin end
     return path
+end
+
+-- Whether a text has Russian letters (Cyrillic's UTF-8 lead bytes); nil when it can't be read
+function ns.HasCyrillic(text)
+    if (canaccessvalue and not canaccessvalue(text)) or type(text) ~= "string" then return nil end
+    return text:find("[\208\209]") ~= nil
+end
+
+-- The font for a text that may hold a Russian name: the chosen font when the text has no Russian
+-- letters, else its Cyrillic twin. A text that can't be read takes the twin too: it has both
+-- alphabets, so a hidden Latin name still draws.
+function ns.CyrillicPick(text, path)
+    if ns.HasCyrillic(text) == false then return path end
+    return ns.CyrillicTwin(path)
 end
 
 -- The client's own font for this language: always loaded, and it has the language's letters
@@ -2694,7 +2711,7 @@ end
 do
     local CANON = {
         -- dropdowns
-        "Style", "Party Style", "Icon Shape", "Sample Raid", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
+        "Style", "Party Style", "Icon Shape", "Raid Size", "Orientation", "Groups", "Growth", "Wrap", "Group Order", "Sort By", "Anchor", "Pets", "Party Targets", "Tank Targets",
         -- a Fade Group decides the rows after it (Fading: Fade Group, Visibility, Show Speed, Hide Speed)
         "Fade Group", "Visibility", "Hide", "Show Speed", "Hide Speed", "Portrait", "Health Text", "Power Text", "Druid Mana Text", "Name Above Frames", "Text",
         "Tint Health", "Combo Points",
@@ -3093,9 +3110,9 @@ do
     -- single choices from before the toggles each meant "in combat, or ...".
     -- In an Instance on every Visibility list, under In a Group
     -- In a Capital City last on every list, under Not Mounted
-    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
+    C.BAR_TOKENS = { "combat", "hastarget", "attackable", "ingroup", "instance", "pvp", "unmounted", "city", "notcity" }
     -- the faded elements' and Fake CM's: Mouseover is a condition ticked with the others
-    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
+    C.MOUSE_TOKENS = { "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "pvp", "unmounted", "city", "notcity" }
     C.BAR_LEGACY = { target = "combat,hastarget", harm = "combat,attackable", nomount = "combat,unmounted", group = "combat,ingroup" }
 end
 
@@ -3732,7 +3749,7 @@ end
 ns.Dialogs = ns.Dialogs or {}
 
 ns.Dialogs["FLAREUI_SYNC_SOURCE"] = {
-    text = L["Make this character the Sync Blizzard UI source?\n\nEvery other character will copy this character's interface settings the next time it logs in."],
+    text = L["Make this character the Sync Blizzard UI source?\n\nYour other characters can then copy its interface settings with Copy Now."],
     button1 = L["Make Source"],
     button2 = L["Cancel"],
     OnAccept = function()
@@ -3754,9 +3771,10 @@ ns.Dialogs["FLAREUI_RESET"] = {
             kept[key] = global[key]
         end
         -- CVars saved per character keep their memory per character
-        local charForced = {}
+        local charForced, charZoom = {}, {}
         for guid, entry in pairs(global.characters or {}) do
             if type(entry) == "table" and entry.forcedCVars then charForced[guid] = entry.forcedCVars end
+            if type(entry) == "table" and entry.nameplateZoomBackup then charZoom[guid] = entry.nameplateZoomBackup end
         end
         local imported = ns.db.sv.imported
         ns.db:ResetDB("Default")
@@ -3767,6 +3785,11 @@ ns.Dialogs["FLAREUI_RESET"] = {
                 ns.db.global.characters[guid] = ns.db.global.characters[guid] or {}
                 ns.db.global.characters[guid].forcedCVars = forced
             end
+        end
+        for guid, zoom in pairs(charZoom) do
+            ns.db.global.characters = ns.db.global.characters or {}
+            ns.db.global.characters[guid] = ns.db.global.characters[guid] or {}
+            ns.db.global.characters[guid].nameplateZoomBackup = zoom
         end
         ns.db.sv.imported = imported
     end,
@@ -3787,10 +3810,20 @@ ns.Dialogs["FLAREUI_SYNC_RELOAD"] = {
     reloads = true,   -- in combat the macro can't run: yes says how to reload
     hideOnEscape = true,
     padSecure = true,
-    -- no more of these pop-ups on any character: syncs still apply and finish at the next
-    -- reload. Settings > Sync Blizz UI > Hide Pop-up Alerts (global.syncHideAlerts) is the same switch
-    button3 = L["Hide These Alerts"],
-    OnAlt = function() if ns.db and ns.db.global then ns.db.global.syncHideAlerts = true end end,
+}
+
+-- Sync Blizzard UI's one question per character (Tweaks.AskSync); either answer is kept
+ns.Dialogs["FLAREUI_SYNC_ASK"] = {
+    text = L["Copy %s's Blizzard settings to this character?\n\nInterface options, Edit Mode layout, chat and bag settings. You're only asked once: later copies are done with Copy Now in FlareUI's settings."],
+    button1 = L["Copy"],
+    button2 = L["Not Now"],
+    OnAccept = function()
+        if not ns.Tweaks then return end
+        ns.Tweaks.SyncAnswered()
+        ns.Tweaks:CopySyncNow()
+    end,
+    OnCancel = function() if ns.Tweaks then ns.Tweaks.SyncAnswered() end end,
+    hideOnEscape = true,
 }
 
 -- the settings window closed with changes that need a reload

@@ -194,9 +194,14 @@ S:Row{
     -- toggles as on the bars (ns.Conditions), Mouseover one of them: nothing ticked is Always
     key = "ab.fcmShow", kind = "dropdown", tab = "fcm", path = "fcm.show", section = "ab.fakeCooldownManager",
     -- (In an Instance was missing here, so the names after In a Group were one off)
-    choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }, apply = Refresh,
+    choices = { "always", { divider = true }, "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "pvp", "unmounted", "city", "notcity" }, apply = Refresh,
     toggles = { exclusive = { "always" }, tokens = ns.Conditions.MOUSE_TOKENS, legacy = ns.Conditions.BAR_LEGACY, empty = "always" },
     -- greyed with no bar picked, as Setup Mode
+    disabled = function() return not ns.FCMActive() end,
+}
+-- Show Only When Ready (off): a Fake CM button on cooldown is see-through until it is ready (ActionBars.PaintReady)
+S:Row{
+    key = "ab.fcmOnlyReady", tab = "fcm", path = "fcm.onlyReady", section = "ab.fakeCooldownManager", apply = Refresh,
     disabled = function() return not ns.FCMActive() end,
 }
 S:Row{

@@ -444,6 +444,10 @@ local function BuildSettings()
           set = function(layoutName, value) set("castGlow")(layoutName, value and true or false) end,
           hidden = noCast, desc = L["A bright edge at the front of the cast, as on Blizzard's cast bars."] },
     })
+    -- last: Visibility, the fade speeds and Faded Opacity, as on the party, raid and boss frames (Visibility.lua)
+    if ns.Visibility and ns.Visibility.GroupFrameSettings then
+        Section("Fading", ns.Visibility:GroupFrameSettings("flagCarriers"))
+    end
 
     return settings
 end
@@ -493,6 +497,8 @@ function FC:Init()
         return
     end
     self.initialized = true
+    -- its Fading (Visibility.lua): the holder is made below, the fader looks for it next frame
+    if ns.Visibility and ns.Visibility.Refresh then C_Timer.After(0, function() ns.Visibility:Refresh() end) end
 
     hidden = CreateFrame("Frame")
     hidden:Hide()

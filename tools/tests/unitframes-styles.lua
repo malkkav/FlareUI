@@ -156,4 +156,31 @@ Ring.SetStyle("flareui")
 assert(db.units.player.width == 303 and db.layouts.Main.pet.x == 23)
 Ring.SetStyle("forever")
 assert(Ring.GetPlateScale("player") == 110 and not db.units.target.enabled and db.resource.enabled)
+-- (Malkkav 11-27) Edit Mode's box round the whole frame: the portrait (left, taller) and the level disc
+-- (below) inside it; back on the frame outside Edit Mode
+do
+    local LEM = env.LibStub("FlareEditMode")
+    local function Rect(l, r, t, b, shown)
+        return { GetLeft = function() return l end, GetRight = function() return r end, GetTop = function() return t end,
+            GetBottom = function() return b end, IsShown = function() return shown ~= false end }
+    end
+    local f = Rect(100, 340, 500, 448)
+    f.RingFrame = Rect(0, 0, 0, 0)
+    f.RingFrame.Hit = Rect(40, 110, 515, 445)         -- the portrait, left of the bars and taller
+    f.RingFrame.DiscHit = Rect(60, 84, 452, 428)      -- the level disc, under it
+    local points, all
+    local selection = { ClearAllPoints = function() points, all = {}, nil end,
+        SetPoint = function(_, ...) points[#points + 1] = { ... } end, SetAllPoints = function(_, to) all = to end }
+    local frames, editing, saved = LEM.frameSelections, LEM.IsInEditMode, nil
+    LEM.frameSelections = { [f] = selection }
+    LEM.IsInEditMode = function() return true end
+    Ring.FitSelection(f)
+    assert(points[1][1] == "TOPLEFT" and points[1][4] == -60 and points[1][5] == 15, "out to the portrait's left and top")
+    assert(points[2][1] == "BOTTOMRIGHT" and points[2][4] == 0 and points[2][5] == -20, "down to the disc's bottom")
+    LEM.IsInEditMode = function() return false end
+    Ring.FitSelection(f)
+    assert(all == f and #points == 0, "outside Edit Mode: on the frame alone")
+    LEM.frameSelections, LEM.IsInEditMode = frames, editing
+end
+
 print("PASS: unit frame previews render all three styles and style switching preserves each setup")

@@ -868,4 +868,18 @@ do
     local ok = chunk("r9")
     assert(ok ~= false and warmed == 1 and shown > 0, "a radial filled since the last sync opens")
 end
+-- (dutra_, 7.1) Sub-Radials on Remember: a rebuild keeps each sub-radial's pick while it still fits
+do
+    local rock = { name = "Rockbiter", icon = 1, attributes = { a = 1 } }
+    local wind = { name = "Windfury", icon = 2, attributes = { a = 2 } }
+    local old = { r1 = { { children = { rock, wind }, childIndex = 2 }, { children = { rock, wind }, childIndex = 2 } } }
+    local fresh = { r1 = {
+        { name = "Rockbiter", icon = 1, children = { rock, wind }, childIndex = 1 },
+        { name = "Rockbiter", icon = 1, children = { rock }, childIndex = 1 },
+    } }
+    rm.KeepChildPicks(old, fresh)
+    assert(fresh.r1[1].childIndex == 2 and fresh.r1[1].name == "Windfury" and fresh.r1[1].icon == 2, "the pick carries over")
+    assert(fresh.r1[2].childIndex == 1 and fresh.r1[2].name == "Rockbiter", "a pick past a shorter list starts over")
+end
+
 print("PASS: radial migration, action resolution, group and key precedence, gamepad bindings and previews")

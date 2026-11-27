@@ -299,6 +299,8 @@ do  -- the FlareUI Player Cast Bar's Width is what its border wraps, icon includ
     castWidth.set("Modern", 300)
     assert(castDb.width == 300 and holder:GetWidth() == 300 + 2 * 4 and holder:GetHeight() == 21 + 2 * 4)
     assert(select(4, holder.Cast:GetPoint(1)) == 21 + 4 and select(4, holder.Cast:GetPoint(2)) == -4, "the bar takes what the icon and border leave")
+    -- (kelvan 11-27) the icon divider: on the join, no hole between the icon and the bar
+    assert(holder.Cast.IconFrame and holder.Cast.IconFrame.border:IsShown(), "the divider between the icon and the bar")
     local function converted(saved)
         UF.CastWidthWithIcon(saved)
         UF.CastWidthWithIcon(saved)

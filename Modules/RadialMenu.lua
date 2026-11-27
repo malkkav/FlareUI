@@ -1498,12 +1498,32 @@ end
 
 -- every radial this character gets: a macro may open any of them in combat (the others are left
 -- with a count of 0 in the secure layer, so their keys and macros open nothing)
+-- (dutra_, 7.1) Sub-Radials on Remember: a rebuild (a spell, bag or form change marks it) drew each
+-- sub-radial on its first button again, while the secure layer kept the one picked, so the art showed
+-- Rockbiter and the key cast Windfury. The art's pick carries over, as the secure side's does.
+function RM.KeepChildPicks(old, new)
+    for id, list in pairs(new) do
+        local before = old[id]
+        for i, info in ipairs(list) do
+            local pick = before and before[i] and before[i].childIndex
+            local child = pick and pick > 1 and info.children and info.children[pick]
+            if child then
+                info.childIndex = pick
+                info.name, info.icon, info.attributes = child.name, child.icon, child.attributes
+            end
+        end
+    end
+end
+
 local function ResolveAll()
+    local old = Option("subRadials", "reset") == "remember" and {} or nil
+    if old then for id, list in pairs(resolvedCache) do old[id] = list end end
     wipe(resolvedCache)
     for _, id in ipairs(RM:GetRadialOrder()) do
         local data = RM:GetRadial(id)
         if data and RM:IsRadialAvailable(id) then resolvedCache[id] = ResolveButtons(data.buttons) end
     end
+    if old then RM.KeepChildPicks(old, resolvedCache) end
 end
 
 -- fromCache: draw the secure layer's copy without resolving or syncing (a nested radial opened in
@@ -2673,8 +2693,19 @@ function SyncSecure()
     Set("flare-toggle", Option("activation", "hold") == "toggle")
     -- Sub-Radials: Reset on Close starts every sub-radial on its first button at each open
     Set("flare-subreset", Option("subRadials", "reset") ~= "remember")
-    -- sub-radials restart on their first child, as the art does
-    SecureHandlerExecute(header, "CHILD = newtable()")
+    -- sub-radials restart on their first child, as the art does; on Remember each keeps its pick while
+    -- it still has that many buttons (dutra_, 7.1: every sync dropped it; RM.KeepChildPicks is the art's side)
+    if Option("subRadials", "reset") == "remember" then
+        SecureHandlerExecute(header, [[
+            for id, list in pairs(CHILD) do
+                for index, child in pairs(list) do
+                    if child > (self:GetAttribute(id .. "-s" .. index .. "-n") or 1) then list[index] = nil end
+                end
+            end
+        ]])
+    else
+        SecureHandlerExecute(header, "CHILD = newtable()")
+    end
 end
 
 -- with Toggle the secure snippet opens the art itself (OnSecureOpen)

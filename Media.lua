@@ -102,11 +102,21 @@ local HIDDEN = {
 }
 
 -- The names a media dropdown lists after FlareUI's own and a divider: other addons' bars or borders, A-Z
+-- (Malkkav 11-27: Blizzard's art never shows in FlareUI's lists) also an entry whose file is the game's own,
+-- whatever its name: a game file ID, or a path outside Interface\AddOns ("Solid" on WHITE8X8, say)
+function ns.IsBlizzardMedia(mediaType, name)
+    local path = LSM:Fetch(mediaType, name, true)
+    if type(path) == "number" then return true end
+    if type(path) ~= "string" or path == "" then return false end
+    return not path:lower():gsub("/", "\\"):find("^interface\\addons\\")
+end
 function ns.AddonMedia(mediaType)
     local hidden = HIDDEN[mediaType] or {}
     local list = {}
     for _, name in ipairs(LSM:List(mediaType) or {}) do
-        if not hidden[name] and not name:find("^FlareUI ") then list[#list + 1] = name end
+        if not hidden[name] and not name:find("^FlareUI ") and not ns.IsBlizzardMedia(mediaType, name) then
+            list[#list + 1] = name
+        end
     end
     table.sort(list, function(a, b) return a:lower() < b:lower() end)
     return list

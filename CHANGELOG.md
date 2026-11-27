@@ -1,3 +1,89 @@
+# FlareUI 7.1.1
+
+Your requests, built: raid frames that size themselves to the raid, a Battleground choice in every Visibility list, and fading for party, raid and boss frames. Plus a pile of fixes from Discord.
+
+**Restart the game fully after updating.** This version adds new files, and a /reload doesn't load them.
+
+**We need your help testing:**
+- **Raid frames:** pick a **Raid Size** in Edit Mode, change its Width, then join raids of different sizes. The frames should switch size.
+- **Sync Blizzard UI:** log in on an alt. It should ask you once whether to copy, and never again.
+- **Gryphons:** with Action Bar 1's Icon Size below 100%, drag them and nudge them with the arrow keys. They should move smoothly.
+- **Fake Cooldown Manager:** turn on **Show Only When Ready** and use a spell with a long cooldown.
+
+## Heads up
+Some things change even if you change nothing:
+- **Visibility, In an Instance:** now means dungeons and raids only. Battlegrounds and arenas have their own choice, **In a Battleground**. Every list that had In an Instance ticked gets In a Battleground ticked too, so nothing hides or shows differently.
+- **Sync Blizzard UI:** no longer copies on its own.
+  - Each of your other characters asks once, at its next login. After that, copy with **Copy Now**.
+  - Characters that already synced aren't asked. They get one chat line instead.
+  - **Hide Pop-up Alerts** is gone.
+- **Quality of Life, Nameplate Combo Points:** back, and off by default. 7.1 always showed combo points on Blizzard's nameplates. Turn it on to keep them.
+- **Gryphons:** if Action Bar 1's Icon Size is below 100% and you moved your gryphons, they shift once. Place them again.
+- **Cooldown Manager, Growth From the Middle:** a bar with fewer spells than its Columns now stays centred. A bar pinned by its side in Edit Mode moves a little.
+- **Auras:** square aura borders are thinner and use the action bars' bronze. Round aura rims use that colour too.
+- **Loot Window:** in Edit Mode, Blizzard's **Loot Window** checkbox now shows and hides FlareUI's. Its default spot moved to the right side of the screen (only if you never moved it).
+- **Minimap, Shared Media borders:** now as thick as on the chat and meters, and flush with the map's edge, its corners cut to fit. The Info Bar uses the same border.
+- **Raid frames:** **Sample Raid** is now **Raid Size**.
+
+## Highlights
+- **Raid frames, Raid Size:** Width, Height and Power Height for raids of up to 10, 25 or 40 players. Pick the size in Edit Mode, then set them. A size you never change keeps your current values.
+- **In a Battleground:** a new choice in every Visibility list: action bars, unit frames, chat, meters, the Fake Cooldown Manager and Resource Bars.
+- **Fading** for Party, Raid, Boss and Flag Carrier frames, as on the other unit frames.
+
+## New
+
+### Unit Frames
+- Party, Raid, Boss and Flag Carrier frames: a **Fading** section in Edit Mode:
+  - **Visibility**, **Show Speed**, **Hide Speed**, **Faded Opacity**, **Opacity**
+- Raid frames: **Raid Size** (Up to 10, 25 or 40 Players). Width, Height and Power Height are set per size. In a raid, the frames use the size that matches your group, and switch after a fight if it grows.
+
+### Action Bars
+- Fake Cooldown Manager: **Show Only When Ready** (off). A spell on cooldown hides until it's ready. Its spot stays empty meanwhile.
+
+### Chat
+- Edit Box: **Chat Style** (IM Style or Classic Style), Blizzard's own setting. Takes effect at the next reload.
+- Each chat window keeps its own **Font Size**: right-click its tab.
+
+### Buff Reminders
+- Mages: a **Mana Gem** reminder. Click it to conjure the best gem you know.
+- Soulstone: **Keep It On** (right-click the icon) gets **Tanks**.
+
+### Minimap
+- Addon Buttons: **Only on Mouseover** (off). The addon buttons on the minimap's edge hide until you point at the minimap or at one of them. Buttons in the drawer aren't affected.
+
+### Loot
+- Loot Rolls: a **Close** button. It clears the rolls you answered or that ended. Rolls still waiting for your choice stay.
+- Loot Window: shows sample loot in Edit Mode, so you can see where it goes.
+
+### Commands
+- `/fui profile <name>` switches to that profile, for a macro on a key or a radial. Type it alone to list your profiles.
+
+### Translations
+- French, Simplified Chinese and Traditional Chinese updated for 7.1.
+
+## Changed
+- Swing bars: **Waiting State**, **Queued Attack Colour** and **Stand-Still Zone** are switches again, on by default. If you turned one off before 7.1, it's off again.
+- Cast bars: a divider between the icon and the bar, in the bar's own border. On every cast bar with its icon and border on, nameplates included.
+- Loot Window: a bronze close button, further right, like the chat's and quest tracker's header buttons.
+- Loot Rolls: hold Shift anywhere on a roll's row to compare the item. Pressing Shift while pointing works too.
+- Unit frames: the Edit Mode box now covers the portrait and the level disc.
+- Border and bar texture lists never show Blizzard's own art. The Minimap's Border list included.
+- Nameplates: with Platynator or MFNameplates on, FlareUI's Nameplates step aside, as with Plater.
+- About and setup tour: the FlareUI Edit Mode layout code is updated.
+
+## Fixed
+- Damage Meter: Russian names showed as boxes in groups.
+- Chat: Russian names showed as boxes in the whisper line ("Tell ...").
+- Nameplates: combo points showed twice with another combo point addon, and on plates another addon had taken over.
+- Loot Feed: the settings preview now shows Round Icons.
+- Cooldown Manager: Growth From the Middle didn't stay centred with fewer spells.
+- Radial Menu: Sub-Radials on **Remember** forgot the last pick.
+- Loot Window: Blizzard's own loot box showed in Edit Mode next to FlareUI's.
+- Loot Rolls and Loot Feed drew over Blizzard's Edit Mode window.
+- Gryphons jumped around in Edit Mode with Action Bar 1 below 100% Icon Size.
+- Fonts: an error after some loading screens ("calling 'GetFont' on bad self").
+- Nameplates: a zoom setting could be put back on the wrong character.
+
 # FlareUI 7.1
 
 A big tidy-up of the settings: fewer rows, clearer names and a smarter Info Panel. Plus a batch of fixes from Discord.
@@ -366,52 +452,3 @@ Some things look different even if you change nothing:
 
 ### Languages
 - **Hungarian:** two lines had wrong letters. By Xentinus.
-
-# FlareUI 7.0.15
-
-A hotfix for the Lua error when you change target in a fight (our own doing, from 7.0.14), plus a few fixes and small additions.
-
-**We need your help testing:**
-- **Dispel icons:** change target in a fight with debuffs up. Friends show the icons, enemies don't.
-- **Raid Manager:** join a group in and out of a fight, with it hidden.
-- **Druids:** **Mana on Shapeshift** with Smooth Animated Bars.
-- **Nameplates:** the colours in **Name Only Mode**.
-
-## Heads up
-Some things look different even if you change nothing:
-- **Name Only Mode:** titles and guilds take the name's colour, and names take the colours Blizzard gives them. Colours you picked yourself stay.
-- **Raid Manager:** if you hid it but play without our Action Bars, it's hidden now.
-- **Bags & Looting:** with a font picked for Item Level, the BoE mark takes it too.
-
-## New
-
-### Nameplates
-- **Copy From**, in Plate Setup: puts another unit's whole setup on the one you're editing. Undo Changes takes it back.
-
-## Changed
-
-### Nameplates
-- **Name Only Mode:** Blizzard's colours for names, titles and guilds.
-
-### Unit Frames
-- **Only Mana Power Bars** (off) works in every party style, Forever Style too.
-- A **Frame Style** you pick waits for the reload. By mateuszmalek.
-
-### Bags & Looting
-- The BoE mark takes the Item Level font, in the bags and the loot window.
-
-### Languages
-- **Russian:** shorter names for the Nameplates tabs and Plate Setup.
-
-## Fixed
-
-### Unit Frames
-- A Lua error each time you changed target in a fight.
-- The player and target frames got shorter when you switched **Frame Style** and back. By mateuszmalek.
-- **Smooth Animated Bars** left out the **Mana on Shapeshift** bar.
-
-### Nameplates
-- The target arrows hitched at each end of their bounce.
-
-### Quality of Life
-- A hidden **Raid Manager** still showed with Action Bars off, or when you joined a group in a fight.

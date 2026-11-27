@@ -116,7 +116,7 @@ local REMINDERS = {
 -- the warlock's pet joins its armor, then a healthstone in the bags (Create Healthstone, best rank)
 table.insert(REMINDERS.WARLOCK, { key = "pet", pet = "WARLOCK" })
 table.insert(REMINDERS.WARLOCK, { key = "healthstone", healthstone = true, cast = { 11730, 11729, 5699, 6202, 6201 } })
--- a Soulstone on a healer (or on yourself; the icon's right-click menu), in a group
+-- a Soulstone on a healer, a tank or yourself (the icon's right-click menu), in a group
 table.insert(REMINDERS.WARLOCK, { key = "soulstone", soulstone = true, cast = { 20757, 20756, 20755, 20752, 693 } })
 -- Soul Link (talent): only while a pet is out
 table.insert(REMINDERS.WARLOCK, { key = "soulLink", cast = { 19028 }, needPet = true })
@@ -1566,8 +1566,10 @@ local function Check(entry, before)
                     if wanted == "self" then
                         if unit == "player" or UnitIsUnit(unit, "player") then target = unit end
                     else
+                        -- Keep It On: Healers or Tanks (the role a group finder or a group leader set; .zbee 11-27)
                         local ok, role = pcall(UnitGroupRolesAssigned, unit)
-                        if ok and Readable(role) and role == "HEALER" then target = unit end
+                        local want = wanted == "tank" and "TANK" or "HEALER"
+                        if ok and Readable(role) and role == want then target = unit end
                     end
                 end
             end
@@ -1976,6 +1978,7 @@ function BR.Menu(owner)
             root:CreateDivider()
             root:CreateTitle(L["Keep It On"])
             Radio(L["Healers"], "soulstone", "healer")
+            Radio(L["Tanks"], "soulstone", "tank")
             Radio(L["Only Me"], "soulstone", "self")
         elseif entry.def.pick == "thorns" then
             root:CreateDivider()

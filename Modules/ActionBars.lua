@@ -1492,6 +1492,27 @@ local function PaintDim(button)
     end
 end
 
+-- (projektxiii, Malkkav 11-27) Fake CM's Show Only When Ready (fcm.onlyReady, off): a Fake CM button on a real
+-- cooldown (button.FlareUI_OnCD, the global cooldown left out) is see-through until it is ready again. Only its
+-- alpha: secure buttons can't hide or move in a fight, so its place stays. All shown in Setup Mode and Edit
+-- Mode, to arrange the bars.
+function ActionBars.PaintReady(button)
+    local fcm = ns.db and ns.db.profile and ns.db.profile.fcm
+    local LEM = LibStub("FlareEditMode")
+    local hide = fcmButtons[button] and fcm and fcm.onlyReady and button.FlareUI_OnCD
+        and not ActionBars.fcm.unlockMode and not (LEM and LEM.IsInEditMode and LEM:IsInEditMode()) and true or false
+    if hide then
+        button:SetAlpha(0)
+        button.FlareUI_ReadyHidden = true
+    elseif button.FlareUI_ReadyHidden then
+        button:SetAlpha(1)
+        button.FlareUI_ReadyHidden = nil
+    end
+end
+function ActionBars.PaintReadyAll()
+    for _, btn in ipairs(GetAllActionButtons()) do ActionBars.PaintReady(btn) end
+end
+
 -- The global ActionButton_UpdateCooldown hook also runs for Blizzard's gamepad buttons
 -- (Blizzard_GamepadActionBars, all named Gamepad...): FlareUI keeps off them, as fields it writes
 -- there would sit on buttons Blizzard's flyout code then runs over (a Lua error from taint)
@@ -1536,6 +1557,7 @@ local function OnUpdateCooldown(button)
         end
     end
     PaintDim(button)
+    ActionBars.PaintReady(button)
 end
 
 -- the cooldown frame reaches its end a moment before the client may report it over
@@ -1553,6 +1575,12 @@ local function SetupCooldowns()
     end
     for _, btn in ipairs(GetAllActionButtons()) do
         if btn.cooldown and btn.action then btn.cooldown:HookScript("OnCooldownDone", OnCooldownDone) end
+    end
+    -- Show Only When Ready: every button shows in Edit Mode, and the cooldowns hide them again after
+    local LEM = LibStub("FlareEditMode")
+    if LEM and LEM.RegisterCallback then
+        LEM:RegisterCallback("enter", ActionBars.PaintReadyAll)
+        LEM:RegisterCallback("exit", ActionBars.PaintReadyAll)
     end
 end
 
@@ -1633,6 +1661,7 @@ function ActionBars:SetFCM_UnlockMode(enabled)
     if InCombatLockdown() then return false end
     self.fcm.unlockMode = enabled
     self:ApplyClickthrough(not enabled)
+    ActionBars.PaintReadyAll()   -- (Setup Mode shows every button)
     if ns.Visibility then ns.Visibility:Refresh() end
     return true
 end
@@ -2123,6 +2152,7 @@ function ActionBars:Refresh(event)
     ForEachFCMBar(function(key)
         for _, btn in ipairs(GetButtonsForBarKey(key)) do fcmButtons[btn] = true end
     end)
+    ActionBars.PaintReadyAll()   -- (Show Only When Ready, or a bar no longer Fake CM's)
 
     if _G.ExtraActionButton1 then UpdateButtonText(_G.ExtraActionButton1) end
     if _G.ZoneAbilityFrame and _G.ZoneAbilityFrame.SpellButtonContainer then

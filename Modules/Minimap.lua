@@ -1817,13 +1817,59 @@ function MM.BarHover()
     return db and db.infoBarHover == true and Bar.shown or false
 end
 
--- what pointing at the map shows: the Info Bar on mouseover (the coordinates text: never)
+-- (deroostr, Malkkav 11-27) Addon Buttons > Only on Mouseover (minimap.buttonsHover, off): the addon buttons on
+-- the map's edge (left out of the drawer) are see-through until you point at the map or at one of them. Square
+-- map: everything on MM.ButtonHolder; round map: the LibDBIcon buttons still on the map. The drawer's aren't.
+function MM.ButtonsHover()
+    local db = GetDb()
+    return db and db.buttonsHover == true or false
+end
+local edgeList = {}
+function MM.EdgeButtons()
+    wipe(edgeList)
+    local holder = MM.ButtonHolder
+    if holder then
+        for _, child in ipairs({ holder:GetChildren() }) do edgeList[#edgeList + 1] = child end
+    end
+    local lib = LibStub and LibStub("LibDBIcon-1.0", true)
+    if lib and lib.GetButtonList then
+        for _, name in ipairs(lib:GetButtonList() or {}) do
+            local button = lib:GetMinimapButton(name)
+            if button and button:GetParent() == MinimapFrame then edgeList[#edgeList + 1] = button end
+        end
+    end
+    return edgeList
+end
+function MM.EdgeButtonOver()
+    for _, b in ipairs(MM.EdgeButtons()) do
+        if b:IsShown() and b:IsMouseOver() then return true end
+    end
+    return false
+end
+
+-- what pointing at the map shows: the Info Bar and the edge buttons on mouseover (the coordinates text: never)
 local function HoverWanted()
-    return GetDb() and MM.BarHover() or false
+    return GetDb() and (MM.BarHover() or MM.ButtonsHover()) or false
 end
 local function ShowHovered(over)
     ShowCoords(false)
     if Bar.frame then Bar.frame:SetAlpha((not MM.BarHover() or over) and 1 or 0) end
+    -- the edge buttons; off, back as they were (only those FlareUI faded)
+    local fade = MM.ButtonsHover()
+    for _, b in ipairs(MM.EdgeButtons()) do
+        if fade then
+            b:SetAlpha(over and 1 or 0)
+            b.FlareUI_EdgeFaded = true
+            -- pointing at a hidden button counts as pointing at the map
+            if not b.FlareUI_EdgeHooked and b.HookScript then
+                b.FlareUI_EdgeHooked = true
+                b:HookScript("OnEnter", function() if MM.OnMapEnter then MM.OnMapEnter() end end)
+            end
+        elseif b.FlareUI_EdgeFaded then
+            b:SetAlpha(1)
+            b.FlareUI_EdgeFaded = nil
+        end
+    end
 end
 
 local function UpdateCoordsHover()
@@ -1834,7 +1880,7 @@ local function UpdateCoordsHover()
     end
     -- mid-scan the coordinates are the scan's to hide (Lueur puts back what it found at the end)
     if Scan.Busy() then return end
-    local over = Cluster:IsMouseOver()
+    local over = Cluster:IsMouseOver() or (MM.ButtonsHover() and MM.EdgeButtonOver())
     ShowHovered(over)
     if not over and hoverTicker then hoverTicker:Cancel(); hoverTicker = nil end
 end
@@ -1842,10 +1888,11 @@ end
 local function OnMapEnter()
     if not HoverWanted() then return end
     -- the hidden map slid under the pointer by a node addon's scan is not the player pointing at it
-    if Scan.Busy() or not Cluster:IsMouseOver() then return end
+    if Scan.Busy() or not (Cluster:IsMouseOver() or (MM.ButtonsHover() and MM.EdgeButtonOver())) then return end
     ShowHovered(true)
     if not hoverTicker then hoverTicker = C_Timer.NewTicker(0.2, UpdateCoordsHover) end
 end
+MM.OnMapEnter = OnMapEnter
 
 -- Middle-click Menu: Blizzard's panels as secure buttons, each a macro clicking the micro button (a
 -- panel opened from addon code would taint its frames). Out of combat only: the list holds protected

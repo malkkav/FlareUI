@@ -81,6 +81,10 @@ setfenv(assert(loadfile('Modules/LootWindow.lua')), env)('FlareUI', ns)
 local LW = ns.LootWindow
 LW:Init()
 local win = LW.frame
+-- (Malkkav 11-27) the close button: a header icon button 16 px from the right edge, not Blizzard's red one
+local closePoint = win.close.points[1]
+assert(closePoint[1] == "CENTER" and closePoint[3] == "TOPRIGHT" and closePoint[4] == -16 and closePoint[5] == -15)
+assert(win.close.icon, "a bronze cross, as the chat's header buttons")
 local events
 for _, f in ipairs(frames) do
     if f:GetScript('OnEvent') then events = f end
@@ -161,5 +165,61 @@ fire('GROUP_ROSTER_UPDATE')
 assert(not blizzard.LOOT_OPENED)
 fire('LOOT_OPENED', false, false)
 assert(win:IsShown())
+
+-- (Malkkav 11-26) Edit Mode: Blizzard's Loot Window checkbox shows FlareUI's box, and Blizzard's own box
+-- is see-through and can't be clicked while ours is on
+do
+    local ticked, underMouse = true, false
+    env._G = env   -- (the module reads _G.EditModeManagerFrame and _G.LootFrame)
+    env.EditModeManagerFrame = { AccountSettings = { settingsCheckButtons = {
+        LootFrame = { IsControlChecked = function() return ticked end } } } }
+    env.GetCVarBool = function(name) return name == "lootUnderMouse" and underMouse end
+    assert(LW.EditShown(), "ticked: ours shows")
+    ticked = false
+    assert(not LW.EditShown(), "unticked: ours hides")
+    ticked, underMouse = true, true
+    assert(not LW.EditShown(), "Loot Under Mouse: nothing to place")
+    underMouse = false
+    local alpha, mouse
+    env.LootFrame.SetAlpha = function(_, a) alpha = a end
+    env.LootFrame.Selection = { EnableMouse = function(_, on) mouse = on end }
+    LW.HideBlizzardBox(true)
+    assert(alpha == 0 and mouse == false)
+    LW.HideBlizzardBox(false)
+    assert(alpha == 1 and mouse == true)
+    env.GetCVarBool = function() return false end
+    env._G = nil
+end
+
+-- (Malkkav 11-27) Edit Mode: the window with sample loot under its box, never looting a click; gone after
+do
+    local looted = 0
+    env.LootSlot = function() looted = looted + 1 end
+    env.IsModifiedClick = function() return false end
+    function Stub:EnableMouse(on) self.mouse = on end
+    win:Hide()
+    LW.looting = nil
+    LW.EditPreview(true)
+    assert(win.mouse == false and win.grip.mouse == false and win.close.mouse == false, "it only follows the box: no drag, no clicks")
+    -- (11-27) the Edit Mode box drawn over the whole preview: from the box down to the window's bottom
+    local selection = setmetatable({}, Stub)
+    lib.frameSelections = { [win.holder] = selection }
+    LW.FitBox(true)
+    local last = selection.points[#selection.points]
+    assert(last[1] == "BOTTOMRIGHT" and last[2] == win, "the box reaches the preview's far edge")
+    lib.frameSelections = nil
+    assert(win:IsShown() and LW.previewing, "the sample loot shows")
+    local p = win.points and win.points[#win.points]
+    assert(p and p[1] == "TOPLEFT" and type(p[2]) == "table" and p[2] ~= env.UIParent and p[3] == "TOPLEFT", "hung from the Edit Mode box, not left in the middle")
+    local sampleRow
+    for _, f in ipairs(frames) do if rawget(f, "data") and f.data.sample then sampleRow = f break end end
+    assert(sampleRow, "rows drawn from the samples")
+    sampleRow:GetScript("OnClick")(sampleRow)
+    assert(looted == 0, "a sample row loots nothing")
+    LW.EditPreview(false)
+    assert(not win:IsShown() and not LW.previewing, "gone with Edit Mode")
+    assert(win.mouse == true and win.grip.mouse == true, "clicks back for a real loot")
+    Stub.EnableMouse = nil
+end
 
 print('PASS: loot window events')

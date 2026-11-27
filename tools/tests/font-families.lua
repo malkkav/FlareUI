@@ -184,6 +184,22 @@ check(text.font, made[1], "no shadow: the plain family")
 check(text.color, 0, "and no shadow of its own")
 check(#made, 2, "families are shared")
 
+-- (aleksandr, 7.1) a text that may hold a Russian name: the twin for Russian letters or an
+-- unreadable text, the chosen font for a readable Latin one
+do
+    local _, cns = loadCore(nil, function(env)
+        env.canaccessvalue = function(v) return v ~= "hidden" end
+        env.C_UIFileAsset = { IsKnownFile = function() return true end }
+    end)
+    local friz = "Fonts\\FRIZQT__.TTF"
+    check(cns.HasCyrillic("Tell Aeloria:"), false, "Latin text has no Russian letters")
+    check(cns.HasCyrillic("Tell Имя:"), true, "Russian letters are found")
+    check(cns.HasCyrillic("hidden"), nil, "an unreadable text is unknown")
+    check(cns.CyrillicPick("Tell Aeloria:", friz), friz, "Latin keeps the chosen font")
+    check(cns.CyrillicPick("Tell Имя:", friz), "Fonts\\FRIZQT___CYR.TTF", "Russian takes the twin")
+    check(cns.CyrillicPick("hidden", friz), "Fonts\\FRIZQT___CYR.TTF", "unreadable takes the twin")
+end
+
 -- This test must fail against the old ruRU-only decision and pass once CJK
 -- locales participate in the same family selection.
 print("PASS: font family locale decisions, members, and API fallback")

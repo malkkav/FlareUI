@@ -1755,6 +1755,54 @@ local function SetCastTimer(cast, duration)
     end
 end
 
+-- (kelvan 11-27) The Player Cast Bar's icon divider: one straight side of the bar's own border, from the
+-- outer border's top line to its bottom one, on the join between the icon and the bar (Malkkav: a whole
+-- second border bent at its ends and left a hole). It is that border's right side, its box ending wrap past
+-- the bar's left edge as the outer border ends wrap past its right one, so the line sits on the join as the
+-- outer line sits on the bar's end. Anchored to the bar and its backdrop, never to the icon (a secret icon
+-- size would make it secret too).
+UF.CAST_DIVIDER_HIDE = { "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+                         "TopEdge", "BottomEdge", "LeftEdge" }
+function UF.CastIconFrame(cast, on, edgeFile, size, wrap)
+    local f = cast.IconFrame
+    if not on then
+        if f then f.border:Hide() end
+        return
+    end
+    if not f then
+        f = CreateFrame("Frame", nil, cast)
+        f.border = CreateFrame("Frame", nil, cast, "BackdropTemplate")
+        f.border:SetFrameLevel(cast.Border:GetFrameLevel())
+        cast.IconFrame = f
+    end
+    wrap = wrap or 0
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", cast.Backdrop, "TOPLEFT")
+    f:SetPoint("BOTTOMRIGHT", cast, "BOTTOMLEFT", wrap, -wrap)
+    f.border:ClearAllPoints()
+    f.border:SetAllPoints(f)
+    ApplyBorderStyle(f.border, edgeFile, size)
+    UF.DividerSide(f.border, wrap / 2)
+    f.border:Show()
+end
+
+-- A border made into a divider: only its right side, straight from top to bottom (no corners to bend
+-- it), its ends trim in from the frame's edge (in the middle of the outer border's top and bottom lines:
+-- from the frame's edge it ran past them, Malkkav "it clips"). Also the nameplates' (Nameplates.lua).
+function UF.DividerSide(b, trim)
+    for _, key in ipairs(UF.CAST_DIVIDER_HIDE) do
+        if b[key] then b[key]:Hide() end
+    end
+    local side = b.RightEdge
+    if not side then return end
+    side:ClearAllPoints()
+    side:SetPoint("TOPRIGHT", b, "TOPRIGHT", 0, -trim)
+    side:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, trim)
+    -- (it took its width from the corners it hung between)
+    side:SetWidth(b.backdropInfo and b.backdropInfo.edgeSize or 8)
+    side:Show()
+end
+
 UF.CAST_TIMER_ROOM = 2.4   -- Center Spell Name: the timer's room, in its font's size
 -- mode "TOP" / "BOTTOM" hangs the bar off a unit frame; "FILL" fills the standalone holder. The
 -- icon sits left of the bar; the border wraps both.
@@ -1767,7 +1815,12 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     local edgeFile = GetBorderFile(style.borderTexture)
     local texture = GetBarTexture(style.texture)
     local height = style.height
-    local iconOffset = style.icon and (height + CAST_ICON_GAP) or 0
+    -- (kelvan 11-27) the Player Cast Bar's icon in a frame of its own, joined to the bar's: the bar's border
+    -- drawn again round the icon, its right side the divider; the bar starts after it (UF.CastIconFrame)
+    local joined = style.icon and style.border and true or false   -- (every cast bar with its icon and border, 11-27)
+    local _, joinGap = BorderFit(height, joined and edgeFile)
+    local iconGap = CAST_ICON_GAP   -- (the divider sits on the join itself: no hole between, Malkkav)
+    local iconOffset = style.icon and (height + iconGap) or 0
 
     cast:SetStatusBarTexture(texture)
     cast.bg:SetTexture(texture)
@@ -1795,7 +1848,7 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
 
     cast.Icon:ClearAllPoints()
     cast.Icon:SetSize(height, height)
-    cast.Icon:SetPoint("RIGHT", cast, "LEFT", -CAST_ICON_GAP, 0)
+    cast.Icon:SetPoint("RIGHT", cast, "LEFT", -iconGap, 0)
     cast.Icon:SetShown(style.icon)
 
     -- the border wrap: the inset shrinks with the edge on a thin bar (BorderFit)
@@ -1815,6 +1868,7 @@ local function LayoutCastBar(cast, style, anchor, mode, leftExtra, rightExtra)
     else
         cast.Border:Hide()
     end
+    UF.CastIconFrame(cast, joined, edgeFile, height + 2 * PADDING, joinGap)
 
     -- the frame's Cast Name and Cast Countdown fonts (its style says whose frame: UF.Font)
     ApplyFont(cast.Text, UF.Font(style.fontKey or "player", "cast"))
@@ -7227,7 +7281,7 @@ UF.Kit = {
     CreateBar = CreateBar, ApplyFont = ApplyFont,
     GetHealthColor = GetHealthColor, GetPowerColor = GetPowerColor,
     HardHide = HardHide, SetIconArt = SetIconArt, HasAtlas = HasAtlas,
-    CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar,
+    CreateCastBar = CreateCastBar, LayoutCastBar = LayoutCastBar, UpdateCastBar = UpdateCastBar, DividerSide = UF.DividerSide,
     CLASS_SKULL = ICON_UI.CLASS_SKULL, CLASS_ICON_SIZE = ICON_SIZE.classification,
     InitAuraButton = InitAuraButton, HasAuraSupport = HasAuraSupport,
     ApplyRangeAlpha = UF.ApplyRangeAlpha,

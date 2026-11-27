@@ -5,6 +5,7 @@ local db = {
     totems = { size = 110, perRow = 2, swipe = "border", timer = "below" },
 }
 local ns = {
+    BORDER_COLOR = { r = 0.65, g = 0.49, b = 0.27, a = 1 },   -- (Core.lua)
     modules = {}, L = setmetatable({}, { __index = function(_, key) return key end }),
     db = { profile = { unitframes = db } },
     LayoutHome = function(layouts, name) layouts[name] = layouts[name] or {}; return layouts[name] end,

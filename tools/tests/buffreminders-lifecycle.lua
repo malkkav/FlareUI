@@ -537,4 +537,21 @@ ui:emit("READY_CHECK")
 assert(br.readyUntil == env.GetTime() + 8 and iconFor("imbue").glow:IsShown())
 ui:flushTimers()
 assert(br.readyUntil == nil)
+-- (.zbee, 11-27) Soulstone, Keep It On: Healers by default, Tanks when picked (the tank in party1)
+do
+    class, role, group = "WARLOCK", "HEALER", true
+    known = { [693] = true }
+    auras.player, auras.party1 = {}, {}
+    bag[5232] = 1
+    db.soulstone = nil
+    br.Resolve()
+    br.Update()
+    local icon = iconFor("soulstone")
+    assert(icon and icon:GetAttribute("unit") == "player", "Healers: the healer, here you")
+    db.soulstone = "tank"
+    br.Update()
+    assert(iconFor("soulstone"):GetAttribute("unit") == "party1", "Tanks: the tank")
+    db.soulstone, bag[5232] = nil, nil
+end
+
 print("PASS: buff reminders for group ranks, melee weapons, pets, consumables, dialogs and Edit Mode")

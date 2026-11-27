@@ -218,4 +218,33 @@ do
     assert(db.barSort == "blizzard" and db.barMax == 20)
 end
 
+-- (johnivve, 7.1) From the Middle with fewer icons than a full line: centred where a full line would
+-- stand, away from the edge Edit Mode pinned the viewer by
+do
+    local CM = ns.CooldownManager
+    local function shift(args, x, y)
+        local gx, gy = CM.LineShift(unpack(args))
+        assert(math.abs(gx - x) < 0.001 and math.abs(gy - y) < 0.001, table.concat({ tostring(args[1]), gx, gy }, " "))
+    end
+    shift({ "TOPLEFT", 128, 216, true }, 44, 0)
+    shift({ "RIGHT", 128, 216, true }, -44, 0)
+    shift({ "CENTER", 128, 216, true }, 0, 0)
+    shift({ "TOP", 128, 216, false }, 0, -44)
+    shift({ "BOTTOMLEFT", 128, 216, false }, 0, 44)
+    shift({ "TOPLEFT", 216, 216, true }, 0, 0)       -- a full line stays
+    shift({ nil, 128, 216, true }, 0, 0)             -- a point that can't be read: no shift
+    -- the viewer: 3 tracked (128 wide) of 5 columns, pinned by its left edge; only c shown now
+    grow.buffs = "CENTER"
+    viewer.iconLimit = 5
+    function viewer:GetPoint() return "TOPLEFT", nil, "TOPLEFT", 0, 0 end
+    function viewer:GetWidth() return 128 end
+    function viewer:GetHeight() return 40 end
+    CM:Refresh()
+    assert(c.point[1] == "TOP" and math.abs(c.point[4] - 44) < 0.001, "shifted half the missing length right")
+    function viewer:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
+    CM:Refresh()
+    assert(math.abs(c.point[4]) < 0.001, "pinned by its centre: as before")
+    viewer.iconLimit, viewer.GetPoint, viewer.GetWidth, viewer.GetHeight = nil, nil, nil, nil
+end
+
 print("PASS: Cooldown Manager Grow From")

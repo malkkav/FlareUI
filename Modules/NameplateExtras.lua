@@ -103,7 +103,8 @@ end
 -- Combo points (Core.lua: Blizzard's points, or FlareUI's gem while the count is secret) under the
 -- target's plate. A readable count hides the row at zero.
 -- FlareUI's plates: the Nameplates page's Combo Points. Blizzard's plates (the Nameplates module off):
--- always, with no option (Malkkav 11-26; was Quality of Life's Nameplate Combo Points, tweaks.plateCombo)
+-- Quality of Life's Nameplate Combo Points (tweaks.plateCombo, off). (7.1 made them always on; players
+-- with another combo point addon got two rows, so the switch is back, Malkkav 11-26)
 --------------------------------------------------
 local SIZE     = 14   -- the point's side
 local SPACING  = ns.ComboPointStep(SIZE)   -- Blizzard's art never touches its neighbour
@@ -126,7 +127,8 @@ end
 function NP.ComboMode()
     local db = DB()
     if NP.ready and not NP.standDown then return db and db.comboPoints and "flare" or nil end
-    if db and db.enabled then return nil end
+    local tw = ns.db and ns.db.profile and ns.db.profile.tweaks
+    if not (tw and tw.enabled and tw.plateCombo) or (db and db.enabled) then return nil end
     if NP.OtherAddon and NP.OtherAddon() then return nil end
     return "blizzard"
 end

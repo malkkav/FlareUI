@@ -113,6 +113,29 @@ ui.fcm = true
 command("nonsense")
 local help = table.concat(messages, "\n")
 assert(help:find("/fui cm", 1, true) and help:find("/way", 1, true), "help includes enabled optional commands")
+-- (toonic 11-27) /fui profile <name>: the Profiles page's switch, any case and quotes, for a macro
+do
+    local current, set = "Default", nil
+    local db = ns.db
+    db.GetProfiles = function() return { "TV", "Default", "Raid" } end
+    db.GetCurrentProfile = function() return current end
+    db.SetProfile = function(_, name) set = name; current = name end
+    command('profile "tv"')
+    assert(set == "TV", "the profile by its own name: " .. tostring(set))
+    set = nil
+    command("profile tv")
+    assert(set == nil and messages[#messages]:find("Already on profile TV", 1, true))
+    command("profile Nope")
+    assert(set == nil and messages[#messages]:find("No profile named Nope", 1, true) and messages[#messages]:find("Raid", 1, true))
+    ui.combat = true
+    command("profile Raid")
+    assert(set == nil and messages[#messages]:find("in combat", 1, true), "never in a fight")
+    ui.combat = false
+    command("profile")
+    assert(messages[#messages]:find("Default, Raid, TV", 1, true), "alone: the profiles, A-Z")
+    db.GetProfiles, db.GetCurrentProfile, db.SetProfile = nil, nil, nil
+end
+
 E.SlashCmdList.FLARERL()
 last("reload")
 ui.combat = true

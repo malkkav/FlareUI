@@ -193,6 +193,16 @@ send("PLAYER_SWING_RANGE_UPDATE", env.Enum.PlayerSwingType.Ranged, false, true)
 assert(ranged.outOfRange and ranged.Bar.barColor[1] == rb.colors.outOfRange[1])
 send("PLAYER_SWING_RANGE_UPDATE", env.Enum.PlayerSwingType.Ranged, true, true)
 assert(not ranged.outOfRange)
+-- (11-27) Stand-Still Zone and Waiting State are switches again (7.1 had made them always on)
+config.bars.swingRanged.standStill = false
+send("PLAYER_SWING", 3, env.Enum.PlayerSwingType.Ranged)
+assert(not ranged.StandStill:IsShown(), "Stand-Still Zone off: no zone")
+config.bars.swingRanged.standStill = true
+config.bars.swingMain.waiting = false
+send("PLAYER_ENTER_COMBAT")
+assert(not main.waiting and main.Text:GetText() ~= "Waiting", "Waiting State off: no waiting bar")
+send("PLAYER_LEAVE_COMBAT")
+config.bars.swingMain.waiting = true
 send("PLAYER_DEAD")
 ranged:RunScript("OnUpdate", 1)
 assert(not ranged.swingEnd and not ranged.StandStill:IsShown())

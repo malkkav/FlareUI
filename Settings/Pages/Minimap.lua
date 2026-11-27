@@ -42,12 +42,11 @@ S:Row{ key = "mm.style", kind = "styles", choices = { "square", "round" }, hideL
 S:Row{ key = "mm.squareBorder", kind = "choice", section = "mm.styleSection",
     choices = function()
         local list = { "bronze", "header", "thin", "thick" }
+        -- FlareUI Frames, then other addons' borders (ns.AddonMedia: never Blizzard's, Malkkav 11-27)
         local LSM = LibStub("LibSharedMedia-3.0", true)
-        local names = LSM and LSM:List("border") or {}
         local extra = {}
-        for _, name in ipairs(names) do
-            if name ~= "None" and name ~= "FlareUI Thick" and name ~= "FlareUI Thin" then extra[#extra + 1] = { name, name } end
-        end
+        if LSM and LSM:IsValid("border", "FlareUI Frames") then extra[1] = { "FlareUI Frames", "FlareUI Frames" } end
+        for _, name in ipairs(ns.AddonMedia and ns.AddonMedia("border") or {}) do extra[#extra + 1] = { name, name } end
         if #extra > 0 then
             list[#list + 1] = { divider = true }
             for _, c in ipairs(extra) do list[#list + 1] = c end
@@ -164,6 +163,10 @@ S:Row{ key = "mm.resetButtonMoves", kind = "button", center = true, section = "m
 -- the drawer opens on the pointer instead of a click (live)
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", tab = "buttons", half = true,
     disabled = DrawerOff }
+-- (deroostr 11-27) the addon buttons on the map's edge only while you point at the map (Minimap.lua
+-- MM.ButtonsHover); a whole row, so the two half rows above stay a pair. Not greyed with the drawer Off:
+-- then every button is on the edge.
+S:Row{ key = "mm.buttonsHover", path = "minimap.buttonsHover", tab = "buttons", apply = Refresh }
 -- which addons go in it (ticked) and which are left alone on the minimap; a reload puts a
 -- button back where its addon keeps it. None: every button on the minimap's edge.
 local bagTokens = {}

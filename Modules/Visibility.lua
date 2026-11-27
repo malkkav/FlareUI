@@ -89,6 +89,12 @@ local ELEMENTS = {
     { key = "uf_targettarget", unit = "targettarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true, noTarget = true },
     { key = "uf_focus", unit = "focus", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
     { key = "uf_focustarget", unit = "focustarget", module = "unitframes", own = true, noGroup = true, instant = true, noOpacity = true },
+    -- The party, raid and boss frames: their holder fades (the raid's main tanks with it). gframe: the
+    -- unitframes table their switch is in; tiles: on Never their clicks go too (out of a fight)
+    { key = "uf_party", gframe = "party", frame = "FlareUI_Party", noGroup = true, instant = true },
+    { key = "uf_raid", gframe = "raid", frame = "FlareUI_Raid", also = "FlareUI_RaidTanks", noGroup = true, instant = true },
+    { key = "uf_boss", gframe = "boss", frame = "FlareUI_Boss", noGroup = true, instant = true },
+    { key = "uf_flagCarriers", gframe = "flagCarriers", frame = "FlareUI_FlagCarriers", noGroup = true, instant = true },
     -- the FlareUI Player Cast Bar: Visibility and Faded Opacity only. Not with Cinematic, which fades it
     -- between fights itself (its bar then ignores the holder's alpha)
     -- never: a Never choice, so neither FlareUI's bar nor Blizzard's shows (the player frame's
@@ -331,6 +337,9 @@ local function ApplyElementAlpha(frame, key, alpha)
         end
         frame:SetAlpha(alpha)
     end
+    -- the raid's main tanks fade with the raid
+    local e = ELEMENT_BY_KEY[key]
+    if e and e.also and _G[e.also] then _G[e.also]:SetAlpha(alpha) end
     if frame.actionButtons then
         SetBarBling(frame, alpha)
         SetBarTexts(frame, alpha)
@@ -460,10 +469,32 @@ local function MigrateMovedFades(db)
     end
 end
 
+-- In an Instance covered battlegrounds and arenas until In a Battleground split them off: every saved
+-- choice with it gets In a Battleground too, once per profile, so nothing shows or hides differently
+function Visibility.MigratePvpSplit(db)
+    db.pvpSplit = true
+    local function Add(show)
+        if type(show) ~= "string" then return show end
+        local has, pvp = false, false
+        for token in show:gmatch("[^,]+") do
+            if token == "instance" then has = true elseif token == "pvp" then pvp = true end
+        end
+        return (has and not pvp) and (show .. ",pvp") or show
+    end
+    for _, list in ipairs({ db.elements or {}, db.groups or {} }) do
+        for _, cfg in pairs(list) do
+            if type(cfg) == "table" then cfg.show = Add(cfg.show) end
+        end
+    end
+    local fcm = ns.db.profile.fcm
+    if fcm then fcm.show = Add(fcm.show) end
+end
+
 local function GetDb()
     local db = ns.db and ns.db.profile and ns.db.profile.visibility
     if db and not db.mouseToken then MigrateMouseToken(db) end
     if db and not db.fadesMoved then MigrateMovedFades(db) end
+    if db and not db.pvpSplit then Visibility.MigratePvpSplit(db) end
     return db
 end
 
@@ -498,6 +529,10 @@ local function ElementOn(e)
     if e.threat then
         local dm = ns.db and ns.db.profile and ns.db.profile.damagemeter
         return dm and dm.enabled and dm.threatWindow and true or false
+    end
+    if e.gframe then
+        local uf = ns.db and ns.db.profile and ns.db.profile.unitframes
+        return uf and uf.enabled and uf[e.gframe] and uf[e.gframe].enabled and true or false
     end
     if e.module then
         local db = ns.db and ns.db.profile and ns.db.profile[e.module]
@@ -894,7 +929,7 @@ local CAP_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_
 local NEVER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS, legacy = SHOW_SPEC.legacy, empty = "always" }
 -- the chat's New Messages (right under Mouseover); the meter's Never and In an Instance; the threat
 -- window's Same as Meter and In an Instance. Kept in table fields: the main chunk is near its limit.
-Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "chatonly", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" },
+Visibility.CHAT_SPEC = { exclusive = { "always", "never" }, tokens = { "mouseover", "messages", "chatonly", "combat", "hastarget", "attackable", "ingroup", "instance", "pvp", "unmounted", "city", "notcity" },
                          legacy = SHOW_SPEC.legacy, empty = "always" }
 Visibility.METER_SPEC = { exclusive = { "always", "never" }, tokens = Conditions.MOUSE_TOKENS,
                           legacy = SHOW_SPEC.legacy, empty = "always" }
@@ -928,8 +963,13 @@ local function EvaluateShowRule(show)
     if set.city and Visibility.InCapital() then return true end
     -- Not in a Capital City: the reverse, for a frame that should fade in capitals
     if set.notcity and not Visibility.InCapital() then return true end
-    -- the meter's and the threat window's: dungeons, raids, battlegrounds and arenas
-    if set.instance and IsInInstance() then return true end
+    -- In an Instance: dungeons and raids; In a Battleground ("pvp"): battlegrounds and arenas (one
+    -- condition for both until 7.2: saved In an Instance got In a Battleground too, MigratePvpSplit)
+    if set.instance or set.pvp then
+        local inside, kind = IsInInstance()
+        local pvp = kind == "pvp" or kind == "arena"
+        if inside and ((set.pvp and pvp) or (set.instance and not pvp)) then return true end
+    end
     return false
 end
 local function ShowRule(show, cache)
@@ -1120,7 +1160,7 @@ end
 -- 7. EDIT MODE SETTINGS
 --------------------------------------------------
 -- Always clears the rest; the conditions after the line (Mouseover first) are toggles
-local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "unmounted", "city", "notcity" }
+local SHOW_VALUES = { "always", "mouseover", "combat", "hastarget", "attackable", "ingroup", "instance", "pvp", "unmounted", "city", "notcity" }
 local GROUP_VALUES = { 0, 1, 2, 3, 4, 5 }
 
 local function Values(copyKey, list, fallback)
@@ -1377,6 +1417,53 @@ function Visibility:PlayerCastSettings()
         end
     end
     return kept
+end
+
+-- The party, raid and boss frames (e.gframe): their holder and, for the raid, its main tanks
+function Visibility.GroupFrames(e)
+    local list = {}
+    if e.frame and _G[e.frame] then list[#list + 1] = _G[e.frame] end
+    if e.also and _G[e.also] then list[#list + 1] = _G[e.also] end
+    return list
+end
+-- the pointer on one of their tiles (or what is on a tile: its auras)
+function Visibility.OverGroupFrame(e)
+    local UF = ns.UnitFrames
+    if not (UF and UF.PointerUnder) then return false end
+    for _, f in ipairs(Visibility.GroupFrames(e)) do
+        if f:IsVisible() and UF.PointerUnder(f) then return true end
+    end
+    return false
+end
+-- On Never the tiles take no clicks: out of a fight only (they are secure). Only the tiles turned
+-- off here are turned back on. Tiles live up to three levels under the holder (raid: group headers).
+function Visibility.SetGroupFrameMouse(e, on)
+    e.mouseOff = e.mouseOff or {}
+    if on then
+        for tile in pairs(e.mouseOff) do pcall(tile.EnableMouse, tile, true) end
+        wipe(e.mouseOff)
+        return
+    end
+    local function Walk(f, depth)
+        for _, child in ipairs({ f:GetChildren() }) do
+            if child.GetAttribute and child.IsMouseEnabled and child:GetAttribute("unit") ~= nil then
+                if child:IsMouseEnabled() then
+                    pcall(child.EnableMouse, child, false)
+                    e.mouseOff[child] = true
+                end
+            elseif depth < 3 then
+                Walk(child, depth + 1)
+            end
+        end
+    end
+    for _, f in ipairs(Visibility.GroupFrames(e)) do Walk(f, 1) end
+end
+
+-- the Fading section of the party, raid and boss frames' Edit Mode dialogs: Visibility, Show Speed,
+-- Hide Speed, Faded Opacity, Opacity (no fade groups)
+function Visibility:GroupFrameSettings(kind)
+    local rows = BuildElementSettings("uf_" .. kind)
+    return { rows[2], rows[3], rows[4], rows[5], rows[6] }
 end
 
 -- for the resource bars' Fading section (ResourceBars.lua BuildSettings): with a fade group, no title
@@ -1831,6 +1918,10 @@ function Visibility:Refresh()
                     local editingNow = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
                     pcall(button.EnableMouse, button, show ~= "never" or editingNow or false)
                 end
+                if e.gframe and not InCombatLockdown() then
+                    local editingNow = _G.EditModeManagerFrame and _G.EditModeManagerFrame:IsShown()
+                    Visibility.SetGroupFrameMouse(e, show ~= "never" or editingNow or false)
+                end
                 -- the quest tracker on Never is hidden, not only faded: its lines would still show tooltips
                 if key == "quest" and ns.ObjectiveTracker and ns.ObjectiveTracker.SetNever then
                     ns.ObjectiveTracker:SetNever(show == "never")
@@ -1865,6 +1956,7 @@ function Visibility:Refresh()
                         or (key == "threat" and ns.DamageMeter) or nil
                     local unit = e.unit
                     local mouse = unit and function() return ns.UnitFrames:IsMouseOverUnit(unit) end or nil
+                    if e.gframe then mouse = function() return Visibility.OverGroupFrame(e) end end
                     if e.noGroup then group = 0 end
                     -- a linked pet fades in the player frame's group, if it has one
                     if linkPet then group = self:GetGroup("uf_player") end

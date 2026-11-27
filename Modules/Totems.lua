@@ -114,8 +114,9 @@ local SWIPE_EDGE = MEDIA .. "Edge"
 local SWIPE_DISC = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
 -- Aura Icon Shape, as on the Buffs & Debuffs icons: Round is Blizzard's ring, Square their border
 -- (Auras.lua), a little smaller than the ring so the row keeps its gaps
-local SQUARE = { SIZE = 28, INSET = 28 * 6 / 128, BORDER = MEDIA .. "IconBorder", MASK = MEDIA .. "IconMask",
-                 SWIPE = MEDIA .. "BorderThick", TINT = { 0.80, 0.60, 0.34 }, CROP = 0.08 }
+local SQUARE = { SIZE = 28, INSET = 28 * 6 / 128 * 6 / 7, BORDER = MEDIA .. "IconBorder", MASK = MEDIA .. "IconMask",
+                 SWIPE = MEDIA .. "BorderThick", CROP = 0.08,
+                 TINT = { ns.BORDER_COLOR.r, ns.BORDER_COLOR.g, ns.BORDER_COLOR.b } }   -- (the action bars' border colour, 11-27)
 SQUARE.OPENING = SQUARE.SIZE - 2 * SQUARE.INSET
 local function TotemLook()
     local db = GetDb()
@@ -172,7 +173,7 @@ local function StyleTotem(button, cd, text, ring, frame, art, mask)
     local swipe, timer, square = TotemLook()
     ring = ShapeTotem(button, frame, art, mask, ring, square)
     if cd then
-        SwipeRange(cd, square, swipe == "icon" and 6 / 128 or 0)
+        SwipeRange(cd, square, swipe == "icon" and 6 / 128 * 6 / 7 or 0)
     end
     if cd and square then
         local whole = swipe == "border" or swipe == "both"

@@ -102,19 +102,20 @@ spot = anchor()
 assert(spot == 'BOTTOMLEFT BOTTOMLEFT', 'Up on open: ' .. spot)
 
 -- a header drag saves the spot by the window's growing edge. HOLDER_H = 34 + 48 + 8 = 90; the spot's
--- point is LEFT (the default) on a 1000 x 800 screen, so y = holder top - 45 - 400.
+-- point is RIGHT (the default, 11-27) on a 1000 x 800 screen, so x = holder right (100 + 260) - 1000 and
+-- y = holder top - 45 - 400.
 win.GetLeft = function() return 100 end
 win.GetTop = function() return 600 end
 win.GetBottom = function() return 400 end
 local function drag() win.grip:GetScript('OnDragStop')(win.grip) end
 local function saved() local s = tweaks.moverLayouts.Modern.lootWindow; return s.point .. ' ' .. s.x .. ' ' .. s.y end
 drag()
-assert(saved() == 'LEFT 100 45', 'Up: the holder takes the bottom edge (400 + 90): ' .. saved())
+assert(saved() == 'RIGHT -640 45', 'Up: the holder takes the bottom edge (400 + 90): ' .. saved())
 spot = anchor()
 assert(spot == 'BOTTOMLEFT BOTTOMLEFT', 'Up after the drag: ' .. spot)
 tweaks.lootWindowGrowth = 'down'
 drag()
-assert(saved() == 'LEFT 100 155', 'Down: the holder takes the top edge (600): ' .. saved())
+assert(saved() == 'RIGHT -640 155', 'Down: the holder takes the top edge (600): ' .. saved())
 spot = anchor()
 assert(spot == 'TOPLEFT TOPLEFT', 'Down after the drag: ' .. spot)
 
@@ -133,7 +134,7 @@ assert(at() == 'BOTTOMLEFT true BOTTOMLEFT 470 450', 'Up near the top keeps room
 -- a drag only moves it for this loot, held by its bottom edge; nothing saved
 drag()
 assert(at() == 'BOTTOMLEFT true BOTTOMLEFT 100 400', 'Up drag at the cursor: ' .. at())
-assert(saved() == 'LEFT 100 155', 'nothing saved at the cursor')
+assert(saved() == 'RIGHT -640 155', 'nothing saved at the cursor')
 -- switching to Down keeps it where it is, now by its top edge
 tweaks.lootWindowGrowth = 'down'
 LW:Replace()
@@ -146,6 +147,7 @@ tweaks.lootWindowGrowth = 'up'
 tweaks.lootWindowScale = 1.5
 win.GetEffectiveScale = function() return 1.5 end
 drag()
-assert(saved() == 'LEFT 150 268', 'Up at 150%: ' .. saved())
+-- (x from the right edge: left 150 + width 260 * 1.5 = 540, so 540 - 1000)
+assert(saved() == 'RIGHT -460 268', 'Up at 150%: ' .. saved())
 
 print('PASS: loot window growth')

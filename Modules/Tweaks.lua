@@ -767,32 +767,22 @@ local function QueueSaveSync()
     syncSaveTimer = C_Timer.NewTimer(5, function() syncSaveTimer = nil; SaveSync() end)
 end
 
--- Copies the source's snapshot onto this character, once per snapshot
+-- Copies all of the source's snapshot onto this character. Never on its own (Malkkav 11-26: alts took
+-- the source's changes at every login, unasked, and players saw their settings "reset"): each other
+-- character is asked once (Tweaks.AskSync), and after that only Copy Now in the settings copies.
 local function LoadSync()
     local db = GetDb()
     local account = db and db.syncUI and GetSyncStore()
     if not (account and account.source) or IsSource(account) then return end
     local store = account.snapshot
-    if not (store and store.savedAt) then return end
+    if not (store and store.savedAt) or InCombatLockdown() then return end
     local charDB = ns.CharDB()
-    if charDB.syncApplied == store.savedAt or InCombatLockdown() then return end
     local sourceName = SourceLabel(account.source) or "another character"
     Tweaks.syncLoading = true
 
-    -- Only what the source changed since the snapshot this character last took is copied (all of it
-    -- the first time). A value this character changed on its own stays until the source changes it.
-    local since = charDB.syncApplied
-    local function IsNew(stamp)
-        return since == nil or (tonumber(stamp) or 0) > since
-    end
-    local stamps = store.stamps or {}
-    local cvarStamps = store.cvarStamps or {}
-    -- a snapshot saved before stamps: everything in it dates from its savedAt
-    if store.cvarStamps == nil then
-        local legacy = store.savedAt
-        stamps = setmetatable({}, { __index = function() return legacy end })
-        cvarStamps = stamps
-    end
+    -- all of it, every time: the player asked for this character to match the source
+    local function IsNew() return true end
+    local stamps, cvarStamps = {}, {}
     -- "1" and "1.000000" are the same setting
     local function SameCVar(a, b)
         local na, nb = tonumber(a), tonumber(b)
@@ -839,8 +829,7 @@ local function LoadSync()
     local manager = EditModeManagerFrame
     local layoutInfo = manager and manager.layoutInfo
     local expected = ns.IsGamepadUI() and Enum.InputDeviceInterfaceType.Gamepad or Enum.InputDeviceInterfaceType.Mkb
-    -- (and only a layout the source picked since: one the player chose here stays)
-    if store.editModeLayout and layoutInfo and layoutInfo.layouts and not charDB.syncLayoutTaken and IsNew(stamps.layout) then
+    if store.editModeLayout and layoutInfo and layoutInfo.layouts then
         for index, layout in ipairs(layoutInfo.layouts) do
             local sameKind = store.editModeLayoutType == nil
                 or layout.layoutType == store.editModeLayoutType
@@ -849,7 +838,6 @@ local function LoadSync()
                 local sameMode = style == expected or (style == nil and expected == Enum.InputDeviceInterfaceType.Mkb)
                 if index ~= layoutInfo.activeLayout and sameMode then
                     layoutChanged, layoutIndex = true, index
-                    charDB.syncLayoutTaken = true
                     Tweaks.AdoptSyncedLayout(layout)
                 end
                 break
@@ -985,7 +973,7 @@ local function LoadSync()
 
     -- A watched CVar runs Blizzard's callback inside this call and taints what it writes (the raid
     -- frame options): any change asks for a clean reload, after the action bar pass.
-    if (changed > 0 or layoutChanged or chatChanged) and not (ns.db.global and ns.db.global.syncHideAlerts) then
+    if changed > 0 or layoutChanged or chatChanged then
         C_Timer.After(6, function()
             if not InCombatLockdown() then
                 ns.ShowDialog("FLAREUI_SYNC_RELOAD", sourceName, { layout = layoutIndex })
@@ -1020,6 +1008,51 @@ local function RunLoadSync()
     end
 end
 
+-- Copy Now (the settings) and the first-login question's Copy
+function Tweaks:CopySyncNow()
+    if InCombatLockdown() then return end
+    RunLoadSync()
+end
+
+-- Whether Copy Now has something to copy: sync on, this isn't the source, the source saved a snapshot
+function Tweaks:CanCopySync()
+    local db = GetDb()
+    local account = db and db.syncUI and GetSyncStore()
+    return account ~= nil and account.source ~= nil and not IsSource(account)
+        and type(account.snapshot) == "table" and account.snapshot.savedAt ~= nil
+end
+
+-- The once-per-character question, at the first login after the source saved a snapshot. Either answer
+-- is kept (charDB.syncAsked), and chat says where later copies come from.
+function Tweaks.SyncAnswered()
+    local charDB = ns.CharDB()
+    charDB.syncAsked = true
+    local label = SourceLabel((GetSyncStore() or {}).source) or "?"
+    Print(L["To copy %s's settings again, use Copy Now in FlareUI's settings: General > Sync Blizzard UI."]:format(label))
+end
+
+function Tweaks.AskSync()
+    if not Tweaks:CanCopySync() then return end
+    local charDB = ns.CharDB()
+    -- (before 11-26 a character that had taken a sync was already copying on its own: it counts as
+    -- asked, and is told once that copies are now by hand)
+    if charDB.syncApplied ~= nil and not charDB.syncAsked then
+        charDB.syncAsked = true
+        Print(L["Sync Blizzard UI no longer copies on its own. To copy %s's settings again, use Copy Now in FlareUI's settings: General > Sync Blizzard UI."]
+            :format(SourceLabel(GetSyncStore().source) or "?"))
+        return
+    end
+    if charDB.syncAsked then return end
+    if InCombatLockdown() then
+        SyncEvents:RegisterEvent("PLAYER_REGEN_ENABLED", function()
+            SyncEvents:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            Tweaks.AskSync()
+        end)
+        return
+    end
+    ns.ShowDialog("FLAREUI_SYNC_ASK", SourceLabel(GetSyncStore().source) or "?")
+end
+
 local function InitSyncUI()
     SyncEvents:RegisterEvent("PLAYER_LOGOUT", SaveSync)
     -- Enemy Nameplates in Combat Only flips its CVar at every fight; the snapshot takes the player's
@@ -1038,8 +1071,8 @@ local function InitSyncUI()
     SyncEvents:RegisterEvent("UPDATE_FLOATING_CHAT_WINDOWS", QueueSaveSync)
 
     C_Timer.After(3, function()
-        -- a no-op when this character is the source, or when none is set yet
-        RunLoadSync()
+        -- the once-per-character question (nothing on the source, or with no snapshot yet)
+        Tweaks.AskSync()
         -- the source's first snapshot; with no source yet, this character becomes it
         C_Timer.After(1, SaveSync)
     end)

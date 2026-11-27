@@ -1146,24 +1146,41 @@ function R.lootFeed(c, spec)
     if atCursor then c:Texture('feedCursor',P.MEDIA..'Previews\\Cursor.tga',8,98,24,32,true) end
     local entries={}
     local quality=Get('tweaks.lootFeedQuality',0)
-    if quality<=1 then entries[#entries+1]={icon='INV_Fabric_Linen_01',text='|cffffffff'..L["Linen Cloth"]..' x2|r'} end
-    if quality<=2 then entries[#entries+1]={icon='INV_Sword_04',text='|cff1eff00'..L["Sword"]..'|r'} end
-    if quality>=3 then entries[#entries+1]={icon='INV_Chest_Cloth_25',text='|cffa335ee'..L["Robes of the Archmage"]..'|r'} end
+    if quality<=1 then entries[#entries+1]={icon='INV_Fabric_Linen_01',r=1,g=1,b=1,text='|cffffffff'..L["Linen Cloth"]..' x2|r'} end
+    if quality<=2 then entries[#entries+1]={icon='INV_Sword_04',r=0.12,g=1,b=0,text='|cff1eff00'..L["Sword"]..'|r'} end
+    if quality>=3 then entries[#entries+1]={icon='INV_Chest_Cloth_25',r=0.64,g=0.21,b=0.93,text='|cffa335ee'..L["Robes of the Archmage"]..'|r'} end
     local itemCount = #entries
-    if Get('tweaks.lootFeedMoney',true) then entries[#entries+1]={icon='INV_Misc_Coin_01',text='12 |cffffd700'..L["Gold"]..'|r'} end
+    if Get('tweaks.lootFeedMoney',true) then entries[#entries+1]={icon='INV_Misc_Coin_01',r=1,g=0.84,b=0,text='12 |cffffd700'..L["Gold"]..'|r'} end
     -- Show Skill-Ups: the game's own name for Mining
-    if Get('tweaks.lootFeedSkills') then entries[#entries+1]={icon='Trade_Mining',text='|cff73bfff'..((C_Spell.GetSpellName and C_Spell.GetSpellName(2575)) or 'Mining')..' 76|r'} end
+    if Get('tweaks.lootFeedSkills') then entries[#entries+1]={icon='Trade_Mining',r=0.45,g=0.75,b=1,text='|cff73bfff'..((C_Spell.GetSpellName and C_Spell.GetSpellName(2575)) or 'Mining')..' 76|r'} end
     if spec.key == 'bl.lootFeedQuality' then
         -- Reserve the resting height of the longest list across quality choices.
         local maxRows = 2 + #entries - itemCount
         c.used = 65 + maxRows * 28 + 20
     end
-    for i,e in ipairs(entries) do Icon(c,'feedIcon'..i,e.icon,x,65+i*28,20); c:Text('feedText'..i,e.text,x+25,68+i*28,c.width-x-30,{size=10}) end
+    -- (chiefballsy, 7.1) the icons' shape and quality border, drawn by the feed's own LF.Shape
+    local shape = spec.key == 'bl.lootFeed' and spec.value or (Get('tweaks.lootFeedIcons') == 'round' and 'round' or 'square')
+    for i,e in ipairs(entries) do
+        local line = c:Object('feedLine'..i, 'Frame')
+        line:SetSize(20, 20)
+        line:SetPoint('TOPLEFT', x, -(65+i*28))
+        if not line.icon then
+            line.icon = line:CreateTexture(nil, 'ARTWORK'); line.icon:SetAllPoints()
+            line.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            line.mask = line:CreateMaskTexture(); line.mask:SetAllPoints(line.icon)
+            line.icon:AddMaskTexture(line.mask)
+            line.border = line:CreateTexture(nil, 'OVERLAY')
+        end
+        line.icon:SetTexture('Interface\\Icons\\' .. e.icon)
+        if ns.LootFeed and ns.LootFeed.Shape then ns.LootFeed.Shape(line.icon, line.mask, line.border, shape == 'round', 20) end
+        line.border:SetVertexColor(e.r, e.g, e.b)
+        c:Text('feedText'..i,e.text,x+25,68+i*28,c.width-x-30,{size=10})
+    end
     local elapsed=0
     c:Animate(function(_,dt)
         elapsed=(elapsed+dt)%3
         for i=1,#entries do
-            local icon,text=c.objects['feedIcon'..i],c.objects['feedText'..i]
+            local icon,text=c.objects['feedLine'..i],c.objects['feedText'..i]
             icon:ClearAllPoints(); icon:SetPoint('TOPLEFT',x,-(65+i*28-elapsed*12))
             text:ClearAllPoints(); text:SetPoint('TOPLEFT',x+25,-(68+i*28-elapsed*12))
             local alpha=math.min(1,(3-elapsed)*2); icon:SetAlpha(alpha); text:SetAlpha(alpha)

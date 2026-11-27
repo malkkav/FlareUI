@@ -1825,6 +1825,28 @@ function NP.Layout(p)
         else
             p.cast.Border:Hide()
         end
+        -- (Malkkav 11-27) the icon divider, as on every unit frame cast bar (UnitFrames.lua UF.CastIconFrame):
+        -- one straight side of the plate's own cast border on the join between the icon and the bar. Its box
+        -- ends as far past the bar's left edge as the border does past its right one (wrap - castIn).
+        local divider = p.cast.FlareUI_Divider
+        if castArt and db.castIcon and K.DividerSide then
+            if not divider then
+                divider = CreateFrame("Frame", nil, p.cast, "BackdropTemplate")
+                divider:SetFrameLevel(p.cast.Border:GetFrameLevel())
+                p.cast.FlareUI_Divider = divider
+            end
+            local out = wrap - castIn
+            divider:ClearAllPoints()
+            divider:SetPoint("TOPLEFT", p.cast.Border, "TOPLEFT")
+            divider:SetPoint("BOTTOMRIGHT", p.cast, "BOTTOMLEFT", out, -out)
+            divider:SetBackdrop({ edgeFile = castArt, edgeSize = castEdge })
+            local c = ns.BORDER_COLOR
+            divider:SetBackdropBorderColor(c.r, c.g, c.b, c.a)
+            K.DividerSide(divider, out / 2)
+            divider:Show()
+        elseif divider then
+            divider:Hide()
+        end
         ApplyFontTo(p.cast.Text, db.castFont)
         ApplyFontTo(p.cast.Time, db.castFont)
         ApplyFontTo(p.cast.target, db.castFont)
@@ -4642,30 +4664,50 @@ function NP.PinZoom()
     if db.obscuredAlpha then want.nameplateOccludedAlphaMult = string.format("%.2f", db.obscuredAlpha) end
     local clamp = NP.ClampCVar()
     if clamp and db.clampTarget then want[clamp] = "1" end
-    local backup = ns.db.global.nameplateZoomBackup or {}
+    local global, char = NP.ZoomBackups()
     for name, value in pairs(want) do
         local now = C_CVar.GetCVar(name)
         if now ~= nil then
+            local backup = NP.ZoomBackupFor(name, global, char)
             if backup[name] == nil then backup[name] = now end
             if tonumber(now) ~= tonumber(value) then pcall(SetCVar, name, value) end
         end
     end
     -- no longer set by FlareUI: back as it was
-    for name, value in pairs(backup) do
-        if want[name] == nil then
+    for _, backup in ipairs({ global, char }) do
+        for name, value in pairs(backup) do
+            if want[name] == nil then
+                if C_CVar.GetCVar(name) ~= nil then pcall(SetCVar, name, value) end
+                backup[name] = nil
+            end
+        end
+    end
+end
+-- The zoom backups: a setting the game saves per character is backed up per character (one character's
+-- value was put back on another, 11-26), the rest account-wide as before
+function NP.ZoomBackups()
+    local global, char = ns.db.global, ns.CharDB()
+    global.nameplateZoomBackup = global.nameplateZoomBackup or {}
+    char.nameplateZoomBackup = char.nameplateZoomBackup or {}
+    return global.nameplateZoomBackup, char.nameplateZoomBackup
+end
+function NP.ZoomBackupFor(name, global, char)
+    local perCharacter = ns.Tweaks and ns.Tweaks.SavedPerCharacter and ns.Tweaks.SavedPerCharacter(name)
+    if not perCharacter then return global end
+    -- a value backed up account-wide before moves to this character
+    if global[name] ~= nil and char[name] == nil then char[name] = global[name] end
+    global[name] = nil
+    return char
+end
+function NP.RestoreZoom()
+    if not (ns.db and ns.db.global) or InCombatLockdown() then return end
+    local global, char = NP.ZoomBackups()
+    for _, backup in ipairs({ global, char }) do
+        for name, value in pairs(backup) do
             if C_CVar.GetCVar(name) ~= nil then pcall(SetCVar, name, value) end
             backup[name] = nil
         end
     end
-    ns.db.global.nameplateZoomBackup = backup
-end
-function NP.RestoreZoom()
-    local backup = ns.db and ns.db.global and ns.db.global.nameplateZoomBackup
-    if not backup or InCombatLockdown() then return end
-    for name, value in pairs(backup) do
-        if C_CVar.GetCVar(name) ~= nil then pcall(SetCVar, name, value) end
-    end
-    ns.db.global.nameplateZoomBackup = nil
 end
 
 local function MigrateProfile()

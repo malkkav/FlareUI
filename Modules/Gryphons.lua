@@ -73,18 +73,45 @@ end
 
 -- SCALE: 50-200% on top of bar 1's scale (they sit inside it). 100% never touches a gryphon; out of a
 -- fight only.
+-- (Malkkav 11-27) Bar 1's Icon Size under 100% shrinks the gryphons' container (Blizzard's
+-- MainActionBar:EditModeSetScale), but each gryphon's own Edit Mode maths (nudging, snapping, a drag's saved
+-- spot: EditModeSystemMixin:BreakFrameSnap) count only the gryphon's own scale: every arrow press moved it
+-- up a fixed step and snapping threw it about. So the container stays at 100% and the shrink goes on each
+-- gryphon itself, with its Scale (G.barShrink); Blizzard's maths are right again. Quality of Life off: the
+-- container is Blizzard's again.
 G.CAP_FRAMES = { capLeft = "LeftEndCap", capRight = "RightEndCap" }
+G.barShrink = 1
+function G.HookBarScale()
+    local bar = _G.MainActionBar
+    if not bar or bar.FlareUI_ScaleHooked or type(bar.EditModeSetScale) ~= "function" then return end
+    bar.FlareUI_ScaleHooked = true
+    hooksecurefunc(bar, "EditModeSetScale", function(_, newScale)
+        G.barShrink = (type(newScale) == "number" and newScale > 0 and newScale < 1) and newScale or 1
+        -- (a frame later, out of Blizzard's own call)
+        C_Timer.After(0, G.ApplyScales)
+    end)
+    -- (set before the hook: the container's scale is the shrink)
+    local caps = bar.EndCaps
+    local now = caps and caps:GetScale()
+    if type(now) == "number" and now > 0 and now < 1 then G.barShrink = now end
+end
 function G.ApplyScales()
     local db = BarDB()
     local caps = _G.MainActionBar and _G.MainActionBar.EndCaps
     if not (db and caps) then return end
     if InCombatLockdown() then G.pendingScale = true return end
     G.pendingScale = nil
-    local sizes = QoLOn() and db.capScale or {}
+    G.HookBarScale()
+    local on = QoLOn()
+    local shrink = G.barShrink or 1
+    -- the container at 100% (QoL on), or Blizzard's shrink back (off)
+    local want = on and 1 or shrink
+    if math.abs(caps:GetScale() - want) > 0.0001 then caps:SetScale(want) end
+    local sizes = on and db.capScale or {}
     for key, field in pairs(G.CAP_FRAMES) do
         local cap = caps[field]
-        local scale = (sizes[key] or 100) / 100
-        if cap and not cap:IsForbidden() and (scale ~= 1 or cap.FlareUI_Scaled) then
+        local scale = (sizes[key] or 100) / 100 * (on and shrink or 1)
+        if cap and not cap:IsForbidden() and (math.abs(scale - 1) > 0.0001 or cap.FlareUI_Scaled) then
             -- its place on screen kept: at login Edit Mode places it before this scale, which
             -- then stretched its offsets too
             ns.SetSystemScale(cap, scale)

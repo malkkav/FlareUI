@@ -126,6 +126,12 @@ local function StyleTitle()
     ns.ApplyShadow(title, font)
     local c = font.color or { r = 0.80, g = 0.60, b = 0.34 }
     title:SetTextColor(c.r, c.g, c.b, c.a or 1)
+    -- (Malkkav 11-27) the close cross as tall as the title's capitals: its icon a little under the font size
+    local close = win.close
+    if close and close.icon then
+        local size = math.floor((font.size or 12) * 0.95 + 0.5)
+        close.icon:SetSize(size, size)
+    end
 end
 
 -- the bags' quality colours (Bags.lua), so the borders match; no quality counts as Common, as in
@@ -155,7 +161,7 @@ end
 local function ShowTip(row)
     local data = row.data
     local types = Enum.LootSlotType
-    if not data or (data.type ~= types.Item and data.type ~= types.Currency) then
+    if not data or data.sample or (data.type ~= types.Item and data.type ~= types.Currency) then
         -- (a row that scrolled or moved up under the mouse may have had an item's tooltip)
         if GameTooltip:IsOwned(row) then GameTooltip:Hide() end
         return
@@ -174,7 +180,7 @@ local function TipUpdate(row)
 end
 
 local function RowClick(row)
-    local slot = row.data and row.data.slot
+    local slot = row.data and not row.data.sample and row.data.slot
     if not slot then return end
     if IsModifiedClick() then
         HandleModifiedItemClick(GetLootSlotLink(slot))
@@ -508,16 +514,29 @@ function LW:Build()
     local grip = CreateFrame("Frame", nil, win)
     grip:SetHeight(26)
     grip:SetPoint("TOPLEFT")
-    grip:SetPoint("TOPRIGHT", -37, 0)
+    grip:SetPoint("TOPRIGHT", -30, 0)
     grip:EnableMouse(true)
     grip:RegisterForDrag("LeftButton")
     win.grip = grip
-    -- Blizzard's red close button, as FlareUI's other closable windows (Settings/Panel.lua), sized
-    -- to the low header where the loot roll window has its history button; win is no UI panel, so it
-    -- hides itself rather than through HideUIPanel
-    local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
-    close:SetSize(22, 22)
-    close:SetPoint("CENTER", win, "TOPRIGHT", -21.5, -15)
+    -- (Malkkav 11-27) a header button's cross in struck bronze, as the chat's, the quest tracker's and the
+    -- loot roll window's header icons (ns.BronzeIcon), in place of Blizzard's red close button, and further
+    -- right; win is no UI panel, so it hides itself rather than through HideUIPanel
+    local CLOSE_ICON = "Interface\\AddOns\\FlareUI\\Media\\Icons\\Close.tga"   -- (Development/Tools/close-icon)
+    local CLOSE_COLOR = { r = 0.61, g = 0.48, b = 0.29, a = 1 }                 -- (the header icons' bronze)
+    local close = CreateFrame("Button", nil, win)
+    close:SetSize(20, 20)
+    close:SetPoint("CENTER", win, "TOPRIGHT", -16, -15)
+    close.icon = close:CreateTexture(nil, "OVERLAY")
+    close.icon:SetPoint("CENTER")
+    close.icon:SetSize(11, 11)   -- (the title's size again in StyleTitle)
+    local bronze = ns.BronzeIcon   -- (Core.lua)
+    if bronze then
+        bronze.Apply(close.icon, CLOSE_ICON, CLOSE_COLOR)
+        close:SetScript("OnEnter", function(self) bronze.Paint(self.icon, CLOSE_COLOR, true) end)
+        close:SetScript("OnLeave", function(self) bronze.Paint(self.icon, CLOSE_COLOR, false) end)
+    end
+    close:SetScript("OnMouseDown", function(self) self.icon:SetPoint("CENTER", 1, -1) end)
+    close:SetScript("OnMouseUp", function(self) self.icon:SetPoint("CENTER", 0, 0) end)
     close:SetScript("OnClick", function() win:Hide() end)
     win.close = close
     local line = win:CreateTexture(nil, "OVERLAY")
@@ -538,6 +557,70 @@ function LW:Build()
     StyleTitle()
     Panel(win)
     return win
+end
+
+-- (Malkkav 11-27) Edit Mode's sample loot, as the settings preview's (PreviewSamples.lua R.lootWindow):
+-- money, a green axe and some bear meat, drawn by the window itself. sample: no tooltip, no click.
+function LW.SampleRows()
+    local T = Enum.LootSlotType
+    local function Icon(id, file)
+        return (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)) or ("Interface\\Icons\\" .. file)
+    end
+    return {
+        { sample = true, slot = 1, type = T.Money, texture = "Interface\\Icons\\INV_Misc_Coin_01", quantity = 0,
+          name = (SILVER_AMOUNT or "%d Silver"):format(2) .. " " .. (COPPER_AMOUNT or "%d Copper"):format(34) },
+        { sample = true, slot = 2, type = T.Item, texture = "Interface\\Icons\\INV_Axe_09", quantity = 1, quality = 2,
+          name = L["Barbaric Battle Axe of the Gorilla"], ilvl = 18 },
+        { sample = true, slot = 3, type = T.Item, texture = Icon(3173, "INV_Misc_Food_14"), quantity = 4, quality = 1,
+          name = L["Bear Meat"] },
+    }
+end
+
+-- The sample window takes no mouse (Malkkav 11-27: it must only follow the box): its header can't drag it
+-- away from the box, nor its rows or close button take a click; a real loot gets it all back
+function LW.PreviewMouse(on)
+    if not win then return end
+    win:EnableMouse(on)
+    if win.grip then win.grip:EnableMouse(on) end
+    if win.close then win.close:EnableMouse(on) end
+    for _, row in ipairs(pool) do row:EnableMouse(on) end
+end
+
+-- (Malkkav 11-27) the Edit Mode box drawn over the whole preview: its yellow selection only, stretched from
+-- the box to the window's far edge (Grow Up: from the window's top down to the box). The box itself keeps its
+-- size, so the saved spot and Edit Mode's maths are never thrown off; back on the box after.
+function LW.FitBox(on)
+    local LEM = LibStub("FlareEditMode")
+    local holder = win and win.holder
+    local selection = holder and type(LEM.frameSelections) == "table" and LEM.frameSelections[holder]
+    if not selection then return end
+    selection:ClearAllPoints()
+    if on and win:IsShown() then
+        local up = LW.GrowsUp and LW.GrowsUp()
+        selection:SetPoint("TOPLEFT", up and win or holder, "TOPLEFT")
+        selection:SetPoint("BOTTOMRIGHT", up and holder or win, "BOTTOMRIGHT")
+    else
+        selection:SetAllPoints(holder)
+    end
+end
+
+-- Edit Mode: the samples while the box shows and no loot is open; gone again after
+function LW.EditPreview(on)
+    if not win then return end
+    if on and not LW.looting then
+        LW.previewing = true
+        LW:Show(LW.SampleRows())
+        -- hung from the Edit Mode box, as a real loot is (Place): left where it was built, it sat in the
+        -- middle of the screen, behind Blizzard's Edit Mode dialog
+        if LW.Place then LW.Place() end
+        LW.PreviewMouse(false)   -- (after Show: its first rows are made there)
+        LW.FitBox(true)
+    elseif LW.previewing then
+        LW.previewing = nil
+        LW.PreviewMouse(true)
+        LW.FitBox(false)
+        if not LW.looting then win:Hide() end
+    end
 end
 
 -- rows from LW.ReadSlots, in the order they dropped
@@ -624,7 +707,8 @@ end
 --------------------------------------------------
 local LEM = LibStub("FlareEditMode")
 local MOVER_KEY = "lootWindow"   -- tweaks.moverLayouts[layout].lootWindow
-local DEFAULTS = { point = "LEFT", x = 20, y = 80 }
+-- (Malkkav 11-27) his own spot on the FlareUI layout: right side, a little above the middle (was LEFT 20, 80)
+local DEFAULTS = { point = "RIGHT", x = -367, y = 66 }
 local HOLDER_H = TOP + ROW_H + PAD   -- the Edit Mode box: the window with one row
 local holder, events
 
@@ -686,6 +770,7 @@ local function GrowsUp()
     local db = GetDb()
     return db and db.lootWindowGrowth == "up" or false
 end
+LW.GrowsUp = GrowsUp
 
 -- Loot Under Mouse opens it at the cursor, as Blizzard's (LootFrame.lua Open: the offsets in the
 -- window's own scale); otherwise it hangs from the Edit Mode spot. Growth Up mirrors both: the
@@ -708,6 +793,8 @@ local function Place()
         win:SetPoint("TOPLEFT", holder, "TOPLEFT")
     end
 end
+
+LW.Place = Place
 
 -- the window held where it is now by the edge it grows from
 local function Pin()
@@ -817,6 +904,8 @@ end
 local function OnEvent(_, event, a, b)
     if event == "LOOT_OPENED" then
         LW.looting = true
+        -- (a real loot in Edit Mode takes the window from the samples, clicks and all)
+        if LW.previewing then LW.previewing = nil; LW.PreviewMouse(true) end
         LW.session = (LW.session or 0) + 1
         if LW.gamepad or LW.blizzard then return end
         OpenSound(b)
@@ -861,18 +950,58 @@ local function OnEvent(_, event, a, b)
     end
 end
 
+-- Edit Mode (Malkkav 11-26): while FlareUI's window is on, Blizzard's Loot Window box stayed on screen
+-- beside it, and Edit Mode's Loot Window checkbox moved only Blizzard's. Now the checkbox shows ours
+-- (with Loot Under Mouse off, as Blizzard's), and Blizzard's box is see-through and can't be clicked:
+-- frame calls only, none of its Edit Mode fields are written (EditModeManager.lua RefreshLootFrame).
+function LW.EditShown()
+    local settings = _G.EditModeManagerFrame and _G.EditModeManagerFrame.AccountSettings
+    local box = settings and settings.settingsCheckButtons and settings.settingsCheckButtons.LootFrame
+    local ticked = not (box and box.IsControlChecked) or box:IsControlChecked()
+    return ticked and not GetCVarBool("lootUnderMouse") and true or false
+end
+function LW.HideBlizzardBox(hide)
+    local frame = _G.LootFrame
+    if not frame then return end
+    frame:SetAlpha(hide and 0 or 1)
+    if frame.Selection then frame.Selection:EnableMouse(not hide) end
+end
+
 function LW:Init()
     if holder then return end
     LW:Build()
     holder = CreateFrame("Frame", "FlareUI_LootWindowHolder", UIParent)
+    win.holder = holder   -- (LW.FitBox)
     holder:SetClampedToScreen(true)
     ApplyScale()   -- (and the spot: ApplyPosition)
     LEM:AddFrame(holder, OnMoved, DEFAULTS, L["FlareUI Loot Window"])
     LEM:AddFrameSettings(holder, ns.EditSection("Frame", { ScaleSetting() }))
     LEM:RegisterCallback("layout", function(layoutName) ApplyPosition(layoutName) end)
     -- Loot Under Mouse: nothing to place, so Edit Mode leaves the frame out (as LootFeed.lua's At the Cursor)
-    LEM:RegisterCallback("enter", function() holder:SetShown(not GetCVarBool("lootUnderMouse")) end)
-    LEM:RegisterCallback("exit", function() holder:Show(); ApplyPosition() end)
+    LEM:RegisterCallback("enter", function()
+        holder:SetShown(LW.EditShown()); LW.HideBlizzardBox(true)
+        LW.EditPreview(holder:IsShown())
+    end)
+    LEM:RegisterCallback("exit", function()
+        LW.EditPreview(false)
+        holder:Show(); ApplyPosition(); LW.HideBlizzardBox(false)
+    end)
+    -- the Edit Mode box over the sample window, so it can still be dragged (as Loot Rolls')
+    local selection = type(LEM.frameSelections) == "table" and LEM.frameSelections[holder]
+    if selection and win then
+        selection:SetFrameStrata(win:GetFrameStrata())
+        selection:SetFrameLevel(win:GetFrameLevel() + 20)
+    end
+    -- Edit Mode's own Loot Window checkbox shows and hides FlareUI's box instead of Blizzard's
+    local settings = _G.EditModeManagerFrame and _G.EditModeManagerFrame.AccountSettings
+    if settings and settings.RefreshLootFrame then
+        hooksecurefunc(settings, "RefreshLootFrame", function()
+            if not LEM:IsInEditMode() then return end
+            holder:SetShown(LW.EditShown())
+            LW.HideBlizzardBox(true)
+            LW.EditPreview(holder:IsShown())
+        end)
+    end
 
     win.grip:SetScript("OnDragStart", function() win:StartMoving() end)
     win.grip:SetScript("OnDragStop", OnDragStop)

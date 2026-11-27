@@ -441,11 +441,29 @@ env.ChatTypeInfo.SAY.colorNameByClass = false
 env.EditModeManagerFrame.layoutInfo.activeLayout = 2
 assert(tweaks:ShouldLoad() and not tweaks:IsSyncSource())
 ui:flushTimers()
+-- (11-26) nothing copies on its own: the first login asks once
+assert(opened[#opened][1] == "FLAREUI_SYNC_ASK" and opened[#opened][2] == "Marin Reed")
+assert(cv.autoLootDefault == "1" and chatName == "Old", "nothing copied before the answer")
+ns.Dialogs.FLAREUI_SYNC_ASK.OnAccept()
+assert(ns.CharDB().syncAsked and texts[#texts]:find("Copy Now", 1, true), "chat says where later copies come from")
 assert(ns.CharDB().syncApplied == 1001 and chatName == "Main" and chatSize == 15 and cv.autoLootDefault == "0")
 assert(ignored and bank and guildInvites and env.ChatTypeInfo.SAY.colorNameByClass)
 assert(filters[1] == "SAY" and channels[1] == "General")
 ui:flushTimers()
 assert(actionBar and updated == 1 and opened[#opened][1] == "FLAREUI_SYNC_RELOAD")
+-- the next login: no question and no copy, whatever changed; Copy Now copies all of it
+do
+    cv.autoLootDefault = "1"
+    local asked = #opened
+    tweaks.accountStarted = nil
+    tweaks:ShouldLoad()
+    ui:flushTimers()
+    assert(#opened == asked and cv.autoLootDefault == "1", "asked once only, never copied on its own")
+    assert(tweaks:CanCopySync())
+    tweaks:CopySyncNow()
+    assert(cv.autoLootDefault == "0", "Copy Now copies everything")
+    ui:flushTimers()
+end
 
 -- what doesn't ask the other characters to reload (11-23, Shweep): a setting new to the list, channels in
 -- another order, a channel this one can't join, a switch flipped while playing
@@ -474,10 +492,12 @@ do
     env.RemoveChatWindowChannel = function() end
     guid, filters, channels = "Player-Third", { "SAY" }, { "Trade" }
     cv.autoLootDefault, env.EditModeManagerFrame.layoutInfo.activeLayout = "0", 1
-    local asked = #opened
     tweaks.accountStarted = nil
     tweaks:ShouldLoad()
     ui:flushTimers()
+    assert(opened[#opened][1] == "FLAREUI_SYNC_ASK")
+    local asked = #opened
+    ns.Dialogs.FLAREUI_SYNC_ASK.OnAccept()
     ui:flushTimers()
     assert(ns.CharDB().syncApplied == 1001 and #opened == asked, "no reload asked for what can't change")
     env.AddChatWindowChannel = add
@@ -493,16 +513,45 @@ do
     local dockUpdates = 0
     env.FCF_DockUpdate = function() dockUpdates = dockUpdates + 1 end
     guid, cv.autoLootDefault, chatName, chatSize = "Player-Pad", "1", "Old", 11
-    local asked = #opened
     tweaks.accountStarted = nil
     assert(tweaks:ShouldLoad())
     ui:flushTimers()
+    local asked = #opened
+    ns.Dialogs.FLAREUI_SYNC_ASK.OnAccept()
     ui:flushTimers()
     assert(ns.CharDB().syncApplied == 1001 and cv.autoLootDefault == "1" and dockUpdates == 0)
     assert(#opened > asked and opened[#opened][1] == "FLAREUI_SYNC_RELOAD")
     ui:emit("PLAYER_LOGOUT")
     assert(cv.autoLootDefault == "0", "set as the session ends")
     ns.IsGamepadUI = isGamepad
+end
+
+-- (11-26) Not Now is an answer too: never asked again, nothing copied; a character that took syncs
+-- before is told once that copies are by hand now, and isn't asked
+do
+    guid, cv.autoLootDefault = "Player-Declines", "1"
+    tweaks.accountStarted = nil
+    tweaks:ShouldLoad()
+    ui:flushTimers()
+    assert(opened[#opened][1] == "FLAREUI_SYNC_ASK")
+    ns.Dialogs.FLAREUI_SYNC_ASK.OnCancel()
+    assert(ns.CharDB().syncAsked and cv.autoLootDefault == "1" and texts[#texts]:find("Copy Now", 1, true))
+    local asked = #opened
+    tweaks.accountStarted = nil
+    tweaks:ShouldLoad()
+    ui:flushTimers()
+    assert(#opened == asked, "Not Now: never asked again")
+
+    guid = "Player-Old"
+    ns.CharDB().syncApplied = 900
+    tweaks.accountStarted = nil
+    tweaks:ShouldLoad()
+    ui:flushTimers()
+    assert(#opened == asked and ns.CharDB().syncAsked and cv.autoLootDefault == "1", "an old syncing character isn't asked")
+    assert(texts[#texts]:find("no longer copies on its own", 1, true))
+    -- the source itself has nothing to copy
+    guid = store.source.guid
+    assert(not tweaks:CanCopySync())
 end
 
 print("PASS: Quality of Life vendor, quests, sync, loot, visibility and CVar behavior")
