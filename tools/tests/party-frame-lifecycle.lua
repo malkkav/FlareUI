@@ -8,8 +8,8 @@ env.C_StringUtil = { CreateNumericRuleFormatter = function() return nil end }
 function Widget:SetReverse(value) self.reverseCooldown = value end
 function Widget:SetAuraSlotFilterString(key, filter) self.auraSlots[key].filter = filter end
 function Widget:SetMouseMotionEnabled(value) self.mouseMotion = value end
-local tooltipSettings = ns.db.profile.tooltips
-tooltipSettings.enabled, tooltipSettings.visibility.groupAuras = true, "combat"
+assert(not ns.db.profile.tooltips.enabled, "Aura Tooltips works with the Tooltips module off")
+party.classic.auraTooltips = "combat"
 party.pets, party.targets, party.showSolo = true, true, true
 party.classic.portrait = "class"
 party.classic.castbar, party.classic.smoothBars = true, true
@@ -45,6 +45,22 @@ ui:emit("PLAYER_REGEN_DISABLED")
 assert(not auraButton.mouseMotion)
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(auraButton.mouseMotion)
+party.classic.auraTooltips = nil
+ns.db.profile.tooltips.visibility.groupAuras = "never"
+pf.ApplyAuraMouse()
+assert(not auraButton.mouseMotion, "a pick saved on the Tooltips page carries over")
+ns.db.profile.tooltips.visibility.groupAuras = nil
+pf.ApplyAuraMouse()
+assert(auraButton.mouseMotion, "Always by default")
+local function partyRow(name)
+    for _, entry in ipairs(holder.settings) do if entry.name == name then return entry end end
+end
+local tooltipRow = partyRow("Aura Tooltips")
+assert(tooltipRow and tooltipRow.default == "always" and tooltipRow.get() == "always")
+tooltipRow.set(nil, "never")
+assert(party.classic.auraTooltips == "never" and not auraButton.mouseMotion, "the icons switch at once")
+tooltipRow.set(nil, "always")
+assert(party.classic.auraTooltips == "always" and auraButton.mouseMotion)
 local highlight = a.AuraHighlight.container
 local highlightKey, highlightSlot = next(highlight.auraSlots)
 assert(highlightSlot.filter == "HARMFUL|RAID" and highlightSlot.enabled)
@@ -392,5 +408,16 @@ do
     tile.ringKind, kind = nil, "normal"
     assert(at() and dragon() == nil)
     env.UnitClassification = classify
+end
+do
+    -- each style keeps its own Aura Tooltips, applied as the Party Style switches
+    partyRow("Party Style").set(nil, "classic")
+    party.classic.auraTooltips, party.raid.auraTooltips = "never", "always"
+    pf.ApplyAuraMouse()
+    assert(not auraButton.mouseMotion)
+    partyRow("Party Style").set(nil, "raid")
+    assert(auraButton.mouseMotion, "Raid Style's Always after the switch")
+    partyRow("Party Style").set(nil, "classic")
+    assert(not auraButton.mouseMotion, "back to Classic's Never")
 end
 print("PASS: party frames live health, role/order, secure registration, pets, targets and Edit Mode")

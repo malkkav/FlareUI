@@ -960,7 +960,6 @@ local defaults = {
                 actionBars = "always",
                 other = "always",       -- Everything Else
                 auras = "always",       -- every buff and debuff icon's tooltip
-                groupAuras = "always",  -- party and raid aura icons show their tooltip ("never" confuses: the icons then let the mouse through to the frame; PartyFrames.lua)
             },
         },
 

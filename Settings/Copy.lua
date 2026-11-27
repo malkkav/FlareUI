@@ -2977,13 +2977,6 @@ ns.Copy = {
             section = "tt.visibilitySection",
             tip = L["Hold Shift to see a hidden tooltip."],
         },
-        ["tt.showGroupAuras"] = {
-            choices = { L["Never"], L["Always"], L["Hide in Combat"] },
-            desc = L["Tooltips on party and raid aura icons. With Never, pointing at an icon counts as pointing at the frame."],
-            label = L["Party/Raid Auras"],
-            section = "tt.visibilitySection",
-            tip = L["Mouseover macros don't reach the frame while an icon shows its tooltip. Pick Hide in Combat to keep them working in fights."],
-        },
         ["tt.showOther"] = {
             choices = { L["Never"], L["Always"], L["Hide in Combat"] },
             desc = L["Other tooltips in Blizzard's spot: the minimap, menus and more."],

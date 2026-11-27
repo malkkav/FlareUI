@@ -1,5 +1,5 @@
 -- Raid headers, main tanks and Edit Mode samples use the real shared tile kit.
-local ui, ns, unit, edit = dofile("tools/tests/fixtures/party-world.lua")
+local ui, ns, unit, edit = assert(loadfile("tools/tests/fixtures/party-world.lua"))(true)
 local E = ui.env
 ui:installGroupHeaders()
 ui.inRaid = true
@@ -196,6 +196,40 @@ do
     assert(RF.SizeTier() == "medium" and RF.SizeValue("width") == shared, "medium: never changed, the shared Width")
     E.GetNumGroupMembers = function() return 8 end
     assert(RF.SizeTier() == "small" and RF.SizeValue("width") == 115)
+end
+
+do
+    -- Aura Tooltips: the raid's pick, the main tanks' own over it, a pick saved on the Tooltips page under both
+    local raidRow, tankRow = option(holder, "Aura Tooltips"), option(tanks, "Aura Tooltips")
+    assert(raidRow.get() == "always" and tankRow.get() == "always")
+    ns.db.profile.tooltips.visibility.groupAuras = "combat"
+    assert(raidRow.get() == "combat" and tankRow.get() == "combat", "a pick saved on the Tooltips page carries over")
+    raidRow.set("Modern", "never")
+    assert(db.auraTooltips == "never" and tankRow.get() == "never", "the main tanks follow the raid")
+    tankRow.set("Modern", "always")
+    assert(db.mainTanks.auraTooltips == "always" and tankRow.get() == "always" and raidRow.get() == "never")
+
+    -- each tile's icons follow their own frame's pick
+    local Widget = getmetatable(E.UIParent)
+    function Widget:SetMouseMotionEnabled(value) self.mouseMotion = value end
+    function Widget:SetReverse(value) self.reverseCooldown = value end
+    E.C_StringUtil = E.C_StringUtil or { CreateNumericRuleFormatter = function() return nil end }
+    option(holder, "Debuffs").set("Modern", "INSIDE_TOPRIGHT")
+    option(tanks, "Debuffs").set("Modern", "INSIDE_TOPRIGHT")
+    local function icon(tile)
+        local _, group = next(tile.AuraPos.INSIDE_TOPRIGHT.container.groups)
+        local button = E.CreateFrame("Frame", nil, tile)
+        group.opts.initializeFrame(button)
+        return button
+    end
+    local raidIcon, tankIcon = icon(group1[1]), icon(E.FlareUI_RaidTanksHeader[1])
+    assert(raidIcon.mouseMotion == false and tankIcon.mouseMotion == true, "Never on the raid only")
+    raidRow.set("Modern", "always")
+    tankRow.set("Modern", "never")
+    assert(raidIcon.mouseMotion == true and tankIcon.mouseMotion == false, "Never on the main tanks only")
+    ns.db.profile.tooltips.visibility.groupAuras = nil
+    db.auraTooltips, db.mainTanks.auraTooltips = nil, nil
+    assert(raidRow.get() == "always" and tankRow.get() == "always")
 end
 
 print("PASS: raid lifecycle, headers, tank targets, Edit Mode and combat deferral")

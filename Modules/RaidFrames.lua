@@ -206,7 +206,7 @@ local FIXED = { castbar = false, auraMax = 3, auraPerRow = 3 }
 -- main tank settings of their own (db.mainTanks), falling back to the raid's
 local TANK_OWN = { powerHeight = true, buffs = true, debuffs = true, dispels = true, dispelHighlight = true,
                    auraSize = true, buffSize = true, debuffSize = true, hideBuffs = true, onlyMyBuffs = true, dispellableOnly = true,
-                   auraSort = true, auraReverse = true, auraMineFirst = true,
+                   auraSort = true, auraReverse = true, auraMineFirst = true, auraTooltips = true,
                    powerManaOnly = true, powerText = true, tankTargets = true }
 local function View(sizeFn, own)
     return setmetatable({}, { __index = function(_, key)
@@ -969,6 +969,7 @@ local function AuraItems(get, set, d, view)
         { name = L["Only Dispellable Debuffs"], kind = LEM.SettingType.Checkbox, default = false,
           get = get("dispellableOnly", false), set = set("dispellableOnly"),
           desc = L["Only the debuffs you can dispel, plus boss debuffs and other important ones, as on Blizzard's raid frames."] },
+        PF.AuraTooltipsSetting(function() return view end, set("auraTooltips")),
     }
     return items
 end

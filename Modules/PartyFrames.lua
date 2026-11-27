@@ -1256,31 +1256,49 @@ local function PassClicks(button)
     if button.SetPropagateMouseClicks then pcall(button.SetPropagateMouseClicks, button, true) end
 end
 
--- Party and raid tiles' aura tooltips: Tooltips > On Party/Raid Auras (tooltips.visibility.groupAuras).
--- Never (the default): hovering an icon falls through to the tile (its unit tooltip, mouseover
--- healing). Always: the icons take the mouse. Hide in Combat: only out of a fight, switched as one
--- starts (PLAYER_REGEN_DISABLED, the last moment before lockdown) and ends, so mouseover healing
--- works in it. Clicks reach the tile either way. Boss tiles keep theirs.
-local groupAuraButtons = setmetatable({}, { __mode = "k" })
+-- Party, raid and main tank tiles' aura tooltips: Aura Tooltips in each frame's Edit Mode Auras
+-- section (auraTooltips), with or without the Tooltips module. Never: hovering an icon falls through to
+-- the tile (its unit tooltip). Always (the default): the icons take the mouse. Hide in Combat: only
+-- out of a fight, switched as one starts (PLAYER_REGEN_DISABLED, the last moment before lockdown) and
+-- ends. Mouseover macros reach the tile either way (tested in game, 7.1.2). Clicks reach the tile
+-- either way. Boss tiles keep theirs.
+local groupAuraButtons = setmetatable({}, { __mode = "k" })   -- button -> its tile
 local inFight = false
-local function GroupAuraMouse()
-    local db = ns.db and ns.db.profile and ns.db.profile.tooltips
-    local mode = db and db.enabled and db.visibility and db.visibility.groupAuras or "never"
+
+-- A frame's own pick, else the one saved on the Tooltips page before it moved here, else Always
+function PF.AuraTooltips(st)
+    local own = st and st.auraTooltips
+    if own then return own end
+    local tips = ns.db and ns.db.profile and ns.db.profile.tooltips
+    return tips and tips.visibility and tips.visibility.groupAuras or "always"
+end
+
+local function GroupAuraMouse(f)
+    local mode = PF.AuraTooltips(TS(f))
     return mode == "always" or (mode == "combat" and not inFight)
 end
 
 local function NoAuraTooltip(f, button)
     if f and f.ctx and f.ctx.hostile then return end
-    groupAuraButtons[button] = true
+    groupAuraButtons[button] = f
     ns.MarkAuraTooltip(button, "group")
-    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, GroupAuraMouse()) end
+    if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, GroupAuraMouse(f)) end
 end
 
 function PF.ApplyAuraMouse()
-    local on = GroupAuraMouse()
-    for button in pairs(groupAuraButtons) do
-        if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, on) end
+    for button, f in pairs(groupAuraButtons) do
+        if button.SetMouseMotionEnabled then pcall(button.SetMouseMotionEnabled, button, GroupAuraMouse(f)) end
     end
+end
+
+-- The Aura Tooltips row for a frame's Edit Mode Auras section
+function PF.AuraTooltipsSetting(st, set)
+    return { name = L["Aura Tooltips"], kind = LEM.SettingType.Dropdown, default = "always",
+             values = { { text = L["Never"], value = "never", isRadio = true }, { text = L["Always"], value = "always", isRadio = true },
+                        { text = L["Hide in Combat"], value = "combat", isRadio = true } },
+             get = function() return PF.AuraTooltips(st()) end,
+             set = function(layoutName, value) set(layoutName, value); PF.ApplyAuraMouse() end,
+             desc = L["Tooltips on party and raid aura icons. With Never, pointing at an icon counts as pointing at the frame."] }
 end
 
 do
@@ -1294,7 +1312,7 @@ do
 end
 
 -- A dispel type's symbol, drawn by Blizzard from the aura
-local function InitDispelIcon(button, size, inside)
+local function InitDispelIcon(button, size, inside, f)
     button:SetSize(size, size)
     if not button.FlareUI_DispelIcon then
         button.FlareUI_DispelIcon = button:CreateTexture(nil, "ARTWORK")
@@ -1308,7 +1326,7 @@ local function InitDispelIcon(button, size, inside)
         })
     end
     if inside then PassClicks(button) end
-    NoAuraTooltip(nil, button)   -- (dispel icons: party and raid tiles only)
+    NoAuraTooltip(f, button)
 end
 
 -- a tile's fonts: its context's (raid, boss), else the party frames'
@@ -1458,11 +1476,11 @@ local function ConfigureDispelSlots(f, pos, entry, container, lanes, size, perRo
         local button = entry.dispelSlots[key]
         if button then
             pcall(container.SetAuraSlotEnabled, container, key, true)
-            pcall(InitDispelIcon, button, size, inside)
+            pcall(InitDispelIcon, button, size, inside, f)
         else
             local ok, frame = pcall(container.AddAuraSlot, container, key, lane.filter, {
                 candidateFilters = { processedAuraType = processed.Dispel, includeDispelTypes = { [dtype] = true } },
-                initializeFrame = function(b) InitDispelIcon(b, size, inside) end,
+                initializeFrame = function(b) InitDispelIcon(b, size, inside, f) end,
             })
             if ok and frame then
                 entry.dispelSlots[key] = frame
@@ -1560,7 +1578,7 @@ local function ConfigurePosition(f, pos, lanes, extra)
             sortMethod = sorted and sortMethod or nil, sortDirection = sorted and sortDirection or nil,
             initializeFrame = function(button)
                 if kind == "dispels" then
-                    InitDispelIcon(button, size, inside)
+                    InitDispelIcon(button, size, inside, f)
                 else
                     button.FlareUI_AuraOwner = f   -- (a member who changes sides: ns.AuraLook.DispelSide)
                     K.InitAuraButton(button, size, isDebuff, unit, font, showTimer, look)
@@ -3580,6 +3598,8 @@ local function BuildSettings()
               if not party then return end
               party.style = value
               Refresh()
+              -- each style keeps its own Aura Tooltips, and a reused aura icon isn't set up again
+              PF.ApplyAuraMouse()
               RebuildSettings()
           end },
         { name = L["Orientation"], kind = LEM.SettingType.Dropdown, default = "VERTICAL",
@@ -3861,6 +3881,7 @@ local function BuildSettings()
           end)(),
           get = getS("dispels"), set = setS("dispels"),
           desc = L["An icon for each debuff type you can dispel. On the Portrait puts them two to a row in its middle (without a portrait, or in Raid Style, in the middle of the health bar). Anywhere else they line up."] },
+        PF.AuraTooltipsSetting(S, setS("auraTooltips")),
     }, getS, setS))
 
     -- one switch per icon; where they sit is fixed

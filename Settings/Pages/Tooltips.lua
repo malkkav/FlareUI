@@ -95,9 +95,6 @@ Show("tt.showWorld", world)
 Show("tt.showFrames", "tooltips.visibility.frameUnits")
 Show("tt.showBars", "tooltips.visibility.actionBars")
 Show("tt.showAuras", "tooltips.visibility.auras")
--- party and raid aura icons only take the mouse when this lets them (PartyFrames.lua)
-Show("tt.showGroupAuras", "tooltips.visibility.groupAuras",
-    function() if ns.PartyFrames and ns.PartyFrames.ApplyAuraMouse then ns.PartyFrames.ApplyAuraMouse() end end)
 Show("tt.showOther", "tooltips.visibility.other")
 
 -- TWEAKS TAB: in pairs: units (borders, names, target and threat, guild, faction), then IDs, then items
