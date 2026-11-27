@@ -38,7 +38,7 @@ S:Row{ key = "mm.style", kind = "styles", choices = { "square", "round" }, hideL
 -- Border: the square map's frame. Header is the metal frame with its title bar (minimap.squareHeader
 -- "art"); the others frame the map with no title bar (squareHeader "headerless"), in the heavy bronze
 -- or a FlareUI border (minimap.squareBorder). Live; the addon buttons move onto the new edge too.
--- (11-26, SupS) then a line and every Shared Media border: laid out as Thin, they may not line up
+-- (11-26, SupS) then a line and every Shared Media border: laid out as Thick, they may not line up
 S:Row{ key = "mm.squareBorder", kind = "choice", section = "mm.styleSection",
     choices = function()
         local list = { "bronze", "header", "thin", "thick" }

@@ -546,11 +546,13 @@ round.db.durability, round.db.finderEye = false, false
 round.ns.MinimapDurability.Update()
 round.ns.MinimapEye.Update()
 assert(renv.DurabilityFrame:GetAlpha() == 1 and nativeEye:GetAlpha() == 1)
--- (11-26, SupS) a Shared Media border on the square map: laid out as Thin, no corner mask
+-- (11-26, SupS) a Shared Media border on the square map: laid out as Thick, at 16 px
 do
     local MMx = round.ns.Minimap
     local spec = MMx.CustomBorderSpec("Pixel Edge")
-    assert(spec and spec.lsm == "Pixel Edge" and spec.mask == nil and spec.style.flare == spec)
+    local thick = MMx.SQUARE_BORDERS.thick
+    assert(spec and spec.lsm == "Pixel Edge" and spec.style.flare == spec)
+    assert(spec.edge == 16 and spec.grow == thick.grow and spec.mask == thick.mask)
     assert(MMx.CustomBorderSpec("thin") == nil and MMx.CustomBorderSpec("Not There") == nil)
     assert(MMx.CustomBorderSpec("Pixel Edge") == spec, "made once")
 end

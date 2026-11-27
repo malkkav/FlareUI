@@ -113,8 +113,9 @@ for _, spec in pairs(MM.SQUARE_BORDERS) do
         spec.style = style
     end
 end
--- (11-26, SupS) any Shared Media border, picked under FlareUI Thick: laid out as Thin (its numbers),
--- with a square mask. It may not line up with the map's edge: the player's pick (Malkkav).
+-- (11-26, SupS) any Shared Media border, picked under FlareUI Thick: laid out as Thick (its numbers and
+-- its corner mask), at 16 px as on the other frames (ns.BorderEdgeSize). As Thin at 12 it came out
+-- thinner, with a gap to the map. It may not line up with the map's edge: the player's pick (Malkkav).
 MM.customBorders = {}
 function MM.CustomBorderSpec(name)
     if type(name) ~= "string" or name == "" or MM.SQUARE_BORDERS[name] then return nil end
@@ -123,8 +124,8 @@ function MM.CustomBorderSpec(name)
     local spec = MM.customBorders[name]
     if spec then return spec end
     spec = {}
-    for k, v in pairs(MM.SQUARE_BORDERS.thin) do spec[k] = v end
-    spec.lsm, spec.edge, spec.mask = name, 12, nil
+    for k, v in pairs(MM.SQUARE_BORDERS.thick) do spec[k] = v end
+    spec.lsm, spec.edge = name, ns.BorderEdgeSize(LSM:Fetch("border", name), 16)
     local style = {}
     for k, v in pairs(HEADER_STYLES.headerless) do style[k] = v end
     for _, k in ipairs({ "side", "headerTop", "band", "shift" }) do style[k] = spec[k] end
