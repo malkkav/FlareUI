@@ -104,4 +104,14 @@ local x = assert(ui:find(function(w) return w.template == "UIPanelCloseButton" a
 x:Click()
 assert(not frame:IsShown(), "the X hides the window itself")
 ui.combat = false
+
+S:SetPath("tweaks.bagModule", true)
+P:Open("bl", "bank")
+local gearWarning = widgetFor("qol.warnSellSetGear")
+local questWarning = widgetFor("qol.warnSellQuestItems")
+local gearPoint, gearX, gearY = gearWarning:GetPoint()
+local questPoint, questX, questY = questWarning:GetPoint()
+assert(gearPoint == "TOPLEFT" and questPoint == "TOPLEFT" and gearY == questY and gearX < questX,
+    "the Bank & Vendor tab shows the set-gear and quest-item warnings side by side")
+
 print("PASS: settings panel navigation, search, widgets and reload")
