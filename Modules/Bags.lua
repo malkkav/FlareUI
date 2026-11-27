@@ -2042,7 +2042,7 @@ do
     local watcher, bagCatcher
     local bagTarget, bagGUID
     local dropCatchers = {}
-    local dropGUID, dropTab, dropPageSize
+    local dropGUID, dropTab, dropPageSize, dropWarn
     local pending
 
     local function Active()
@@ -2183,8 +2183,8 @@ do
         ns.ShowDialog(dialog, text, pending)
     end
 
-    local function ClickBagCatcher()
-        if MerchantFrame.selectedTab ~= 1 or IsModifiedClick() or not bagTarget then return end
+    local function ClickBagCatcher(_, button)
+        if button ~= "RightButton" or MerchantFrame.selectedTab ~= 1 or IsModifiedClick() or not bagTarget then return end
         Confirm(bagTarget, "OnClick", false, SlotLocation(bagTarget))
     end
 
@@ -2195,8 +2195,7 @@ do
 
     local function ConfigureCatcher(frame)
         frame:Hide()
-        frame:SetMouseClickEnabled(true)
-        frame:SetMouseMotionEnabled(false)
+        frame:EnableMouse(true)
         frame:SetPropagateMouseMotion(true)
     end
 
@@ -2205,18 +2204,15 @@ do
         local frame = CreateFrame("Frame", name, parent)
         ConfigureCatcher(frame)
         frame:SetAllPoints(parent)
-        -- Above merchant item icons, below the merchant panel's own controls.
-        frame:SetFrameLevel(parent:GetFrameLevel() + (index == 0 and 0 or 1))
+        frame:SetFrameLevel(parent:GetFrameLevel() + 1)
         if index ~= 0 then frame:SetPassThroughButtons("RightButton", "MiddleButton", "Button4", "Button5") end
-        frame:RegisterForDrag("LeftButton")
         frame:SetScript("OnReceiveDrag", DropOnCatcher)
         frame:SetScript("OnMouseUp", DropOnCatcher)
         dropCatchers[index] = frame
     end
 
-    local function FocusedBagSlot()
-        if MerchantFrame.selectedTab ~= 1 or IsModifiedClick() then return end
-        for _, focus in ipairs(GetMouseFoci()) do
+    local function FocusedBagSlot(foci)
+        for _, focus in ipairs(foci) do
             if focus == bagCatcher then
                 if bagTarget and bagTarget:IsVisible() then return bagTarget end
             elseif not focus:IsForbidden() and focus.buttonContext == "ButtonContext_ContainerFrameItemButton"
@@ -2226,46 +2222,70 @@ do
         end
     end
 
-    local function UpdateBagCatcher()
-        local target = FocusedBagSlot()
+    local function HideBagCatcher()
+        bagTarget, bagGUID = nil, nil
+        if bagCatcher then bagCatcher:Hide() end
+    end
+
+    local function UpdateBagCatcher(target)
+        if MerchantFrame.selectedTab ~= 1 or IsModifiedClick() then target = nil end
         local location = target and SlotLocation(target)
         local guid = ItemGUID(location)
         if target == bagTarget and guid == bagGUID then return end
         bagTarget, bagGUID = target, guid
         if guid and WarningText(location) then
+            if not bagCatcher then
+                bagCatcher = CreateFrame("Frame", "FlareUIVendorBagSaleCatcher", target)
+                ConfigureCatcher(bagCatcher)
+                bagCatcher:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
+                bagCatcher:SetScript("OnMouseUp", ClickBagCatcher)
+            elseif bagCatcher:GetParent() ~= target then
+                bagCatcher:SetParent(target)
+            end
+            -- Follow the slot's scale and window order, including in pooled replacement bags.
             bagCatcher:ClearAllPoints()
             bagCatcher:SetAllPoints(target)
+            bagCatcher:SetHitRectInsets(target:GetHitRectInsets())
             bagCatcher:SetFrameStrata(target:GetFrameStrata())
-            bagCatcher:SetFrameLevel(target:GetFrameLevel() + 1)
+            bagCatcher:SetFrameLevel(target:GetFrameLevel() + 10)
             bagCatcher:Show()
-        else
+        elseif bagCatcher then
             bagCatcher:Hide()
         end
     end
 
-    local function UpdateDropCatchers()
+    local function UpdateDropCatchers(foci)
         local location = CursorLocation()
         local guid, tab, pageSize = ItemGUID(location), MerchantFrame.selectedTab, MERCHANT_ITEMS_PER_PAGE or 10
-        if guid == dropGUID and tab == dropTab and pageSize == dropPageSize then return end
-        dropGUID, dropTab, dropPageSize = guid, tab, pageSize
-        local warn = guid and WarningText(location)
-        if warn then
-            if not dropCatchers[0] then MakeDropCatcher(MerchantFrame, 0) end
-            if tab == 1 then
-                for i = 1, pageSize do
-                    local button = _G["MerchantItem" .. i .. "ItemButton"]
-                    if button and not dropCatchers[i] then MakeDropCatcher(button, i) end
+        if guid ~= dropGUID or tab ~= dropTab or pageSize ~= dropPageSize then
+            dropGUID, dropTab, dropPageSize = guid, tab, pageSize
+            dropWarn = guid and WarningText(location) ~= nil or false
+            if dropWarn then
+                if not dropCatchers[0] then MakeDropCatcher(MerchantFrame, 0) end
+                if tab == 1 then
+                    for i = 1, pageSize do
+                        local button = _G["MerchantItem" .. i .. "ItemButton"]
+                        if button and not dropCatchers[i] then MakeDropCatcher(button, i) end
+                    end
                 end
             end
+            for index, frame in pairs(dropCatchers) do
+                if index ~= 0 then frame:SetShown(dropWarn and tab == 1 and index <= pageSize) end
+            end
         end
-        for index, frame in pairs(dropCatchers) do
-            frame:SetShown(warn and (index == 0 or (tab == 1 and index <= pageSize)) and true or false)
+        local background = dropCatchers[0]
+        if background then
+            -- Sit above the panel only over its background. Independent controls keep their clicks.
+            local focus = foci[1] == background and foci[2] or foci[1]
+            background:SetShown(dropWarn and focus == MerchantFrame)
         end
     end
 
     local function UpdateCatchers()
-        UpdateBagCatcher()
-        UpdateDropCatchers()
+        if InCombatLockdown() then return end
+        local foci = GetMouseFoci()
+        UpdateBagCatcher(FocusedBagSlot(foci))
+        UpdateDropCatchers(foci)
     end
 
     function Sale.Refresh()
@@ -2276,8 +2296,7 @@ do
         if active then
             UpdateCatchers()
         else
-            bagCatcher:Hide()
-            bagTarget = nil
+            HideBagCatcher()
             for _, frame in pairs(dropCatchers) do frame:Hide() end
             ns.CancelDialog(dialog)
             pending = nil
@@ -2310,22 +2329,34 @@ do
                 if request.fromCursor and ItemGUID(CursorLocation()) == request.guid then ClearCursor() end
             end,
         }
-        bagCatcher = CreateFrame("Button", "FlareUIVendorBagSaleCatcher", UIParent)
-        ConfigureCatcher(bagCatcher)
-        bagCatcher:RegisterForClicks("RightButtonUp")
-        bagCatcher:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
-        bagCatcher:SetScript("OnClick", ClickBagCatcher)
         watcher = CreateFrame("Frame", "FlareUIVendorSaleWatcher", UIParent)
         watcher:SetScript("OnUpdate", UpdateCatchers)
         for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "CURSOR_CHANGED",
-            "BAG_UPDATE_DELAYED", "EQUIPMENT_SETS_CHANGED", "QUEST_LOG_UPDATE" }) do
+            "BAG_UPDATE_DELAYED", "EQUIPMENT_SETS_CHANGED", "QUEST_LOG_UPDATE", "MODIFIER_STATE_CHANGED" }) do
             watcher:RegisterEvent(event)
         end
         watcher:SetScript("OnEvent", function(self, event)
             if self:IsShown() or event == "PLAYER_REGEN_ENABLED" then Sale.Refresh() end
         end)
+        if EventRegistry then
+            -- Blizzard and Baganator fire these when moving onto a slot. Arm before its first click,
+            -- even if the mouse has moved since the last OnUpdate.
+            EventRegistry:RegisterCallback("ContainerFrameItemButton.EnterButton", function(_, button)
+                if watcher:IsShown() and not InCombatLockdown() then UpdateBagCatcher(button) end
+            end, Sale)
+            EventRegistry:RegisterCallback("ContainerFrameItemButton.ExitButton", function(_, button)
+                if button == bagTarget then HideBagCatcher() end
+            end, Sale)
+        end
         MerchantFrame:HookScript("OnShow", Sale.Refresh)
         MerchantFrame:HookScript("OnHide", Sale.Refresh)
+        -- A release can arrive before the next OnUpdate when the cursor enters the panel.
+        MerchantFrame:HookScript("OnEnter", function()
+            if watcher:IsShown() and not InCombatLockdown() then UpdateDropCatchers(GetMouseFoci()) end
+        end)
+        MerchantFrame:HookScript("OnLeave", function()
+            if dropCatchers[0] then dropCatchers[0]:Hide() end
+        end)
         if MerchantFrame_UpdateMerchantInfo then hooksecurefunc("MerchantFrame_UpdateMerchantInfo", Sale.Refresh) end
         Sale.Refresh()
     end

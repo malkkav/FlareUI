@@ -23,59 +23,135 @@ function ns.AnyDialogShown() return prompt ~= nil end
 
 env.SELL, env.CANCEL = "Sell", "Cancel"
 env.Enum = {}
--- The click catchers are mouse-transparent for motion and opt in to individual mouse buttons.
+-- Model hit testing separately from firing scripts so a catcher must win the actual input.
 local frameMethods = getmetatable(env.UIParent)
 function frameMethods:SetMouseClickEnabled(enabled) self.mouseClickEnabled = enabled end
 function frameMethods:SetMouseMotionEnabled(enabled) self.mouseMotionEnabled = enabled end
-function frameMethods:SetPropagateMouseMotion(enabled) self.propagateMouseMotion = enabled end
+function frameMethods:SetPropagateMouseMotion(enabled)
+    assert(not ui.combat, "motion propagation cannot be configured during combat")
+    self.propagateMouseMotion = enabled
+end
 function frameMethods:SetPassThroughButtons(...) self.passThroughButtons = { ... } end
 function frameMethods:RegisterForClicks(...) self.registeredClicks = { ... } end
-
-local foci = {}
-env.GetMouseFoci = function() return foci end
-local function hover(target, parent)
-    foci = { target, parent }
-    local watcher = env.FlareUIVendorSaleWatcher
-    if watcher and watcher:IsShown() then watcher:RunScript("OnUpdate") end
+function frameMethods:SetHitRectInsets(...) self.hitRectInsets = { ... } end
+function frameMethods:GetHitRectInsets() return unpack(self.hitRectInsets or { 0, 0, 0, 0 }) end
+function frameMethods:EnableMouse(enabled)
+    self.mouseEnabled, self.mouseClickEnabled, self.mouseMotionEnabled = enabled, enabled, enabled
 end
 
-local function catchesClick(catcher, target, button)
-    if not (catcher and catcher:IsVisible() and catcher.allPoints == target and catcher.mouseClickEnabled) then
-        return false
+local hovered, underlyingFocus
+local function isBagSlot(frame)
+    return frame and frame.buttonContext == "ButtonContext_ContainerFrameItemButton"
+end
+
+local function covers(catcher, target)
+    if not catcher or not catcher:IsVisible() then return false end
+    local frame = target
+    while frame do
+        if catcher.allPoints == frame then
+            return catcher:GetFrameLevel() > target:GetFrameLevel()
+                or (frame ~= target and catcher:GetFrameLevel() == target:GetFrameLevel())
+        end
+        frame = frame:GetParent()
     end
+    return false
+end
+
+local function catchersAt(target)
+    local catchers, names = {}, { "FlareUIVendorBagSaleCatcher", "FlareUIVendorDropCatcher", "FlareUIVendorDropCatcher1" }
+    for _, name in ipairs(names) do
+        local catcher = env[name]
+        if covers(catcher, target) then catchers[#catchers + 1] = catcher end
+    end
+    table.sort(catchers, function(a, b) return a:GetFrameLevel() > b:GetFrameLevel() end)
+    return catchers
+end
+
+env.EventRegistry = env.CreateFrame("Frame")
+env.GetMouseFoci = function()
+    local foci = {}
+    for _, catcher in ipairs(catchersAt(hovered)) do
+        if catcher.mouseMotionEnabled then
+            foci[#foci + 1] = catcher
+            if not catcher.propagateMouseMotion then return foci end
+        end
+    end
+    foci[#foci + 1] = hovered
+    foci[#foci + 1] = underlyingFocus
+    return foci
+end
+
+local function hover(target, parent, skipFrame)
+    local previous = hovered
+    hovered, underlyingFocus = target, parent
+    if previous ~= target then
+        if previous then
+            previous.mouseOver = false
+            previous:RunScript("OnLeave")
+        end
+        if target then
+            target.mouseOver = true
+            target:RunScript("OnEnter")
+        end
+        if isBagSlot(previous) then env.EventRegistry:TriggerEvent("ContainerFrameItemButton.ExitButton", previous) end
+        if isBagSlot(target) then env.EventRegistry:TriggerEvent("ContainerFrameItemButton.EnterButton", target) end
+    end
+    local watcher = env.FlareUIVendorSaleWatcher
+    if not skipFrame and watcher and watcher:IsShown() then watcher:RunScript("OnUpdate") end
+end
+
+local function catchesClick(catcher, button)
+    if not catcher.mouseClickEnabled then return false end
     for _, passThrough in ipairs(catcher.passThroughButtons or {}) do
         if button == passThrough then return false end
     end
     return true
 end
 
-local function clickBag(button, mouseButton)
-    hover(button)
-    local catcher = env.FlareUIVendorBagSaleCatcher
-    if catchesClick(catcher, button, mouseButton) then
+local function clickTarget(target, mouseButton)
+    for _, catcher in ipairs(catchersAt(target)) do
+        if catchesClick(catcher, mouseButton) then return catcher end
+    end
+    return target
+end
+
+local function clickBag(button, mouseButton, skipFrame)
+    -- Simulate the native widget owning the press before the slot's enter callback runs.
+    local downTarget = skipFrame and clickTarget(button, mouseButton)
+    hover(button, nil, skipFrame)
+    downTarget = downTarget or clickTarget(button, mouseButton)
+    local catcher = clickTarget(button, mouseButton)
+    if catcher == button then
+        button:RunScript("OnClick", mouseButton)
+    elseif catcher:GetScript("OnMouseUp") then
+        catcher:RunScript("OnMouseUp", mouseButton)
+    elseif catcher == downTarget then
         for _, click in ipairs(catcher.registeredClicks or {}) do
             if click == mouseButton .. "Up" or click == "AnyUp" then catcher:RunScript("OnClick", mouseButton) end
         end
-    else
-        button:RunScript("OnClick", mouseButton)
     end
 end
 
 local function dropAt(target, nativeScript, button)
+    hover(target, nil, true)
     ui:emit("CURSOR_CHANGED")
     hover(target)
-    local catcherName = target == env.MerchantFrame and "FlareUIVendorDropCatcher" or "FlareUIVendorDropCatcher1"
-    local catcher = env[catcherName]
-    if catchesClick(catcher, target, button) then
-        catcher:RunScript(nativeScript == "OnReceiveDrag" and nativeScript or "OnMouseUp", button)
-    else
-        target:RunScript(nativeScript, button)
+    if nativeScript == "OnReceiveDrag" then
+        local focus = env.GetMouseFoci()[1]
+        focus:RunScript("OnReceiveDrag")
+        return
     end
+    local receiver = clickTarget(target, button)
+    receiver:RunScript(receiver == target and nativeScript or "OnMouseUp", button)
 end
 local merchant = env.CreateFrame("Frame", "MerchantFrame", env.UIParent)
 merchant.selectedTab = 1
 merchant:Hide()
-local merchantItem = env.CreateFrame("Button", "MerchantItem1ItemButton", merchant)
+local merchantItemRow = env.CreateFrame("Frame", "MerchantItem1", merchant)
+local merchantItem = env.CreateFrame("Button", "MerchantItem1ItemButton", merchantItemRow)
+local vendorControl = env.CreateFrame("Button", "MerchantNextPageButton", merchant)
+local vendorControlClicks = 0
+vendorControl:SetScript("OnClick", function() vendorControlClicks = vendorControlClicks + 1 end)
 local combined = env.CreateFrame("Frame", "ContainerFrameCombinedBags", env.UIParent)
 local separate = env.CreateFrame("Frame", "ContainerFrame1", env.UIParent)
 local function slot(frame, bag, index)
@@ -93,6 +169,7 @@ local function slot(frame, bag, index)
     return button
 end
 local gear = slot(combined, 0, 1)
+gear:SetHitRectInsets(2, 3, 4, 5)
 local duplicate = slot(separate, 1, 1)
 local separateItems = { duplicate }
 local reagentProbe = slot(combined, 5, 1)
@@ -171,8 +248,13 @@ local function assertNativeScripts()
 end
 
 ui:load("Modules/Bags.lua", ns)
+ui.combat = true
 assert(ns.modules.VendorSaleWarning, "FlareUI registers the sale warning at login"):Init()
 merchant:Show()
+assert(not env.FlareUIVendorBagSaleCatcher or not env.FlareUIVendorBagSaleCatcher:IsVisible(),
+    "the vendor opened in combat without an active catcher")
+ui.combat = false
+ui:emit("PLAYER_REGEN_ENABLED")
 clickBag(gear, "RightButton")
 assert(#sales == 1 and not prompt and gear:GetScript("OnClick") == originalBagClick, "opt-out leaves native scripts intact")
 
@@ -181,8 +263,14 @@ ns.Bags.VendorSaleWarning.Refresh()
 assertNativeScripts()
 hover(reagentProbe)
 assert(reagentProbe:GetScript("OnClick") == originalProbeClick, "vendor warnings keep the fallback reagent slot native")
-clickBag(gear, "RightButton")
-assert(#sales == 1 and prompt and prompt.text:find("[Steel Chestplate]", 1, true), "right-click waits for confirmation")
+clickBag(gear, "RightButton", true)
+assert(#sales == 1 and prompt and prompt.text:find("[Steel Chestplate]", 1, true),
+    "right-click waits for confirmation before the next UI update, even when mouse-down targeted the native slot")
+local bagCatcher = env.FlareUIVendorBagSaleCatcher
+assert(bagCatcher:GetParent() == gear and bagCatcher.mouseMotionEnabled and bagCatcher.propagateMouseMotion,
+    "the bag catcher follows the slot as a child and preserves underlying motion")
+assert(table.concat(bagCatcher.hitRectInsets, ",") == table.concat(gear.hitRectInsets, ","),
+    "the catcher uses the item button's hit insets")
 assert(prompt.text:find("Tank", 1, true) and prompt.text:find("Healing", 1, true), "prompt names every set using the item")
 answer(false)
 assert(#sales == 1, "cancel keeps the item")
@@ -206,7 +294,11 @@ items[0][1] = "gear-guid"
 
 ui.cursor = location(0, 1)
 local beforeDropPrompt = promptCount
-dropAt(merchant, "OnReceiveDrag")
+dropAt(vendorControl, "OnClick", "LeftButton")
+assert(vendorControlClicks == 1 and #sales == 3 and not prompt, "the background catcher does not block merchant controls")
+hover(merchant, nil, true)
+env.GetMouseFoci()[1]:RunScript("OnReceiveDrag")
+assert(#sales == 3 and prompt, "a drag released on first entering the merchant background waits for confirmation")
 dropAt(merchant, "OnMouseUp", "LeftButton")
 assert(#sales == 3 and prompt and promptCount == beforeDropPrompt + 1,
     "both drag events share one confirmation")
