@@ -306,6 +306,15 @@ ns.db.global.hiddenBubbles = true
 ns.db.global.unrelated = true
 ns.db.global.nameplateZoomBackup, ns.db.global.uiScaleBack, ns.db.global.padStickKeysRestore = { a = 1 }, { use = "1" }, "1"
 ns.reloading = true
+-- (GitHub #212) Reset Profile resets only the profile in use; Reset FlareUI says it reaches every character
+ns.db.profile.resetMarker = true
+ns.db.sv.profiles.OtherProfile = { otherMarker = true }
+assert(ns.Dialogs.FLAREUI_RESET_PROFILE.reloads and ns.Dialogs.FLAREUI_RESET_PROFILE.text:find("%s", 1, true))
+ns.Dialogs.FLAREUI_RESET_PROFILE.OnAccept()
+assert(ns.db.profile.resetMarker == nil, "the profile in use is back to its defaults")
+assert(ns.db.sv.profiles.OtherProfile.otherMarker, "other profiles stay")
+assert(ns.db.global.unrelated, "account-wide data stays")
+assert(ns.Dialogs.FLAREUI_RESET.text:find("every character", 1, true), "the full reset warns it reaches every character")
 ns.Dialogs.FLAREUI_RESET.OnAccept()
 assert(ns.db.sv.imported == "1.x" and ns.db.global.hiddenBubbles and ns.db.global.unrelated == nil)
 assert(ns.CharDB().forcedCVars.autoLootDefault == "0")

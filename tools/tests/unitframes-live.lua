@@ -668,4 +668,34 @@ do
     assert(db.raid.texture == "Test Texture" and db.boss.border == "Test Border" and db.flagCarriers.bgOpacity == 40)
     assert(targetDb.mirror == true, "only the look rows are copied")
 end
+-- (minnona, 11-27) Craft Batch: one bar over a batch of crafts, "(done/total)" after the timer
+do
+    local bar = UF.GetPlayerCastHolder().Cast
+    ui.editing = false
+    local left = 4
+    env.C_TradeSkillUI = { GetRemainingRecasts = function() return left end }
+    local b = UF.CraftBatchStep(bar, true, 10000, 12000, 1)
+    assert(b and b.total == 5 and b.done == 0 and b.each == 2 and b.start == 10, "Create 5: the first of five")
+    assert(UF.CraftBatchStep(bar, true, 10000, 12500, 1) == b and b.total == 5, "the same craft's updates change nothing")
+    UF.ShowCraftCount(bar, b)
+    assert(bar.CraftTotal:IsShown() and bar.CraftTotal:GetText() == "(0/5)")
+    assert(UF.CraftBatchBetween(bar) and b.done == 1 and b.waiting and bar.CraftTotal:GetText() == "(1/5)", "one made, the bar stays")
+    left = 3
+    b = UF.CraftBatchStep(bar, true, 12100, 14100, 2)
+    assert(b.done == 1 and b.total == 5 and not b.waiting and math.abs(b.start - 10.1) < 0.001, "the next craft: the bar keeps the batch's start")
+    b.done = 4
+    assert(not UF.CraftBatchBetween(bar), "the last one ends as a normal cast")
+    UF.EndCraftBatch(bar)
+    assert(bar.batch == nil and not bar.CraftTotal:IsShown())
+    left = 0
+    assert(UF.CraftBatchStep(bar, true, 1000, 3000, 3) == nil, "a single craft: no batch")
+    left = 4
+    assert(UF.CraftBatchStep(bar, false, 1000, 3000, 4) == nil, "not a craft: no batch")
+    -- off by default (Malkkav 11-27): with the switch unset, a craft runs as a plain cast
+    assert(ns.db.profile.unitframes.playerCastbar.craftBatch == nil)
+    local core = assert(io.open("Core.lua")):read("*a")
+    assert(select(2, core:gsub("craftBatch = false", "")) == 2 and not core:find("craftBatch = true"), "Show Craft Batch is off by default")
+    assert(UF.PlayerCastSettings(bar) == ns.db.profile.unitframes.playerCastbar, "the standalone bar reads its own settings")
+    env.C_TradeSkillUI = nil
+end
 print("PASS: unit frame startup, resource events, combat deferral and cast changes")

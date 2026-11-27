@@ -72,7 +72,8 @@ end
 function P.Resolve(row, value)
     if not row then return nil end
     -- (every Nameplates row: the module draws its own plate, NP.DrawSample)
-    local kind = row.previewFont and 'font' or routes[row.key] or (row.key:find('^np%.') and 'nameplates')
+    -- previewKind: a row that shows its own sample (the Player Cast Bar's fonts: the bar itself)
+    local kind = row.previewKind or (row.previewFont and 'font') or routes[row.key] or (row.key:find('^np%.') and 'nameplates')
     if not kind then return nil end
     if value == nil then value = row:Get() end
     -- (an inverted Show switch previews the saved "hide" value it stands for)

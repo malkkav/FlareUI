@@ -2077,27 +2077,23 @@ function UF.HideCastExtras(cast)
     if UF.HideCraftTotal then UF.HideCraftTotal(cast) end
 end
 
--- CRAFT TOTAL (Quality of Life > Other > Craft Batch Time, off): while
--- you craft several of the same thing ("Create 3"), your cast bar's timer is followed by the whole
--- batch's time left, "0:12 (1:02)". The game knows how many crafts follow this one
--- (C_TradeSkillUI.GetRemainingRecasts, as Blizzard's Create box refills from it); each craft takes the
--- current one's time. The timer itself is the client's text binding, so the total is its own text in
--- the timer's place, and the timer moves to its left while it shows.
-local function CraftTotalOn()
-    local t = ns.db and ns.db.profile and ns.db.profile.tweaks
-    return t and t.enabled and t.craftTotal and true or false
-end
-
-local function FormatTime(seconds)
-    seconds = math.max(0, math.floor(seconds + 0.5))
-    return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
+-- CRAFT BATCH (minnona, Malkkav 11-27; the player cast bar's Show > Craft Batch, on): crafting several of
+-- one thing ("Create 5") runs one bar over the whole batch, as ElvUI's oUF merges them (MIT; the idea, not
+-- its code). The timer counts down the whole batch, and "(2/5)" after it says how many are made. The
+-- game says how many crafts follow this one (C_TradeSkillUI.GetRemainingRecasts, as Blizzard's Create
+-- box refills from it); each takes the first one's time. Between two crafts the bar stays; a batch that
+-- stops (moved, cancelled) ends it. (Replaced Quality of Life's Craft Batch Time, "0:12 (1:02)".)
+-- The player cast bar's settings: the standalone bar's own, else the player frame's
+function UF.PlayerCastSettings(cast)
+    local db = GetDb()
+    if cast.standalone then return db and db.playerCastbar end
+    return GetUnitDb("player")
 end
 
 function UF.HideCraftTotal(cast)
     local text = cast.CraftTotal
     if not (text and text:IsShown()) then return end
     text:Hide()
-    if cast.craftTicker then cast.craftTicker:Cancel(); cast.craftTicker = nil end
     -- the timer back where its layout put it
     if cast.craftTimePoint then
         cast.Time:ClearAllPoints()
@@ -2106,16 +2102,43 @@ function UF.HideCraftTotal(cast)
     end
 end
 
-function UF.UpdateCraftTotal(cast, isTradeskill, startMs, endMs)
-    local remaining = 0
-    if CraftTotalOn() and isTradeskill == true and C_TradeSkillUI and C_TradeSkillUI.GetRemainingRecasts
-        and canaccessvalue(startMs) and canaccessvalue(endMs) and type(startMs) == "number" and type(endMs) == "number" then
-        local ok, n = pcall(C_TradeSkillUI.GetRemainingRecasts)
-        if ok and type(n) == "number" then remaining = n end
+function UF.EndCraftBatch(cast)
+    cast.batch = nil
+    UF.HideCraftTotal(cast)
+end
+
+-- This craft's place in a batch ({ total, done, each, start }), or nil for a single cast. castBarID: a
+-- batch moves on only with a new cast, not with the same cast's updates.
+function UF.CraftBatchStep(cast, isTradeskill, startMs, endMs, castBarID)
+    if not (canaccessvalue(isTradeskill) and isTradeskill == true and canaccessvalue(startMs) and canaccessvalue(endMs)
+        and type(startMs) == "number" and type(endMs) == "number" and endMs > startMs
+        and C_TradeSkillUI and C_TradeSkillUI.GetRemainingRecasts) then
+        return nil
     end
-    if remaining <= 0 then UF.HideCraftTotal(cast) return end
-    local each = (endMs - startMs) / 1000
-    cast.craftEnd = endMs / 1000 + remaining * each
+    local b = cast.batch
+    -- (the same craft's updates; one between crafts waits for the next)
+    if b and not b.waiting and (castBarID == nil or b.castID == castBarID) then return b end
+    local ok, remaining = pcall(C_TradeSkillUI.GetRemainingRecasts)
+    if not (ok and type(remaining) == "number") then remaining = 0 end
+    if b and b.waiting then
+        -- the next craft of the batch (done counted at the last one's end)
+        b.waiting = nil
+        b.total = math.max(b.done + 1 + remaining, b.done + 1)
+    elseif remaining > 0 then
+        b = { total = remaining + 1, done = 0 }
+        cast.batch = b
+    else
+        cast.batch = nil
+        return nil
+    end
+    b.castID = castBarID
+    b.each = (endMs - startMs) / 1000
+    b.start = startMs / 1000 - b.done * b.each
+    return b
+end
+
+-- "(2/5)" in the timer's place; the timer moves to its left
+function UF.ShowCraftCount(cast, b)
     local text = cast.CraftTotal
     if not text then
         text = UF.NewText(cast.Time:GetParent())
@@ -2126,7 +2149,6 @@ function UF.UpdateCraftTotal(cast, isTradeskill, startMs, endMs)
     if face then text:SetFont(face, size, flags or "") end
     text:SetTextColor(cast.Time:GetTextColor())
     if not text:IsShown() then
-        -- the total takes the timer's place; the timer moves to its left
         local point, rel, relPoint, x, y = cast.Time:GetPoint(1)
         if point then
             cast.craftTimePoint = { point, rel, relPoint, x, y }
@@ -2137,13 +2159,23 @@ function UF.UpdateCraftTotal(cast, isTradeskill, startMs, endMs)
         end
         text:Show()
     end
-    local function Tick()
-        local left = cast.craftEnd and cast.craftEnd - GetTime() or 0
-        if left <= 0 then UF.HideCraftTotal(cast) return end
-        text:SetText("(" .. FormatTime(left) .. ")")
-    end
-    Tick()
-    if not cast.craftTicker then cast.craftTicker = C_Timer.NewTicker(0.25, Tick) end
+    text:SetText(("(%d/%d)"):format(b.done, b.total))
+end
+
+-- A craft of a batch ended with more to come: the bar stays and counts it. Nothing next within a
+-- second (the batch stopped): the bar goes.
+function UF.CraftBatchBetween(cast)
+    local b = cast.batch
+    if not (b and b.done + 1 < b.total) then return false end
+    b.done, b.waiting = b.done + 1, true
+    UF.ShowCraftCount(cast, b)
+    C_Timer.After(1, function()
+        if cast.batch == b and b.waiting then
+            UF.EndCraftBatch(cast)
+            if select("#", UnitCastingInfo("player")) == 0 then cast:Hide() end
+        end
+    end)
+    return true
 end
 
 -- Your own cast's times are readable. Latency zone: the end of the bar your world latency covers
@@ -2414,6 +2446,7 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     -- only the cast on screen: a late interrupt of an earlier cast must not cover the next one
     if interrupted and cast:IsShown() and not cast.flashing
         and (barID == nil or cast.castBarID == nil or barID == cast.castBarID) then
+        if cast.batch then UF.EndCraftBatch(cast) end
         UF.FlashInterrupted(cast, by)
         return
     end
@@ -2425,6 +2458,7 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     -- place); a key pressed during a cast also fails, so only when that same cast has stopped
     if event == "UNIT_SPELLCAST_FAILED" and unit == "player" and n == 0 and cast:IsShown() and not cast.flashing
         and by ~= nil and by == cast.castBarID then
+        if cast.batch then UF.EndCraftBatch(cast) end
         UF.FlashInterrupted(cast, nil, true)
         return
     end
@@ -2453,6 +2487,9 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
         -- your own cast done (a kick or a failure has flashed already): filled and faded out
         if unit == "player" and cast:IsShown()
             and (event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_CHANNEL_STOP") then
+            -- a batch's craft with more to come: the bar runs on (UF.CraftBatchBetween)
+            if event == "UNIT_SPELLCAST_STOP" and UF.CraftBatchBetween(cast) then return end
+            if cast.batch then UF.EndCraftBatch(cast) end
             UF.FinishCast(cast, event == "UNIT_SPELLCAST_CHANNEL_STOP")
             return
         end
@@ -2466,11 +2503,21 @@ local function UpdateCastBar(cast, enabled, event, by, barID)
     if channeling then duration = UnitChannelDuration(unit) else duration = UnitCastingDuration(unit) end
     if canaccessvalue(duration) and not duration then cast:Hide() return end
     local direction = channeling and Enum.StatusBarTimerDirection.RemainingTime or Enum.StatusBarTimerDirection.ElapsedTime
+    -- Craft Batch (off by default, Malkkav 11-27): one bar over the whole batch, its timer the batch's, "(2/5)" after it
+    local pc = unit == "player" and not channeling and UF.PlayerCastSettings(cast)
+    local batch = pc and pc.craftBatch == true and not channeling
+        and UF.CraftBatchStep(cast, isTradeskill, startMs, endMs, castBarID)
+    if batch and C_DurationUtil and C_DurationUtil.CreateDuration then
+        local whole = C_DurationUtil.CreateDuration()
+        whole:SetTimeFromStart(batch.start, batch.each * batch.total)
+        duration = whole
+    elseif cast.batch then
+        UF.EndCraftBatch(cast)
+        batch = nil
+    end
     cast:SetTimerDuration(duration, Enum.StatusBarInterpolation.Immediate, direction)
     SetCastTimer(cast, duration)
-    -- Craft Batch Time: the whole batch's time after the timer
-    if unit == "player" and not channeling then UF.UpdateCraftTotal(cast, isTradeskill, startMs, endMs)
-    elseif cast.CraftTotal then UF.HideCraftTotal(cast) end
+    if batch then UF.ShowCraftCount(cast, batch) elseif cast.CraftTotal then UF.HideCraftTotal(cast) end
 
     -- `text or name` would boolean-test a secret; only pick when the value is readable
     local label = text
@@ -2925,7 +2972,7 @@ local function InitAuraButton(button, size, isDebuff, unit, font, showTimer, loo
     pcall(button.SetIcon, button, button.FlareUI_Icon)
     pcall(button.SetDurationCooldown, button, button.FlareUI_Cooldown)
     pcall(button.SetApplicationCount, button, button.FlareUI_Count, {})
-    ns.SetAuraDurationText(button, button.FlareUI_Duration)
+    ns.SetAuraDurationText(button, button.FlareUI_Duration, nil, "unit")
     pcall(button.ClearDispelTypeTextures, button)
     if isDebuff and Enum.CustomAuraButtonDispelTypeTextureStyle then
         button.FlareUI_Dispel:Show()
@@ -6601,6 +6648,8 @@ local function BuildPlayerCastSettings()
           desc = L["The time left, at the right end of the bar."] },
         { name = L["Show Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = get("pushback", false), set = set("pushback"),
           desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
+        { name = L["Show Craft Batch"], kind = LEM.SettingType.Checkbox, default = false, get = get("craftBatch", false), set = set("craftBatch"),
+          desc = L["Crafting several of one item runs one bar over them all: the batch's time left, then how many are made, like (2/5)."] },
         UF.LatencySetting(get("latency", true), set("latency")),
     }
     Section("Look", {
@@ -7079,6 +7128,8 @@ local function BuildSettings(unit)
                 UF.LatencySetting(flag("latency", true), set("latency")),
                 { name = L["Show Spell Pushback"], kind = LEM.SettingType.Checkbox, default = false, get = flag("pushback", false), set = set("pushback"),
                   desc = L["Next to the timer: how far hits pushed your cast back or cut your channel short, like \"+0.5\"."] },
+                { name = L["Show Craft Batch"], kind = LEM.SettingType.Checkbox, default = false, get = flag("craftBatch", false), set = set("craftBatch"),
+                  desc = L["Crafting several of one item runs one bar over them all: the batch's time left, then how many are made, like (2/5)."] },
             }
             for _, item in ipairs(extras) do
                 item.hidden = noCast

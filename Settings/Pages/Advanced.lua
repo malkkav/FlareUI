@@ -592,5 +592,12 @@ S:Row{
     },
 }
 
-S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.addonReset",   -- (its own section, so players see it matters)
+-- (its own section, so players see it matters). Reset Profile first: the safe choice (rilancaster,
+-- GitHub #212: Reset FlareUI wiped every character's profiles when one setup went wrong)
+S:Row{ key = "adv.resetProfile", kind = "button", center = true, section = "adv.addonReset",
+    apply = function()
+        local current = ns.db and ns.db:GetCurrentProfile()
+        if current then ns.ShowDialog("FLAREUI_RESET_PROFILE", current) end
+    end }
+S:Row{ key = "adv.reset", kind = "button", center = true, section = "adv.addonReset",
     apply = function() ns.ShowDialog("FLAREUI_RESET") end }

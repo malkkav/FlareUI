@@ -47,6 +47,7 @@ local GROUPS = { "top", "combat", "map", "interface", "bottom" }
 Settings.NEW = {
     ["ab.fcmOnlyReady"] = "7.1",
     ["ab.keepPage"] = "7.1",
+    ["adv.resetProfile"] = "7.1",
     ["ch.chatStyle"] = "7.1",
     ["dm.pullWarning"] = "7.1",
     ["mm.buttonsHover"] = "7.1",

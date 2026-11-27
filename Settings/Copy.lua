@@ -439,10 +439,16 @@ ns.Copy = {
             tip = L["Each character keeps its own choice. Switching profiles reloads the interface."],
         },
         ["adv.reset"] = {
-            desc = L["Puts every FlareUI setting back to default."],
+            desc = L["Puts every profile, on every character, back to FlareUI's defaults."],
             label = L["Reset FlareUI"],
             section = "adv.addonReset",
-            tip = L["Your Blizzard settings aren't touched."],
+            tip = L["When one setup went wrong, Reset Profile is the safer choice. Your Blizzard settings aren't touched."],
+        },
+        ["adv.resetProfile"] = {
+            desc = L["Puts the profile in use back to FlareUI's defaults. Your other profiles stay as they are."],
+            label = L["Reset Profile"],
+            section = "adv.addonReset",
+            tip = L["Every character on this profile resets with it. Your Blizzard settings aren't touched."],
         },
         ["adv.share"] = {
             desc = L["* Export: the profile in use as a text string to share\n* Import: paste a string and pick the parts to take, as a new profile or into the one in use"],
@@ -1775,7 +1781,7 @@ ns.Copy = {
             tags = { "clamp", "target off screen", "screen edge" },
         },
         ["np.clickThrough"] = {
-            desc = L["This type's plates can't be clicked; clicks go to the world."],
+            desc = L["Plates of every type can't be clicked; clicks go to the world."],
             label = L["Click-Through"],
             section = "np.platesBehaviour",
             tags = { "click through", "clickable" },
@@ -2230,12 +2236,6 @@ ns.Copy = {
             label = L["Copy Now"],
             section = "qol.syncBlizzUi",
             tip = L["Greyed out on the source itself, and until the source has logged in with this on."],
-        },
-        ["qol.craftTotal"] = {
-            desc = L["When you craft several of an item, your cast bar also shows the time left for all of them, like 0:12 (1:02)."],
-            label = L["Craft Batch Time"],
-            section = "qol.other",
-            tags = { "crafting", "craft all", "create all", "profession", "batch", "total time", "cast bar" },
         },
         ["qol.deleteJunkFull"] = {
             desc = L["With your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room."],

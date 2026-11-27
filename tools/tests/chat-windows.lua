@@ -135,6 +135,10 @@ env.MenuUtil = { CreateContextMenu = function(owner, build)
             assert(text)
             local entry = { action = action, enabled = true }
             function entry:SetEnabled(enabled) self.enabled = enabled end
+            function entry:CreateRadio(label, selected, pick, value)
+                self.radios = self.radios or {}
+                self.radios[#self.radios + 1] = { label = label, selected = selected, pick = pick, value = value }
+            end
             menu[text] = entry
             return entry
         end,
@@ -650,5 +654,31 @@ do
     assert(select(2, general:GetFont()) == 10)
     chat.WindowFontSizePicked(general, 16)
     assert(db.windowFontSize == nil and select(2, general:GetFont()) == 16, "the shared size again: follows it")
+    -- (pkecerski) Blizzard copying a window's settings (a new or whisper window) is no pick: the copy
+    -- takes the source's own size, or follows the Fonts tab
+    chat.WindowFontSizePicked(trade, 12)          -- Blizzard copies DEFAULT_CHAT_FRAME's 12 to it...
+    chat.WindowFontSizeCopied(trade, general)     -- ...as part of FCF_CopyChatSettings
+    assert(db.windowFontSize == nil and select(2, trade:GetFont()) == 16, "a copy follows the Fonts tab")
+    chat.WindowFontSizePicked(general, 10)
+    chat.WindowFontSizeCopied(trade, general)
+    assert(db.windowFontSize[trade:GetID()] == 10 and select(2, trade:GetFont()) == 10, "a copy of a picked size keeps it")
+    chat.WindowFontSizePicked(general, 16)
+    chat.WindowFontSizeCopied(trade)               -- a reset
+    assert(db.windowFontSize == nil and select(2, trade:GetFont()) == 16)
+end
+-- (pkecerski) FlareUI's own tab menu has Blizzard's Font Size too
+do
+    ui.gamepad = false   -- (no tab menu in the Gamepad UI)
+    env.CHAT_FONT_HEIGHTS, env.FONT_SIZE, env.FONT_SIZE_TEMPLATE = { 12, 14, 16 }, "Font Size", "%d pt"
+    local picked
+    local was = env.FCF_SetChatWindowFontSize
+    env.FCF_SetChatWindowFontSize = function(_, frame, size) picked = { frame, size } end
+    chat:OpenContextMenu(bar.buttons[1], trade)
+    local radios = menu["Font Size"] and menu["Font Size"].radios
+    assert(radios and #radios == 3 and radios[2].label == "14 pt", "the sizes, as Blizzard's menu")
+    assert(radios[3].selected(radios[3].value), "the window's size is ticked")
+    radios[1].pick(radios[1].value)
+    assert(picked and picked[1] == trade and picked[2] == 12, "a pick goes through Blizzard's font size call")
+    env.FCF_SetChatWindowFontSize = was
 end
 print("PASS: chat window styling, dock tabs, edit box history, previews and independent fading")

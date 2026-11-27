@@ -66,6 +66,27 @@ assert(cv.nameplateShowEnemies == "0" and picks() == "000")
 db.enemyInCombat, db.friendlyInCombat = false, false
 callbacks.OnProfileChanged()
 assert(cv.nameplateShowEnemies == "1" and picks() == "101" and next(held) == nil, "another choice gives both back")
+-- (gerudoku 11-27) plates turned on in Blizzard's settings outside a fight end In Combat: the next
+-- login leaves them on. FlareUI's own writes and changes in a fight don't count.
+db.enemyInCombat, db.friendlyInCombat = true, true
+NP.ApplyCombatShow()
+assert(cv.nameplateShowEnemies == "0" and picks() == "000")
+ui:emit("CVAR_UPDATE", "nameplateShowEnemies")
+assert(db.enemyInCombat, "FlareUI's own hold (off) is not the player's choice")
+ui.combat = true
+cv.nameplateShowEnemies = "1"
+ui:emit("CVAR_UPDATE", "nameplateShowEnemies")
+assert(db.enemyInCombat, "a change in a fight is ignored")
+ui.combat = false
+ui:emit("CVAR_UPDATE", "nameplateShowEnemies")
+assert(db.enemyInCombat == false and held.combatPlates == nil, "the player's switch wins")
+cv.nameplateShowFriendlyNpcs = "1"
+ui:emit("CVAR_UPDATE", "NamePlateShowFriendlyNpcs")
+assert(db.friendlyInCombat == false and held.combatFriendly == nil)
+extras:ProfileChanged()   -- (a login)
+assert(cv.nameplateShowEnemies == "1" and picks() == "010", "the next login keeps them")
+for _, cvar in ipairs(NP.FRIENDLY_CVARS) do cv[cvar] = "0" end
+cv.nameplateShowFriendlyPlayers, cv.nameplateShowFriendlyPlayerMinions = "1", "1"
 -- nothing picked: friendly players; a leftover of the old one-character memory is dropped
 for _, cvar in ipairs(NP.FRIENDLY_CVARS) do cv[cvar] = "0" end
 held.combatFriendly = "1"

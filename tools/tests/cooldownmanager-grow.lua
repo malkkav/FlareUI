@@ -218,8 +218,8 @@ do
     assert(db.barSort == "blizzard" and db.barMax == 20)
 end
 
--- (johnivve, 7.1) From the Middle with fewer icons than a full line: centred where a full line would
--- stand, away from the edge Edit Mode pinned the viewer by
+-- (johnivve, 7.1 / 7.1.1) From the Middle: centred on the box as the player left it in Edit Mode, away
+-- from the edge Edit Mode pinned the viewer by
 do
     local CM = ns.CooldownManager
     local function shift(args, x, y)
@@ -233,6 +233,7 @@ do
     shift({ "BOTTOMLEFT", 128, 216, false }, 0, 44)
     shift({ "TOPLEFT", 216, 216, true }, 0, 0)       -- a full line stays
     shift({ nil, 128, 216, true }, 0, 0)             -- a point that can't be read: no shift
+    shift({ "LEFT", 216, 128, true }, -44, 0)        -- grown past the placed box: back toward the edge
     -- the viewer: 3 tracked (128 wide) of 5 columns, pinned by its left edge; only c shown now
     grow.buffs = "CENTER"
     viewer.iconLimit = 5
@@ -240,7 +241,18 @@ do
     function viewer:GetWidth() return 128 end
     function viewer:GetHeight() return 40 end
     CM:Refresh()
+    assert(math.abs(c.point[4]) < 0.001, "never placed in Edit Mode: no shift")
+    -- Edit Mode closes with the box 216 wide (the main's spells); now 128 (an alt's)
+    function viewer:GetWidth() return 216 end
+    CM.NotePlaced()
+    assert(ns.db.profile.cooldownmanager.placed.BuffIconCooldownViewer.w == 216, "the box's size noted as Edit Mode closes")
+    function viewer:GetWidth() return 128 end
+    CM:Refresh()
     assert(c.point[1] == "TOP" and math.abs(c.point[4] - 44) < 0.001, "shifted half the missing length right")
+    _G.EditModeManagerFrame = { IsEditModeActive = function() return true end }
+    CM:Refresh()
+    assert(math.abs(c.point[4]) < 0.001, "(johnivve 11-27) in Edit Mode the line sits in its box")
+    _G.EditModeManagerFrame = nil
     function viewer:GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
     CM:Refresh()
     assert(math.abs(c.point[4]) < 0.001, "pinned by its centre: as before")

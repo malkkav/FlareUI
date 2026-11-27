@@ -964,7 +964,12 @@ function LW.HideBlizzardBox(hide)
     local frame = _G.LootFrame
     if not frame then return end
     frame:SetAlpha(hide and 0 or 1)
-    if frame.Selection then frame.Selection:EnableMouse(not hide) end
+    -- (chiefballsy 11-27) its Edit Mode box ignores the frame's alpha (ignoreParentAlpha in
+    -- EditModeSystemSelectionBaseTemplate), so it needs its own
+    if frame.Selection then
+        frame.Selection:SetAlpha(hide and 0 or 1)
+        frame.Selection:EnableMouse(not hide)
+    end
 end
 
 function LW:Init()

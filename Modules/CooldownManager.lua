@@ -378,15 +378,17 @@ function CM.LinePoint(i, count, stride, step, lineStep, horizontal, reversed)
     return "LEFT", across, along
 end
 
--- From the Middle with fewer icons than a full line (johnivve, 7.1): Blizzard sizes the viewer to the
--- spells it tracks, and Edit Mode keeps it pinned by its saved point, so a viewer pinned by its left
--- edge shrinks to the left and the icons centred in it went with it. As Cooldown Manager Centered
--- does, the line centres on where a full line (Blizzard's Columns) would stand: this shifts it by half
--- the missing length, away from the pinned edge. A viewer pinned by its centre needs nothing.
-function CM.LineShift(point, size, full, horizontal)
-    if type(point) ~= "string" or type(size) ~= "number" or type(full) ~= "number" then return 0, 0 end
-    local extra = (full - size) / 2
-    if extra <= 0.5 then return 0, 0 end
+-- From the Middle (johnivve, 7.1): Blizzard sizes the viewer to the spells it tracks, and Edit Mode keeps
+-- it pinned by its saved point, so a viewer pinned by its left edge shrinks to the left and the icons
+-- centred in it went with it. The line centres on the middle of the box as the player last left it in
+-- Edit Mode (placed: its size when Edit Mode closed, CM.NotePlaced): shifted by half the difference,
+-- away from the pinned edge (back toward it when the viewer grew). A viewer pinned by its centre needs
+-- nothing. (7.1.1 centred on a full line of Columns instead: with Columns above the spells tracked, the
+-- icons stood far from the box the player had placed.)
+function CM.LineShift(point, size, placed, horizontal)
+    if type(point) ~= "string" or type(size) ~= "number" or type(placed) ~= "number" then return 0, 0 end
+    local extra = (placed - size) / 2
+    if math_abs(extra) <= 0.5 then return 0, 0 end
     if horizontal then
         if point:find("LEFT", 1, true) then return extra, 0 end
         if point:find("RIGHT", 1, true) then return -extra, 0 end
@@ -435,6 +437,31 @@ local function Restore(name)
     arranged[name] = nil
 end
 
+-- the box as the player left it: each viewer's size along its line when Edit Mode last closed (per
+-- profile; an alt sharing it centres on the main's box). In Edit Mode the line sits in the box as it is.
+function CM.EditModeOpen()
+    local manager = _G.EditModeManagerFrame
+    return manager and manager.IsEditModeActive and manager:IsEditModeActive() and true or false
+end
+function CM.Placed(name, horizontal)
+    local db = GetDb()
+    local p = db and db.placed and db.placed[name]
+    return type(p) == "table" and Number(horizontal and p.w or p.h) or nil
+end
+function CM.NotePlaced()
+    local db = GetDb()
+    if not db then return end
+    for name in pairs(GROW_KEYS) do
+        local viewer = _G[name]
+        local w = viewer and viewer.GetWidth and Number(viewer:GetWidth())
+        local h = viewer and viewer.GetHeight and Number(viewer:GetHeight())
+        if w and h and w > 0 and h > 0 then
+            db.placed = db.placed or {}
+            db.placed[name] = { w = w, h = h }
+        end
+    end
+end
+
 local function Arrange(name)
     local grow = Grow(name)
     if grow == "blizzard" then
@@ -473,11 +500,14 @@ local function Arrange(name)
     -- (centred lines: their place against a full line, CM.LineShift)
     local dx, dy = 0, 0
     local limit = Number(viewer.iconLimit)
-    if not bars and grow == "CENTER" and limit and limit > 0 then
+    local placed = CM.Placed(name, horizontal)
+    if not bars and grow == "CENTER" and placed and not CM.EditModeOpen() then
         local pinned = viewer:GetPoint(1)
         local size = Number(horizontal and viewer:GetWidth() or viewer:GetHeight())
-        local pad = Number(horizontal and viewer.childXPadding or viewer.childYPadding) or 0
-        dx, dy = CM.LineShift(Readable(pinned) and pinned or nil, size, limit * step - pad, horizontal)
+        dx, dy = CM.LineShift(Readable(pinned) and pinned or nil, size, placed, horizontal)
+        -- (the viewer's units to the icons': their offsets are in their own scale)
+        local vs, is = Number(viewer.GetEffectiveScale and viewer:GetEffectiveScale()), Number(showing[1].GetEffectiveScale and showing[1]:GetEffectiveScale())
+        if vs and is and vs > 0 and is > 0 then dx, dy = dx * vs / is, dy * vs / is end
     end
     if GROW_LINES[GROW_KEYS[name]] then
         local stride = Number(viewer.stride) or limit or count
@@ -982,6 +1012,11 @@ local function Hook()
                 hooksecurefunc(viewer, "Layout", function() Arrange(name) end)
             end
         end
+    end
+    -- (where the player left each box: the centred lines keep to it)
+    if EventRegistry then
+        EventRegistry:RegisterCallback("EditMode.Exit", function() CM.NotePlaced(); CM:Refresh() end, CM)
+        EventRegistry:RegisterCallback("EditMode.Enter", function() CM:Refresh() end, CM)
     end
     CM:Refresh()
     -- the viewers exist now: their fading (Visibility.lua)

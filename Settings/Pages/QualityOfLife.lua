@@ -43,7 +43,6 @@ S:Row{ key = "qol.flightDestinations", half = true, tab = "gameplay", section = 
 S:Row{ key = "qol.acceptRes", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptRes" }
 S:Row{ key = "qol.acceptSummon", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptSummon" }
 S:Row{ key = "qol.keyDown", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.keyDown", apply = Refresh }
-S:Row{ key = "qol.craftTotal", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.craftTotal" }
 S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishCast", apply = Refresh }
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishSound", apply = Refresh }
 S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.deleteJunkWhenFull" }

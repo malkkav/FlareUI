@@ -787,14 +787,14 @@ local defaults = {
                 castIcon = true, castTimer = true,
             },
             -- standalone player cast bar (replaces PlayerCastingBarFrame)
-            playerCastbar = { enabled = true, width = 275, height = 25, texture = "FlareUI Dark", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false },
+            playerCastbar = { enabled = true, width = 275, height = 25, texture = "FlareUI Dark", borderTexture = "FlareUI Thin", icon = true, timer = true, pushback = false, craftBatch = false },
             units = {
                 player       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true,
                                  texture = "FlareUI Dark", border = "FlareUI Thick",
                                  absorbTexture = "FlareUI Striped",
                                  -- Cast Bar (off): a cast bar on the player frame, apart from the FlareUI Player Cast Bar
                                  castbar = false, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
-                                 pushback = false,
+                                 pushback = false, craftBatch = false,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24,
                                  combatGlow = true },   -- Combat Glow (Look)
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
@@ -1100,7 +1100,6 @@ local defaults = {
         -- [[ TWEAKS MODULE ]]
         tweaks = {
             acceptSummon = false,       -- Accept Summons: taken after 10 seconds unless cancelled
-            craftTotal = false,         -- Craft Batch Time: the batch's time left after the cast bar's timer
             enabled = false,
             moveAnyFrame = true,        -- drag any Blizzard panel by its header; positions in frames{}
             way = false,                -- /way map pins
@@ -1427,62 +1426,96 @@ function ns.CastGlowOn(v)
     return v and true or false
 end
 
--- For a time Lua can read (weapon enchants)
-function ns.FormatAuraTime(seconds)
+-- Timer styles (Malkkav 11-27, after .t0m03), as Blizzard's: kind nil = the buff frame's (s, m, h, d);
+-- "unit" = unit frames' (seconds as a bare number, as Blizzard's cooldown numbers; m, h, d above);
+-- "plate" = nameplates' (bare seconds, and nothing on an aura longer than a minute: Blizzard's plates
+-- hide the numbers of those)
+-- For a time Lua can read (weapon enchants, samples)
+function ns.FormatAuraTime(seconds, kind)
+    if kind == "plate" and seconds > 60 then return "" end
     for _, band in ipairs(AURA_TIME_BANDS) do
-        if seconds >= band.from then return math.ceil(seconds / band.div) .. band.unit end
+        if seconds >= band.from then
+            return math.ceil(seconds / band.div) .. ((kind and band.unit == "s") and "" or band.unit)
+        end
     end
 end
+-- A sample timer text ("24s", "2m") in a kind's style
+function ns.AuraTimeSample(text, kind)
+    if not (kind and text) then return text end
+    if kind == "plate" and not text:find("^%d+s$") then return "" end
+    return (text:gsub("^(%d+)s$", "%1"))
+end
 
--- SetDurationText's options. Aura times can be secret, so the client does the formatting, from these
--- rules; checked once, and if the client answers otherwise its own formatter stays.
-local auraTimerOptions
-local function AuraTimerOptions()
-    if auraTimerOptions then return auraTimerOptions end
-    auraTimerOptions = {}
+-- SetDurationText's options, per kind. Aura times can be secret, so the client does the formatting,
+-- from these rules; checked once, and if the client answers otherwise its own formatter stays.
+-- red under 5 seconds, yellow under 10, white above (hex: the plates' colour lives in the text)
+local AURA_TIMER_COLOURS = { { 0, 1, 0.25, 0.2, "ff4033" }, { 5, 1, 0.82, 0, "ffd100" }, { 10, 1, 1, 1 } }
+local function TimerFormatter(kind, colourText)
     local ok, formatter = pcall(C_StringUtil.CreateNumericRuleFormatter)
-    if not (ok and formatter) then return auraTimerOptions end
+    if not (ok and formatter) then return nil end
     local up = Enum.NumericRuleFormatRounding and Enum.NumericRuleFormatRounding.Up
     local rules = {}
     for i = #AURA_TIME_BANDS, 1, -1 do
         local band = AURA_TIME_BANDS[i]
-        rules[#rules + 1] = { threshold = band.from, format = "%.0f" .. band.unit,
-            components = { { div = band.div, step = 1, rounding = up } } }
+        local unit = (kind and band.unit == "s") and "" or band.unit
+        local steps = (colourText and band.unit == "s") and AURA_TIMER_COLOURS or { { band.from } }
+        for _, step in ipairs(steps) do
+            local format = "%.0f" .. unit
+            if step[5] then format = "|cff" .. step[5] .. format .. "|r" end
+            rules[#rules + 1] = { threshold = step[1], format = format,
+                components = { { div = band.div, step = 1, rounding = up } } }
+        end
     end
-    if not pcall(formatter.SetBreakpoints, formatter, rules) then return auraTimerOptions end
-    for seconds, text in pairs({ [30] = "30s", [300] = "5m", [7200] = "2h" }) do
+    if not pcall(formatter.SetBreakpoints, formatter, rules) then return nil end
+    local s = kind and "" or "s"
+    for seconds, text in pairs({ [30] = "30" .. s, [300] = "5m", [7200] = "2h" }) do
         local okText, shown = pcall(formatter.FormatNumber, formatter, seconds)
-        if not okText or shown ~= text then return auraTimerOptions end
+        if not okText or shown ~= text then return nil end
     end
-    auraTimerOptions.textFormatter = formatter
-    return auraTimerOptions
+    return formatter
 end
-
--- Timer colour by time left: the client colours the text from a step curve on the time remaining
--- (secret-safe): red under 5 seconds, yellow under 10, white above. false when the client lacks it.
-local auraTimerColorOptions
-local function AuraTimerColorOptions()
-    if auraTimerColorOptions ~= nil then return auraTimerColorOptions end
-    auraTimerColorOptions = false
-    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve and Enum.DurationTextBindingProperty) then return false end
+-- a step colour curve (the colour from the last point at or below the value); nil when the client lacks it
+local function StepCurve(points)
+    if not (C_CurveUtil and C_CurveUtil.CreateColorCurve) then return nil end
     local ok, curve = pcall(C_CurveUtil.CreateColorCurve)
-    if not (ok and curve) then return false end
+    if not (ok and curve) then return nil end
     if Enum.LuaCurveType then pcall(curve.SetType, curve, Enum.LuaCurveType.Step) end
-    for _, point in ipairs({ { 0, 1, 0.25, 0.2 }, { 5, 1, 0.82, 0 }, { 10, 1, 1, 1 } }) do
-        if not pcall(curve.AddPoint, curve, point[1], CreateColor(point[2], point[3], point[4])) then return false end
+    for _, point in ipairs(points) do
+        if not pcall(curve.AddPoint, curve, point[1], CreateColor(point[2], point[3], point[4], point[6] or 1)) then return nil end
     end
-    local options = {}
-    for k, v in pairs(AuraTimerOptions()) do options[k] = v end
-    options.textColor = { curve = curve, property = Enum.DurationTextBindingProperty.RemainingDuration }
-    auraTimerColorOptions = options
+    return curve
+end
+-- coloured: the timer colour follows the time left (the client colours the text, secret-safe); false
+-- when the client can't. The plates' options always hold a colour: clear above a minute's aura.
+local auraTimerOptions = {}
+local function AuraTimerOptions(kind, coloured)
+    local key = (kind or "buffs") .. (coloured and "+" or "")
+    if auraTimerOptions[key] ~= nil then return auraTimerOptions[key] end
+    local plate = kind == "plate"
+    local formatter = TimerFormatter(kind, coloured and plate)
+    local options = { textFormatter = formatter }
+    local P = Enum.DurationTextBindingProperty
+    if plate then
+        local curve = P and StepCurve({ { 0, 1, 1, 1 }, { 60.5, 1, 1, 1, nil, 0 } })
+        if curve then options.textColor = { curve = curve, property = P.TotalDuration } end
+        if coloured and not formatter then options = false end
+    elseif coloured then
+        local curve = P and StepCurve(AURA_TIMER_COLOURS)
+        if curve then options.textColor = { curve = curve, property = P.RemainingDuration } else options = false end
+    end
+    auraTimerOptions[key] = options
     return options
 end
 
--- Hands an aura button its timer text. colorByTime: the timer colour follows the time left.
-function ns.SetAuraDurationText(button, fontString, colorByTime)
-    local colored = colorByTime and AuraTimerColorOptions()
+-- Hands an aura button its timer text. colorByTime: the timer colour follows the time left. kind: as
+-- ns.FormatAuraTime's
+function ns.SetAuraDurationText(button, fontString, colorByTime, kind)
+    local colored = colorByTime and AuraTimerOptions(kind, true)
     if colored and pcall(button.SetDurationText, button, fontString, colored) then return end
-    if not pcall(button.SetDurationText, button, fontString, AuraTimerOptions()) then
+    local plain = AuraTimerOptions(kind)
+    if pcall(button.SetDurationText, button, fontString, plain) then
+        if plain.textColor then return end
+    else
         pcall(button.SetDurationText, button, fontString, {})
     end
     -- turned off: the text keeps the curve's last colour otherwise
@@ -2740,7 +2773,7 @@ do
         "Sort by Role", "Show Player", "Show When Solo", "Show Player Frame in a Party", "Group Numbers", "Main Tank Frames", "Show Player Frame in a Raid", "Show Target Markers",
         "Combo Points@switch", "Flip Portrait", "Mirror Bars", "Portrait@switch", "Only Mana Power Bars",
         "Five-Second Rule", "GCD Spark", "Mana on Shapeshift", "Stand-Still Zone", "Queued Attack Colour", "Waiting State",
-        "Show Icon", "Show Spell Timer", "Center Spell Name", "Edge Glow", "Show Latency", "Show Spell Pushback",
+        "Show Icon", "Show Spell Timer", "Center Spell Name", "Edge Glow", "Show Latency", "Show Spell Pushback", "Show Craft Batch",
         "Class Colours", "Threat Glow", "Combat Glow", "Bar Animations", "Bar Edge Glow", "Damage Trail",
         -- the aura filters together, then the sort switches
         "Only My Buffs", "Only My Debuffs", "Only Dispellable Debuffs", "Weapon Enchants",
@@ -2803,7 +2836,8 @@ do
         { name = "Bar Effects", members = { { "Bar Animations" }, { "Bar Edge Glow" }, { "Damage Trail" } } },
         { name = "Show", sections = { ["Cast Bar"] = true, Look = true, Behaviour = true },
           members = { { "Show Icon", "Icon" }, { "Show Spell Timer", "Spell Timer" }, { "Center Spell Name", "Centred Spell Name" },
-                      { "Edge Glow", "Edge Glow" }, { "Show Latency", "Latency" }, { "Show Spell Pushback", "Spell Pushback" } } },
+                      { "Edge Glow", "Edge Glow" }, { "Show Latency", "Latency" }, { "Show Spell Pushback", "Spell Pushback" },
+                      { "Show Craft Batch", "Craft Batch" } } },
         { name = "Text", sections = { Text = true },
           members = { { "Show Name", "Name" }, { "Show Timer", "Timer" }, { "Show Icon", "Icon" } } },
     }
@@ -2811,7 +2845,7 @@ do
     ns.EDIT_TOGGLE_WORDS = function()
         local L = ns.L
         return L["Bar Effects"], L["Show"], L["Text"], L["Icons"], L["Icon"], L["Spell Timer"], L["Centred Spell Name"],
-            L["Latency"], L["Spell Pushback"], L["Name"], L["Timer"]
+            L["Latency"], L["Spell Pushback"], L["Craft Batch"], L["Name"], L["Timer"]
     end
     local function Hidden(item)
         local h = item.hidden
@@ -3759,10 +3793,25 @@ ns.Dialogs["FLAREUI_SYNC_SOURCE"] = {
     hideOnEscape = true,
 }
 
-ns.Dialogs["FLAREUI_RESET"] = {
-    text = L["Reset every FlareUI setting back to its default?\n\nThis cannot be undone."],
+-- Only the profile in use: AceDB's OnProfileReset asks Core's OnProfileChanged nothing more, as
+-- this dialog is already reloading
+ns.Dialogs["FLAREUI_RESET_PROFILE"] = {
+    text = L["Reset the profile |cffffff00%s|r to FlareUI's defaults?\n\nEvery character on it resets with it. Your other profiles stay as they are. This cannot be undone."],
     button1 = L["Reset"],
     button2 = L["Cancel"],
+    OnAccept = function()
+        if ns.db then ns.db:ResetProfile() end
+    end,
+    reloads = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+ns.Dialogs["FLAREUI_RESET"] = {
+    text = L["Reset FlareUI on every character?\n\nEvery profile goes back to FlareUI's defaults, on all your characters. This cannot be undone.\n\nTo reset only the profile in use, choose Reset Profile."],
+    button1 = L["Reset"],
+    button2 = L["Cancel"],
+    showAlert = true,
     -- what undoes FlareUI's changes to the player's own settings, and the import marker, outlive the reset
     OnAccept = function()
         local global, kept = ns.db.global, {}

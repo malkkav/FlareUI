@@ -180,13 +180,13 @@ do
     ticked, underMouse = true, true
     assert(not LW.EditShown(), "Loot Under Mouse: nothing to place")
     underMouse = false
-    local alpha, mouse
+    local alpha, mouse, boxAlpha
     env.LootFrame.SetAlpha = function(_, a) alpha = a end
-    env.LootFrame.Selection = { EnableMouse = function(_, on) mouse = on end }
+    env.LootFrame.Selection = { EnableMouse = function(_, on) mouse = on end, SetAlpha = function(_, a) boxAlpha = a end }
     LW.HideBlizzardBox(true)
-    assert(alpha == 0 and mouse == false)
+    assert(alpha == 0 and mouse == false and boxAlpha == 0, "the box ignores its parent's alpha: it is cleared too")
     LW.HideBlizzardBox(false)
-    assert(alpha == 1 and mouse == true)
+    assert(alpha == 1 and mouse == true and boxAlpha == 1)
     env.GetCVarBool = function() return false end
     env._G = nil
 end

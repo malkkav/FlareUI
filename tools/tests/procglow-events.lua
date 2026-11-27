@@ -5,6 +5,7 @@ local names = {
     [6572] = "Revenge", [6573] = "Revenge",
     [30455] = "Ice Lance", [400669] = "Fingers of Frost",
     [5143] = "Arcane Missiles", [400588] = "Missile Barrage",
+    [17364] = "Stormstrike",
 }
 
 local function setup(class, slots)
@@ -238,6 +239,38 @@ local function mage()
     assert(not t.registered("UNIT_AURA"))
 end
 
+-- (cellander 11-27) Improved Stormstrike: its cooldown ending early lights Stormstrike until it is cast again
+local function stormstrike()
+    local t = setup("SHAMAN", { { "spell", 17364 } })
+    t.enable(true)
+    assert(t.registered("SPELL_UPDATE_COOLDOWN"), "a reset is read from the cooldown events")
+    local cd = t.facts.cooldowns
+    cd[17364] = { isActive = true, isOnGCD = false }          -- cast: its own 8 s start
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0.1)
+    assert(not t.shown(1))
+    t.advance(2.9)
+    cd[17364] = { isActive = true, isOnGCD = true }           -- reset at 3 s: only the global cooldown left
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
+    assert(t.shown(1), "a reset lights it")
+    cd[17364] = { isActive = true, isOnGCD = false }          -- cast again: spent
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
+    assert(not t.shown(1), "casting it puts the glow out")
+    t.advance(7.6)
+    cd[17364] = { isActive = false }                          -- runs out on its own at 7.6 s: no reset
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
+    assert(not t.shown(1), "a cooldown running out is not a reset")
+    cd[17364] = { isActive = true, isOnGCD = false }
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(1)
+    cd[17364] = { isActive = false }
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
+    assert(t.shown(1))
+    t.advance(8.1)
+    assert(not t.shown(1), "an unused reset fades after the cooldown length")
+    t.enable(false)
+    assert(not t.shown(1))
+end
+
 revenge()
 mage()
+stormstrike()
 print("PASS: reactive action glows, cooldowns, buff expiry and combat Cooldown Manager tracking")

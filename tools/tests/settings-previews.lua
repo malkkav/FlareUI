@@ -263,6 +263,11 @@ draw("frames", "uf.main")
 assert(shown(o["framePlayer:player"]) and shown(o["frameTarget:target"]))
 draw("frames", "uf.castbar")
 assert(shown(o.castSample) and not shown(o["frameTarget:target"]))
+-- (aphoex 11-27) the Player Cast Bar's font rows preview the bar itself, not a line of sample text
+local castFont = P.Resolve({ key = "uf.playercast.cast.face", previewFont = {}, previewKind = "castbar", Get = function() return nil end })
+assert(castFont.kind == "castbar" and P.renderers.castbar, "the Player Cast Bar fonts route to the cast bar")
+draw("castbar", "uf.playercast.cast")
+assert(shown(o.castSample))
 
 ns.PartyFrames = {
     SampleTile = function(parent, context, data, index)

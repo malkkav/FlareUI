@@ -1,3 +1,60 @@
+# FlareUI 7.1.2
+
+One cast bar for a whole batch of crafts, aura timers that read like Blizzard's, and a safer way to reset your settings. Plus fixes for the bugs 7.1.1 brought to the Cooldown Manager and the chat.
+
+**We need your help testing:**
+- **Crafting:** turn on **Show Craft Batch** and make 5 of something. One cast bar should run over the whole batch, with the count beside the timer.
+- **Nameplate timers:** an aura longer than a minute should show no timer on a nameplate. Under 10 seconds, the timer turns yellow, then red.
+- **Shamans:** with Improved Stormstrike, Stormstrike should glow on your bars when it resets.
+
+## Heads up
+Some things change even if you change nothing:
+- **Aura timers** now read like Blizzard's:
+  - The buff and debuff icons by the minimap keep "s", "m" and "h".
+  - Unit frames show seconds as a bare number, with "m" and "h" above a minute.
+  - Nameplates show seconds as a bare number, and no timer on an aura longer than a minute.
+- **Quality of Life, Craft Batch Time:** removed. **Show Craft Batch** on the Player Cast Bar replaces it, and starts off.
+- **Chat:** every chat window follows **Settings > Chat > Fonts** again. A font size you picked for a single window on 7.1.1 is cleared once. Pick it again from the tab's right-click menu.
+- **Cooldown Manager, Growth From the Middle:** the icons centre on the box where you placed the bar in Edit Mode. This replaces 7.1.1's change, which could push them off the box.
+- **Nameplates, Show Enemy Plates / Show Friendly Plates:** if one is set to **In Combat** and you turn plates on in Blizzard's settings outside a fight, FlareUI now takes that as your choice and switches to **Always**.
+
+## Highlights
+- **Show Craft Batch:** crafting several of one item runs one Player Cast Bar over the whole batch. The timer shows the time left for all of them, then how many are made, like (2/5).
+- **Reset Profile:** resets only the profile in use, so a setup that went wrong no longer means losing every character's settings.
+
+## New
+
+### Unit Frames
+- **Player Cast Bar, Show Craft Batch** (off): in Edit Mode, under the cast bar's **Show** list as **Craft Batch**. Works on the Player Cast Bar and on the player frame's cast bar.
+- **Settings, Fonts, Player Cast Bar:** shows the cast bar itself, casting, while you change its fonts.
+
+### Action Bars
+- **Proc Glow:** lights Stormstrike when Improved Stormstrike resets it. The glow goes out when you use it, or after 8 seconds. Works on macros that cast it.
+
+### Chat
+- **Font Size** in the chat tab's right-click menu. A size picked there is that window's own.
+
+### Profiles
+- **Reset Profile:** puts the profile in use back to FlareUI's defaults. Your other profiles stay as they are.
+
+## Changed
+- **Reset FlareUI:** its warning now says it resets every profile on all your characters.
+- **Nameplates, Click-Through:** the description now says it's one setting for every plate type.
+
+## Fixed
+- **Raid frames, Raid Size:** picking a size now updates Width, Height and Power Height in the Edit Mode dialog. Your values were always saved per size.
+- **Cooldown Manager:** Tracked Buffs with 6 or more auras sat off-centre.
+- **Cooldown Manager:** Essential and Utility icons could sit far to one side of their box.
+- **Chat:** new and whisper windows stopped following your Fonts size.
+- **Nameplates:** plates turned on in Blizzard's settings were turned off again at every login while In Combat was picked.
+- **Loot Window:** Blizzard's empty Loot Window box showed beside FlareUI's in Edit Mode.
+- **Settings:** opening General with **Sync Blizzard UI** off could cause an error. By AreChen.
+- **Bags and Loot Window:** the German and Korean "BoE" marks were too long to fit on the icon.
+
+### Translations
+- French updated for 7.1.1. By Brainc3ll.
+- Hungarian updated for 7.1.1. By Xentinus.
+
 # FlareUI 7.1.1
 
 Your requests, built: raid frames that size themselves to the raid, a Battleground choice in every Visibility list, and fading for party, raid and boss frames. Plus a pile of fixes from Discord.
@@ -336,119 +393,3 @@ Some things look different even if you change nothing:
 
 ### Move Any Window
 - With TSM, Blizzard's profession window popped onto the screen.
-
-# FlareUI 7.0.16
-
-Aura corners that use the whole frame, a threat number that knows you're the tank, and a long list of fixes.
-
-**We need your help testing:**
-- **Dispel icons:** a friend with a Magic, Curse, Disease or Poison debuff shows the icon. Enemies never do.
-- **Threat Percentage:** tank a few mobs in a group. The ones you hold are green, the ones you lost are red.
-- **Buffs and debuffs Above or Below the Frame, or in one corner only:** smaller icons or a wider frame fit more on a line.
-- **Meter:** use Create a New Tab, then check the new tab's list in a fight.
-- **Loot window:** Growth on Up, then drag the window and loot again.
-
-## Heads up
-Some things look different even if you change nothing:
-- **Buffs and debuffs in a corner:** with nothing in the corner across from them, they use the whole width of the frame.
-- **Cooldown Manager:** the Essential and Utility icons and Tracked Buffs fill from the middle. Pick another **Growth** in Edit Mode to change it.
-- **Name Only Mode:** the name colours from before 7.0.15 are back.
-- **Skin Item Slots:** Colour by Rarity starts at green. Grey and white items have the bronze border.
-- **Threat Percentage:** its colours follow your Role.
-- **Loot Feed and loot rolls:** they show above the bags and other windows.
-
-## New
-
-### Unit Frames
-- **Center Spell Name** (off): the spell's name in the middle of the cast bar.
-  - In Edit Mode, in every frame's Cast Bar section
-  - For the Player Cast Bar, in its Look section
-
-### Nameplates
-- Crowd control and defensive icons have their own **Aura Icon Shape**, **Aura Swipe** and **Aura Timer**. Until you pick something, they follow the other auras.
-
-### Bags & Looting
-- **Loot Window:** **Growth** (Down) and **Row Order** (Top to Bottom). By Xentinus.
-- **Crafting Bag in Backpack:** each soul bag in your bag slots gets its own section.
-
-### Cooldown Manager
-- **Growth** (From the Middle) for the Essential and Utility icons, in Edit Mode.
-
-### Minimap
-- **Info Bar:** Friends and Guild. They count who is online. Point at them to see who.
-
-## Changed
-
-### Nameplates
-- **Threat Percentage** colours:
-  - Tank: green while you hold the mob, orange when you're losing it, red when you lost it
-  - Damage & Healer: green while you're safe, red when it's on you
-  - The green is your **You Hold It** colour
-- **Name Only Mode:** names have FlareUI's colours again, and titles and guilds have a colour of their own.
-- The target arrows push the quest mark and the other marks beside the plate out of the way.
-
-### Unit Frames
-- **Show Spell Pushback** comes after Edge Glow.
-
-### Bags & Looting
-- **Reverse Bag Fill** works with Category Rows. Each section fills that way under its header.
-
-### Meters
-- The gear menu's Show New Window is now called **Create a New Tab**, because that's what it does.
-
-### Quest Tracker
-- **Zone Headings** greys out with Sort By on By Level or By Progress, where there are no headings.
-
-### Buff Reminders
-- Pet Reminders are for a missing or dead pet. The one for a hurt pet never showed, so it's gone.
-
-## Fixed
-
-### Unit Frames
-- A Lua error with buffs and debuffs in places that share an edge, such as Above the Frame and Above the Frame, Left.
-- Buffs and debuffs in a corner wrapped at the middle of the frame, even with nothing in the other corner.
-- Dispel icons showed where you can't dispel:
-  - Players of the other faction who aren't flagged for PvP
-  - Bleeds
-  - Party and raid members under Mind Control
-- **Threat Text:** 0% on a mob only you have threat on, where the game hides the numbers.
-- The interrupt colour counted an interrupt your stance or shield didn't allow.
-- "Interrupted by" stayed on the cast bar for your next target.
-- **Name Above Frames:** names in other alphabets showed as boxes.
-
-### Nameplates
-- Rows of buffs and debuffs fit one icon less since 7.0.9.
-- **Threat Percentage:** a red 0% on a mob only you have threat on, where the game hides the numbers.
-- A plate reused in a fight could show dispel icons on an enemy.
-- Plates kept the wrong type when you changed sides, as in a duel.
-
-### Action Bars
-- **Update Spell Ranks** left out the controller bars.
-- The range colours also changed buttons that aren't FlareUI's.
-- **Sharp Outline:** text that stayed on screen after its bar faded out should go now. We couldn't see it ourselves, so tell us if it stays.
-
-### Radial Menu
-- Party buttons kept old names after the group changed in a fight.
-- Some spell ranks were wrong right after logging in.
-- Party spells in a sub-radial now spread over your group.
-
-### Meters
-- The separate threat window didn't follow the meter's Opacity.
-- Pointing at the separate threat window didn't bring back a faded meter.
-- **Bar Texture:** it could go back to Blizzard's after a while. We couldn't find the cause, but it now puts itself right.
-
-### Quest Tracker
-- Share Quest could be blocked when a fight started with the menu open.
-- Item buttons could use the wrong quest's item, and took clicks while faded out.
-
-### Minimap
-- A farming HUD that takes the map no longer gets our click area, fading and hidden dots.
-
-### Buff Reminders
-- Short buffs counted as running out too early, such as Battle Shout.
-
-### Quality of Life
-- Accept Summons no longer takes a summons out of the starting area or into a scenario. You answer those.
-
-### Languages
-- **Hungarian:** two lines had wrong letters. By Xentinus.

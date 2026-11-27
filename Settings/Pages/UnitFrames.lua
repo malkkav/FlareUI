@@ -167,7 +167,7 @@ for _, frame in ipairs(FONT_FRAMES) do
                 and function() return S:GetPath("unitframes.playerCastbar.enabled") and true or false end or nil,
         }
     end
-    S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts,
+    S:FontRows{ module = "uf", tab = "fonts", section = frame[2], prefix = key, apply = FontsApply, fonts = fonts, previewKind = key == "playercast" and "castbar" or nil,
         pageHidden = function() return pickedFont ~= key end,
         beforeJump = function() pickedFont = key end }
 end

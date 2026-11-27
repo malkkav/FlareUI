@@ -26,8 +26,16 @@ local function DB() return ns.db and ns.db.profile and ns.db.profile.nameplates 
 --------------------------------------------------
 local function Forced(key) return ns.Tweaks.ForcedCVars(key) end
 
+-- (our own writes: CVAR_UPDATE below must not take them for the player's)
+NP.combatWriting = false
+local function Write(name, value)
+    NP.combatWriting = true
+    pcall(SetCVar, name, value)
+    NP.combatWriting = false
+end
+
 local function SetEnemyPlates(on)
-    pcall(SetCVar, "nameplateShowEnemies", on and 1 or 0)
+    Write("nameplateShowEnemies", on and 1 or 0)
 end
 
 -- Forever has no master switch for friendly plates (no nameplateShowFriends): only the three
@@ -49,7 +57,7 @@ function NP.FriendlyPicks()
 end
 
 function NP.SetFriendlyPicks(picks)
-    for i, cvar in ipairs(NP.FRIENDLY_CVARS) do pcall(SetCVar, cvar, picks:sub(i, i) == "1" and "1" or "0") end
+    for i, cvar in ipairs(NP.FRIENDLY_CVARS) do Write(cvar, picks:sub(i, i) == "1" and "1" or "0") end
 end
 
 -- the held picks while In Combat holds the switches, else nil (a 1-character value is the old
@@ -71,7 +79,7 @@ function NP.ApplyCombatShow()
         if forced.combatPlates == nil then forced.combatPlates = GetCVar("nameplateShowEnemies") or "1" end
         SetEnemyPlates(false)
     elseif forced.combatPlates ~= nil then
-        pcall(SetCVar, "nameplateShowEnemies", forced.combatPlates)
+        Write("nameplateShowEnemies", forced.combatPlates)
         forced.combatPlates = nil
     end
     forced = Forced("combatFriendly")
@@ -89,7 +97,30 @@ function NP.ApplyCombatShow()
     end
 end
 
-local function OnCombat(_, event)
+-- (gerudoku 11-27) Plates turned on in Blizzard's own settings outside a fight, while In Combat holds
+-- them off: that is the player's choice now. In Combat is dropped (the Visibility tab reads Always), so
+-- the next login no longer turns them off again.
+function NP.OnPlayerCVar(name)
+    if NP.combatWriting or InCombatLockdown() or type(name) ~= "string" then return end
+    local db = DB()
+    if not db then return end
+    local changed
+    if name:lower() == "nameplateshowenemies" and db.enemyInCombat and GetCVarBool("nameplateShowEnemies") then
+        db.enemyInCombat = false
+        Forced("combatPlates").combatPlates = nil
+        changed = true
+    elseif NP.FriendlyIndex(name) and db.friendlyInCombat and NP.FriendlyPicks() ~= "000" then
+        db.friendlyInCombat = false
+        Forced("combatFriendly").combatFriendly = nil
+        changed = true
+    end
+    if changed and ns.SettingsPanel and ns.SettingsPanel.IsShown and ns.SettingsPanel:IsShown() and ns.SettingsPanel.Refresh then
+        ns.SettingsPanel:Refresh()
+    end
+end
+
+local function OnCombat(_, event, name)
+    if event == "CVAR_UPDATE" then NP.OnPlayerCVar(name) return end
     if event ~= "PLAYER_REGEN_DISABLED" then NP.ApplyCombatShow() return end
     -- still allowed: combat lockdown begins right after this event
     local db = DB()
@@ -438,6 +469,7 @@ function Extras:Init()
     local frame = CreateFrame("Frame")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
     frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    frame:RegisterEvent("CVAR_UPDATE")
     frame:SetScript("OnEvent", OnCombat)
     if ns.db.RegisterCallback then
         for _, event in ipairs({ "OnProfileChanged", "OnProfileCopied", "OnProfileReset" }) do

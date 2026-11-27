@@ -14,7 +14,7 @@ local BP = {procs = {{auraUntil = 20, glows = {'A'}}, {auraUntil = 30, glows = {
 function BP.IsOn(proc) return proc.auraUntil and proc.auraUntil > now end
 ]] .. H.section(s, 'function BP.ScheduleExpiry()', '-- the class\'s procs')
     .. H.section(s, 'function BP.Recompute()', '-- Your buffs')
-    .. H.section(s, 'function BP.Stop()', '--------------------------------------------------\n-- 3.') .. [[
+    .. H.section(s, 'function BP.Stop()', '--------------------------------------------------\n-- 2c.') .. [[
 BP.Recompute(); assert(#timers == 1 and BP.expiryAt == 20 and paints == 1)
 BP.Recompute(); assert(#timers == 1)
 BP.procs[1].auraUntil = 40; BP.Recompute()

@@ -1025,6 +1025,8 @@ local function BuildSettings()
           set = function(_, value)
               sampleRaid = value
               Refresh()
+              -- (e_kul 11-27) the Size sliders show the picked size's own values, not the last size's
+              if holder then LEM:RefreshFrameSettings(holder) end
           end },
         -- (for columns Down / Up read as Right / Left, as on the party frames in a row)
         { name = L["Growth"], kind = LEM.SettingType.Dropdown, default = "CENTER",

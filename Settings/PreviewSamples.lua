@@ -360,7 +360,7 @@ local function Auras(c, unit, spec)
         b.FlareUI_Count:SetText(i == 2 and '3' or '')
         b.FlareUI_Duration:SetAlpha(0)
         b.FlareUI_PreviewTimer:SetShown(timer ~= 'none')
-        b.FlareUI_PreviewTimer:SetText(({ '9s', '24s', '1m' })[i])
+        b.FlareUI_PreviewTimer:SetText(ns.AuraTimeSample(({ '9s', '24s', '1m' })[i], unit and 'unit' or nil))
         b.FlareUI_PreviewTimer:SetTextColor(1, colored and i == 1 and 0.2 or 1, colored and i == 1 and 0.2 or 1)
         b.FlareUI_Cooldown:SetCooldown(GetTime() - i * 2, 12)
     end
@@ -972,6 +972,13 @@ function R.radial(c, spec)
 end
 
 -- a font setting: one line in that font, in a FlareUI border
+-- (aphoex 11-27) the Player Cast Bar's fonts: the bar itself, casting, in the fonts being set. Edit
+-- Mode's own sample closes with Edit Mode when its FlareUI Settings button opens this panel.
+function R.castbar(c)
+    local UF = ns.UnitFrames
+    if UF and UF.CreateCastSample then Sample(c, 'castSample', UF.CreateCastSample, UF.DrawCastSample, 4) end
+end
+
 function R.font(c, spec)
     local cfg = Font(spec.font)
     local text = c:Text('fontSample', L["The quick brown fox jumps over the lazy dog"], 16, 16, c.width - 32, cfg)

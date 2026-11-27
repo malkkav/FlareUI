@@ -182,7 +182,9 @@ do
     local shared = db.width
     ui.editing = true
     edit.callbacks.enter()
+    edit.refreshed = nil
     option(holder, "Raid Size").set("Modern", "large")
+    assert(edit.refreshed == holder, "(e_kul) picking a Raid Size redraws the dialog, so the sliders show that size's values")
     assert(option(holder, "Width").get() == shared, "a size never changed shows the shared Width")
     option(holder, "Width").set("Modern", 70)
     assert(db.sizes.large.width == 70 and db.width == shared, "its own copy; the shared value stays")

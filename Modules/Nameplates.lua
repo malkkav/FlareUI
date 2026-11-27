@@ -1361,6 +1361,8 @@ local function AuraLook(size, isDebuff, db, big)
         timer or "none", "target", { swipe = swipe or "both", timerColor = db.auraTimerColor ~= false })
     -- the debuff's type icon is for what you could dispel: not on an enemy's plate
     if look and not C.FRIENDLY[db.kind] then look.noTypeIcon = true end
+    -- (Blizzard plate timers: bare seconds, none on an aura longer than a minute)
+    if look then look.timerKind = "plate" end
     return look
 end
 NP.AuraLook = AuraLook
@@ -4330,7 +4332,7 @@ function NP.DrawSample(f, kind)
             b.FlareUI_Count:SetText("")
             -- a sample time and swipe, so Aura Timer, Timer Colour and Aura Swipe show here
             local secs = C.SAMPLE_SECONDS[(n - 1) % #C.SAMPLE_SECONDS + 1]
-            b.FlareUI_Duration:SetText(look.timer ~= "none" and ns.FormatAuraTime(secs) or "")
+            b.FlareUI_Duration:SetText(look.timer ~= "none" and ns.FormatAuraTime(secs, "plate") or "")
             if look.timerColor and secs < 5 then b.FlareUI_Duration:SetTextColor(1, 0.2, 0.2)
             elseif look.timerColor and secs < 10 then b.FlareUI_Duration:SetTextColor(1, 0.82, 0)
             else b.FlareUI_Duration:SetTextColor(1, 1, 1) end

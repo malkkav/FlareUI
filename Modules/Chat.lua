@@ -1787,6 +1787,20 @@ function Chat:OpenContextMenu(tabButton, chatFrame)
             end)
         end
 
+        -- (inflowon, pkecerski 11-27) Font Size, as in Blizzard's menu: this window keeps the size picked
+        -- (Chat.WindowFontSizePicked, through Blizzard's FCF_SetChatWindowFontSize)
+        if CHAT_FONT_HEIGHTS and FCF_SetChatWindowFontSize then
+            local sizes = rootDescription:CreateButton(FONT_SIZE or L["Font Size"])
+            local _, current = chatFrame:GetFont()
+            current = current and math.floor(current + 0.5)
+            for _, height in ipairs(CHAT_FONT_HEIGHTS) do
+                local text = FONT_SIZE_TEMPLATE and FONT_SIZE_TEMPLATE:format(height) or tostring(height)
+                sizes:CreateRadio(text, function(h) return h == current end, function(h)
+                    FCF_SetChatWindowFontSize(nil, chatFrame, h)
+                end, height)
+            end
+        end
+
         rootDescription:CreateDivider()
 
         rootDescription:CreateButton(L["Chat Settings"], function()
@@ -3803,6 +3817,20 @@ function Chat.WindowFontSizePicked(chatFrame, size)
     if not next(db.windowFontSize) then db.windowFontSize = nil end
     Chat:ApplyMessageFont(chatFrame, db)
 end
+-- (pkecerski 11-27) Blizzard sets a size itself too: a new or whisper window copies another's
+-- settings (FCF_CopyChatSettings), and a reset puts the default back. Those are no pick: the window
+-- takes the source's own size, or none, and follows the Fonts tab again.
+function Chat.WindowFontSizeCopied(chatFrame, fromFrame)
+    local db = GetDb()
+    if not (db and db.enabled and chatFrame and chatFrame.GetID) then return end
+    local from = fromFrame and fromFrame.GetID and db.windowFontSize and db.windowFontSize[fromFrame:GetID()]
+    if db.windowFontSize or from then
+        db.windowFontSize = db.windowFontSize or {}
+        db.windowFontSize[chatFrame:GetID()] = from
+        if not next(db.windowFontSize) then db.windowFontSize = nil end
+    end
+    Chat:ApplyMessageFont(chatFrame, db)
+end
 
 -- Increase Line Height: this much over the window's own spacing. Off never touches a window it didn't change.
 local EXTRA_LINE_SPACING = 2
@@ -4776,6 +4804,28 @@ function Chat:Init()
             chatFrame = chatFrame or (FCF_GetCurrentChatFrame and FCF_GetCurrentChatFrame())
             Chat.WindowFontSizePicked(chatFrame, size or (menu and menu.value))
         end)
+        -- (Blizzard's own size changes are no pick: Chat.WindowFontSizeCopied)
+        if _G.FCF_CopyChatSettings then hooksecurefunc("FCF_CopyChatSettings", Chat.WindowFontSizeCopied) end
+        if _G.FCF_ResetChatWindow then
+            hooksecurefunc("FCF_ResetChatWindow", function(chatFrame) Chat.WindowFontSizeCopied(chatFrame) end)
+        end
+        if _G.FCF_ResetChatWindows then
+            hooksecurefunc("FCF_ResetChatWindows", function()
+                local db = GetDb()
+                if not (db and db.enabled) then return end
+                db.windowFontSize = nil
+                for i = 1, NUM_CHAT_WINDOWS do
+                    local chatFrame = _G["ChatFrame" .. i]
+                    if chatFrame then Chat:ApplyMessageFont(chatFrame, db) end
+                end
+            end)
+        end
+        -- 7.1.1 saved those as picks: every window follows the Fonts tab again, once
+        local db = GetDb()
+        if db and not db.windowFontSizeV2 then
+            db.windowFontSizeV2 = true
+            db.windowFontSize = nil
+        end
     end
     -- a tab switch shows the new window as the old one was
     hooksecurefunc("FCFDock_SelectWindow", function(dock, chatFrame)

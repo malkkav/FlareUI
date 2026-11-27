@@ -145,7 +145,7 @@ function S:FontRows(def)
         end
         S:Row{
             key = heading, kind = "expander", tab = def.tab, section = def.section,
-            previewFont = preview, labelFn = font.label, hidden = font.hidden,
+            previewFont = preview, previewKind = def.previewKind, labelFn = font.label, hidden = font.hidden,
             pageHidden = def.pageHidden, beforeJump = def.beforeJump,
             get = function() return true end,   -- never greys out its child rows
             isOpen = function() return open[heading] end,
@@ -187,7 +187,7 @@ function S:FontRows(def)
             end
             row.collapsedBy = heading   -- searchable while folded; a search result opens the heading
             row.half = true
-            row.previewFont = preview
+            row.previewFont, row.previewKind = preview, def.previewKind
             S:Row(row)
         end
         -- faceOnly (Zone Text): the face alone, Default ("") first, keeping Blizzard's font

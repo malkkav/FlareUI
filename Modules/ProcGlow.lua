@@ -72,6 +72,12 @@ local BUFF_PROCS = {
         { buffs = { 437063 }, name = "Infusion of Light", glows = { { 635, "Holy Light" } } },
     },
 }
+-- Cooldown resets: a talent that ends a spell's cooldown early (Improved Stormstrike, cellander 11-27).
+-- The game neither flags the spell nor shows a buff, so the reset is read from the cooldown itself
+-- (RS below). cooldown: the spell's own length, in seconds.
+local COOLDOWN_RESETS = {
+    SHAMAN = { { id = 17364, name = "Stormstrike", cooldown = 8 } },
+}
 local CDM_VIEWERS = { "BuffIconCooldownViewer", "BuffBarCooldownViewer" }
 local CDM_INTERVAL = 1   -- a safety net: the reads follow aura changes, fights and the viewers themselves
 
@@ -438,6 +444,62 @@ function BP.Stop()
 end
 
 --------------------------------------------------
+-- 2c. COOLDOWN RESETS
+-- Both cooldown flags are never secret, so this works in instances too, where a cast's spell ID can be.
+-- At each SPELL_UPDATE_COOLDOWN (the only time isOnGCD is right): the spell's own cooldown starting
+-- is a cast; it ending well before its length is a reset, which lights the spell until it's cast
+-- again or its length has passed.
+--------------------------------------------------
+local RS = { spells = {}, lit = {} }
+PG.RS = RS
+RS.EARLY = 0.6       -- an end this close to the full length is the cooldown running out, not a reset
+
+function RS.Build()
+    local old = {}
+    for _, s in ipairs(RS.spells) do old[s.data] = s end
+    wipe(RS.spells)
+    for _, data in ipairs(COOLDOWN_RESETS[playerClass] or {}) do
+        local s = old[data] or { data = data }
+        s.name = SpellName(data.id) or data.name
+        RS.spells[#RS.spells + 1] = s
+    end
+end
+
+-- its own cooldown is running (not only the global one)
+function RS.OwnCooldown(id)
+    local ok, info = pcall(C_Spell.GetSpellCooldown, id)
+    if not (ok and type(info) == "table") then return nil end
+    return info.isActive == true and info.isOnGCD ~= true
+end
+
+function RS.OnCooldowns()
+    local now, changed = GetTime(), false
+    for _, s in ipairs(RS.spells) do
+        local own = RS.OwnCooldown(s.data.id)
+        if own ~= nil then
+            if own and not s.own then
+                s.startedAt = now
+                if RS.lit[s.name] then RS.lit[s.name] = nil; changed = true end
+            elseif not own and s.own and s.startedAt and now - s.startedAt < s.data.cooldown - RS.EARLY then
+                local token = {}
+                RS.lit[s.name] = token
+                changed = true
+                C_Timer.After(s.data.cooldown, function()
+                    if RS.lit[s.name] == token then RS.lit[s.name] = nil; ScheduleNow() end
+                end)
+            end
+            s.own = own
+        end
+    end
+    if changed then ScheduleNow() end
+end
+
+function RS.Stop()
+    wipe(RS.lit)
+    for _, s in ipairs(RS.spells) do s.own, s.startedAt = nil, nil end
+end
+
+--------------------------------------------------
 -- 3. UPDATES
 --------------------------------------------------
 -- on a real cooldown (not just the global one). Both flags are always readable, but Blizzard only vouches
@@ -462,12 +524,12 @@ local function UpdateButton(button, enabled)
     local id, name, slot = ButtonSpell(button)
     if not id then HideGlow(button) return end
     -- not flagged, empowered or a reaction ability: no glow either way, so Blizzard's own isn't asked about
-    if not (flagged[name] or boosted[name] or reactive[name]) then HideGlow(button) return end
+    if not (flagged[name] or boosted[name] or reactive[name] or RS.lit[name]) then HideGlow(button) return end
     -- Blizzard already glows this exact rank
     local blizzard = button.SpellActivationAlert
     if blizzard and blizzard:IsShown() then HideGlow(button) return end
 
-    if flagged[name] or boosted[name] then
+    if flagged[name] or boosted[name] or RS.lit[name] then
         ShowGlow(button, true)
     elseif reactive[name] then
         cooldownIDs[id] = true
@@ -491,7 +553,7 @@ end
 
 local function UpdateAll()
     -- nothing flagged, empowered or reactive: every button ends dark, so no slot needs reading
-    local enabled = Enabled() and (next(flagged) or next(boosted) or next(reactive)) ~= nil
+    local enabled = Enabled() and (next(flagged) or next(boosted) or next(reactive) or next(RS.lit)) ~= nil
     for _, button in ipairs(buttons) do UpdateButton(button, enabled) end
 end
 
@@ -575,6 +637,7 @@ local function OnEvent(_, event, a1, a2, a3)
     end
     if event == "SPELL_UPDATE_COOLDOWN" then
         NoteCooldowns()
+        RS.OnCooldowns()
     elseif event == "ACTIONBAR_SLOT_CHANGED" and Readable(a1) and type(a1) == "number" and a1 > 0 then
         -- one slot changed: only its spell is read again (the GCD flags belong to spells, not slots)
         slotSpell[a1] = nil
@@ -585,6 +648,7 @@ local function OnEvent(_, event, a1, a2, a3)
         if event == "PLAYER_ENTERING_WORLD" then SyncFlagged() end
         if event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
             BP.Build()
+            RS.Build()
             BP.ReadAuras()
         end
     end
@@ -622,6 +686,7 @@ local function Setup()
         end
     end
     BP.Build()
+    RS.Build()
     events = CreateFrame("Frame")
     events:SetScript("OnEvent", OnEvent)
 end
@@ -631,6 +696,9 @@ function PG:Refresh()
     Setup()
     if Enabled() then
         for _, event in ipairs(EVENTS) do pcall(events.RegisterEvent, events, event) end
+        if #RS.spells > 0 then
+            pcall(events.RegisterEvent, events, "SPELL_UPDATE_COOLDOWN")
+        end
         if next(reactive) then
             for _, event in ipairs(REACTIVE_EVENTS) do pcall(events.RegisterEvent, events, event) end
             if TARGET_HEALTH_CLASSES[playerClass] then
@@ -657,6 +725,7 @@ function PG:Refresh()
     else
         events:UnregisterAllEvents()
         BP.Stop()
+        RS.Stop()
         -- HIDE events are missed while off: a kept flag would glow on return
         wipe(flagged)
         wipe(slotSpell)

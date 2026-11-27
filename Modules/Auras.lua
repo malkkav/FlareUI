@@ -361,7 +361,7 @@ local function StyleButton(button, look)
     end
     -- a font string takes no text without a font
     ns.SetFont(preview, fontPath, timerSize, flags)
-    preview:SetText(preview.sample)
+    preview:SetText(ns.AuraTimeSample(preview.sample, look.timerKind))
     -- never copied from the real timer: it sits at alpha 0 while previewing, and its colour reads back with that
     preview:SetTextColor(1, 1, 1, 1)
     ns.ApplyShadow(preview, look.font)
@@ -472,7 +472,7 @@ local function HookButton(button, look)
     pcall(button.SetDurationCooldown, button, cd)
     pcall(button.SetApplicationCount, button, countText, {})
     -- (a hidden timer, Timer None, stays uncoloured: the colour would bring its alpha back)
-    ns.SetAuraDurationText(button, durationText, look.timerColor and look.timer ~= "none")
+    ns.SetAuraDurationText(button, durationText, look.timerColor and look.timer ~= "none", look.timerKind)
     pcall(button.ClearDispelTypeTextures, button)
     -- Blizzard tints the border from the colour map, so a secret dispel type is never read by Lua
     if Enum.CustomAuraButtonDispelTypeTextureStyle then
@@ -613,6 +613,8 @@ ns.AuraLook = {
             isDebuff = isDebuff,
             cancel = canCancel,
             timerColor = timerColor,
+            -- (unit frame timers: seconds as a bare number, ns.FormatAuraTime)
+            timerKind = "unit",
             colors = ColorMap(isDebuff, style == "round", swipe == "border"),
             -- room under the icon: autoSize + 3 on Auto, a chosen size gets its own
             cellHeight = size + ((timer == "below") and ((timerFont.size or 0) > 0 and timerSize + 4 or autoSize + 3) or 0),
