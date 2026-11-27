@@ -3844,7 +3844,6 @@ ns.Dialogs["FLAREUI_RESET"] = {
     end,
     reloads = true,
     hideOnEscape = true,
-    showAlert = true,
 }
 
 -- The layout switch runs from the secure button: from addon code it would taint every system
