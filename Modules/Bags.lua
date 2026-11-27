@@ -211,7 +211,6 @@ function Bags.WarmReagentProbe(e, frame, bagID)
     for slot = 1, ShownSlots(bagID) do
         if not e.probe[slot] then
             local b = CreateFrame("ItemButton", "FlareUIReagentProbeSlot" .. slot, e.holder, "ContainerFrameItemButtonTemplate")
-            b.fuiReagentProbe = true
             b:Hide()
             if not (b.Initialize and b.SetBagID) then return end
             b:Initialize(frame, bagID, slot)
@@ -2031,8 +2030,8 @@ end
 
 --------------------------------------------------
 -- 4a. VENDOR: SALE WARNINGS FOR SET GEAR AND QUEST ITEMS
--- Bag right-clicks and drops on the merchant use different Blizzard scripts. Wrap the sale
--- entry points only at an open vendor, then let Blizzard handle the confirmed sale and any refund.
+-- Catch the input on FlareUI-owned frames. Replacing a Blizzard bag script can leave it tainted
+-- even after restoring the original function, blocking native item use after leaving the vendor.
 --------------------------------------------------
 do
     local Sale = {}
@@ -2040,8 +2039,11 @@ do
     ns.modules["VendorSaleWarning"] = Sale
 
     local dialog = "FLAREUI_CONFIRM_VENDOR_SALE"
-    local wrapped = {}
-    local events
+    local watcher, bagCatcher
+    local bagTarget, bagGUID
+    local dropCatchers = {}
+    local dropGUID, dropTab, dropPageSize
+    local pending
 
     local function Active()
         local db = GetDb()
@@ -2157,107 +2159,128 @@ do
         if questID or inQuestLog or (info and info.isQuestItem) then return L["This is a quest item."] end
     end
 
-    local function Confirm(frame, nativeClick, fromCursor, location, ...)
-        local guid = ItemGUID(location)
-        if not guid then return false end
+    local function WarningText(location)
         local db = GetDb()
         local sets = db.warnSellSetGear and SetNames(location)
         local quest = db.warnSellQuestItems and QuestReason(location)
-        if not (sets or quest) then return false end
+        if not (sets or quest) then return end
 
         local item = C_Item.GetItemLink(location) or L["Item"]
         local text = sets and L["Sell %s? This item is saved in %s."]:format(item, sets) or L["Sell %s?"]:format(item)
         if quest then text = text .. " " .. quest end
-        local request = { guid = guid, fromCursor = fromCursor, tab = MerchantFrame.selectedTab, frame = frame,
-            click = nativeClick, args = { ... } }
-        ns.ShowDialog(dialog, text, request)
-        return true
+        return text
     end
 
-    local function BagRightClick(frame, button)
-        if MerchantFrame.selectedTab == 1 and button == "RightButton" and not IsModifiedClick() then
-            return SlotLocation(frame)
-        end
+    local function Confirm(frame, script, fromCursor, location)
+        if not Active() or InCombatLockdown() or not frame or frame:IsForbidden() then return end
+        local guid = ItemGUID(location)
+        if not guid then return end
+        -- The same release can raise both drag receipt and mouse-up.
+        if pending and pending.guid == guid and (not ns.AnyDialogShown or ns.AnyDialogShown()) then return end
+        local text, click = WarningText(location), frame:GetScript(script)
+        if not (text and click) then return end
+        pending = { guid = guid, fromCursor = fromCursor, tab = MerchantFrame.selectedTab, frame = frame, click = click }
+        ns.ShowDialog(dialog, text, pending)
     end
 
-    local function MerchantDrop()
-        if MerchantFrame.selectedTab == 1 then return CursorLocation() end
+    local function ClickBagCatcher()
+        if MerchantFrame.selectedTab ~= 1 or IsModifiedClick() or not bagTarget then return end
+        Confirm(bagTarget, "OnClick", false, SlotLocation(bagTarget))
     end
 
-    local function MerchantItemClick(_, button)
-        if button == "LeftButton" and not IsModifiedClick() then return MerchantDrop() end
+    local function DropOnCatcher()
+        -- The merchant background's original handler runs the native refund check before selling.
+        Confirm(MerchantFrame, "OnMouseUp", true, CursorLocation())
     end
 
-    local function Wrap(frame, script, getLocation, fromCursor)
-        -- Embedded reagent fallback slots must keep the template's native click and drag scripts.
-        if not frame or frame:IsForbidden() or frame.fuiReagentProbe then return end
-        local scripts = wrapped[frame]
-        local original = frame:GetScript(script)
-        local existing = scripts and scripts[script]
-        if not original or (existing and original == existing.wrapper) then return end
-        local function Intercept(self, ...)
-            if Active() and not InCombatLockdown() then
-                local location = getLocation(self, ...)
-                if location and Confirm(self, original, fromCursor, location, ...) then return end
-            end
-            return original(self, ...)
-        end
-        if not scripts then
-            scripts = {}
-            wrapped[frame] = scripts
-        end
-        scripts[script] = { original = original, wrapper = Intercept }
-        frame:SetScript(script, Intercept)
+    local function ConfigureCatcher(frame)
+        frame:Hide()
+        frame:SetMouseClickEnabled(true)
+        frame:SetMouseMotionEnabled(false)
+        frame:SetPropagateMouseMotion(true)
     end
 
-    local function WrapBagSlots(frame)
-        if not (Active() and not InCombatLockdown() and frame.EnumerateValidItems) then return end
-        for _, button in frame:EnumerateValidItems() do Wrap(button, "OnClick", BagRightClick, false) end
+    local function MakeDropCatcher(parent, index)
+        local name = "FlareUIVendorDropCatcher" .. (index == 0 and "" or index)
+        local frame = CreateFrame("Frame", name, parent)
+        ConfigureCatcher(frame)
+        frame:SetAllPoints(parent)
+        -- Above merchant item icons, below the merchant panel's own controls.
+        frame:SetFrameLevel(parent:GetFrameLevel() + (index == 0 and 0 or 1))
+        if index ~= 0 then frame:SetPassThroughButtons("RightButton", "MiddleButton", "Button4", "Button5") end
+        frame:RegisterForDrag("LeftButton")
+        frame:SetScript("OnReceiveDrag", DropOnCatcher)
+        frame:SetScript("OnMouseUp", DropOnCatcher)
+        dropCatchers[index] = frame
     end
 
-    local function WrapFocusedBagSlot(button)
-        if button ~= "RightButton" or InCombatLockdown() or not Active() then return end
-        -- Baganator and other bags can pool Blizzard item buttons outside ContainerFrames.
-        -- The template sells on RightButtonUp, so wrap the focused slot on the preceding press.
+    local function FocusedBagSlot()
+        if MerchantFrame.selectedTab ~= 1 or IsModifiedClick() then return end
         for _, focus in ipairs(GetMouseFoci()) do
-            if not focus:IsForbidden() and focus.buttonContext == "ButtonContext_ContainerFrameItemButton"
+            if focus == bagCatcher then
+                if bagTarget and bagTarget:IsVisible() then return bagTarget end
+            elseif not focus:IsForbidden() and focus.buttonContext == "ButtonContext_ContainerFrameItemButton"
                 and focus.GetBagID and focus.GetID then
-                Wrap(focus, "OnClick", BagRightClick, false)
-                return
+                return focus
             end
         end
+    end
+
+    local function UpdateBagCatcher()
+        local target = FocusedBagSlot()
+        local location = target and SlotLocation(target)
+        local guid = ItemGUID(location)
+        if target == bagTarget and guid == bagGUID then return end
+        bagTarget, bagGUID = target, guid
+        if guid and WarningText(location) then
+            bagCatcher:ClearAllPoints()
+            bagCatcher:SetAllPoints(target)
+            bagCatcher:SetFrameStrata(target:GetFrameStrata())
+            bagCatcher:SetFrameLevel(target:GetFrameLevel() + 1)
+            bagCatcher:Show()
+        else
+            bagCatcher:Hide()
+        end
+    end
+
+    local function UpdateDropCatchers()
+        local location = CursorLocation()
+        local guid, tab, pageSize = ItemGUID(location), MerchantFrame.selectedTab, MERCHANT_ITEMS_PER_PAGE or 10
+        if guid == dropGUID and tab == dropTab and pageSize == dropPageSize then return end
+        dropGUID, dropTab, dropPageSize = guid, tab, pageSize
+        local warn = guid and WarningText(location)
+        if warn then
+            if not dropCatchers[0] then MakeDropCatcher(MerchantFrame, 0) end
+            if tab == 1 then
+                for i = 1, pageSize do
+                    local button = _G["MerchantItem" .. i .. "ItemButton"]
+                    if button and not dropCatchers[i] then MakeDropCatcher(button, i) end
+                end
+            end
+        end
+        for index, frame in pairs(dropCatchers) do
+            frame:SetShown(warn and (index == 0 or (tab == 1 and index <= pageSize)) and true or false)
+        end
+    end
+
+    local function UpdateCatchers()
+        UpdateBagCatcher()
+        UpdateDropCatchers()
     end
 
     function Sale.Refresh()
         if not Sale.started then return end
-        local active = Active()
+        bagGUID, dropPageSize = false, nil
+        local active = Active() and not InCombatLockdown()
+        watcher:SetShown(active and true or false)
         if active then
-            events:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            UpdateCatchers()
         else
-            events:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+            bagCatcher:Hide()
+            bagTarget = nil
+            for _, frame in pairs(dropCatchers) do frame:Hide() end
             ns.CancelDialog(dialog)
-        end
-        if InCombatLockdown() then return end
-        if not active then
-            for frame, scripts in pairs(wrapped) do
-                for script, entry in pairs(scripts) do
-                    if not frame:IsForbidden() and frame:GetScript(script) == entry.wrapper then
-                        frame:SetScript(script, entry.original)
-                    end
-                end
-                wrapped[frame] = nil
-            end
-            return
-        end
-
-        for _, frame in ipairs(BagFrames()) do WrapBagSlots(frame) end
-        -- The merchant background's mouse-up sells from the cursor even on the Buyback tab.
-        Wrap(MerchantFrame, "OnMouseUp", CursorLocation, true)
-        Wrap(MerchantFrame, "OnReceiveDrag", MerchantDrop, true)
-        for i = 1, MERCHANT_ITEMS_PER_PAGE or 10 do
-            local button = _G["MerchantItem" .. i .. "ItemButton"]
-            Wrap(button, "OnClick", MerchantItemClick, true)
-            Wrap(button, "OnDragStart", MerchantDrop, true)
+            pending = nil
         end
     end
 
@@ -2267,6 +2290,7 @@ do
         ns.Dialogs[dialog] = {
             text = "%s", button1 = SELL, button2 = CANCEL, hideOnEscape = true, showAlert = true,
             OnAccept = function(request)
+                pending = nil
                 if not Active() or InCombatLockdown() or MerchantFrame.selectedTab ~= request.tab then return end
                 local frame = request.frame
                 if frame:IsForbidden() or not frame:IsVisible() then return end
@@ -2277,28 +2301,32 @@ do
                 elseif not GetCursorInfo() and not IsModifiedClick() then
                     location = SlotLocation(frame)
                 end
-                if ItemGUID(location) == request.guid then request.click(frame, unpack(request.args)) end
+                if ItemGUID(location) == request.guid then
+                    request.click(frame, request.fromCursor and "LeftButton" or "RightButton")
+                end
             end,
             OnCancel = function(request)
+                pending = nil
                 if request.fromCursor and ItemGUID(CursorLocation()) == request.guid then ClearCursor() end
             end,
         }
+        bagCatcher = CreateFrame("Button", "FlareUIVendorBagSaleCatcher", UIParent)
+        ConfigureCatcher(bagCatcher)
+        bagCatcher:RegisterForClicks("RightButtonUp")
+        bagCatcher:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
+        bagCatcher:SetScript("OnClick", ClickBagCatcher)
+        watcher = CreateFrame("Frame", "FlareUIVendorSaleWatcher", UIParent)
+        watcher:SetScript("OnUpdate", UpdateCatchers)
+        for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "CURSOR_CHANGED",
+            "BAG_UPDATE_DELAYED", "EQUIPMENT_SETS_CHANGED", "QUEST_LOG_UPDATE" }) do
+            watcher:RegisterEvent(event)
+        end
+        watcher:SetScript("OnEvent", function(self, event)
+            if self:IsShown() or event == "PLAYER_REGEN_ENABLED" then Sale.Refresh() end
+        end)
         MerchantFrame:HookScript("OnShow", Sale.Refresh)
         MerchantFrame:HookScript("OnHide", Sale.Refresh)
-        if ContainerFrame_GenerateFrame then hooksecurefunc("ContainerFrame_GenerateFrame", WrapBagSlots) end
         if MerchantFrame_UpdateMerchantInfo then hooksecurefunc("MerchantFrame_UpdateMerchantInfo", Sale.Refresh) end
-        events = CreateFrame("Frame")
-        events:RegisterEvent("PLAYER_REGEN_DISABLED")
-        events:RegisterEvent("PLAYER_REGEN_ENABLED")
-        events:SetScript("OnEvent", function(_, event, button)
-            if event == "GLOBAL_MOUSE_DOWN" then
-                WrapFocusedBagSlot(button)
-            elseif event == "PLAYER_REGEN_DISABLED" then
-                ns.CancelDialog(dialog)
-            else
-                Sale.Refresh()
-            end
-        end)
         Sale.Refresh()
     end
 end
