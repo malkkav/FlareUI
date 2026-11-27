@@ -925,7 +925,6 @@ L[ [=[Puts a macro on your cursor that opens this radial from an action bar or a
 * Appuyez sur la macro : il s'ouvre
 * Cliquez : utilise le bouton visé
 * Appuyez à nouveau, clic droit ou Échap : il se ferme]=]
-L["Puts every FlareUI setting back to default."] = "Remet tous les paramètres de FlareUI par défaut."
 L["PvP Flag"] = "Statut JcJ"
 L["PvP Timer"] = "Minuteur JcJ"
 L["Quality of Life"] = "Qualité de vie"
@@ -988,11 +987,6 @@ L["Repairs your gear at vendors that can."] = "Répare votre équipement chez le
 L["Replace"] = "Remplacer"
 L["Requires Level 57"] = "Niveau 57 requis"
 L["Reset"] = "Réinitialiser"
-L[ [=[Reset every FlareUI setting back to its default?
-
-This cannot be undone.]=] ] = [=[Réinitialiser tous les paramètres de FlareUI à leurs valeurs par défaut ?
-
-Cette action est irréversible.]=]
 L["Reset FlareUI"] = "Réinitialiser FlareUI"
 L["Reset the %s options to their defaults?"] = "Réinitialiser les options %s à leurs valeurs par défaut ?"
 L["Resource Bars"] = "Barres de ressource"
@@ -1364,7 +1358,6 @@ L["You no take candle!"] = "Toi pas prendre bougie !"
 L["Your account macros are full. Delete one and try again."] = "Vos macros de compte sont pleines. Supprimez-en une et réessayez."
 L["Your Auras First"] = "Vos auras d'abord"
 L["Your bags and what you loot."] = "Vos sacs et ce que vous ramassez."
-L["Your Blizzard settings aren't touched."] = "Vos paramètres Blizzard ne sont pas touchés."
 L["Your buffs and debuffs in FlareUI's style."] = "Vos buffs et débuffs au style FlareUI."
 L["Your Cast"] = "Votre incantation"
 L["Your Cast Bar"] = "Votre barre d'incantation"
@@ -1803,7 +1796,6 @@ L["Combat Glow"] = "Lueur de combat"
 L["Combat Text Scale"] = "Taille du texte de combat"
 L["Combo Points (Bar Only)"] = "Points de combo (barre seulement)"
 L["Convenience"] = "Confort"
-L["Craft Batch Time"] = "Durée du lot d'artisanat"
 L["Damage Trail"] = "Traînée de dégâts"
 L["Drawer Style"] = "Style du tiroir"
 L["Druid Mana Text"] = "Texte de mana du druide"
@@ -2114,7 +2106,6 @@ L["The time left on the cast, at the bar's right end."] = "Le temps restant de l
 L["The totems come with FlareUI's player frame."] = "Les totems viennent avec le cadre du joueur de FlareUI."
 L["The tracker's text colours:\n* Blizzard: the game's own yellow titles and bright colours\n* FlareUI: bronze header and quest titles, and softer tones for every other colour"] = "Les couleurs de texte du suivi :\n* Blizzard : les titres jaunes et les couleurs vives du jeu\n* FlareUI : en-tête et titres de quêtes en bronze, et des tons plus doux pour toutes les autres couleurs"
 L["The whole inside of the cast bar, icon too, flashes red while the spell is aimed at you."] = "Tout l'intérieur de la barre d'incantation, icône comprise, clignote en rouge tant que le sort vous vise."
-L["This type's plates can't be clicked; clicks go to the world."] = "Les barres d'info de ce type ne se cliquent pas ; les clics vont au monde."
 L["Threat Window"] = "Fenêtre de menace"
 L["Threat as Damage or Healer"] = "Menace en dégâts ou soigneur"
 L["Threat as a Tank"] = "Menace en tank"
@@ -2636,7 +2627,6 @@ L["When the Fake Cooldown Manager bars show. Any ticked condition shows them."] 
 L["When the chat shows. Any ticked condition shows it:\n* New Messages: a new line, or closing a quest or vendor window\n* Only Chat Messages: only lines people write (say, party, guild, whispers, channels), not loot, skill-ups or XP"] = "Quand le chat s'affiche. Toute condition cochée l'affiche :\n* Nouveaux messages : une nouvelle ligne, ou la fermeture d'une fenêtre de quête ou de marchand\n* Seulement les messages de chat : seulement les lignes que les gens écrivent (dire, groupe, guilde, chuchotements, canaux), pas le butin, les progressions de compétence ni l'XP"
 L["When the meter clears itself:\n* Entering a Dungeon: a new dungeon or raid\n* Leaving a Group: you leave a party or raid"] = "Quand le compteur se vide seul :\n* En entrant dans un donjon : un nouveau donjon ou raid\n* En quittant un groupe : vous quittez un groupe ou un raid"
 L["When the reminders stay hidden:\n* In Rested Areas: in towns and inns\n* While Mounted: while you ride"] = "Quand les rappels restent masqués :\n* En zone de repos : dans les villes et les auberges\n* Sur une monture : quand vous êtes monté"
-L["When you craft several of an item, your cast bar also shows the time left for all of them, like 0:12 (1:02)."] = "Quand vous fabriquez plusieurs exemplaires d'un objet, votre barre d'incantation montre aussi le temps restant pour tous, comme 0:12 (1:02)."
 L["When your controller rumbles:\n* Alerts: ready checks, queue invites, summons, resurrections and group invites\n* Procs: a short rumble when a spell lights up on your action bars"] = "Quand votre manette vibre :\n* Alertes : appels, invitations de file, invocations, résurrections et invitations de groupe\n* Procs : une courte vibration quand un sort s'allume sur vos barres d'action"
 L["Where Buffs and Debuffs sit when both are on:\n* One Line: side by side, half the plate each\n* Buffs on Top, Debuffs on Top: each on its own line, the plate's full width"] = "Où se placent les Buffs et les Débuffs quand les deux sont activés :\n* Une ligne : côte à côte, la moitié de la barre d'info chacun\n* Buffs en haut, Débuffs en haut : chacun sur sa propre ligne, sur toute la largeur de la barre d'info"
 L["Which addons' minimap buttons go in the drawer. The rest stay on the minimap's edge. New addons go in the drawer."] = "Les boutons de minicarte de quels addons vont dans le tiroir. Les autres restent au bord de la minicarte. Les nouveaux addons vont dans le tiroir."
@@ -2691,3 +2681,17 @@ L["While Heroic Strike, Cleave, Maul or Raptor Strike waits for the next swing, 
 L["With Position on Inside, an idle IM box hides under the chat. The Gamepad UI always uses IM Style."] = "Avec Position sur Intérieur, une zone de messagerie inactive se cache sous le chat. L'interface Manette utilise toujours le Style Messagerie Instantanée."
 L["Your other characters copy their settings from this one."] = "Vos autres personnages copient leurs réglages depuis celui-ci."
 L["Your profiles:"] = "Vos profils :"
+
+-- phrases added by Braincell1980
+L["Craft Batch"] = "Lot de fabrication"
+L["Crafting several of one item runs one bar over them all: the batch's time left, then how many are made, like (2/5)."] = "Fabriquer plusieurs exemplaires d'un objet affiche une seule barre pour tous : le temps restant du lot, puis le nombre déjà fabriqué, comme (2/5)."
+L["Every character on this profile resets with it. Your Blizzard settings aren't touched."] = "Tous les personnages de ce profil sont réinitialisés avec lui. Vos réglages Blizzard ne sont pas touchés."
+L["Font Size"] = "Taille de police"
+L["Plates of every type can't be clicked; clicks go to the world."] = "Les barres d'info de tous les types ne se cliquent pas ; les clics vont au monde."
+L["Puts every profile, on every character, back to FlareUI's defaults."] = "Remet tous les profils, sur tous les personnages, aux réglages par défaut de FlareUI."
+L["Puts the profile in use back to FlareUI's defaults. Your other profiles stay as they are."] = "Remet le profil utilisé aux réglages par défaut de FlareUI. Vos autres profils restent tels quels."
+L["Reset FlareUI on every character?\n\nEvery profile goes back to FlareUI's defaults, on all your characters. This cannot be undone.\n\nTo reset only the profile in use, choose Reset Profile."] = "Réinitialiser FlareUI sur tous les personnages ?\n\nTous les profils reviennent aux réglages par défaut de FlareUI, sur tous vos personnages. Cette action est irréversible.\n\nPour ne réinitialiser que le profil utilisé, choisissez Réinitialiser le profil."
+L["Reset Profile"] = "Réinitialiser le profil"
+L["Reset the profile |cffffff00%s|r to FlareUI's defaults?\n\nEvery character on it resets with it. Your other profiles stay as they are. This cannot be undone."] = "Réinitialiser le profil |cffffff00%s|r aux réglages par défaut de FlareUI ?\n\nTous les personnages qui l'utilisent sont réinitialisés avec lui. Vos autres profils restent tels quels. Cette action est irréversible."
+L["Show Craft Batch"] = "Afficher le lot de fabrication"
+L["When one setup went wrong, Reset Profile is the safer choice. Your Blizzard settings aren't touched."] = "Si un seul réglage a mal tourné, Réinitialiser le profil est le choix le plus sûr. Vos réglages Blizzard ne sont pas touchés."
