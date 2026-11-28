@@ -152,20 +152,20 @@ local PREVIEW = {
       portrait = "Interface\\Icons\\INV_Misc_Head_Human_01" },
     { name = "Elysande", surname = "Brightvale", class = "PRIEST",  role = "HEALER",  health = 0.64, power = 0.85, ready = "ready",
       portrait = "Interface\\Icons\\INV_Misc_Head_Elf_02" },
-    { name = "Morwen", surname = "Ashgrove", class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = "Voidwalker",
+    { name = "Morwen", surname = "Ashgrove", class = "WARLOCK", role = "DAMAGER", health = 0.48, power = 0.60, marker = 8, highlight = "Magic", pet = L["Voidwalker"],
       portrait = "Interface\\Icons\\INV_Misc_Head_Undead_02" },
-    { name = "Sylvara", surname = "Thornfield", class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = "Wolf", status = "IncomingResurrection",
+    { name = "Sylvara", surname = "Thornfield", class = "HUNTER",  role = "DAMAGER", health = 0.81, power = 0.72, pet = L["Wolf"], status = "IncomingResurrection",
       portrait = "Interface\\Icons\\INV_Misc_Head_Troll_02" },
     { name = "Kestrel", surname = "Blackmoor", class = "ROGUE",   role = "DAMAGER", health = 0.27, power = 0.90, status = "IncomingSummonPending",
       portrait = "Interface\\Icons\\INV_Misc_Head_Gnome_01" },
 }
 -- the samples' targets: the healer on the tank, the rest on an enemy
 local PREVIEW_TARGETS = {
-    { name = "Defias Pillager", health = 0.58 },
+    { name = L["Defias Pillager"], health = 0.58 },
     { name = "Thalorien", class = "WARRIOR", health = 0.92 },
-    { name = "Defias Pillager", health = 0.58 },
-    { name = "Defias Pillager", health = 0.58 },
-    { name = "Defias Pillager", health = 0.58 },
+    { name = L["Defias Pillager"], health = 0.58 },
+    { name = L["Defias Pillager"], health = 0.58 },
+    { name = L["Defias Pillager"], health = 0.58 },
 }
 -- sample class and power colours, independent of the API
 local PREVIEW_CLASS_RGB = {

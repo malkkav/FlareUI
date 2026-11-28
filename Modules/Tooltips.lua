@@ -1079,7 +1079,7 @@ do
         local r, g, b = C_Item.GetItemQualityColor(equipped and 3 or 4)
         r, g, b = r or 1, g or 1, b or 1
         local name = Readable((C_Item.GetItemInfo(id)))
-        if type(name) ~= "string" then name = equipped and "Felheart Horns" or "Netherwind Crown" end
+        if type(name) ~= "string" then name = equipped and L["Felheart Horns"] or L["Netherwind Crown"] end
         local lines = {}
         if equipped then lines[1] = { _G.CURRENTLY_EQUIPPED or "Currently Equipped", 0.5, 0.5, 0.5 } end
         lines[#lines + 1] = { name, r, g, b, title = not equipped }
@@ -1120,7 +1120,7 @@ do
         local r, g, b = C_Item.GetItemQualityColor(4)
         r, g, b = r or 1, g or 1, b or 1
         local name = Readable((C_Item.GetItemInfo(19140)))
-        if type(name) ~= "string" then name = "Cauterizing Band" end
+        if type(name) ~= "string" then name = L["Cauterizing Band"] end
         local lines = {}
         lines[#lines + 1] = { name, r, g, b, title = true }
         lines[#lines + 1] = { _G.ITEM_BIND_ON_PICKUP or "Binds when picked up" }

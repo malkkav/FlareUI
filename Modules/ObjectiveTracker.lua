@@ -2112,19 +2112,19 @@ _G.FlareUI_QuestTrackerAPI = {
 --------------------------------------------------
 -- Sample quests, in Edit Mode while nothing is tracked; one has a sample item button
 local PREVIEW = {
-    { zone = true, text = "Elwynn Forest" },
-    { level = 7, title = "Kobold Camp Cleanup", timer = 285, objectives = { { text = "6/10 Kobold Vermin slain" } } },
-    { level = 8, title = "Wolves Across the Border", focus = true, objectives = { { text = "4/8 Tough Wolf Meat" } },
+    { zone = true, text = L["Elwynn Forest"] },
+    { level = 7, title = L["Kobold Camp Cleanup"], timer = 285, objectives = { { text = L["6/10 Kobold Vermin slain"] } } },
+    { level = 8, title = L["Wolves Across the Border"], focus = true, objectives = { { text = L["4/8 Tough Wolf Meat"] } },
       item = "Interface\\Icons\\INV_Misc_Bag_10" },
-    { level = 9, title = "Red Linen Goods", objectives = { { text = "6/6 Red Linen Bandana", finished = true } }, done = true },
-    { zone = true, text = "Westfall" },
-    { level = 14, tags = "+ g5", title = "The Defias Brotherhood", objectives = { { text = "Speak with Gryan Stoutmantle" } } },
-    { level = 12, title = "Westfall Stew", objectives = {
-        { text = "3/3 Stringy Vulture Meat", finished = true }, { text = "1/3 Goretusk Snout" },
-        { text = "0/3 Murloc Eye" }, { text = "2/3 Okra" } } },
-    { level = 11, title = "Poor Old Blanchy", objectives = { { text = "8/8 Handful of Oats", finished = true } }, done = true },
-    { zone = true, text = "Duskwood" },
-    { level = 24, tags = " d", title = "The Night Watch", objectives = { { text = "0/12 Skeletal Warrior slain" }, { text = "0/6 Skeletal Mage slain" } } },
+    { level = 9, title = L["Red Linen Goods"], objectives = { { text = L["6/6 Red Linen Bandana"], finished = true } }, done = true },
+    { zone = true, text = L["Westfall"] },
+    { level = 14, tags = "+ g5", title = L["The Defias Brotherhood"], objectives = { { text = L["Speak with Gryan Stoutmantle"] } } },
+    { level = 12, title = L["Westfall Stew"], objectives = {
+        { text = L["3/3 Stringy Vulture Meat"], finished = true }, { text = L["1/3 Goretusk Snout"] },
+        { text = L["0/3 Murloc Eye"] }, { text = L["2/3 Okra"] } } },
+    { level = 11, title = L["Poor Old Blanchy"], objectives = { { text = L["8/8 Handful of Oats"], finished = true } }, done = true },
+    { zone = true, text = L["Duskwood"] },
+    { level = 24, tags = " d", title = L["The Night Watch"], objectives = { { text = L["0/12 Skeletal Warrior slain"] }, { text = L["0/6 Skeletal Mage slain"] } } },
 }
 
 -- the quest's own difficulty, as the quest log colours it; the sample quests have only a level
