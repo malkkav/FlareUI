@@ -36,15 +36,15 @@ local TILE_TEMPLATE = "SecureUnitButtonTemplate,PingableUnitFrameTemplate,Backdr
 local HOSTILE_RGB = { 0.87, 0.27, 0.27 }
 -- Edit Mode samples
 local SAMPLES = {
-    { name = "Onyxia", level = -1, health = 0.78, power = 0.62, marker = 8, buffs = 1, debuffs = 2,
+    { name = L["Onyxia"], level = -1, health = 0.78, power = 0.62, marker = 8, buffs = 1, debuffs = 2,
       portrait = "Interface\\Icons\\INV_Misc_Head_Dragon_Black" },
-    { name = "Ragnaros", level = -1, health = 0.54, power = 0.85, debuffs = 1,
+    { name = L["Ragnaros"], level = -1, health = 0.54, power = 0.85, debuffs = 1,
       portrait = "Interface\\Icons\\Spell_Fire_Fire" },
-    { name = "Nefarian", level = -1, health = 0.31, power = 0.40, buffs = 2,
+    { name = L["Nefarian"], level = -1, health = 0.31, power = 0.40, buffs = 2,
       portrait = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
-    { name = "Flamewaker Elite", level = -1, health = 0.92, power = 0.70,
+    { name = L["Flamewaker Elite"], level = -1, health = 0.92, power = 0.70,
       portrait = "Interface\\Icons\\Spell_Fire_Incinerate" },
-    { name = "Core Hound", level = -1, health = 0.66, power = 0.25,
+    { name = L["Core Hound"], level = -1, health = 0.66, power = 0.25,
       portrait = "Interface\\Icons\\Ability_Hunter_Pet_Wolf" },
 }
 for _, s in ipairs(SAMPLES) do s.rgb = HOSTILE_RGB; s.classification = "worldboss" end
