@@ -26,12 +26,14 @@ local LEM = LibStub("FlareEditMode")
 local WIDTH, HEIGHT = 220, 132
 local LIFE = 4.5          -- seconds a line lives
 local RISE = 40           -- pixels a second
-local FADE_IN, FADE_OUT = 0.2, 1
+local FADE_IN, FADE_OUT = 0.4, 0.8
+local FADE_DIST = RISE * FADE_OUT -- pixels over which a line fades out at the top
 local SPACING = 22        -- between lines (more for a font over 14)
 local MAX_LINES = 6
 local JOIN = 1.5          -- a repeat this soon joins the line
 local PAIR = 1.5          -- the gold rise and the chat's money line arrive this close together
 local ICON = 18
+local TOP_Y = HEIGHT - ICON
 -- money has no icon: its text is the coins themselves (a gold icon reads as gold looted)
 local MONEY_ICON = false
 local DEFAULTS = { point = "CENTER", x = 220, y = 0 }   -- right of your character
@@ -169,6 +171,12 @@ local function Release(i)
     pool[#pool + 1] = line
 end
 
+local function Smooth(t)
+    if t <= 0 then return 0 end
+    if t >= 1 then return 1 end
+    return t * t * (3 - 2 * t)
+end
+
 local function OnUpdate(self, elapsed)
     -- newest first: each line rises, kept a line's height above the one below it
     local below
@@ -182,13 +190,15 @@ local function OnUpdate(self, elapsed)
     end
     for i = #lines, 1, -1 do
         local line = lines[i]
-        if line.age >= LIFE or line.y > HEIGHT - ICON then
+        if line.age >= LIFE or line.y >= TOP_Y then
             Release(i)
         else
             local anchor = line.anchor or "BOTTOMLEFT"
             if line.placedAt ~= anchor then line:ClearAllPoints(); line.placedAt = anchor end
             line:SetPoint(anchor, holder, anchor, 0, line.y)
-            line:SetAlpha(math_min(1, line.age / FADE_IN, (LIFE - line.age) / FADE_OUT))
+            local fadeIn = Smooth(line.age / FADE_IN)
+            local fadeOut = Smooth(math_min((LIFE - line.age) / FADE_OUT, (TOP_Y - line.y) / FADE_DIST))
+            line:SetAlpha(fadeIn * fadeOut)
         end
     end
     if #lines == 0 then self:SetScript("OnUpdate", nil) end
