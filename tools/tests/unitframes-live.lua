@@ -186,6 +186,12 @@ local targetBuffs, targetDebuffs = target.Auras.TOP.container, target.Auras.TOPL
 local purge, normal = target.Auras.TOP.lanes.purge.key, target.Auras.TOP.lanes.buffs.key
 local harm = target.Auras.TOPLEFT.lanes.debuffs.key
 assert(targetBuffs:IsShown() and targetDebuffs:IsShown() and target.AuraStackStrip)
+-- (Malkkav 11-28) purgeable buffs, then the rest, on one line: no group gap on top of the gap after each icon,
+-- so the icons after the join sit in the same columns as the row below
+for _, key in ipairs({ purge, normal }) do
+    local layout = targetBuffs.groups[key].layout
+    assert(layout.groupSpacing == 0 and layout.elementSpacing == 2, key .. ": one gap between every icon")
+end
 -- Center Spell Name: the name's two ends stand equally far from the bar's
 do
     local cast = target.Cast
@@ -550,6 +556,10 @@ do
     UF:Refresh()
     local narrow = Value("TOP")
     assert(Max() == 3 and narrow > target:GetWidth() / 2, "Max Buffs, on the whole width")
+    -- (Malkkav 11-27) Above the Frame is centred on the frame; a corner keeps its side
+    local point, rel, relPoint = target.Auras.TOP.container:GetPoint(1)
+    assert(point == "BOTTOM" and rel == target and relPoint == "TOP", "Above the Frame: centred, " .. tostring(point))
+    assert(target.Auras.BOTTOMRIGHT.container:GetPoint(1) == "TOPRIGHT", "a corner: its own side")
     targetDb.width, targetDb.buffAmount = target:GetWidth() + 120, 12
     UF:Refresh()
     assert(Max() == 12 and Value("TOP") == narrow + 120, "a wider frame, a longer line")
@@ -697,5 +707,28 @@ do
     assert(select(2, core:gsub("craftBatch = false", "")) == 2 and not core:find("craftBatch = true"), "Show Craft Batch is off by default")
     assert(UF.PlayerCastSettings(bar) == ns.db.profile.unitframes.playerCastbar, "the standalone bar reads its own settings")
     env.C_TradeSkillUI = nil
+end
+-- (11-27, Nelfie) Range Check on the pet frame: solo, the group range check has no answer for the pet,
+-- so the frame is measured with your helpful spells (none known here: full); in a group it reads UnitInRange
+do
+    state.pet = { name = "Quzbis", health = 100, power = 100, online = true }
+    ns.db.profile.unitframes.units.pet = { enabled = true, rangeCheck = true }
+    local grouped, inRange = false, false
+    env.IsInGroup = function() return grouped end
+    env.UnitInRange = function() return inRange, true end
+    UF.rangeKnown = { harm = {}, help = {}, melee = {} }
+    local f = env.CreateFrame("Frame")
+    function f:SetAlphaFromBoolean(value, on, off) self:SetAlpha(value and on or off) end
+    f:SetAlpha(0.2)
+    UF.ApplyRangeAlpha(f, "pet")
+    assert(f:GetAlpha() == 1, "solo: the pet next to you stays bright")
+    grouped = true
+    UF.ApplyRangeAlpha(f, "pet")
+    assert(f:GetAlpha() == UF.RANGE_ALPHA, "in a group: the group range check, out of range")
+    inRange = true
+    UF.ApplyRangeAlpha(f, "pet")
+    assert(f:GetAlpha() == 1, "in a group: in range")
+    state.pet, UF.rangeKnown, env.IsInGroup, env.UnitInRange = nil, nil, nil, nil
+    ns.db.profile.unitframes.units.pet = nil
 end
 print("PASS: unit frame startup, resource events, combat deferral and cast changes")

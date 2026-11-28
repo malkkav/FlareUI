@@ -1,6 +1,110 @@
 # FlareUI changelog history
 
-Versions 7.0.16 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+Versions 7.0.17 and before. The latest versions are in [CHANGELOG.md](CHANGELOG.md).
+
+# FlareUI 7.0.17
+
+New unit frame art, a combat ring you can't miss, and a pile of fixes from Discord and GitHub.
+
+**Restart the game fully after updating.** This version brings new art files, and a /reload doesn't load them.
+
+**We need your help testing:**
+- **Combat:** start a fight. The ring around your portrait flares, then stays red. In Forever Style, your name box turns red too.
+- **Hunters:** fight in melee range. Your nameplates and frames should stay fully visible.
+- **Range Check as a warrior, hunter or Bear Form druid:** step out of range. The target's frame should fade.
+- **Druids:** fly from Moonglade to Rut'theran. The Flight Timer should know the flight the next time.
+- **Battlegrounds:** the PvP icon shows on your frame and your party's.
+
+## Heads up
+Some things look different even if you change nothing:
+- **Target Highlight > Bar:** it brightens your target's bar instead of colouring it. Its colour is gone from Pick Your Colours.
+- **Party Members** nameplate colour is mint green, so it no longer looks like a mage's or a shaman's.
+- **Square minimap with Border: Header:** the frame is 16 px taller at the bottom, so the map starts under the title bar.
+- **Player Cast Bar:** **Width** now counts the icon. Your bar keeps its size. The default is 275.
+
+## New
+
+### Unit Frames
+- **Show Latency** (on): the end of the cast bar shows your latency. In the Player Cast Bar's Behaviour section and in the player frame's Cast Bar section.
+- With Plumber installed, clicking your pet's happiness face opens Plumber's pet food menu.
+
+### Nameplates
+- **Show Target's Plate** (off) for Name Only Mode: your target gets its full plate back. Set per unit type.
+
+### Resource Bars
+- **Bar Edge Glow** (off) on the power and mana bars.
+
+### Buffs & Debuffs
+- Totems: **Aura Icon Shape** (Round).
+
+### Cooldown Manager
+- Tracked Bars, in Edit Mode, with Growth Up or Down:
+  - **Sort By** (Blizzard): Blizzard, Newest First or Newest Last
+  - **Max Bars** (20)
+
+### Quest Tracker
+- **Sort By:** a new choice, By Zone and Level.
+
+### Buff Reminders
+- **Greater Blessings** (off) in the Blessing reminder's menu.
+
+### Fading
+- **Opacity** (100) under Faded Opacity, in every Visibility Fading section: how visible the frame is when it isn't faded.
+
+### For addon authors
+- **FlareUI_QuestTrackerAPI:** place your own buttons beside the quest tracker's rows. See API.md on GitHub.
+
+## Changed
+
+### Unit Frames
+- New ring and plate art:
+  - The portrait sits in the middle of its ring.
+  - FlareUI Style: the whole ring and its shadow show, and the level lines up with the bars.
+  - Forever Style: the bars sit inside the plate's slots.
+- **Combat Glow:**
+  - When a fight starts, the ring gives two quick, bright pulses.
+  - During the fight it stays clearly red and never fades out.
+  - Forever Style: your name box turns red and pulses with it.
+- Forever Style party: **Show Name** is a choice now: Off, First Name, Last Name or Full Name.
+- **Player Cast Bar:** **Width** counts the icon. By Nico-Mayer.
+
+### Nameplates
+- New quest mark art. It sits 2 px from the plate.
+- The threat box uses your target's border colour and Outer Glow.
+
+### Buff Reminders
+- Food and Flask is now **Consumables to Watch**: None, Food, Flask, Elixirs.
+- **Elixirs and More** lists elixirs by what they give. Your ticks are kept.
+
+### Translations
+- French updated. By Brainc3ll.
+
+## Fixed
+
+### Unit Frames
+- **Mana on Shapeshift:** the left text hid behind the portrait in FlareUI Style.
+- The PvP icon didn't show in battlegrounds, on unit and party frames.
+- **Range Check:** warriors, hunters and Bear Form druids were always in range. The spells it used, such as Heroic Strike, count at any distance.
+
+### Nameplates
+- Hunters: plates and frames faded when the target was close.
+- The quest mark was stretched.
+- **Colour Mob Types > Caster** didn't work in dungeons.
+- **Party Colour** and **Raid Colour** turned grey in Name Only Mode.
+
+### Minimap
+- The XP bar went under the minimap after you clicked it.
+- **Square minimap with Border: Header:** the map sat under the title bar.
+
+### Buff Reminders
+- Custom reminders: unticking one could remove another.
+- **Pet to Summon > Last Used:** the pet you already had out didn't count.
+
+### Flight Timer
+- Flights started by talking to someone, such as Moonglade to Rut'theran, were never learned.
+
+### Move Any Window
+- With TSM, Blizzard's profession window popped onto the screen.
 
 # FlareUI 7.0.16
 

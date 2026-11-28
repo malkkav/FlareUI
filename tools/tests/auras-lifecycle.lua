@@ -159,4 +159,11 @@ assert(debuffs.container:IsShown() and not debuffs.preview[1]:IsShown() and remi
 debuffs.moved(debuffs, "Modern", "BOTTOMLEFT", 15.3, -12.6)
 for _, callback in ipairs(editMode.callbacks.layout) do callback("Modern") end
 assert(debuffs:GetPoint() == "BOTTOMLEFT" and select(4, debuffs:GetPoint()) == 15)
+-- (11-27) a saved font size of 0 (from the short-lived Auto) is never handed to the client: 11 instead
+db.debuffs.font.size, db.debuffs.countFont.size = 0, 0
+auras:SetSettingsPreview(true)
+assert(select(2, debuffs.preview[1].FlareUI_PreviewTimer:GetFont()) == 10, "the timer: 11 less one")
+assert(select(2, debuffs.preview[1].FlareUI_Count:GetFont()) == 11, "the stacks: 11")
+db.debuffs.font.size, db.debuffs.countFont.size = 11, nil
+auras:SetSettingsPreview(false)
 print("PASS: aura container setup, enchant timing, icon restyles, private anchors and preview combat deferral")

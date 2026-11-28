@@ -1263,9 +1263,12 @@ end
 -- works in it. Clicks reach the tile either way. Boss tiles keep theirs.
 local groupAuraButtons = setmetatable({}, { __mode = "k" })
 local inFight = false
+-- With the Tooltips module off nothing of it applies: the icons show their tooltips, as on Blizzard's own
+-- party and raid frames (Malkkav 11-27; before, they fell back to Never and showed none).
 local function GroupAuraMouse()
     local db = ns.db and ns.db.profile and ns.db.profile.tooltips
-    local mode = db and db.enabled and db.visibility and db.visibility.groupAuras or "never"
+    if not (db and db.enabled) then return true end
+    local mode = db.visibility and db.visibility.groupAuras or "always"
     return mode == "always" or (mode == "combat" and not inFight)
 end
 
@@ -1571,7 +1574,9 @@ local function ConfigurePosition(f, pos, lanes, extra)
             layout = {
                 elementWidth = size, elementHeight = look and look.cellHeight or size,
                 elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
-                groupSpacing = AURA_SPACING, groupLineSpacing = AURA_SPACING,
+                -- (groupSpacing 0: on top of the gap after each icon it put the icons after two groups'
+                -- join a gap over, 11-28)
+                groupSpacing = 0, groupLineSpacing = AURA_SPACING,
                 layoutIndex = index,
                 -- each kind starts a row of its own
                 forceNewLine = index > 1 and not lane.joinPrevious,

@@ -39,13 +39,13 @@ S:Module{
     noReset = true,
 }
 
--- ESC Menu: a FlareUI button in the game menu, under Shop (Launcher.lua 4b); off,
+-- ESC Menu: a FlareUI button in the game menu, under Shop (Launcher.lua 4b); on for new installs (11-27),
 -- for every character
 S:Row{
     key = "language.escButton", module = "language", tab = "account", section = "language.escMenu", account = true,
     get = function() local g = ns.db and ns.db.global; return g and g.escMenuButton == true or false end,
     set = function(on) local g = ns.db and ns.db.global; if g then g.escMenuButton = on and true or nil end end,
-    resetValue = function() return false end,
+    resetValue = function() return true end,   -- (on for new players, 11-27)
 }
 
 -- Sync Blizz UI: copies one character's Blizzard settings to the others

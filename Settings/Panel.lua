@@ -1354,7 +1354,8 @@ Fill.button = function(f, row)
         return
     end
     f.control:SetPoint("RIGHT", -4, 0)
-    local width = row.buttonWidth or 200
+    -- (a half row: as wide as its partner's dropdown)
+    local width = row.buttonWidth or (row.half and BOX_HALF_W) or 200
     f.control:SetWidth(width)
     if row.buttonText then
         f.control:SetText(row.buttonText)

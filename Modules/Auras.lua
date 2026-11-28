@@ -321,14 +321,16 @@ local function StyleButton(button, look)
 
     local font, countFont = look.font or {}, look.countFont or look.font or {}
     local fontPath = ns.GetFontPath(font.face or "Friz Quadrata TT")
-    local fontSize = font.size or 11
+    -- (a size of 0 or none: 11. The client refuses a font height of 0)
+    local fontSize = (font.size or 0) > 0 and font.size or 11
     local flags = font.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end   -- not a valid client flag
     local countFlags = countFont.flags or "OUTLINE"
     if countFlags == "NONE" then countFlags = "" end
     local countText, durationText = button.FlareUI_Count, button.FlareUI_Duration
     local timerSize = look.timerSize or math_max(8, fontSize - 1)
-    ns.SetFont(countText, ns.GetFontPath(countFont.face or "Friz Quadrata TT"), countFont.size or fontSize, countFlags)
+    local countSize = (countFont.size or 0) > 0 and countFont.size or fontSize
+    ns.SetFont(countText, ns.GetFontPath(countFont.face or "Friz Quadrata TT"), countSize, countFlags)
     ns.SetFont(durationText, fontPath, timerSize, flags)
     ns.ApplyShadow(countText, countFont)
     ns.ApplyShadow(durationText, font)
@@ -868,8 +870,9 @@ function AU.UpdateLead(holder, kdb)
     local n = holder.leadCount or 0
     local size, spacing = kdb.size or 30, kdb.spacing or 6
     local layout = {
+        -- (its trailing elementSpacing is the gap before the buffs: their groupSpacing is 0, 11-28)
         elementWidth = math_max(n * (size + spacing) - spacing, 0), elementHeight = 0,
-        elementSpacing = 0, lineSpacing = 0, groupSpacing = 0, groupLineSpacing = 0, forceNewLine = false,
+        elementSpacing = spacing, lineSpacing = 0, groupSpacing = 0, groupLineSpacing = 0, forceNewLine = false,
         layoutIndex = 0,
     }
     if not holder.leadMade then
@@ -979,7 +982,9 @@ local function LayoutKind(kind)
     local layout = {
         elementWidth = look.size, elementHeight = CellHeight(look.size),
         elementSpacing = spacing, lineSpacing = spacing,
-        groupSpacing = spacing, groupLineSpacing = spacing,
+        -- (groupSpacing 0: Blizzard adds it on top of the gap after each icon where two groups share a
+        -- line, so the icons after the join sat a gap further over than the row below, 11-28)
+        groupSpacing = 0, groupLineSpacing = spacing,
         layoutIndex = 1,   -- (after the weapon enchants' lead group)
     }
     local adb = GetDb()
@@ -1142,7 +1147,7 @@ function AU.StackFont(fontString)
     local font = (db.buffs and db.buffs.countFont) or db.countFont or {}
     local flags = font.flags or "OUTLINE"
     if flags == "NONE" then flags = "" end
-    ns.SetFont(fontString, ns.GetFontPath(font.face or "Friz Quadrata TT"), font.size or 11, flags)
+    ns.SetFont(fontString, ns.GetFontPath(font.face or "Friz Quadrata TT"), (font.size or 0) > 0 and font.size or 11, flags)
     ns.ApplyShadow(fontString, font)
 end
 

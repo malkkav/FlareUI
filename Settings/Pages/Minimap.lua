@@ -89,14 +89,19 @@ end
 -- Show Box (on): the plates behind the cells; off, the text alone
 S:Row{ key = "mm.barBox", path = "minimap.infoBarBox", apply = Refresh, half = true }
 S:Row{ key = "mm.barHover", path = "minimap.infoBarHover", apply = Refresh, half = true }
--- Below the Map (off): the bar under the map's frame, clear of the quest arrow (Minimap.lua Bar.Below)
-S:Row{ key = "mm.barBelow", path = "minimap.infoBarBelow", apply = Refresh, half = true }
+-- Position { On the Map · Below the Map } (was the Below the Map switch, Malkkav 11-27; same saved
+-- minimap.infoBarBelow): below, the bar hangs under the map's frame, clear of the quest arrow (Minimap.lua
+-- Bar.Below). A whole row, so Show Box and Only on Mouseover pair below it
+S:Row{ key = "mm.barBelow", kind = "choice", choices = { "map", "below" }, apply = Refresh,
+    get = function() return S:GetPath("minimap.infoBarBelow") == true and "below" or "map" end,
+    set = function(v) S:SetPath("minimap.infoBarBelow", v == "below") end,
+    resetValue = function() return "map" end }
 -- Tweaks: Auto Zoom Out, then the two switches in two columns
 S:Row{ key = "mm.zoom", kind = "choice", path = "minimap.autoZoom", choices = { 0, 5, 10, 30 }, apply = Refresh }
+-- FPS/Latency on Clock, then Middle-Click Menu (Malkkav 11-27)
+S:Row{ key = "mm.clockStats", path = "minimap.clockStats", half = true }
 S:Row{ key = "mm.microMenu", path = "minimap.microMenu", half = true,
     apply = function() if ns.Minimap and ns.Minimap.UpdateMapMouse then ns.Minimap.UpdateMapMouse() end end }
--- FPS/Ping on Clock (in Map Tools, under Middle-Click Menu)
-S:Row{ key = "mm.clockStats", path = "minimap.clockStats", half = true }
 -- FlareUI Minimap Button: FlareUI's own button, on the minimap or in the drawer
 -- (live; its right-click turns it off)
 -- Drawer Style: Disabled / Sundial / Blizzard, first in Addon Buttons; Disabled greys the
@@ -117,8 +122,9 @@ S:Row{ key = "mm.drawerStyle", kind = "choice", tab = "buttons", reload = true,
         end
         return { "disabled", "sundial", "blizzard" }
     end }
--- (not greyed with the drawer Off: the button then sits on the minimap)
-S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons", half = true,
+-- (not greyed with the drawer Off: the button then sits on the minimap). A whole row, the two
+-- mouseover switches paired below it (Malkkav 11-27)
+S:Row{ key = "mm.flareButton", path = "minimap.flareButton", tab = "buttons",
     apply = function() if ns.MinimapBag and ns.MinimapBag.FlareChanged then ns.MinimapBag.FlareChanged() end end }
 -- Minimap Icons: one dropdown of toggles for the four icons, in the order they stack on the map,
 -- bottom to top. Saved as before: minimap.sundial (off = false; a reload hides or shows it, and off
@@ -164,9 +170,9 @@ S:Row{ key = "mm.resetButtonMoves", kind = "button", center = true, section = "m
 S:Row{ key = "mm.bagHover", path = "minimap.bagHover", tab = "buttons", half = true,
     disabled = DrawerOff }
 -- (deroostr 11-27) the addon buttons on the map's edge only while you point at the map (Minimap.lua
--- MM.ButtonsHover); a whole row, so the two half rows above stay a pair. Not greyed with the drawer Off:
--- then every button is on the edge.
-S:Row{ key = "mm.buttonsHover", path = "minimap.buttonsHover", tab = "buttons", apply = Refresh }
+-- MM.ButtonsHover), Open Drawer on Mouseover's partner. Not greyed with the drawer Off: then every button
+-- is on the edge.
+S:Row{ key = "mm.buttonsHover", path = "minimap.buttonsHover", tab = "buttons", half = true, apply = Refresh }
 -- which addons go in it (ticked) and which are left alone on the minimap; a reload puts a
 -- button back where its addon keeps it. None: every button on the minimap's edge.
 local bagTokens = {}

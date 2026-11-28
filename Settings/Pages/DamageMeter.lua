@@ -97,9 +97,10 @@ S:Row{ key = "dm.autoReset", kind = "dropdown", section = "dm.tweaks", toggles =
         for _, r in ipairs(RESETS) do S:SetPath("damagemeter." .. r[2], on[r[1]] and true or false) end
     end,
     resetValue = function() return ResetValue(function(p) return S:DefaultPath(p) end) end }
+-- (Combat Timer before Match Chat Size: Malkkav 11-27)
+S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
 S:Row{ key = "dm.matchChat", path = "damagemeter.matchChatSize", apply = Refresh, section = "dm.tweaks", half = true,
     disabled = function() return ChatOff() or InChat() end }   -- (greyed with Chat off: turning Chat on makes it work)
-S:Row{ key = "dm.combatTimer", path = "damagemeter.combatTimer", apply = Refresh, section = "dm.tweaks", half = true }
 
 -- Meter Tab in the Chat: one dropdown of toggles over the old switch (chatTab) and Open the
 -- Meter Tab (chatTabOpen). Disable (the default) or Open When Clicked stand alone; In Combat, In a Group and

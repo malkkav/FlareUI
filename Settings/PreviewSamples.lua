@@ -6,6 +6,7 @@ local function Get(path, default)
     local spec = P.activeSpec
     if spec and spec.value ~= nil then
         if spec.key == 'tt.healthBar' and path == 'tooltips.hideHealthBar' then return spec.value == 'off' end
+        if spec.key == 'mm.barBelow' and path == 'minimap.infoBarBelow' then return spec.value == 'below' end
         if spec.key == 'dm.chatTab' and path == 'damagemeter.chatTab' then return spec.value ~= 'off' end
         if spec.key == 'tt.healthBar' and path == 'tooltips.healthBarPlace' then return spec.value end
         if spec.key == 'tt.classNames' and path == 'tooltips.nameColor' then return spec.value and 'class' or 'none' end
@@ -527,6 +528,8 @@ function R.tooltip(c, spec)
         lines[#lines + 1] = L["Level 60 Mage"]
         -- in the faction's colour, as the tooltip shows it
         if Get('tooltips.showFaction') ~= false then lines[#lines + 1] = '|cffff3333' .. L["Horde"] .. '|r' end
+        -- Show PvP: Blizzard's own "PvP" line on a flagged player (11-27: the sample had none, so the switch showed nothing)
+        if Get('tooltips.showPvP') ~= false then lines[#lines + 1] = _G.PVP or L["PvP"] end
         if Get('tooltips.showTarget') then lines[#lines + 1] = L["Target"] .. ': Aeloria' end
         if Get('tooltips.showThreat') then lines[#lines + 1] = L["Threat"] .. ': 65%' end
     end

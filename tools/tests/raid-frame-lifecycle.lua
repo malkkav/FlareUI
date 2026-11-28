@@ -80,6 +80,8 @@ local group1, group2 = E.FlareUI_RaidGroup1, E.FlareUI_RaidGroup2
 assert(#group1 == 5 and #E.FlareUI_RaidGroup8 == 5 and #E.FlareUI_RaidTanksHeader == 4, "maximum raid and tank tiles are precreated")
 assert(db.barSpacing and db.spacing == 10 + ns.UnitFrames.Kit.INSET * 2, "old frame gaps are migrated once")
 assert(holder:GetAttribute("visibility"):find("%[group:raid%]"))
+-- (11-27) every setting is per raid size: the tests below set up the raid they play in (no group: up to 10)
+option(holder, "Raid Size").set("Modern", "small")
 group1[1]:SetAttribute("unit", "raid1")
 group1[1]:Show()
 group2[1]:SetAttribute("unit", "raid2")
@@ -196,6 +198,22 @@ do
     assert(RF.SizeTier() == "medium" and RF.SizeValue("width") == shared, "medium: never changed, the shared Width")
     E.GetNumGroupMembers = function() return 8 end
     assert(RF.SizeTier() == "small" and RF.SizeValue("width") == 115)
+    -- (e_kul, Malkkav 11-27) every setting, not only the size: Orientation for raids up to 40 alone
+    local orientation = db.orientation
+    option(holder, "Raid Size").set("Modern", "large")
+    option(holder, "Orientation").set("Modern", orientation == "ROWS" and "COLUMNS" or "ROWS")
+    assert(db.sizes.large.orientation ~= orientation and db.orientation == orientation, "the size's own; shared stays")
+    assert(option(holder, "Orientation").get() == db.sizes.large.orientation)
+    option(holder, "Raid Size").set("Modern", "medium")
+    assert(not (db.sizes.medium and db.sizes.medium.orientation) and option(holder, "Orientation").get() == orientation,
+        "a size never changed: the shared one")
+    option(holder, "Raid Size").set("Modern", "small")
+    E.GetNumGroupMembers = function() return 30 end
+    assert(RF.SizeValue("orientation") == db.sizes.large.orientation, "a raid of 30 reads the large size's")
+    -- positions and main tanks stay one for all sizes
+    assert(ns.RaidFrames.SHARED.layouts and ns.RaidFrames.SHARED.mainTanks)
+    E.GetNumGroupMembers = function() return 8 end
+    db.sizes.large.orientation = nil
 end
 
 print("PASS: raid lifecycle, headers, tank targets, Edit Mode and combat deferral")

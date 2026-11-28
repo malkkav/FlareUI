@@ -33,20 +33,21 @@ S:Row{ key = "qol.trainAll", half = true, tab = "gameplay", path = "tweaks.train
 S:Row{ key = "qol.way", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.way", reload = true, disabled = WayTaken }
 S:Row{ key = "qol.mapFade", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mapFade", apply = Refresh }
 S:Row{ key = "qol.mailBook", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.mailBook", apply = Refresh }
-S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.taxiMap" }
 S:Row{ key = "qol.zoneLevels", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.zoneLevels" }
 -- the flight list (PR #154, parchinskiy) took the place of Coordinates on the World
 -- Map, which only switched Blizzard's own two map options (still in its Interface settings)
 S:Row{ key = "qol.flightDestinations", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.flightDestinations",
     apply = function() if ns.FlightDestinations then ns.FlightDestinations:Refresh() end end }
--- Convenience, in pairs: accepting for you, casting, fishing, bags and sounds
-S:Row{ key = "qol.acceptRes", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptRes" }
-S:Row{ key = "qol.acceptSummon", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptSummon" }
+-- Open Flight Map at Once last (Malkkav 11-27), beside the flight list
+S:Row{ key = "qol.taxiMap", half = true, tab = "gameplay", section = "qol.mapMail", path = "tweaks.taxiMap" }
+-- Convenience, in pairs: casting and alert sounds, fishing, then accepting for you (Malkkav 11-27). Nameplate
+-- Combo Points stays last: it shows alone, only with the Nameplates module off
 S:Row{ key = "qol.keyDown", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.keyDown", apply = Refresh }
+S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.alertSounds" }
 S:Row{ key = "qol.fishCast", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishCast", apply = Refresh }
 S:Row{ key = "qol.fishSound", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.fishSound", apply = Refresh }
-S:Row{ key = "qol.deleteJunkFull", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.deleteJunkWhenFull" }
-S:Row{ key = "qol.alerts", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.alertSounds" }
+S:Row{ key = "qol.acceptRes", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptRes" }
+S:Row{ key = "qol.acceptSummon", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.acceptSummon" }
 -- the one exception to "nameplates only on the Nameplates page": combo points under Blizzard's plates,
 -- for those who keep the module off. Gone while it's on: it has its own (np.comboPoints).
 S:Row{ key = "qol.plateCombo", half = true, tab = "gameplay", section = "qol.other", path = "tweaks.plateCombo",
@@ -55,11 +56,6 @@ S:Row{ key = "qol.plateCombo", half = true, tab = "gameplay", section = "qol.oth
     disabled = function() return ns.Nameplates and ns.Nameplates.OtherAddon and ns.Nameplates.OtherAddon() and true or false end }
 -- (Nameplate Combo Points is gone: Blizzard's plates always show them, NameplateExtras.lua)
 -- EXTRAS (tab key "interface"): Hide Clutter, then Camera and Controller (11-26: the Systems tab joined it)
-S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
-S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }
-S:Row{ key = "qol.hideTips", half = true, tab = "interface", path = "tweaks.hideTips", apply = Refresh }
-S:Row{ key = "qol.hideLootAlerts", half = true, tab = "interface", path = "tweaks.hideLootAlerts", apply = Refresh }
-S:Row{ key = "qol.hideFrameNumbers", half = true, tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }
 -- (from Action Bars, they aren't bars) the main bar's gryphons and the raid manager. The raid manager
 -- works with Quality of Life off (ignoreModule). Gryphons: one choice over Hide Gryphons and Gryphons
 -- Behind Bars, all of it Quality of Life's own (Gryphons.lua), with no link to Action Bars.
@@ -67,6 +63,15 @@ local function BarsRefresh()
     if ns.Gryphons then ns.Gryphons.Refresh() end
     if ns.Visibility and ns.Visibility.Refresh then ns.Visibility:Refresh() end
 end
+-- Hide Clutter in pairs (Malkkav 11-27): messages (Error Messages | Contextual Tips), group frames
+-- (Raid Manager | Frame Numbers), screen announcements (Zone Text | Loot Toasts)
+S:Row{ key = "qol.hideErrors", half = true, tab = "interface", path = "tweaks.hideErrors", reload = true }
+S:Row{ key = "qol.hideTips", half = true, tab = "interface", path = "tweaks.hideTips", apply = Refresh }
+S:Row{ key = "ab.hideRaidManager", module = "qol", tab = "interface", section = "qol.hideClutter", ignoreModule = true, half = true,
+    path = "visibility.hideRaidManager", apply = BarsRefresh }
+S:Row{ key = "qol.hideFrameNumbers", half = true, tab = "interface", path = "tweaks.hidePortraitNumbers", apply = Refresh }
+S:Row{ key = "qol.hideZoneText", half = true, tab = "interface", path = "tweaks.hideZoneText", reload = true }
+S:Row{ key = "qol.hideLootAlerts", half = true, tab = "interface", path = "tweaks.hideLootAlerts", apply = Refresh }
 S:Row{ key = "qol.gryphons", kind = "choice", tab = "interface", section = "qol.hideClutter",
     choices = { "shown", "behind", "hidden" }, apply = BarsRefresh,
     get = function()
@@ -78,8 +83,6 @@ S:Row{ key = "qol.gryphons", kind = "choice", tab = "interface", section = "qol.
         S:SetPath("actionbars.gryphonsBehind", value == "behind")
     end,
     resetValue = function() return "shown" end }
-S:Row{ key = "ab.hideRaidManager", module = "qol", tab = "interface", section = "qol.hideClutter", ignoreModule = true, half = true,
-    path = "visibility.hideRaidManager", apply = BarsRefresh }
 
 -- The camera: two sliders. Each starts at Blizzard's own value; back on it,
 -- FlareUI leaves the game's setting alone (nil). Better Camera's old switch carried over as 2.6 and 50.

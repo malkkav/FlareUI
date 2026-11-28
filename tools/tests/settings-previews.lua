@@ -58,6 +58,17 @@ draw("tooltip", "tt.healthBar", "inside")
 local tip = c.tooltipCanvas.objects
 assert(tip.tooltipHealth:IsVisible() and tip.tooltipHealth:GetValue() == 0.8)
 assert(text(tip.tooltipTitle, "|cff69ccf0") and text(tip.tooltipText, "<Dawnwatch> (Officer)") and text(tip.tooltipText, "Threat: 65%"))
+-- (Malkkav 11-27) Show Threat Text and Show PvP: each switch adds or takes away its line
+profile.tooltips.showThreat = nil
+draw("tooltip", "tt.showThreat", true, "tooltips.showThreat")
+assert(text(tip.tooltipText, "Threat: 65%"), "Show Threat Text on: the threat line")
+draw("tooltip", "tt.showThreat", false, "tooltips.showThreat")
+assert(not text(tip.tooltipText, "Threat:"), "off: none")
+profile.tooltips.showThreat = true
+draw("tooltip", "tt.showPvP", true, "tooltips.showPvP")
+assert(text(tip.tooltipText, "PvP"), "Show PvP on: Blizzard's PvP line")
+draw("tooltip", "tt.showPvP", false, "tooltips.showPvP")
+assert(not text(tip.tooltipText, "PvP"), "off: none")
 draw("tooltip", "tt.healthBar", "off")
 assert(not shown(tip.tooltipHealth) and profile.tooltips.hideHealthBar == nil)
 draw("tooltip", "tt.ids", true)
@@ -124,9 +135,11 @@ profile.minimap.infoBar = { left = "gold", center = "coords", right = "fps" }
 draw("minimap", "mm.barLeft")
 assert(text(map.infoLeft, "128g") and text(map.infoCenter, "45.3, 62.1") and text(map.infoRight, "60 fps") and shown(map.infoBar))
 local overY = select(3, map.infoBar:GetPoint())
-draw("minimap", "mm.barBelow", true, "minimap.infoBarBelow")
+draw("minimap", "mm.barBelow", "below")
 local belowY = select(3, map.infoBar:GetPoint())
 assert(belowY < overY, "Below the Map puts it lower")
+draw("minimap", "mm.barBelow", "map")
+assert(select(3, map.infoBar:GetPoint()) == overY, "On the Map puts it back")
 draw("minimap", "mm.barBox", false, "minimap.infoBarBox")
 assert(not shown(map.infoBar) and text(map.infoCenter, "45.3"), "Show Box off: the text alone")
 profile.minimap.style = "round"

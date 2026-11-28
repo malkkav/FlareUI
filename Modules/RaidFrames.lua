@@ -160,14 +160,48 @@ local readyHold             -- C_Timer handle while a finished check's results s
 local sampleRaid = "medium"   -- Edit Mode's sample raid (not saved)
 local rosterPending = false   -- a roster pass is scheduled
 
-local function GetDb()
+local function RawDb()
     local db = K and K.GetDb()
     return db and db.raid
+end
+
+-- EVERY SETTING PER RAID SIZE (e_kul, Malkkav 11-27): a raid size keeps only what was changed while it was
+-- picked as Edit Mode's Raid Size (db.sizes[tier][key]); the rest is the shared value, so nobody's frames
+-- change. GetDb() is that view: reads take the size in use (in a raid: the group's; in Edit Mode: the one
+-- picked), writes from Edit Mode go to the picked size. These stay one for all sizes: the positions, the
+-- main tank frames (their own Edit Mode box), the icons (a table of switches), the size store and flags.
+RF.SHARED = { enabled = true, layouts = true, tankLayouts = true, sizes = true, mainTanks = true, icons = true,
+              barSpacing = true, hidePlayerInRaid = true }
+local sizeView = setmetatable({}, {
+    __index = function(_, key)
+        local db = RawDb()
+        if not db then return nil end
+        if RF.SHARED[key] then return db[key] end
+        local own = db.sizes and db.sizes[RF.SizeTier()]
+        if own and own[key] ~= nil then return own[key] end
+        return db[key]
+    end,
+    __newindex = function(_, key, value)
+        local db = RawDb()
+        if not db then return end
+        if RF.SHARED[key] or not RF.EditingSize() then db[key] = value return end
+        db.sizes = db.sizes or {}
+        local own = db.sizes[RF.SizeTier()]
+        if not own then own = {} db.sizes[RF.SizeTier()] = own end
+        own[key] = value
+    end,
+})
+local function GetDb()
+    return RawDb() and sizeView or nil
 end
 
 -- Edit Mode, unless a fight ended its previews (ns.OnEditFight)
 local function IsEditing()
     return ns.EditPreviewing()
+end
+-- an Edit Mode change is for the picked Raid Size (in Edit Mode, also while a fight paused its previews)
+function RF.EditingSize()
+    return IsEditing() or (LEM and LEM.IsInEditMode and LEM:IsInEditMode()) and true or false
 end
 
 -- (e_kul and others, Malkkav 11-27) Width, Height and Power Height per raid size: Raid Size (Edit Mode's
@@ -183,7 +217,7 @@ function RF.SizeTier()
 end
 -- a Size value: the size in use's own, else the shared one
 function RF.SizeValue(key, tier)
-    local db = GetDb()
+    local db = RawDb()
     if not db then return nil end
     local own = db.sizes and db.sizes[tier or RF.SizeTier()]
     if own and own[key] ~= nil then return own[key] end
@@ -552,15 +586,18 @@ end
 -- Spacing, Group Spacing and the main tanks' Spacing are measured between the bars: 0
 -- makes the bars touch (the tiles' margins, where the borders sit, overlap). Saved values gain the
 -- two margins once, so a setup looks as it did (raid.barSpacing).
+-- (the one-time conversion works on the saved table itself; the gaps are read per raid size: GetDb)
 local function Gaps(db)
     local pad = 2 * K.INSET
-    if not rawget(db, "barSpacing") then
-        if rawget(db, "spacing") ~= nil then db.spacing = db.spacing + pad end
-        if rawget(db, "groupSpacing") ~= nil then db.groupSpacing = db.groupSpacing + pad end
-        local mt = rawget(db, "mainTanks")
+    local raw = RawDb()
+    if raw and not rawget(raw, "barSpacing") then
+        if rawget(raw, "spacing") ~= nil then raw.spacing = raw.spacing + pad end
+        if rawget(raw, "groupSpacing") ~= nil then raw.groupSpacing = raw.groupSpacing + pad end
+        local mt = rawget(raw, "mainTanks")
         if type(mt) == "table" and rawget(mt, "spacing") ~= nil then mt.spacing = mt.spacing + pad end
-        db.barSpacing = true
+        raw.barSpacing = true
     end
+    db = GetDb() or db or {}
     local tanks = db.mainTanks and db.mainTanks.spacing or 10
     return (db.spacing or 10) - pad, (db.groupSpacing or 10) - pad, tanks - pad
 end
@@ -975,52 +1012,40 @@ end
 
 local function BuildSettings()
     local d = ns.defaults and ns.defaults.profile.unitframes.raid or {}
+    -- every setting is the picked Raid Size's: its own once changed, else the shared one (RF.SHARED: one for all)
     local function get(key, default)
         return function()
-            local db = GetDb()
-            local v = db and db[key]
+            local raw = RawDb()
+            if not raw then return default end
+            local v
+            if RF.SHARED[key] then v = raw[key] else v = RF.SizeValue(key, sampleRaid) end
             if v == nil then return default end
             return v
         end
     end
     local function set(key)
         return function(_, value)
-            local db = GetDb()
-            if not db then return end
-            db[key] = value
-            Refresh()
-        end
-    end
-    -- the Size section's Width, Height and Power Height for the Raid Size picked: its own copy once changed
-    local function sizeGet(key, default)
-        return function()
-            local v = RF.SizeValue(key, sampleRaid)
-            if v == nil then return default end
-            return v
-        end
-    end
-    local function sizeSet(key)
-        return function(_, value)
-            local db = GetDb()
-            if not db then return end
-            db.sizes = db.sizes or {}
-            local own = db.sizes[sampleRaid]
-            if not own then
-                own = {}
-                for k in pairs(RF.SIZE_KEYS) do own[k] = db[k] end
-                db.sizes[sampleRaid] = own
+            local raw = RawDb()
+            if not raw then return end
+            if RF.SHARED[key] then
+                raw[key] = value
+            else
+                raw.sizes = raw.sizes or {}
+                raw.sizes[sampleRaid] = raw.sizes[sampleRaid] or {}
+                raw.sizes[sampleRaid][key] = value
             end
-            own[key] = value
             Refresh()
         end
     end
+    -- (the Size section's were the first per raid size, 11-27)
+    local sizeGet, sizeSet = get, set
     local Section, settings = K.EditSections()
     Section("Raid", {
         -- (11-27: was Sample Raid; it also picks which raid size the Size section sets)
         { name = L["Raid Size"], search = L["Sample Raid"], kind = LEM.SettingType.Dropdown, default = "medium",
           values = { { text = L["Up to 10 Players"], value = "small", isRadio = true }, { text = L["Up to 25 Players"], value = "medium", isRadio = true },
                      { text = L["Up to 40 Players"], value = "large", isRadio = true } },
-          desc = L["The raid size you're setting up: its sample shows, and Width, Height and Power Height are for raids of this size."],
+          desc = L["The raid size you're setting up: its sample shows, and every setting here but Fading is for raids of this size."],
           get = function() return sampleRaid end,
           set = function(_, value)
               sampleRaid = value
@@ -1056,10 +1081,10 @@ local function BuildSettings()
           end },
         -- (between the bars: 0 makes them touch; Gaps migrates old values first)
         { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = d.spacing or 10, minValue = 0, maxValue = 40, valueStep = 1,
-          get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),
+          get = function() Gaps(RawDb()); return get("spacing", 10)() end, set = set("spacing"),
           desc = L["The gap between the bars. 0 makes them touch."] },
         { name = L["Group Gap"], search = L["Group Spacing"], kind = LEM.SettingType.Slider, default = d.groupSpacing or 10, minValue = 0, maxValue = 60, valueStep = 1,
-          get = function() Gaps(GetDb()); return get("groupSpacing", 10)() end, set = set("groupSpacing"),
+          get = function() Gaps(RawDb()); return get("groupSpacing", 10)() end, set = set("groupSpacing"),
           desc = L["The gap between the groups, measured between the bars."] },
         { name = L["Group Numbers"], kind = LEM.SettingType.Checkbox, default = d.groupNumbers ~= false, get = get("groupNumbers", false), set = set("groupNumbers"),
           hidden = function() return Mode() ~= "group" end },
@@ -1194,7 +1219,7 @@ local function BuildTankSettings()
     Section("Main Tanks", {
         -- (between the bars, as the raid's Frame Gap: 0 makes them touch)
         { name = L["Frame Gap"], search = L["Spacing"], kind = LEM.SettingType.Slider, default = 10, minValue = 0, maxValue = 40, valueStep = 1,
-          get = function() Gaps(GetDb()); return get("spacing", 10)() end, set = set("spacing"),
+          get = function() Gaps(RawDb()); return get("spacing", 10)() end, set = set("spacing"),
           desc = L["The gap between the bars. 0 makes them touch."] },
         { name = L["Tank Targets"], kind = LEM.SettingType.Dropdown, default = "OFF",
           values = { { text = L["Off"], value = "OFF", isRadio = true },
@@ -1248,7 +1273,7 @@ function RF:OnGlobalEvent(event, ...)
     end
     if IsEditing() then return end
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-        -- a new raid size: its own Width, Height and Power Height (Refresh waits out a fight)
+        -- a new raid size: its own settings (Refresh waits out a fight)
         local tier = RF.SizeTier()
         if RF.lastTier ~= tier then
 

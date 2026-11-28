@@ -54,6 +54,12 @@ ns.db.profile.auras = {}
 ui:load("Modules/Auras.lua", ns)
 Ring.SetStyle("forever")
 assert(Ring.TargetOfStyled())
+-- (Bar Effects, on in Forever Style since 11-28, read the health through a step curve: UF.LostCurve)
+env.Enum.LuaCurveType = env.Enum.LuaCurveType or { Step = 1 }
+env.UnitHealthPercent = env.UnitHealthPercent or function() return 1 end
+env.C_CurveUtil = env.C_CurveUtil or { CreateCurve = function()
+    return { SetType = function() end, AddPoint = function() end }
+end }
 UF:Init()
 
 local function portrait(unit)
@@ -67,7 +73,10 @@ for _, unit in ipairs({ "targettarget", "focustarget" }) do
     local picks = {}
     row.generator(nil, { CreateRadio = function(_, text) picks[#picks + 1] = text end }, row)
     assert(#picks == 2 and picks[1] == "2D" and picks[2] == "Class Icon", unit .. ": 2D and Class Icon, no None")
-    assert(row.get() == "none")
+    -- (11-28) a first switch to Forever Style gives Malkkav's setup: the class icon
+    assert(row.get() == "class", unit .. ": Forever Style starts with the class icon")
+    row.set("Modern", "3d")
+    assert(db.units[unit].portrait == "3d" and row.get() == "3d")
     row.set("Modern", "class")
     assert(db.units[unit].portrait == "class" and row.get() == "class")
 end

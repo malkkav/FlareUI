@@ -302,6 +302,65 @@ do
     fill.SetTexture = function(self, path) self.atlas = nil return set(self, path) end
     meterUI.KeepBarTexture(row)
     assert(not fill:GetAtlas() and fill:GetTexture() == "Bars/Custom")
+    -- (11-27) back to Blizzard: Blizzard's atlas, also when none was read off the bar
+    bar.fuiAtlas = nil
+    db.barTexture = ""
+    meterUI.ApplyBarTexture(bar, db)
+    assert(fill:GetAtlas() == meterUI.BLIZZARD_BAR_ATLAS and bar.fuiBarTexture == "", "Blizzard's bar again")
+    -- a row kept aside while the choice changed takes the choice when it is set up again
+    bar.fuiBarTexture = "Custom"
+    fill:SetTexture("Bars/Custom")
+    meterUI.KeepBarTexture(row)
+    assert(fill:GetAtlas() == meterUI.BLIZZARD_BAR_ATLAS and bar.fuiBarTexture == "", "the reused row follows")
+    db.barTexture = "Custom"
+    meterUI.KeepBarTexture(row)
+    assert(fill:GetTexture() == "Bars/Custom" and bar.fuiBarTexture == "Custom", "and back to the picked one")
+    -- (11-27 trial) each row's bar in FlareUI Thin over a dark fill; Blizzard's edge and shadow hidden
+    bar.Background = bar.Background or bar:CreateTexture()
+    bar.BackgroundEdge = bar.BackgroundEdge or bar:CreateTexture()
+    meterUI.KeepBarTexture(row)
+    local border = assert(bar.fuiRowBorder, "a row border")
+    -- eight plain textures, no backdrop: a backdrop measures the row, and its size can be secret (Show Spec Icon)
+    assert(border:IsShown() and border.fill:IsShown() and border.backdrop == nil)
+    local pieces = 0
+    for _, tex in pairs(border.pieces) do pieces = pieces + 1; assert(tex:GetTexture() == "border/FlareUI Thin") end
+    assert(pieces == 8 and border.pieces.TopLeftCorner:GetWidth() == 8, "eight pieces, 8 px corners")
+    assert(bar.Background:GetAlpha() == 0 and bar.BackgroundEdge:GetAlpha() == 0, "Blizzard's own background goes")
+    -- the module off: Blizzard's own back, ours hidden
+    db.enabled = false
+    meterUI.ApplyRowBorder(bar, db)
+    assert(not border:IsShown() and bar.Background:GetAlpha() == 1 and bar.BackgroundEdge:GetAlpha() == 1)
+    db.enabled = true
+    meterUI.ApplyRowBorder(bar, db)
+    assert(border:IsShown() and bar.BackgroundEdge:GetAlpha() == 0)
+    -- (11-27) class icons hidden: the bar starts on the list's edge, so its left end moves in by the border's reach
+    local icons = false
+    row.ShouldShowBarIcons = function() return icons end
+    bar:ClearAllPoints()
+    bar:SetPoint("LEFT", row, "LEFT", 0, 0)
+    meterUI.KeepBarTexture(row)
+    local point, rel, relPoint, x = bar:GetPoint(1)
+    assert(point == "LEFT" and rel == row and relPoint == "LEFT" and x == meterUI.ROW_BORDER.inset, "room for the border")
+    icons = true
+    bar:ClearAllPoints()
+    bar:SetPoint("LEFT", row, "LEFT", 0, 0)
+    meterUI.KeepBarTexture(row)
+    assert(select(4, bar:GetPoint(1)) == 0, "with icons Blizzard's place stays")
+    -- (11-27) Thin style: the bar under the name starts the border's reach lower, clear of the text
+    local oldEnum, nameText = env.Enum.DamageMeterStyle, row:CreateFontString()
+    env.Enum.DamageMeterStyle = { Default = 0, Thin = 3 }
+    local style = 3
+    row.GetStyle, row.GetName = function() return style end, function() return nameText end
+    bar:ClearAllPoints()
+    bar:SetPoint("TOP", nameText, "BOTTOM", 0, 0)
+    meterUI.KeepBarTexture(row)
+    local found
+    for i = 1, bar:GetNumPoints() do
+        local p, r, rp, _, y = bar:GetPoint(i)
+        if p == "TOP" then found = r == nameText and rp == "BOTTOM" and y == -meterUI.ROW_BORDER.inset end
+    end
+    assert(found, "Thin: the bar's top moves down")
+    env.Enum.DamageMeterStyle, row.GetStyle, row.GetName, row.ShouldShowBarIcons = oldEnum, nil, nil, nil
 end
 -- pointing at the threat window counts as pointing at the meter while it shows and fades with it, and only then
 do

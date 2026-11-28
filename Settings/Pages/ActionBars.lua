@@ -63,9 +63,10 @@ S:Row{ key = "ab.hideMacroText", section = "ab.buttonAppearance", path = "action
 -- Status Colouring's colours and their strength, in the colour window
 S:Row{ key = "ab.statusPick", section = "ab.buttonAppearance", kind = "button", lead = true, buttonText = L["Pick Your Colours"],
     apply = function() if ns.ColorPicker then ns.ColorPicker.Open("ab") end end }
+-- (Stop Auto-Add Spells before Update Spell Ranks: Malkkav 11-27)
+S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 S:Row{ key = "ab.autoRanks", section = "ab.spellBehavior", path = "actionbars.autoRanks", half = true,
     apply = function() if ns.ActionBars.CatchUpRanks then ns.ActionBars:CatchUpRanks() end end }
-S:Row{ key = "ab.stopAutoAdd", section = "ab.spellBehavior", path = "actionbars.stopAutoAddSpells", apply = Refresh, half = true }
 -- Keep Page 1: In Stealth (keepStealthPage: rogues, druids' Prowl), In Stances (noStancePaging: warriors)
 -- and On Shapeshift (keepFormPage: druids' Cat and Bear) as toggles, shown to every class
 local KEEP_PAGE = { { "stealth", "keepStealthPage" }, { "stances", "noStancePaging" }, { "shapeshift", "keepFormPage" } }
@@ -106,7 +107,8 @@ S:Row{ key = "ab.xpBar", tab = "xp", kind = "choice", lead = true, choices = { "
         S:TrackReload("ab.xpBar", v == "off", xpStartOff)
         if v ~= "off" then XPRefresh() end
     end }
--- Order: Bar Style, Bar Texture, Border, Separators, then the text rows
+-- Order (Malkkav 11-27): Bar Style; Bar Texture | Border; Quest XP | XP Text; Separators | XP Bar Colours;
+-- Show Tooltip
 -- Bar Texture and Border (from its Edit Mode dialog): the bar's fill and its frame
 S:Row{ key = "ab.xpTexture", tab = "xp", kind = "choice", path = "actionbars.xpbar.texture", disabled = XPOff, half = true,
     choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("texture") or {} end,
@@ -116,24 +118,7 @@ S:Row{ key = "ab.xpBorder", tab = "xp", kind = "choice", path = "actionbars.xpba
     choices = function() return ns.XPBar and ns.XPBar.LookChoices and ns.XPBar.LookChoices("border") or {} end,
     resetValue = function() return ns.XPBar and ns.XPBar.DEFAULT_BORDER end,
     apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
--- Separators (saved as bubbles): Off, 10 or 20; the old switch saved true for 20, so true still reads as 20
-S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10", "20" }, disabled = XPOff, half = true,
-    get = function()
-        local v = S:GetPath("actionbars.xpbar.bubbles")
-        if v == true or v == 20 then return "20" end
-        if v == 10 then return "10" end
-        return "off"
-    end,
-    set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
-    resetValue = function() return "off" end,
-    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
--- every colour the XP bar paints, in the colour window: right under Bar Style (both lead)
-S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", lead = true,
-    buttonText = L["Pick Your Colours"], disabled = XPOff,
-    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
-
 -- one choice for both settings: Off clears questXP, the rest set it and pick the quests counted
--- (Separators' half-row partner)
 S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "all", "done", "zone" }, disabled = XPOff, half = true,
     get = function()
         if not S:GetPath("actionbars.xpbar.questXP") then return "off" end
@@ -148,13 +133,29 @@ S:Row{ key = "ab.xpQuest", tab = "xp", kind = "choice", choices = { "off", "all"
 -- Show Always or Show On Mouseover (one of the two, ticking one unticks the other), then any of
 -- Percent, Value, Max and Remaining, joined by " / ". It took over XP Text Visibility and the old
 -- one-choice XP Text (XPBar.lua XPB.TextValue reads them until this is set).
-S:Row{ key = "ab.xpText", tab = "xp", kind = "dropdown", disabled = XPOff,
+S:Row{ key = "ab.xpText", tab = "xp", kind = "dropdown", disabled = XPOff, half = true,
     choices = { "always", "hover", { divider = true }, "percent", "value", "max", "remaining" },
     toggles = ns.XPBar and ns.XPBar.TEXT_SPEC,
     get = function() return ns.XPBar and ns.XPBar.TextValue() or "hover,value,max" end,
     set = function(v) if ns.XPBar then ns.XPBar.SetTextValue(v) end end,
     resetValue = function() return "hover,value,max" end,
     apply = XPRefresh }
+-- Separators (saved as bubbles): Off, 10 or 20; the old switch saved true for 20, so true still reads as 20
+S:Row{ key = "ab.xpBubbles", tab = "xp", kind = "choice", choices = { "off", "10", "20" }, disabled = XPOff, half = true,
+    get = function()
+        local v = S:GetPath("actionbars.xpbar.bubbles")
+        if v == true or v == 20 then return "20" end
+        if v == 10 then return "10" end
+        return "off"
+    end,
+    set = function(v) S:SetPath("actionbars.xpbar.bubbles", tonumber(v) or false) end,
+    resetValue = function() return "off" end,
+    apply = function() if ns.XPBar and ns.XPBar.Refresh then ns.XPBar:Refresh() end end }
+-- every colour the XP bar paints, in the colour window. rank 1: a button among the dropdowns, right of
+-- Separators (there is no other way to pair a button with a dropdown)
+S:Row{ key = "ab.xpColors", tab = "xp", kind = "button", rank = 1, half = true,
+    buttonText = L["Pick Your Colours"], disabled = XPOff,
+    apply = function() if ns.ColorPicker then ns.ColorPicker.Open("xp") end end }
 -- Show Tooltip (back as a switch, off): the XP, rested and quest details on mouseover
 S:Row{ key = "ab.xpTooltip", tab = "xp", path = "actionbars.xpbar.tooltip", disabled = XPOff }
 

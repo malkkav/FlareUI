@@ -89,7 +89,12 @@ env.C_Spell = { IsSpellInRange = function(_, token) return env.UnitInRange(token
 env.Enum = {
     PowerType = { Mana = 0 }, SpellBookSpellBank = { Player = 0 },
     StatusBarInterpolation = { ExponentialEaseOut = 1, Immediate = 0 },
+    LuaCurveType = { Step = 1 },
 }
+-- (Bar Edge Glow, on for the raid frames since 11-28, reads the health through a step curve: UF.LostCurve)
+env.C_CurveUtil = env.C_CurveUtil or { CreateCurve = function()
+    return { SetType = function() end, AddPoint = function() end }
+end }
 env.CurveConstants = { ScaleTo100 = {} }
 env.AnchorUtil = { FlowDirection = { Left = 1, Right = 2, Up = 3, Down = 4 }, FlowLayoutAxis = { Horizontal = 1 } }
 env.C_DurationUtil = { CreateDurationTextBinding = function() end }

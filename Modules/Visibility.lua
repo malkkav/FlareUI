@@ -1868,10 +1868,12 @@ function Visibility:Refresh()
         if e.threat and ElementOn(e) and ns.DamageMeter and ns.DamageMeter.AttachThreatWindow then
             ns.DamageMeter.AttachThreatWindow(self:GetShow(key) == "meter")
         end
-        -- the gryphons are children of bar 1 (MainActionBar.EndCaps) and took its alpha on every choice
-        --: they ignore it and fade on their own choice
+        -- the gryphons are children of bar 1 (MainActionBar.EndCaps) and took its alpha on every choice: with a
+        -- rule of their own (or a fade group) they ignore it and fade on that; on Always they follow bar 1, as
+        -- Blizzard's do, so whatever dims the bar dims them too (GitHub #220: OLEDGuard's idle fade, 11-27)
         if e.cap and frame and frame.SetIgnoreParentAlpha and not frame:IsForbidden() then
-            pcall(frame.SetIgnoreParentAlpha, frame, ElementOn(e) and true or false)
+            local own = ElementOn(e) and (self:GetShow(key) ~= "always" or self:GetGroup(key) > 0)
+            pcall(frame.SetIgnoreParentAlpha, frame, own and true or false)
         end
         if e.threat and self:GetShow(key) == "meter" then
             -- a child of the meter: the meter's own fade is its fade

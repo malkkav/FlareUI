@@ -419,4 +419,22 @@ db.hideRaidManager = false
 vis:Refresh()
 assert(not manager.FlareUI_Hidden and not vis:ShouldLoad())
 
+-- (GitHub #220, OLEDGuard) a gryphon on Always, in no group, follows bar 1's opacity, so whatever dims the bar
+-- dims it; with a rule of its own (or a group) it ignores the bar's and fades on that
+do
+    local wasOn = GRYPHONS_ON
+    GRYPHONS_ON = true   -- (Quality of Life on: the gryphons are FlareUI's)
+    local group, show = vis:GetGroup("capLeft"), vis:GetShow("capLeft")
+    vis:SetGroup("capLeft", 0)
+    vis:SetShow("capLeft", "always")
+    vis:Refresh()
+    assert(not cap.ignoreParentAlpha, "Always: follows bar 1")
+    vis:SetShow("capLeft", "combat")
+    vis:Refresh()
+    assert(cap.ignoreParentAlpha, "a rule of its own: its own fading")
+    vis:SetShow("capLeft", show)
+    vis:SetGroup("capLeft", group)
+    GRYPHONS_ON = wasOn
+    vis:Refresh()
+end
 print("PASS: visibility migrates fades, groups bars, handles mouse and combat, and restores native opacity")

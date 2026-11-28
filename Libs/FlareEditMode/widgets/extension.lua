@@ -32,6 +32,9 @@ function extensionMixin:Update(systemID, subSystemID)
 
 	-- show and update layout
 	self:Show()
+	-- FlareUI: switches two to a line, as in FlareUI's own frames' dialog (dialog.lua PairCheckboxes; 11-28,
+	-- the chat's Fade Old Lines | Keep Messages Shown)
+	if internal.PairCheckboxes then internal.PairCheckboxes(self.Settings) end
 	self:Layout()
 end
 
@@ -72,6 +75,7 @@ function extensionMixin:RefreshWidgets()
 	end
 
 	if self:IsShown() then
+		if internal.PairCheckboxes then internal.PairCheckboxes(self.Settings) end
 		self:Layout()
 		self:PlaceSoon()   -- a section opened or closed: its height changed
 	end

@@ -68,6 +68,8 @@ function dropdownMixin:Setup(data)
 	-- FlareUI: pooled boxes drop a text another setting fixed with OverrideText (Bar Text's
 	-- summaries), so they show their own selection again
 	self.Dropdown.disableSelectionText = nil
+	-- FlareUI: a multiple-choice box with nothing ticked reads Blizzard's "None", not blank (Malkkav 11-27)
+	if self.Dropdown.SetDefaultText then self.Dropdown:SetDefaultText(data.multiple and (_G.NONE or "None") or nil) end
 
 	if data.generator then
 		-- let the user have full control

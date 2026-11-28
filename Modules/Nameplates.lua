@@ -111,6 +111,7 @@ local C = {
     -- (dispel: the ones you can dispel)
     FILTER_WORDS = { mine = "|PLAYER", dispel = "|RAID", purge = "|RAID_PLAYER_DISPELLABLE", important = "|IMPORTANT" },
     SIDE_GAP = 1,
+    AURA_SIDE_GAP = 4,        -- Crowd Control and Defensives: a little further out (Malkkav 11-27: crowded at 1)
     QUEST_WIDTH = 0.5,        -- the quest mark: its art's width, as a share of its height
     QUEST_PAD = 0.14,         -- the empty share of that art on each side of the "!"
     QUEST_GAP = 2,            -- and its distance from the plate
@@ -204,6 +205,7 @@ C.TYPE_KEYS = {
     plate = true, width = true, height = true, level = true, levelSide = true, barText = true, hideTextAtFull = true,
     healthColor = true, castbar = true, castHeight = true, debuffs = true, debuffSize = true, debuffMax = true,
     buffs = true, buffSize = true, buffMax = true, hideBuffs = true, cc = true, ccSize = true, defensives = true,
+    ccStyle = true, ccSwipe = true, ccTimer = true,
     -- (every row on the Style tab is the type's own) the look rows and Name Only Size
     texture = true, border = true, bgOpacity = true, smoothBars = true, edgeGlow = true, damageTrail = true, nameOnlySize = true,
     -- (every row on the Plate, Extras, Cast Bar and Auras tabs is the type's own;
@@ -238,8 +240,14 @@ C.PRESETS = {
     full = {},
     compact = { width = 100, height = 10, level = "off", debuffs = "off", buffs = "off", cc = false },
     tiny = { width = 100, height = 10, level = "off", debuffs = "off", buffs = "off", cc = false, castbar = false },
-    name = { plate = "name", castbar = false, debuffs = "off", buffs = "off", cc = false, level = "off" },
+    -- (11-27) Name Only is only that: the whole plate it shows in a fight is the type's own (its level,
+    -- cast bar and auras), as Malkkav set them for new players
+    name = { plate = "name" },
 }
+-- before 11-27: an account that used FlareUI before keeps these (nameplates.legacyBase, Import.lua 5)
+C.OLD_PRESETS = setmetatable({
+    name = { plate = "name", castbar = false, debuffs = "off", buffs = "off", cc = false, level = "off" },
+}, { __index = C.PRESETS })
 C.PRESET_ORDER = { "full", "compact", "tiny", "name", "custom" }
 C.DEFAULT_PRESET = { enemyPlayer = "full", enemyNpc = "full", friendlyPlayer = "name", friendlyNpc = "name", minor = "full",
     -- (not a type of its own: Name Only While Unattackable lays an enemy NPC you can't attack out
@@ -248,7 +256,7 @@ C.DEFAULT_PRESET = { enemyPlayer = "full", enemyNpc = "full", friendlyPlayer = "
 -- EACH TYPE'S OWN DEFAULTS: what Full and the other presets build on. Both
 -- enemy types and both friendly types share Enemy's; the friendly ones start on Name Only, its
 -- name at 140%. Minor (minions too) has its own.
-C.ENEMY_BASE = {
+C.OLD_ENEMY_BASE = {
     width = 150, height = 15, level = "box", levelSide = "left", healthColor = "class",
     barText = { health = { left = { firstname = 1 }, middle = {}, right = { percent = 1 } } },
     hideTextAtFull = true, texture = "FlareUI Dark", border = "FlareUI Frames",
@@ -259,10 +267,10 @@ C.ENEMY_BASE = {
     debuffs = "mine", debuffSize = 18, debuffMax = 8, buffs = "off", buffSize = 18, buffMax = 3,
     cc = false, ccSize = 24, defensives = false,
 }
-C.TYPE_BASE = {
-    enemyPlayer = C.ENEMY_BASE, enemyNpc = C.ENEMY_BASE, peaceful = C.ENEMY_BASE,   -- (peaceful: NP.Peaceful)
-    friendlyPlayer = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
-    friendlyNpc = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
+C.OLD_TYPE_BASE = {
+    enemyPlayer = C.OLD_ENEMY_BASE, enemyNpc = C.OLD_ENEMY_BASE, peaceful = C.OLD_ENEMY_BASE,   -- (peaceful: NP.Peaceful)
+    friendlyPlayer = setmetatable({ nameOnlySize = 140 }, { __index = C.OLD_ENEMY_BASE }),
+    friendlyNpc = setmetatable({ nameOnlySize = 140 }, { __index = C.OLD_ENEMY_BASE }),
     minor = {
         width = 100, height = 13, level = "off", levelSide = "left",   -- (Colour By: Core's default)
         hideTextAtFull = false, texture = "FlareUI Dark", border = "FlareUI Frames",
@@ -274,6 +282,41 @@ C.TYPE_BASE = {
         cc = false, ccSize = 28, defensives = false,
     },
 }
+-- The defaults for new players (Malkkav 11-27): every type with a cast bar, purgeable buffs over your
+-- debuffs (buffs on top), timers in the middle, aggro flash, crowd control and defensives (round, in the
+-- middle); quest icons on enemy NPCs and Minor, the elite / rare dragon on enemy NPCs, titles on friendly
+-- NPCs (Show Level in Name Only stays off: Malkkav 11-27). Minor: a little smaller, the percent in the middle, the first
+-- name above
+C.ENEMY_BASE = {
+    width = 150, height = 15, level = "box", levelSide = "left", healthColor = "class",
+    barText = { health = { left = { firstname = 1 }, middle = {}, right = { percent = 1 } } },
+    hideTextAtFull = true, texture = "FlareUI Dark", border = "FlareUI Frames",
+    smoothBars = true, edgeGlow = true, damageTrail = true, rarityIcon = false, questProgress = false,
+    execute = "auto", raidColor = false, aggroFlash = true, showTitles = false,
+    castbar = true, castHeight = 12, castIcon = false, castTarget = false,
+    kickReady = true, castKickMark = true, castTargetedFlash = true, castImportant = true,
+    auraTimer = "middle", auraTimerColor = true, auraRows = "buffsTop",
+    debuffs = "mine", debuffSize = 24, debuffMax = 6, buffs = "purge", buffSize = 30, buffMax = 3,
+    cc = true, ccSize = 32, defensives = true, ccStyle = "round", ccSwipe = "both", ccTimer = "middle",
+}
+C.TYPE_BASE = {
+    enemyPlayer = C.ENEMY_BASE,
+    enemyNpc = setmetatable({ rarityIcon = true }, { __index = C.ENEMY_BASE }),
+    peaceful = setmetatable({ rarityIcon = true }, { __index = C.ENEMY_BASE }),   -- (peaceful: NP.Peaceful)
+    friendlyPlayer = setmetatable({ nameOnlySize = 140 }, { __index = C.ENEMY_BASE }),
+    friendlyNpc = setmetatable({ nameOnlySize = 140, showTitles = true, questIcon = false }, { __index = C.ENEMY_BASE }),
+    minor = setmetatable({
+        width = 100, level = "off", hideTextAtFull = false, combo = false,
+        barText = { health = { left = {}, middle = { percent = 1 }, right = {} } }, nameAbove = "middle:firstname",
+        castHeight = 10, debuffMax = 4, buffMax = 1, ccSize = 28,
+    }, { __index = C.ENEMY_BASE }),
+}
+-- which tables a profile reads: the old ones for an account that used FlareUI before 11-27
+function NP.Bases()
+    local db = DB()
+    if db and rawget(db, "legacyBase") then return C.OLD_TYPE_BASE, C.OLD_PRESETS end
+    return C.TYPE_BASE, C.PRESETS
+end
 local function Defaults()
     return ns.defaults and ns.defaults.profile and ns.defaults.profile.nameplates or {}
 end
@@ -284,16 +327,17 @@ local function Copy(v)
     return t
 end
 -- a preset's value of a per-type setting: the preset's own, then a value the profile saved when the
--- setting was shared, then the type's own default (C.TYPE_BASE), then Core.lua's
+-- setting was shared, then the type's own default (C.TYPE_BASE, or the old one: NP.Bases), then Core.lua's
 function NP.PresetValue(preset, key, kind)
-    local p = C.PRESETS[preset] or C.PRESETS.full
+    local bases, presets = NP.Bases()
+    local p = presets[preset] or presets.full
     local v = p[key]
     if v ~= nil then return v end
     if C.WAS_SHARED[key] then
         local db = DB()
         if db and rawget(db, key) ~= nil then return rawget(db, key) end
     end
-    local base = kind and C.TYPE_BASE[kind]
+    local base = kind and bases[kind]
     if base and base[key] ~= nil then return base[key] end
     return Defaults()[key]
 end
@@ -369,6 +413,7 @@ local function CacheSettings(cache)
     cache = cache or { types = {} }
     cache.shared = shared
     cache.combatTypes = CombatTypes(shared.combatPlates)
+    cache.fightTypes = CombatTypes(shared.fightingPlates)
     cache.colors = C.COLORS
     if shared.palette == "custom" and type(shared.customColors) == "table" then
         local colors = setmetatable({}, { __index = C.COLORS })
@@ -460,7 +505,7 @@ function NP.MigratePresets()
         local custom, differs = {}, false
         for key in pairs(C.TYPE_KEYS) do
             local v = own[key]
-            if v == nil then v = C.PRESETS[base][key] end
+            if v == nil then v = select(2, NP.Bases())[base][key] end
             -- (only a value the profile saved: a default read here would hide the type's own default)
             if v == nil then v = rawget(db, key) end
             if v == nil then v = NP.PresetValue(base, key, kind) end
@@ -897,6 +942,8 @@ function NP.Build(parent, sample)
             local ok, container = pcall(CreateFrame, "AuraContainer", nil, root, "CustomAuraContainerTemplate")
             if ok and container then
                 container:SetFrameLevel(root:GetFrameLevel() + 12)
+                -- (Blizzard's template turns on its Edit Mode sample auras: a plate shows the unit's own, 11-28)
+                pcall(container.SetEditModePreviewEnabled, container, false)
                 if ns.AuraPolicy and ns.AuraPolicy.ApplyPolicy then ns.AuraPolicy.ApplyPolicy(container, "none") end
                 p.auras[place] = { container = container }
             end
@@ -1171,17 +1218,17 @@ function NP.PlaceSides(p, iconOn, textOn)
         if auras.cc then
             auras.cc.container:ClearAllPoints()
             if markerSide == "right" then
-                auras.cc.container:SetPoint("LEFT", p.raid, "RIGHT", gap, 0)
+                auras.cc.container:SetPoint("LEFT", p.raid, "RIGHT", C.AURA_SIDE_GAP, 0)
             else
-                auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", gap - pad.right + ccRoom, 0)
+                auras.cc.container:SetPoint("LEFT", outer.right, "RIGHT", C.AURA_SIDE_GAP - pad.right + ccRoom, 0)
             end
         end
         if auras.defensives then
             auras.defensives.container:ClearAllPoints()
             if markerSide == "left" then
-                auras.defensives.container:SetPoint("RIGHT", p.raid, "LEFT", -gap, 0)
+                auras.defensives.container:SetPoint("RIGHT", p.raid, "LEFT", -C.AURA_SIDE_GAP, 0)
             else
-                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -gap + pad.left - defRoom, 0)
+                auras.defensives.container:SetPoint("RIGHT", outer.left, "LEFT", -C.AURA_SIDE_GAP + pad.left - defRoom, 0)
             end
         end
     end
@@ -1352,11 +1399,11 @@ end
 -- The Auras section (per type, as every Auras tab row): Aura Icon Shape, Aura Swipe,
 -- Aura Timer and Timer Colour, the unit frames' four, saved on the nameplates' own (auraStyle,
 -- auraSwipe, auraTimer, auraTimerColor). Defaults are the look the plates had: square, both, none.
--- big: Crowd Control and Defensives, which have the first three of their own (ccStyle, ccSwipe, ccTimer; never
--- set, they follow the plate's)
+-- big: Crowd Control and Defensives, which have the first three of their own (ccStyle, ccSwipe, ccTimer; until
+-- picked, they follow the plate's). Removed 11-26, back 11-27 (Malkkav)
 local function AuraLook(size, isDebuff, db, big)
     local style, swipe, timer = db.auraStyle, db.auraSwipe, db.auraTimer
-    -- (Crowd Control and Defensives use the Auras look: their own three rows were removed 11-26)
+    if big then style, swipe, timer = db.ccStyle or style, db.ccSwipe or swipe, db.ccTimer or timer end
     local look = ns.AuraLook and ns.AuraLook.ForUnit(size, isDebuff, false, style or "square", nil,
         timer or "none", "target", { swipe = swipe or "both", timerColor = db.auraTimerColor ~= false })
     -- the debuff's type icon is for what you could dispel: not on an enemy's plate
@@ -1487,6 +1534,7 @@ end
 
 local function LayoutAuras(p, db)
     if not p.auras then return end
+    p.testAuras = nil   -- (Test in Game draws its sample auras again, to the new layout)
     local lanes = AuraLanes(db)
     local byPlace = { debuffs = {}, buffs = {}, cc = {}, defensives = {} }
     for _, lane in ipairs(lanes) do
@@ -1517,7 +1565,9 @@ local function LayoutAuras(p, db)
                     layout = {
                         elementWidth = size, elementHeight = look and look.cellHeight or size,
                         elementSpacing = C.AURA_GAP, lineSpacing = C.AURA_GAP,
-                        groupSpacing = C.AURA_GAP, groupLineSpacing = C.AURA_GAP,
+                        -- (groupSpacing 0: on top of the gap after each icon it put the icons after two
+                        -- groups' join a gap over, 11-28)
+                        groupSpacing = 0, groupLineSpacing = C.AURA_GAP,
                         layoutIndex = index, forceNewLine = false,
                     },
                 })
@@ -3067,6 +3117,22 @@ end
 function NP.CombatFull(kind, preview)
     return state.combat and kind ~= nil and NP.CombatList(preview)[kind] or false
 end
+-- SHOW WHOLE PLATE > WHEN IT FIGHTS (11-27): the types picked (nameplates.fightingPlates) leave Name Only
+-- Mode while the unit itself is in a fight, with you or anyone. A unit's combat state is never secret;
+-- UNIT_FLAGS (its combat flag) lays that plate out again. Samples stay Name Only.
+function NP.FightList(preview)
+    local cache = SettingsFor(preview)
+    if cache then return cache.fightTypes end
+    local db = DB()
+    return CombatTypes(db and db.fightingPlates)
+end
+function NP.FightFull(kind, p)
+    if kind == nil or p.sample or not NP.FightList()[kind] then return false end
+    local unit = p.claimUnit or p.unit
+    if not unit then return false end
+    local fighting = UnitAffectingCombat(unit)
+    return canaccessvalue(fighting) and fighting == true
+end
 -- SHOW TARGET'S PLATE (per type, off): a Name Only type shows its whole plate while it is your target, in
 -- a fight and out of it. A new target lays out the two plates it changes (NP.Relayout).
 function NP.TargetFull(kind, preview)
@@ -3083,6 +3149,7 @@ end
 -- the whole plate for a Name Only type now; p: the plate (its unit, or the one it's being claimed for)
 function NP.ShowsFull(kind, p)
     if NP.CombatFull(kind, p.sample) then return true end
+    if NP.FightFull(kind, p) then return true end
     if not NP.TargetFull(kind, p.sample) then return false end
     if p.sample then return p.sampleTarget or false end
     return NP.IsTarget(p.claimUnit or p.unit)
@@ -3290,6 +3357,13 @@ local function OnUnitEvent(self, event, unit)
     elseif event == "UNIT_THREAT_LIST_UPDATE" or event == "UNIT_FLAGS" then
         -- Name Only While Unattackable: it became attackable (or stopped being): laid out again
         if event == "UNIT_FLAGS" and not NP.testKind and NP.Peaceful(p.unit, p.kind) ~= (p.layKind == "peaceful") then
+            local unit = p.unit
+            NP.ReleasePlate(p)
+            NP.Claim(unit)
+            return
+        end
+        -- When It Fights: the unit began or stopped fighting
+        if p.layKind and NP.FightList()[p.layKind] and p.layFull ~= NP.ShowsFull(p.layKind, p) then
             local unit = p.unit
             NP.ReleasePlate(p)
             NP.Claim(unit)
@@ -4098,6 +4172,100 @@ local function PlaceHits(p)
     end
 end
 
+-- The sample aura rows, styled as the live ones: the settings preview, and Test in Game on live plates
+-- (p.sampleIcons holds the icons)
+function NP.SampleAuras(p, db)
+    -- the aura rows: styled as the live ones (the unit frames' aura look, border and all), above the
+    -- arrows; as many as fit the row (debuffs and buffs share it, one alone fills it)
+    local icons = p.sampleIcons
+    for _, t in ipairs(icons) do t:Hide() end
+    local n = 0
+    local function Icon(path, size, isDebuff, dispelType, point, rel, relPoint, x, y, big)
+        n = n + 1
+        local b = icons[n]
+        if not b then
+            b = CreateFrame("Frame", nil, p.root)
+            b:SetFrameLevel(p.root:GetFrameLevel() + 12)
+            icons[n] = b
+        end
+        local look = AuraLook(size, isDebuff, db, big)
+        if look and ns.AuraLook and ns.AuraLook.Style then
+            look.preview = true
+            ns.AuraLook.Style(b, look)
+            local c = look.colors and (look.colors[dispelType] or look.colors.None)
+            if c then b.FlareUI_Border:SetVertexColor(c:GetRGBA()) end
+            b.FlareUI_Count:SetText("")
+            -- a sample time and swipe, so Aura Timer, Timer Colour and Aura Swipe show here
+            local secs = C.SAMPLE_SECONDS[(n - 1) % #C.SAMPLE_SECONDS + 1]
+            b.FlareUI_Duration:SetText(look.timer ~= "none" and ns.FormatAuraTime(secs, "plate") or "")
+            if look.timerColor and secs < 5 then b.FlareUI_Duration:SetTextColor(1, 0.2, 0.2)
+            elseif look.timerColor and secs < 10 then b.FlareUI_Duration:SetTextColor(1, 0.82, 0)
+            else b.FlareUI_Duration:SetTextColor(1, 1, 1) end
+            b.FlareUI_Cooldown:SetCooldown(GetTime() - (secs % 7), secs + (secs % 7))
+        else
+            -- (no aura look: a plain icon on a black edge)
+            if not b.FlareUI_Icon then
+                local bg = b:CreateTexture(nil, "BACKGROUND")
+                bg:SetAllPoints()
+                bg:SetColorTexture(0, 0, 0, 1)
+                b.FlareUI_Icon = b:CreateTexture(nil, "ARTWORK")
+                b.FlareUI_Icon:SetPoint("TOPLEFT", 1, -1)
+                b.FlareUI_Icon:SetPoint("BOTTOMRIGHT", -1, 1)
+                b.FlareUI_Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+            b:SetSize(size, size)
+        end
+        b.FlareUI_Icon:SetTexture("Interface\\Icons\\" .. path)
+        b:ClearAllPoints()
+        b:SetPoint(point, rel, relPoint, x, y)
+        b:Show()
+    end
+    -- (as many as the row holds, in up to two lines; the second line above the first)
+    -- an icon's place: point, the plate's point, x, y (centred: the first line's middle on the plate's)
+    local function Spot(i, size, isDebuff, count)
+        local per = NP.AuraPerLine(p, db, size)
+        local look = AuraLook(size, isDebuff, db)
+        local cell = (look and look.cellHeight or size) + C.AURA_GAP
+        local place = isDebuff and "debuffs" or "buffs"
+        local x, y = (i - 1) % per * (size + C.AURA_GAP), C.AURA_GAP + math_floor((i - 1) / per) * cell + NP.AuraLift(db, place) + (p.nameAboveLift or 0)
+        local row = NP.AuraRowSide(db, place)
+        if row == "right" then return "BOTTOMRIGHT", "TOPRIGHT", -x, y end
+        if row == "left" then return "BOTTOMLEFT", "TOPLEFT", x, y end
+        local n = math.min(count, per)
+        return "BOTTOMLEFT", "TOP", x - (n * size + (n - 1) * C.AURA_GAP) / 2, y
+    end
+    p.debuffIcon, p.buffIcon, p.ccIcon = nil, nil, nil
+    if db.debuffs ~= "off" then
+        local count = NP.AuraCount(p, db, db.debuffSize, db.debuffMax)
+        for i = 1, count do
+            local point, to, x, y = Spot(i, db.debuffSize, true, count)
+            Icon(SAMPLE_ICONS[(i - 1) % #SAMPLE_ICONS + 1], db.debuffSize, true, C.SAMPLE_DISPEL[(i - 1) % #C.SAMPLE_DISPEL + 1],
+                point, p.box, to, x, y)
+            if i == 1 then p.debuffIcon = icons[n] end
+        end
+    end
+    if db.buffs ~= "off" then
+        local count = NP.AuraCount(p, db, db.buffSize, db.buffMax)
+        for i = 1, count do
+            local point, to, x, y = Spot(i, db.buffSize, false, count)
+            Icon(C.SAMPLE_BUFFS[(i - 1) % #C.SAMPLE_BUFFS + 1], db.buffSize, false, "None",
+                point, p.box, to, x, y)
+            if i == 1 then p.buffIcon = icons[n] end
+        end
+    end
+    if db.cc then
+        Icon("Spell_Nature_Polymorph", db.ccSize, true, "Magic", "LEFT", p.sideRight or p.rightOf or p.box, "RIGHT",
+            C.AURA_SIDE_GAP - (p.sidePad and p.sidePad.right or 0), 0, true)
+        p.ccIcon = icons[n]
+    end
+    p.defIcon = nil
+    if db.defensives then
+        Icon("Spell_Holy_DivineIntervention", db.ccSize, false, "None", "RIGHT", p.sideLeft or p.box, "LEFT",
+            -C.AURA_SIDE_GAP + (p.sidePad and p.sidePad.left or 0), 0, true)
+        p.defIcon = icons[n]
+    end
+end
+
 -- kind: "enemy", "target", "cast", "nokick", "kick", "threat", "execute", or "overview" (each in turn)
 -- A view (one state) as a set of states: the preview strip's chips can set several at once
 C.VIEWS = {
@@ -4310,95 +4478,7 @@ function NP.DrawSample(f, kind)
             end
         end
     end
-    -- the aura rows: styled as the live ones (the unit frames' aura look, border and all), above the
-    -- arrows; as many as fit the row (debuffs and buffs share it, one alone fills it)
-    local icons = p.sampleIcons
-    for _, t in ipairs(icons) do t:Hide() end
-    local n = 0
-    local function Icon(path, size, isDebuff, dispelType, point, rel, relPoint, x, y, big)
-        n = n + 1
-        local b = icons[n]
-        if not b then
-            b = CreateFrame("Frame", nil, p.root)
-            b:SetFrameLevel(p.root:GetFrameLevel() + 12)
-            icons[n] = b
-        end
-        local look = AuraLook(size, isDebuff, db, big)
-        if look and ns.AuraLook and ns.AuraLook.Style then
-            look.preview = true
-            ns.AuraLook.Style(b, look)
-            local c = look.colors and (look.colors[dispelType] or look.colors.None)
-            if c then b.FlareUI_Border:SetVertexColor(c:GetRGBA()) end
-            b.FlareUI_Count:SetText("")
-            -- a sample time and swipe, so Aura Timer, Timer Colour and Aura Swipe show here
-            local secs = C.SAMPLE_SECONDS[(n - 1) % #C.SAMPLE_SECONDS + 1]
-            b.FlareUI_Duration:SetText(look.timer ~= "none" and ns.FormatAuraTime(secs, "plate") or "")
-            if look.timerColor and secs < 5 then b.FlareUI_Duration:SetTextColor(1, 0.2, 0.2)
-            elseif look.timerColor and secs < 10 then b.FlareUI_Duration:SetTextColor(1, 0.82, 0)
-            else b.FlareUI_Duration:SetTextColor(1, 1, 1) end
-            b.FlareUI_Cooldown:SetCooldown(GetTime() - (secs % 7), secs + (secs % 7))
-        else
-            -- (no aura look: a plain icon on a black edge)
-            if not b.FlareUI_Icon then
-                local bg = b:CreateTexture(nil, "BACKGROUND")
-                bg:SetAllPoints()
-                bg:SetColorTexture(0, 0, 0, 1)
-                b.FlareUI_Icon = b:CreateTexture(nil, "ARTWORK")
-                b.FlareUI_Icon:SetPoint("TOPLEFT", 1, -1)
-                b.FlareUI_Icon:SetPoint("BOTTOMRIGHT", -1, 1)
-                b.FlareUI_Icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            end
-            b:SetSize(size, size)
-        end
-        b.FlareUI_Icon:SetTexture("Interface\\Icons\\" .. path)
-        b:ClearAllPoints()
-        b:SetPoint(point, rel, relPoint, x, y)
-        b:Show()
-    end
-    -- (as many as the row holds, in up to two lines; the second line above the first)
-    -- an icon's place: point, the plate's point, x, y (centred: the first line's middle on the plate's)
-    local function Spot(i, size, isDebuff, count)
-        local per = NP.AuraPerLine(p, db, size)
-        local look = AuraLook(size, isDebuff, db)
-        local cell = (look and look.cellHeight or size) + C.AURA_GAP
-        local place = isDebuff and "debuffs" or "buffs"
-        local x, y = (i - 1) % per * (size + C.AURA_GAP), C.AURA_GAP + math_floor((i - 1) / per) * cell + NP.AuraLift(db, place) + (p.nameAboveLift or 0)
-        local row = NP.AuraRowSide(db, place)
-        if row == "right" then return "BOTTOMRIGHT", "TOPRIGHT", -x, y end
-        if row == "left" then return "BOTTOMLEFT", "TOPLEFT", x, y end
-        local n = math.min(count, per)
-        return "BOTTOMLEFT", "TOP", x - (n * size + (n - 1) * C.AURA_GAP) / 2, y
-    end
-    p.debuffIcon, p.buffIcon, p.ccIcon = nil, nil, nil
-    if db.debuffs ~= "off" then
-        local count = NP.AuraCount(p, db, db.debuffSize, db.debuffMax)
-        for i = 1, count do
-            local point, to, x, y = Spot(i, db.debuffSize, true, count)
-            Icon(SAMPLE_ICONS[(i - 1) % #SAMPLE_ICONS + 1], db.debuffSize, true, C.SAMPLE_DISPEL[(i - 1) % #C.SAMPLE_DISPEL + 1],
-                point, p.box, to, x, y)
-            if i == 1 then p.debuffIcon = icons[n] end
-        end
-    end
-    if db.buffs ~= "off" then
-        local count = NP.AuraCount(p, db, db.buffSize, db.buffMax)
-        for i = 1, count do
-            local point, to, x, y = Spot(i, db.buffSize, false, count)
-            Icon(C.SAMPLE_BUFFS[(i - 1) % #C.SAMPLE_BUFFS + 1], db.buffSize, false, "None",
-                point, p.box, to, x, y)
-            if i == 1 then p.buffIcon = icons[n] end
-        end
-    end
-    if db.cc then
-        Icon("Spell_Nature_Polymorph", db.ccSize, true, "Magic", "LEFT", p.sideRight or p.rightOf or p.box, "RIGHT",
-            C.SIDE_GAP - (p.sidePad and p.sidePad.right or 0), 0, true)
-        p.ccIcon = icons[n]
-    end
-    p.defIcon = nil
-    if db.defensives then
-        Icon("Spell_Holy_DivineIntervention", db.ccSize, false, "None", "RIGHT", p.sideLeft or p.box, "LEFT",
-            -C.SIDE_GAP + (p.sidePad and p.sidePad.left or 0), 0, true)
-        p.defIcon = icons[n]
-    end
+    NP.SampleAuras(p, db)
     if f.clickable then PlaceHits(p) end
     local castRoom = (cast and db.castbar and showCast) and (db.castHeight + C.CAST_GAP + 16) or 0
     -- (room for the quest mark and its progress on one side, crowd control or defensives on both)
@@ -4467,7 +4547,8 @@ function NP.TestMode(on, kind, endless)
         -- the test's sample combo points go
         for _, p in ipairs(pool) do
             for _, gem in ipairs(p.testCombo or {}) do gem:Hide() end
-            p.testIcons = nil
+            for _, icon in ipairs(p.sampleIcons or {}) do icon:Hide() end
+            p.testIcons, p.testAuras = nil, nil
         end
         if was then NP:Refresh() else for _, p in pairs(byPlate) do NP.UpdateAll(p) end end
         return
@@ -4476,7 +4557,7 @@ function NP.TestMode(on, kind, endless)
     NP.testing = endless and math.huge or GetTime() + C.TEST_SECONDS
     if kind ~= NP.testKind then
         NP.testKind = kind
-        for _, p in ipairs(pool) do p.testIcons = nil end
+        for _, p in ipairs(pool) do p.testIcons, p.testAuras = nil, nil end
         NP:Refresh()
     end
     if not NP.testTicker then NP.testTicker = C_Timer.NewTicker(0.05, NP.TestTick) end
@@ -4509,17 +4590,32 @@ function NP.TestTick()
             cast.target:SetShown(false)
             if not cast:IsShown() then cast:Show() end
         end
-        NP.TestIcons(p, tdb)
+        NP.TestIcons(p, tdb, n)
     end
 end
 
--- the test shows every icon the type's settings draw: the rarity dragon, the quest mark and its
--- progress, and combo points under the plate (kept up on each tick: the plate's own updates hide them)
-function NP.TestIcons(p, tdb)
-    if p.nameOnly then return end
+-- the test shows every icon the type's settings draw: the rarity dragon (elite and rare in turn), the
+-- quest mark and its progress, combo points under the plate, and sample auras, crowd control and
+-- defensives in place of the unit's own (kept up on each tick: the plate's own updates hide them)
+function NP.TestIcons(p, tdb, n)
+    if p.nameOnly then
+        for _, icon in ipairs(p.sampleIcons or {}) do icon:Hide() end
+        p.testAuras = nil
+        return
+    end
     if tdb.rarityIcon ~= false then
-        if C_Texture.GetAtlasInfo(C.ELITE_GOLD) then p.elite:SetAtlas(C.ELITE_GOLD) end
+        local atlas = (n or 1) % 2 == 0 and C.ELITE_SILVER or C.ELITE_GOLD
+        if C_Texture.GetAtlasInfo(atlas) then p.elite:SetAtlas(atlas) end
         p.elite:Show()
+    end
+    -- (made out of combat only, as the combo points; drawn once, again after a layout: LayoutAuras)
+    if not p.sampleIcons and not InCombatLockdown() then p.sampleIcons = {} end
+    if p.sampleIcons then
+        if p.auras then for _, entry in pairs(p.auras) do entry.container:Hide() end end
+        if not p.testAuras and not InCombatLockdown() then
+            p.testAuras = true
+            NP.SampleAuras(p, tdb)
+        end
     end
     local questOn = NP.QuestOn()
     if questOn then

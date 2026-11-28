@@ -183,4 +183,27 @@ do
     LEM.frameSelections, LEM.IsInEditMode = frames, editing
 end
 
+-- (11-28) Malkkav's setups: a style's own values over its preset; a new profile's Forever Style drops what only
+-- FlareUI Style's setup sets, so it starts exactly as his Forever setup
+do
+    local setup = Ring.STYLE_SETUP
+    assert(setup.flareui.units.player and setup.forever.units.player, "both styles have a setup")
+    for _, style in pairs(setup) do
+        for _, unit in ipairs({ "pet", "targettarget", "focustarget" }) do
+            local own = style.units[unit]
+            assert(not (own and (own.width or own.height or own.plateScale)), unit .. ": sizes follow the player frame")
+        end
+    end
+    local probe = { units = { focus = {}, player = {} } }
+    Ring.ApplySetup(probe, "flareui")
+    local onlyFlareUI
+    for key, value in pairs(setup.flareui.units.focus) do
+        assert(type(value) == "table" or probe.units.focus[key] == value)
+        if type(value) ~= "table" and setup.forever.units.focus[key] == nil then onlyFlareUI = key end
+    end
+    Ring.ClearFlareUISetupOnly(probe)
+    Ring.ApplySetup(probe, "forever")
+    assert(probe.units.focus.width == setup.forever.units.focus.width, "Forever Style's own values")
+    if onlyFlareUI then assert(probe.units.focus[onlyFlareUI] == nil, onlyFlareUI .. ": back to the default") end
+end
 print("PASS: unit frame previews render all three styles and style switching preserves each setup")

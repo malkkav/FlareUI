@@ -1,3 +1,65 @@
+# FlareUI 7.1.3
+
+Raid frames you can set up per raid size, nameplates that show the whole plate when the unit itself starts a fight, and borders on the meter's bars. New players now start with a ready-made setup, and yours stays as it is.
+
+**We need your help testing:**
+- **Raid frames:** in Edit Mode, pick a **Raid Size** and change something. Join a raid of that size and check your change is there, and only there.
+- **Nameplates, Show Whole Plate > When It Fights:** a Name Only plate should show in full while that unit is fighting, even when you aren't.
+- **Meters:** each bar has a FlareUI Thin border. Try every bar style, with class icons on and off.
+
+## Heads up
+Some things change even if you change nothing:
+- **New players only:** FlareUI's defaults changed for new installs. Your setup stays exactly as it is, with one exception:
+  - **FlareUI Style, frames you never moved:** focus, pet, target of target, target of focus, totems and flag carriers sit up to 20 pixels from where they were. Move them back in Edit Mode if you like.
+- **Nameplates, Show Plates in Combat:** moved. It's now **Name Only Mode > Show Whole Plate > When You Fight**, set for each plate type. What you picked before is kept.
+- **Delete Junk When Full:** moved from Quality of Life to **Bags & Looting > Bags > Tweaks**. Your setting is kept.
+- **Meters:** each bar now has a FlareUI Thin border in place of Blizzard's bright edge.
+- **Totem bar:** its timers read like the unit frames': bare seconds, then "m" and "h".
+- **Gryphons on Always:** they now dim with the main action bar when something dims it, like OLEDGuard.
+- **Party and raid frames, Tooltips module off:** aura icons now show their tooltips, as on Blizzard's frames.
+
+## Highlights
+- **Raid frames, every setting per Raid Size:** up to 10, 25 and 40 players each keep their own Edit Mode settings. A size you never change uses your shared settings.
+- **Nameplates, Show Whole Plate:** in Name Only Mode, show the whole plate **When You Fight**, **When It Fights**, or both.
+
+## New
+
+### Nameplates
+- **Show Whole Plate** (None): in the Name Only Mode section, for each plate type. **When It Fights** shows the whole plate while that unit is in a fight.
+- **Crowd Control, Aura Icon Shape, Aura Swipe and Aura Timer:** back, for the Crowd Control and Defensives icons. Until you pick one, each follows the Auras section.
+- **Test in Game:** plates also show sample buffs, debuffs, crowd control and defensives, and the elite and rare dragons.
+
+### Unit Frames
+- **Raid frames:** every Edit Mode setting is saved per **Raid Size**, except positions, main tank frames, icons and Fading.
+
+### Meters
+- **Bar borders:** each bar in a FlareUI Thin border over a dark fill.
+
+## Changed
+- **Unit frames, auras Above the Frame and Below the Frame:** centred on the frame.
+- **Auras on two rows:** the icons line up in columns on every frame. Before, the ones after purgeable buffs or weapon enchants sat 2 pixels over.
+- **Chat, Modern edit box:** shorter, to fit one line of text.
+- **Edit Mode:**
+  - A dropdown with several picks reads **None** when nothing is ticked.
+  - The Fading box under Blizzard's frames, like the chat, puts its switches two to a line.
+  - **Centred Spell Name** is the last choice in the cast bar's **Show** list.
+  - **PvP Flag** and **PvP Timer** are the last choices in the unit frames' **Icons** list.
+- **Nameplates, Crowd Control and Defensives:** a little further from the plate.
+- **Minimap, Info Bar:** **Below the Map** is now a **Position** dropdown (On the Map, Below the Map).
+- **Minimap, Addon Buttons:** **Open on Mouseover** is now **Open Drawer on Mouseover**, and **Only on Mouseover** is **Addon Buttons Only on Mouseover**.
+- **Meters, Threat Window:** **Off** is now **Meters Tab**, and **In the Meter in Combat** is **Auto-Switch in Combat**.
+- **Settings:** many pages reordered so related options sit together, among them Action Bars, XP Bar, Minimap, Quest Tracker, Tooltips, Quality of Life, Meters and Nameplates' Cast Bars.
+- **Tooltips:** **Show PvP** shows its line in the preview. **Healing and Damage** takes a full row.
+
+## Fixed
+- **Pet frame, Range Check:** stayed faded with your pet right next to you when you weren't in a group.
+- **Chat:** a new size in **Settings > Chat > Fonts** didn't reach a window whose size you had picked from its tab.
+- **Meters, Bar Texture:** going back to **Blizzard** kept the texture you had picked.
+- **Nameplates:** Blizzard's sample auras showed on real plates in Edit Mode.
+
+### Translations
+- French updated for 7.1.2. By Brainc3ll.
+
 # FlareUI 7.1.2
 
 One cast bar for a whole batch of crafts, aura timers that read like Blizzard's, and a safer way to reset your settings. Plus fixes for the bugs 7.1.1 brought to the Cooldown Manager and the chat.
@@ -289,107 +351,3 @@ Some things change even if you change nothing:
 
 ### Resource Bars
 - **Flight Timer:** the druid flight from Moonglade never counted down. It is now learned like any other flight.
-
-# FlareUI 7.0.17
-
-New unit frame art, a combat ring you can't miss, and a pile of fixes from Discord and GitHub.
-
-**Restart the game fully after updating.** This version brings new art files, and a /reload doesn't load them.
-
-**We need your help testing:**
-- **Combat:** start a fight. The ring around your portrait flares, then stays red. In Forever Style, your name box turns red too.
-- **Hunters:** fight in melee range. Your nameplates and frames should stay fully visible.
-- **Range Check as a warrior, hunter or Bear Form druid:** step out of range. The target's frame should fade.
-- **Druids:** fly from Moonglade to Rut'theran. The Flight Timer should know the flight the next time.
-- **Battlegrounds:** the PvP icon shows on your frame and your party's.
-
-## Heads up
-Some things look different even if you change nothing:
-- **Target Highlight > Bar:** it brightens your target's bar instead of colouring it. Its colour is gone from Pick Your Colours.
-- **Party Members** nameplate colour is mint green, so it no longer looks like a mage's or a shaman's.
-- **Square minimap with Border: Header:** the frame is 16 px taller at the bottom, so the map starts under the title bar.
-- **Player Cast Bar:** **Width** now counts the icon. Your bar keeps its size. The default is 275.
-
-## New
-
-### Unit Frames
-- **Show Latency** (on): the end of the cast bar shows your latency. In the Player Cast Bar's Behaviour section and in the player frame's Cast Bar section.
-- With Plumber installed, clicking your pet's happiness face opens Plumber's pet food menu.
-
-### Nameplates
-- **Show Target's Plate** (off) for Name Only Mode: your target gets its full plate back. Set per unit type.
-
-### Resource Bars
-- **Bar Edge Glow** (off) on the power and mana bars.
-
-### Buffs & Debuffs
-- Totems: **Aura Icon Shape** (Round).
-
-### Cooldown Manager
-- Tracked Bars, in Edit Mode, with Growth Up or Down:
-  - **Sort By** (Blizzard): Blizzard, Newest First or Newest Last
-  - **Max Bars** (20)
-
-### Quest Tracker
-- **Sort By:** a new choice, By Zone and Level.
-
-### Buff Reminders
-- **Greater Blessings** (off) in the Blessing reminder's menu.
-
-### Fading
-- **Opacity** (100) under Faded Opacity, in every Visibility Fading section: how visible the frame is when it isn't faded.
-
-### For addon authors
-- **FlareUI_QuestTrackerAPI:** place your own buttons beside the quest tracker's rows. See API.md on GitHub.
-
-## Changed
-
-### Unit Frames
-- New ring and plate art:
-  - The portrait sits in the middle of its ring.
-  - FlareUI Style: the whole ring and its shadow show, and the level lines up with the bars.
-  - Forever Style: the bars sit inside the plate's slots.
-- **Combat Glow:**
-  - When a fight starts, the ring gives two quick, bright pulses.
-  - During the fight it stays clearly red and never fades out.
-  - Forever Style: your name box turns red and pulses with it.
-- Forever Style party: **Show Name** is a choice now: Off, First Name, Last Name or Full Name.
-- **Player Cast Bar:** **Width** counts the icon. By Nico-Mayer.
-
-### Nameplates
-- New quest mark art. It sits 2 px from the plate.
-- The threat box uses your target's border colour and Outer Glow.
-
-### Buff Reminders
-- Food and Flask is now **Consumables to Watch**: None, Food, Flask, Elixirs.
-- **Elixirs and More** lists elixirs by what they give. Your ticks are kept.
-
-### Translations
-- French updated. By Brainc3ll.
-
-## Fixed
-
-### Unit Frames
-- **Mana on Shapeshift:** the left text hid behind the portrait in FlareUI Style.
-- The PvP icon didn't show in battlegrounds, on unit and party frames.
-- **Range Check:** warriors, hunters and Bear Form druids were always in range. The spells it used, such as Heroic Strike, count at any distance.
-
-### Nameplates
-- Hunters: plates and frames faded when the target was close.
-- The quest mark was stretched.
-- **Colour Mob Types > Caster** didn't work in dungeons.
-- **Party Colour** and **Raid Colour** turned grey in Name Only Mode.
-
-### Minimap
-- The XP bar went under the minimap after you clicked it.
-- **Square minimap with Border: Header:** the map sat under the title bar.
-
-### Buff Reminders
-- Custom reminders: unticking one could remove another.
-- **Pet to Summon > Last Used:** the pet you already had out didn't count.
-
-### Flight Timer
-- Flights started by talking to someone, such as Moonglade to Rut'theran, were never learned.
-
-### Move Any Window
-- With TSM, Blizzard's profession window popped onto the screen.

@@ -133,8 +133,17 @@ assert(row("nameAbove"):Get() == "right:fullname")
 -- (11-26) Name Only greys nothing: the plate can show in combat or on the target
 set("nameOnlyMode", true)
 assert(not row("width"):IsDisabled() and not row("nameOnlySize"):IsDisabled())
-set("combatPlates", "enemyNpc")
-assert(not row("width"):IsDisabled() and row("combatPlates"):Get() == "enemyNpc")
+-- (11-27) Show Whole Plate: per type, in Name Only Mode, over the two shared lists of types
+local npdb = ns.db.profile.nameplates
+npdb.combatPlates = "minor"
+set("wholePlate", "you,it")
+assert(not row("width"):IsDisabled() and row("wholePlate"):Get() == "you,it")
+assert(npdb.combatPlates == "minor,enemyNpc" and npdb.fightingPlates == "enemyNpc", "the picked type joins both lists")
+set("wholePlate", "none")
+assert(npdb.combatPlates == "minor" and npdb.fightingPlates == "none", "only this type leaves them")
+set("wholePlate", "it")
+assert(row("wholePlate"):Get() == "it")
+assert(not S.rows["np.combatPlates"], "Show Plates in Combat left the Visibility tab")
 assert(side.reset:IsEnabled() and side.undo:IsEnabled() and NP.PresetOf("enemyNpc") == "custom")
 side.reset:Click()
 assert(row("level"):Get() == "boxLeft" and not side.reset:IsEnabled())
@@ -157,13 +166,19 @@ side.undo:Click()
 assert(NP.PresetOf("enemyNpc") == "full" and NP.TypeDB("enemyNpc").width ~= 170)
 NP.TypeStore("minor").preset, NP.TypeStore("minor").custom = nil, nil
 
--- Crowd Control: the two switches lead the section, and its size greys out with both off (11-26: its
--- own shape, swipe and timer rows are gone, it uses the Auras look)
+-- Crowd Control: the two switches lead the section, and its rows grey out with both off. Its own shape,
+-- swipe and timer (back 11-27) follow the Auras look until picked
 do
     for _, key in ipairs({ "cc", "defensives" }) do NP.TypeSet("enemyNpc", key, false) end
-    assert(row("ccSize"):IsDisabled() and not S.rows["np.ccStyle"])
+    assert(row("ccSize"):IsDisabled() and row("ccStyle"):IsDisabled())
     NP.TypeSet("enemyNpc", "cc", true)
-    assert(not row("ccSize"):IsDisabled())
+    assert(not row("ccSize"):IsDisabled() and not row("ccTimer"):IsDisabled())
+    NP.TypeSet("enemyNpc", "auraTimer", "middle")
+    assert(row("ccTimer"):Get() == "middle", "follows the Auras section's until picked")
+    NP.TypeSet("enemyNpc", "ccTimer", "below")
+    assert(row("ccTimer"):Get() == "below" and NP.TypeDB("enemyNpc").ccTimer == "below")
+    NP.TypeSet("enemyNpc", "ccTimer", nil)
+    NP.TypeSet("enemyNpc", "auraTimer", nil)
     NP.TypeStore("enemyNpc").preset, NP.TypeStore("enemyNpc").custom = nil, nil
 end
 -- (11-26) Aura Positions greys, not hides, until both Buffs and Debuffs are on
@@ -299,4 +314,13 @@ local stop = assert(ui:find(function(w) return w:IsObjectType("Button") and w:Ge
 stop:Click()
 assert(not NP.testing and P:IsShown() and side.undo:IsEnabled(), "ending the live test keeps the original undo snapshot")
 
+-- (Malkkav 11-27) Cast Bars > Frame: Show Cast Target after Edge Glow
+do
+    local got = {}
+    for _, section in ipairs(S.modules.np:Sections("cast")) do
+        for _, r in ipairs(section.rows) do got[#got + 1] = r.key end
+    end
+    got = table.concat(got, " ")
+    assert(got:find("np.castGlow np.castTarget", 1, true), got)
+end
 print("PASS: nameplate presets, preview states, text slots and game visibility settings")

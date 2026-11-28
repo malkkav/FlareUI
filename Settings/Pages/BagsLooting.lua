@@ -114,10 +114,12 @@ S:Row{ key = "bl.bagPlainEmpty", half = true, tab = "bags", path = "tweaks.bagPl
 
 -- BAGS: tweaks -----------------------------------
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
+-- (moved from Quality of Life > Convenience, Malkkav 11-27: a bag-space tool, Auto Type "delete"'s partner; same saved switch)
+S:Row{ key = "bl.deleteJunkFull", half = true, tab = "bags", path = "tweaks.deleteJunkWhenFull" }
 -- Blizzard's clean-up each time the bags open
 S:Row{ key = "bl.bagAutoSort", half = true, tab = "bags", path = "tweaks.bagAutoSort", disabled = BagAddon }
 -- clams, loot bags and opened lockboxes open themselves (Bags.lua 1d; not beside another bag addon)
-S:Row{ key = "bl.bagAutoOpen", tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
+S:Row{ key = "bl.bagAutoOpen", half = true, tab = "bags", path = "tweaks.bagAutoOpen", disabled = BagAddon,
     apply = function() if ns.Bags and ns.Bags.AutoOpen then ns.Bags.AutoOpen.Next() end end }
 
 -- LOOTING ----------------------------------------

@@ -486,29 +486,29 @@ local defaults = {
             -- General
             hideCombatLog = false,
             saveHistory = true,
-            whisperSound = "off",       -- Whisper Sound: off | raidwarning | alarm | whisper
+            whisperSound = "whisper",   -- Whisper Sound: off | raidwarning | alarm | whisper
 
             copyButton = true,          -- the copy icon in each window's top right corner
             increaseLineHeight = false, -- a little more space between chat lines
             fadeLines = false,          -- Fade Old Lines (Edit Mode Fading): each line fades, oldest first
             keepMessages = false,       -- Keep Messages Shown (Edit Mode Fading): only the frame fades, the lines stay
-            formatNPC = false,
-            formatPlayer = false,
+            formatNPC = true,
+            formatPlayer = true,
             betterTimestamps = false,
             showLevel = false,          -- the sender's level in front of the name, when known
-            shortChannels = false,      -- on for Channel Names Short or Number (channelNames picks which)
+            shortChannels = true,       -- on for Channel Names Short or Number (channelNames picks which)
             channelNames = nil,         -- full | short | number (nil: number when shortChannels, else full)
             raceIcons = false,          -- the sender's race icon before the name
             classIcons = false,         -- the sender's class icon before the name
             linkIcons = false,          -- icons inside item and spell links
-            whisperMarkers = false,     -- > and < instead of "whispers:" and "To"
+            whisperMarkers = true,      -- > and < instead of "whispers:" and "To"
             hideBubblesInInstance = false,
 
             -- Frame (Blizzard dark dialog background + the chosen border, tinted ns.BORDER_COLOR)
             frameStyle = "modern",       -- Frame Style: modern | flareui (the quest tracker's look; Chat.lua Chat.ApplyFrameStyleArt)
             borderTexture = "FlareUI Frames",
             opacity = 0.75,
-            unreadGlow = "say,yell,party,raid,guild,whisper,channel",  -- Tab Glow: kinds of lines that light an unseen tab ("none" = none)
+            unreadGlow = "whisper",  -- Tab Glow: kinds of lines that light an unseen tab ("none" = none)
             tabChannel = false,         -- Tab Sets Channel: picking a tab that shows one kind of chat makes it the kind you type in
 
             -- Edit Box (fixed look: black background + tooltip border tinted ns.BORDER_COLOR)
@@ -545,17 +545,17 @@ local defaults = {
             -- General
             hideHotkeys = false,
             hideMacroText = true,
-            procGlow = false,           -- Blizzard's proc glow on reaction abilities and flagged procs
+            procGlow = true,            -- Blizzard's proc glow on reaction abilities and flagged procs
             buttonArt = true,
-            stopAutoAddSpells = false,
+            stopAutoAddSpells = true,
             gryphonsBehind = false,     -- Gryphons Behind Bars: the end caps draw under the bars
             borderlessMenu = false,     -- Borderless Micro Menu: no frame art round the micro menu
             -- Collapsible Bag Bar: no frame art or dividers on the bag bar, and an arrow folds the bag slots
             -- away
             collapsibleBags = false,
-            equippedBorder = false,     -- Equipped Item Border: a worn item's button bordered in its quality colour
-            activeHighlight = false,    -- Active Highlight: the checked button (stance, queued attack) drawn plainly
-            autoRanks = false,          -- Update Spell Ranks: a new rank replaces the old one on the bars
+            equippedBorder = true,      -- Equipped Item Border: a worn item's button bordered in its quality colour
+            activeHighlight = true,     -- Active Highlight: the checked button (stance, queued attack) drawn plainly
+            autoRanks = true,           -- Update Spell Ranks: a new rank replaces the old one on the bars
             keepStealthPage = false,    -- Keep Page 1 in Stealth: bar 1 holds page 1 (druids: Cat Form's) in Stealth / Prowl
             noStancePaging = false,     -- No Auto-Paging for Stances: warriors' bar 1 stays on its page
             keepFormPage = false,       -- Keep Page 1 On Shapeshift: druids' bar 1 stays on page 1 in Cat and Bear Form
@@ -567,7 +567,7 @@ local defaults = {
             },
 
             -- the FlareUI XP Bar (Modules/XPBar.lua), placed in Edit Mode; off leaves Blizzard's bars alone
-            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Dark", border = "FlareUI Thin", textMode = "HOVER", textFormat = "VALUES", questXP = false, questXPMode = "done", bubbles = false, tooltip = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
+            xpbar = { enabled = true, width = 560, height = 14, texture = "FlareUI Dark", border = "FlareUI Thin", textMode = "ALWAYS", textFormat = "VALUES", questXP = true, questXPMode = "done", bubbles = false, tooltip = false, layouts = {} },   -- bubbles: false / 10 / 20 (true from the old switch = 20)
 
             -- Typography
             hotkeyFont = { face = "Arial Narrow", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -642,9 +642,9 @@ local defaults = {
             bagButtonSize = 100,        -- Drawer Button Size: 100..150 percent of the drawer's buttons (MinimapBag.lua Bag.ButtonSize)
             clockStats = true,          -- framerate and latency in the clock's tooltip
             microMenu = false,          -- middle-click the map: a list of Blizzard's panels
-            finderEye = false,          -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
-            durability = false,         -- Durability Icon: one icon for Blizzard's durability figure (MinimapDurability.lua)
-            vehicleExit = false,        -- Vehicle Exit Icon: the exit button at the map's bottom (MinimapVehicle.lua)
+            finderEye = true,           -- Group Finder Icon: a small icon in place of Blizzard's queue eye (MinimapEye.lua)
+            durability = true,          -- Durability Icon: one icon for Blizzard's durability figure (MinimapDurability.lua)
+            vehicleExit = true,         -- Vehicle Exit Icon: the exit button at the map's bottom (MinimapVehicle.lua)
             infoBar = { left = "none", center = "none", right = "none" },
             -- Fonts tab: the zone name and the clock (Forever's own look by default)
             zoneFont  = { face = "__global", size = 10, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -663,7 +663,7 @@ local defaults = {
             palette = "flareui",        -- the bars' colours: flareui (FlareUI's softer tones) | blizzard (UnitFrames' ApplyPalette)
             foreverStyle = true,        -- Forever's bronze portrait ring on player / target / focus; off = Addon style (UnitFramesRing.lua)
             auraStyle = "square",       -- the unit frames' aura icons: square | round
-            auraTimer = "none",         -- none | below | bottom | middle
+            auraTimer = "middle",       -- none | below | bottom | middle
             auraTimerColor = true,      -- Timer Colour: yellow under 10 s, red under 5
             auraSwipe = "both",         -- both | icon (over the icon) | border (around the edge) | none
             -- The look is set per frame in Edit Mode (units.* below).
@@ -674,7 +674,7 @@ local defaults = {
             -- positions per Edit Mode layout: layouts[name][unit] = { point, x, y }
             layouts = {},
             -- Blizzard's totem frame on FlareUI Totems (Modules/Totems.lua): size in %, totems per row
-            totems = { size = 90, perRow = 4, swipe = "both", timer = "none", shape = "round" },
+            totems = { size = 90, perRow = 4, swipe = "both", timer = "middle", shape = "round" },
             -- aura timers and stack counts; size 0 (Auto) follows the icon size. The stack font starts
             -- as a copy of the timer font (ns.SeedFont)
             auraFont = { face = "__global", size = 0, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 },
@@ -695,9 +695,9 @@ local defaults = {
                 bars = {
                     -- font: each bar's own (Edit Mode > Fonts), first copied from the shared font above plus
                     -- the bar's old size step
-                    health      = { enabled = false, show = "combat", width = 220, height = 16, text = "both", font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
-                    power       = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
-                    mana        = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    health      = { enabled = false, show = "combat", width = 220, height = 16, text = "both", smoothBars = true, barEdgeGlow = true, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    power       = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false, smoothBars = true, barEdgeGlow = true, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
+                    mana        = { enabled = false, show = "combat", width = 220, height = 16, text = "value", fsr = false, smoothBars = true, barEdgeGlow = true, font = { face = "__global", size = 12, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
                     combo       = { enabled = false, show = "combat", width = 220, height = 12 },
                     -- Queued Attack Colour, Stand-Still Zone and Waiting State on by default
                     swingMain   = { enabled = false, show = "inuse",        width = 220, height = 12, queueTint = true, waiting = true, font = { face = "__global", size = 10, flags = "OUTLINE", enableShadow = true, shadowX = 1, shadowY = -1 } },
@@ -712,7 +712,7 @@ local defaults = {
             party = {
                 enabled = true,             -- on with the Unit Frames module
                 style = "classic",          -- classic | raid
-                showPlayer = true, pets = false, sortByRole = true,
+                showPlayer = false, pets = false, sortByRole = true,
                 hidePlayerInParty = false,  -- Hide Player Frame while in party (with Show Player)
                 showSolo = false,           -- Show When Solo: your own tile shows with no group (with Show Player)
                 targets = false,                 -- Show Party Targets: each member's target beside its frame
@@ -752,13 +752,14 @@ local defaults = {
                 layouts = {}, tankLayouts = {},
                 sort = "GROUP",            -- GROUP | ROLE | CLASS
                 orientation = "ROWS",      -- ROWS (each group a row, stacked) | COLUMNS
-                spacing = 10, groupSpacing = 10, groupNumbers = false, absorbTexture = "FlareUI Striped",
+                -- (11-28, new players: Malkkav's spacing; Bar Effects stay off; old accounts keep theirs, Import.lua)
+                spacing = 18, groupSpacing = 18, groupNumbers = false, absorbTexture = "FlareUI Striped",
                 width = 90, height = 60,
                 -- the main tank frames: their own size, and these of their own (the rest is the raid's)
-                mainTanks = { enabled = false, w = 182, h = 60, spacing = 10,
+                mainTanks = { enabled = true, w = 182, h = 60, spacing = 18,
                               buffs = "INSIDE_LEFT", debuffs = "INSIDE_RIGHT", auraSize = 14,
                               hideBuffs = "OFF", onlyMyBuffs = true, dispellableOnly = false },
-                powerHeight = 10, healthText = "none", texture = "FlareUI Dark", border = "FlareUI Thin",
+                powerHeight = 0, healthText = "none", texture = "FlareUI Dark", border = "FlareUI Thin",
                 debuffs = "INSIDE_RIGHT", buffs = "INSIDE_LEFT", dispels = "INSIDE_BOTTOMRIGHT",
                 auraSize = 12, dispelHighlight = "mine",
                 icons = {},
@@ -795,7 +796,8 @@ local defaults = {
                                  -- Cast Bar (off): a cast bar on the player frame, apart from the FlareUI Player Cast Bar
                                  castbar = false, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  pushback = false, craftBatch = false,
-                                 buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24,
+                                 -- (11-27, new players: no buffs, Blizzard's buff frame shows them; debuffs above)
+                                 buffs = "OFF", debuffs = "TOP", auraSize = 24,
                                  combatGlow = true },   -- Combat Glow (Look)
                 target       = { enabled = true, width = 240, height = 60, powerHeight = 15, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Dark", border = "FlareUI Thick",
@@ -803,7 +805,7 @@ local defaults = {
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 24, onlyMyDebuffs = true,
                                  threatGlow = true },   -- Threat Glow (Look)
-                targettarget = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
+                targettarget = { mirror = true, enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Dark", border = "FlareUI Thin" },
                 focus        = { enabled = true, width = 160, height = 35, powerHeight = 0, healthText = "percent", powerText = "value", showLevel = true, mirror = true,
                                  texture = "FlareUI Dark", border = "FlareUI Thick",
@@ -811,7 +813,7 @@ local defaults = {
                                  castbar = true, castbarPosition = "BOTTOM", castHeight = 16, castTexture = "FlareUI Dark", castBorderTexture = "FlareUI Thin", castIcon = true, castTimer = true,
                                  buffs = "TOPLEFT", debuffs = "TOPRIGHT", auraSize = 18, onlyMyDebuffs = true,
                                  threatGlow = true },   -- Threat Glow (Look)
-                focustarget  = { mirror = true, enabled = true, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
+                focustarget  = { mirror = true, enabled = false, width = 100, height = 25, powerHeight = 0, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Dark", border = "FlareUI Thin" },
                 pet          = { enabled = true, width = 120, height = 30, powerHeight = 8, healthText = "none", powerText = "value", showLevel = false,
                                  texture = "FlareUI Dark", border = "FlareUI Thin",
@@ -844,7 +846,7 @@ local defaults = {
         -- [[ COOLDOWN MANAGER ]] Blizzard's Cooldown Manager (Modules/CooldownManager.lua), a module of its own
         cooldownmanager = {
             enabled = false,            -- the Cooldown Manager page's switch: everything below, and the viewers' Edit Mode rows
-            skin = false,               -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
+            skin = true,                -- Skin Cooldown Manager: FlareUI's look on the Tracked Bars and the icons
             softOverlay = false,        -- Soften Active Overlay: a faint swipe while an ability's effect runs
             effectCooldown = false,     -- Show Cooldown During Effect: the ability's own cooldown in the icon's corner
             -- Bar Colour (Pick Your Colours): palette "custom" with customColors.bar, else FlareUI's (CM.COLORS)
@@ -916,7 +918,7 @@ local defaults = {
             scale = 1,
             cursorX = 0,                -- Offset X / Offset Y: a mouseover tooltip's distance from the pointer
             cursorY = 0,
-            corner = "auto",            -- Tooltip Corner: auto (Blizzard's nearest corner) | TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT
+            corner = "BOTTOMRIGHT",     -- Tooltip Corner: auto (Blizzard's nearest corner) | TOPLEFT | TOPRIGHT | BOTTOMLEFT | BOTTOMRIGHT
             opacity = 1,                -- Frame Opacity: the background's
             borderByReaction = true,
             borderByClass = true,
@@ -983,8 +985,8 @@ local defaults = {
         -- [[ QUEST TRACKER MODULE ]] minimized and collapsed state per character (CharDB().objectiveTracker)
         objectivetracker = {
             enabled = false,
-            width = 250,
-            maxHeight = 300,
+            width = 260,               -- (11-28, new players: Malkkav's 260 x 340 and quest gap 10)
+            maxHeight = 340,
             borderTexture = "FlareUI Frames",
             opacity = 0.75,
             minimizeStyle = "header",   -- "header": the header stays; "button": only a "+" button
@@ -999,20 +1001,20 @@ local defaults = {
             zoneLevel = false,          -- By Zone and Level: with zoneFirst, by level inside each zone
             sortByProgress = false,     -- the furthest along first (zones mixed, no zone headings)
             anchor = "auto",            -- auto | TOP | BOTTOM (Edit Mode); left / right follows the frame's half
-            questGap = 9,               -- pixels between quests (Edit Mode)
+            questGap = 10,              -- pixels between quests (Edit Mode)
             hideLevel = false,
-            colorNames = false,         -- quest names in their difficulty colour (not complete or focused ones)
+            colorNames = true,          -- quest names in their difficulty colour (not complete or focused ones)
             autoButtons = false,        -- Auto Quest Buttons: the header's "!" / "?" for Auto Accept / Turn-In Quests
-            playButtons = false,        -- Quest Buttons > Voice Button: plays the quest's voice line, with the Spoken addon
+            playButtons = true,         -- Quest Buttons > Voice Button: plays the quest's voice line, with the Spoken addon
             collapseCompleted = false,  -- finished and failed quests fold, unless a timer runs
-            hideFinished = false,       -- finished objectives leave the list
+            hideFinished = true,        -- finished objectives leave the list
             completedLast = false,
             focusedFirst = false,       -- Focused Quest First: the focused quest (and its zone) at the top
             keepFocus = false,          -- Keep Quest Focus: a newly accepted quest gives the focus back
             showTags = true,
             showRecipes = true,
             frameStyle = "custom",      -- Frame Style: blizzard | flareui | custom (Modern; the default, older setups keep FlareUI: Core.lua audit1120) (ObjectiveTracker.lua Build.FrameStyle)
-            hideScrollBar = false,      -- Hide Scroll Bar (FlareUI and Custom styles): no thumb; the mouse wheel still scrolls
+            hideScrollBar = true,       -- Hide Scroll Bar (FlareUI and Custom styles): no thumb; the mouse wheel still scrolls
             questIcons = false,         -- Quest Buttons > Quest Icon: Blizzard's round quest button before each title; click focuses
             focusButtons = false,       -- Quest Buttons > Focus Button: a dot before each title; click focuses
             showUntracked = false,      -- Show Untracked Quests: with zone headings, this zone's untracked quests too (dimmed)
@@ -1044,12 +1046,13 @@ local defaults = {
             threatScale = false,        -- Threat Scale (tanks): lost mobs grow, held ones shrink a little
             nameOnlySize = 100,         -- Name Only Size (per type): the name on a Name Only plate, in % of the Name Only font
             comboPoints = false,        -- combo point gems under your target's plate (each type can switch it off)
-            questMarks = false,         -- quest mark on enemies an active quest needs (each type can switch it off)
+            questMarks = true,          -- quest mark on enemies an active quest needs (each type can switch it off)
             enemyInCombat = false,      -- Show Enemy Plates > In Combat (NameplateExtras.lua)
             friendlyInCombat = false,   -- Show Friendly Plates > In Combat
-            combatPlates = "none",      -- Show Plates in Combat (Name Only Mode): types that leave Name Only in a fight
+            combatPlates = "friendlyPlayer", -- Show Whole Plate > When You Fight (Name Only Mode): types that leave Name Only in your fights
+            fightingPlates = "friendlyPlayer", -- Show Whole Plate > When It Fights: types that leave Name Only while the unit itself fights
             threatPercent = false,      -- Threat Percentage (false | "groups" | "instances" | true): your threat % in the bar's middle, coloured as the unit frames' Threat Text
-            peacefulNames = false,      -- Name Only While Unattackable: enemy NPCs you can't attack show only their name
+            peacefulNames = true,       -- Name Only While Unattackable: enemy NPCs you can't attack show only their name
             enemyPlayers = true, enemyNpcs = true,   -- Enemy Types: FlareUI's plates for enemy players / NPCs
             kickReady = false,          -- Kick Ready: interruptible casts in their own colour while your interrupt is ready
             rangeAlpha = 0.8,           -- Out of Range Opacity (1 = off)
@@ -1108,29 +1111,30 @@ local defaults = {
             autoRepair = false,
             maxCameraZoom = false,      -- Better Camera's old switch: on becomes cameraMaxZoom 2.6 (Tweaks.lua ApplyCamera)
             fasterCameraZoom = false,   -- ...and cameraZoomSpeed 50. The two sliders have no default: nil = Blizzard's own
-            fasterLoot = false,
-            lootFeed = false,           -- Loot Feed: what you loot floats up beside you (LootFeed.lua)
+            fasterLoot = true,
+            lootFeed = true,            -- Loot Feed: what you loot floats up beside you (LootFeed.lua)
             lootFeedQuality = 0,        -- items below this quality are left out (0 = Poor: all)
             lootFeedMoney = true,       -- money too
             lootFeedPosition = "cursor", -- cursor (starts at the pointer) | placed (the Edit Mode spot)
+            lootFeedIcons = "round",    -- Loot Feed's icons: round | square (unset was square)
             lootFeedAlign = "center",   -- Alignment: left | center (the default) | right (icon on the right, text before it)
-            lootFeedSkills = false,     -- skill-ups too ("Mining 76")
+            lootFeedSkills = true,      -- skill-ups too ("Mining 76")
             lootFeedFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
             -- Bags & Looting (its own module, Settings/Pages/BagsLooting.lua): its switch
             -- (ns.BagModuleOn); all off leaves Blizzard's bag windows alone
             bagModule = false,
             bagColumns = 0,             -- combined backpack columns; 0 = Blizzard's (10)
-            bagGaps = false,            -- each bag starts a new row, with a gap
-            bagButtons = false,         -- bag slot buttons down the combined backpack's side
-            bagKeyring = false,         -- Keyring in Backpack: the keyring as a section of the combined backpack
-            bagReagent = false,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
-            bagCombineEmpty = false,    -- Combine Empty Slots: one empty slot with the free count
-            bagReverse = false,         -- Reverse Bag Fill: the grid from the top left
+            bagGaps = true,            -- each bag starts a new row, with a gap
+            bagButtons = true,         -- bag slot buttons down the combined backpack's side
+            bagKeyring = true,         -- Keyring in Backpack: the keyring as a section of the combined backpack
+            bagReagent = true,         -- Crafting Bag in Backpack: the crafting (reagent) bag there too
+            bagCombineEmpty = true,    -- Combine Empty Slots: one empty slot with the free count
+            bagReverse = true,         -- Reverse Bag Fill: the grid from the top left
             bagAutoOpen = false,        -- Auto Open Containers: clams, loot bags, opened lockboxes
             bankColumns = 0,            -- Bank Window Columns; 0 = Blizzard's (8) (Bags.lua 4e)
-            bankGaps = false,           -- Bank Window: each bank bag starts a new row, with a gap
-            bankTight = false,          -- Bank Window: slots 5 apart, as in the backpack, not Blizzard's 13/10
+            bankGaps = true,           -- Bank Window: each bank bag starts a new row, with a gap
+            bankTight = true,          -- Bank Window: slots 5 apart, as in the backpack, not Blizzard's 13/10
             bagView = "all",            -- Bag View: "all" | "filters" (Category Filters, Bags.lua 4b) | "rows" | "rowsSets" (Category Rows, + a row per equipment set; Bags.lua 1)
             bagAutoSort = false,        -- Sort Bags on Open: Blizzard's clean-up each time the bags open (Bags.lua 4d)
             -- Bag Items font (Bags.lua StyleIconTexts): stack counts and cooldown numbers; face "" keeps Blizzard's
@@ -1142,11 +1146,11 @@ local defaults = {
             bagMoneyFont = { face = "", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             bagSkinSlots = true,        -- Skin Item Slots: FlareUI's border on the slots (off: Blizzard's own, for bag skins)
             bagThickBorders = false,    -- Skin Item Slots' Thick Borders (else Thin); quality colours always on
-            bagJunkIcon = false,        -- the junk coin on grey items always, not only at a vendor
-            bagItemLevel = false,       -- Item Level: weapons' and armour's level, bottom left
-            bagUncollected = false,     -- Uncollected Appearance: an eye, top right
-            bagBoE = false,             -- BoE Text: "BoE" top left on items that bind when equipped, until bound
-            bagPlainEmpty = false,      -- Plain Empty Slots: one plain look for every empty slot, not its bag's picture
+            bagJunkIcon = true,        -- the junk coin on grey items always, not only at a vendor
+            bagItemLevel = true,       -- Item Level: weapons' and armour's level, bottom left
+            bagUncollected = true,     -- Uncollected Appearance: an eye, top right
+            bagBoE = true,             -- BoE Text: "BoE" top left on items that bind when equipped, until bound
+            bagPlainEmpty = true,      -- Plain Empty Slots: one plain look for every empty slot, not its bag's picture
             hideErrors = false,
             hideZoneText = false,
             hidePortraitNumbers = false,
@@ -1156,11 +1160,11 @@ local defaults = {
             acceptRes = false,          -- Accept Resurrections: out of combat
             repairGuild = false,        -- Repair with Guild Funds: Auto Repair uses the guild bank first
             merchantWide = false,       -- Wider Vendor Window: 20 items a page
-            petFood = false,            -- Pet Food in Bags: a paw on food the hunter pet eats
+            petFood = true,            -- Pet Food in Bags: a paw on food the hunter pet eats
             skipLootConfirm = false,    -- Skip Loot Confirmations: bind-on-loot and roll dialogs
-            lootRolls = false,          -- Loot Roll Window: FlareUI's loot roll window in place of Blizzard's roll frames (LootRolls.lua); on and off need a reload
+            lootRolls = true,          -- Loot Roll Window: FlareUI's loot roll window in place of Blizzard's roll frames (LootRolls.lua); on and off need a reload
             lootRollFont = { face = "__global", size = 12, flags = "NONE", enableShadow = true, shadowX = 1, shadowY = -1 },   -- Fonts > Loot Rolls: the item names; the small lines two smaller
-            lootWindow = false,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
+            lootWindow = true,         -- Loot Window (PR #146): FlareUI's loot window in place of Blizzard's (LootWindow.lua); on and off need a reload
             lootWindowFreeSlots = false, -- Show Free Bag Slots at the loot window's foot
             lootWindowGrowth = "down",  -- Growth: "down" (the top edge at the Edit Mode spot) or "up" (the bottom edge)
             lootWindowOrder = "top",    -- Row Order: the first item in the "top" or the "bottom" row
@@ -2835,9 +2839,10 @@ do
     local GROUPS = {
         { name = "Bar Effects", members = { { "Bar Animations" }, { "Bar Edge Glow" }, { "Damage Trail" } } },
         { name = "Show", sections = { ["Cast Bar"] = true, Look = true, Behaviour = true },
-          members = { { "Show Icon", "Icon" }, { "Show Spell Timer", "Spell Timer" }, { "Center Spell Name", "Centred Spell Name" },
+          -- (Centred Spell Name last: it moves the text, the rest add parts; Malkkav 11-27)
+          members = { { "Show Icon", "Icon" }, { "Show Spell Timer", "Spell Timer" },
                       { "Edge Glow", "Edge Glow" }, { "Show Latency", "Latency" }, { "Show Spell Pushback", "Spell Pushback" },
-                      { "Show Craft Batch", "Craft Batch" } } },
+                      { "Show Craft Batch", "Craft Batch" }, { "Center Spell Name", "Centred Spell Name" } } },
         { name = "Text", sections = { Text = true },
           members = { { "Show Name", "Name" }, { "Show Timer", "Timer" }, { "Show Icon", "Icon" } } },
     }
@@ -3904,6 +3909,8 @@ f:SetScript("OnEvent", function(self, event, ...)
         if ... ~= ADDON_NAME then return end
         self:UnregisterEvent("ADDON_LOADED")
         if ns.ImportOldSettings then ns.ImportOldSettings(defaults) end
+        -- (11-27) the defaults changed for new players only: an account that used FlareUI keeps its old ones
+        local freshInstall = ns.NewPlayerDefaults and ns.NewPlayerDefaults()
         local success, db = pcall(AceDB.New, AceDB, "FlareUI2_DB", defaults, "Default")
         if not success or not db then
             DEFAULT_CHAT_FRAME:AddMessage("|cffff0000FlareUI FATAL:|r Database initialization failed! Error: " .. tostring(db or "unknown"))
@@ -3912,6 +3919,10 @@ f:SetScript("OnEvent", function(self, event, ...)
 
         ns.db = db
         ns.defaults = defaults
+        -- a new install: marked, so its next login isn't taken for an old account; and the FlareUI button
+        -- in the game menu on (account-wide, Settings > General)
+        db.global.defaultsV2, db.global.defaultsV3 = true, true
+        if freshInstall and db.global.escMenuButton == nil then db.global.escMenuButton = true end
         ns.CastGlowDefault()   -- (decided before What's New marks this install as seen)
 
         -- the bar textures FlareUI Forever and FlareUI Forever (Light) became FlareUI Dark and

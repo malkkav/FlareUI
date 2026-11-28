@@ -572,8 +572,9 @@ end
 
 -- The frame icons: one Show switch each in Edit Mode (udb.icons[key].shown); their places are fixed
 local ICON_UI = {
-    order = { "rest", "leader", "pvp", "pvpTimer", "classification", "highSkull", "quest", "raidIcon", "readyCheck",
-              "happiness" },
+    -- (PvP Flag and PvP Timer last, as on the party frames: Malkkav 11-27)
+    order = { "rest", "leader", "classification", "highSkull", "quest", "raidIcon", "readyCheck",
+              "happiness", "pvp", "pvpTimer" },
     defs = {
         rest           = { label = L["Resting"],          field = "RestIcon" },
         leader         = { label = L["Leader"],           field = "LeaderIcon" },
@@ -3104,7 +3105,10 @@ local function ConfigureAuraCorner(f, corner, lanes, alone)
                 layout = {
                     elementWidth = size, elementHeight = look and look.cellHeight or size,
                     elementSpacing = AURA_SPACING, lineSpacing = AURA_SPACING,
-                    groupSpacing = AURA_SPACING, groupLineSpacing = AURA_SPACING,
+                    -- (groupSpacing 0: Blizzard adds it on top of the gap after each icon where two groups
+                    -- share a line (purgeable buffs, then the rest), so the icons after the join sat 2 px
+                    -- further over than the row below, 11-28)
+                    groupSpacing = 0, groupLineSpacing = AURA_SPACING,
                     layoutIndex = index,
                     forceNewLine = index > 1 and not lane.joinPrevious,
                 },
@@ -3118,7 +3122,7 @@ local function ConfigureAuraCorner(f, corner, lanes, alone)
     end
     ns.AuraGroups.Finish(container, entry)
 
-    -- grow away from the corner (Top / Bottom: from the left)
+    -- grow away from the corner (Top / Bottom: from the left, the container centred: PositionAuraContainers)
     local isTop, isLeft = corner:find("^TOP") ~= nil, AURA.FULL[corner] or corner:find("LEFT$") ~= nil
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
     pcall(container.SetFlowLayoutAnchorPoint, container, (isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"))
@@ -3182,8 +3186,9 @@ end
 -- the lead group's room for n icons of size
 function UF.EnchantLeadLayout(size, n, index)
     return {
+        -- (its trailing elementSpacing is the gap before the buffs: their groupSpacing is 0, 11-28)
         elementWidth = math.max(n * (size + AURA_SPACING) - AURA_SPACING, 0), elementHeight = 0,
-        elementSpacing = 0, lineSpacing = 0, groupSpacing = 0, groupLineSpacing = 0,
+        elementSpacing = AURA_SPACING, lineSpacing = 0, groupSpacing = 0, groupLineSpacing = 0,
         layoutIndex = index, forceNewLine = false,
     }
 end
@@ -3213,11 +3218,15 @@ function UF.PlaceEnchants(f)
     local point = (isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT")
     local relative = (isTop and "TOP" or "BOTTOM") .. (isLeft and "LEFT" or "RIGHT")
     local step = (lead.size + AURA_SPACING) * (isLeft and 1 or -1)
+    -- Above / Below the Frame: the row is centred, so the enchants take the first cells of its container
+    local anchor = f
+    local entry = AURA.FULL[lead.corner] and f.Auras and f.Auras[lead.corner]
+    if entry then anchor, relative, x, y = entry.container, point, 0, 0 end
     local n = 0
     for _, b in ipairs(holder.enchants or {}) do
         if b.enchant then
             b:ClearAllPoints()
-            b:SetPoint(point, f, relative, x + n * step, y)
+            b:SetPoint(point, anchor, relative, x + n * step, y)
             n = n + 1
         end
     end
@@ -3361,14 +3370,19 @@ function UF.RestackAuras(f)
     end
 end
 
+-- Above / Below the Frame (TOP, BOTTOM): centred on the frame, as Blizzard's nameplate auras (Malkkav 11-27).
+-- The container takes its icons' size, so its middle is theirs; pinned by its middle, half of the ring's
+-- room on that side moves it over (AURA.Placement's x is INSET plus that room)
+function AURA.CentreX(x) return (x - INSET) / 2 end
 local function PositionAuraContainers(f)
     if not f.Auras then return end
     for corner, entry in pairs(f.Auras) do
         local c = entry.container
         local isTop, isLeft, x, y = AURA.Placement(f, corner)
+        local side = AURA.FULL[corner] and "" or (isLeft and "LEFT" or "RIGHT")
+        if AURA.FULL[corner] then x = AURA.CentreX(x) end
         c:ClearAllPoints()
-        c:SetPoint((isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"), f,
-            (isTop and "TOP" or "BOTTOM") .. (isLeft and "LEFT" or "RIGHT"), x, y)
+        c:SetPoint((isTop and "BOTTOM" or "TOP") .. side, f, (isTop and "TOP" or "BOTTOM") .. side, x, y)
         -- (FlareUI Style lifts them over the ring's art: f.auraLift, UnitFramesRing.lua Ring.Layout)
         c:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 4))
     end
@@ -3381,7 +3395,11 @@ local function PositionAuraContainers(f)
     if near and nearCorner ~= farCorner and f.Auras[nearCorner] and f.Auras[farCorner] then
         local inner, outer = f.Auras[nearCorner].container, f.Auras[farCorner].container
         local isTop, isLeft, x = AURA.Placement(f, farCorner)
-        ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, isLeft and "LEFT" or "RIGHT", x, AURA_SPACING)
+        if AURA.FULL[farCorner] then
+            ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, "", AURA.CentreX(x), AURA_SPACING)
+        else
+            ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, isLeft and "LEFT" or "RIGHT", x, AURA_SPACING)
+        end
     end
     if f.enchantLead then UF.PlaceEnchants(f) end
 end
@@ -5941,8 +5959,9 @@ function UF.ApplyRangeAlpha(f, unit)
         f:SetAlpha(1)
         return
     end
-    -- (the pet reads the group range too: UnitInRange covers it)
-    local inGroup = unit == "pet" or UnitInParty(unit)
+    -- (the pet reads the group range too while you are in a group; solo, UnitInRange has no answer for
+    -- it and the frame stayed faded next to you (11-27, warlock), so it is measured with your helpful spells)
+    local inGroup = (unit == "pet" and IsInGroup()) or (unit ~= "pet" and UnitInParty(unit))
     if not (canaccessvalue(inGroup) and inGroup) then inGroup = UnitInRaid(unit) end
     if canaccessvalue(inGroup) and inGroup then
         local inRange, checked = UnitInRange(unit)

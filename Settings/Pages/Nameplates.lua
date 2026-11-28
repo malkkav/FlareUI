@@ -471,12 +471,12 @@ local function TypeDefault(key)
     if not (np and np.PresetValue) then return nil end
     return np.PresetValue(np.C.DEFAULT_PRESET[PIN.kind] or "full", key, PIN.kind)
 end
--- NAME ONLY MODE greys nothing (Malkkav 11-26): Show Plates in Combat and Show Target's Plate give a
+-- NAME ONLY MODE greys nothing (Malkkav 11-26): Show Whole Plate and Show Target's Plate give a
 -- Name Only plate its bar back, so every row stays something the player may want to set
 -- (AstroFox) the Visibility tab is Blizzard's own nameplate settings, and In Combat keeps
 -- working with the module off: its rows stay usable then, so it can be switched back. Only these
 -- two act on FlareUI's plates alone.
-local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true, ["np.combatPlates"] = true }
+local FLAREUI_ONLY = { ["np.enemyTypes"] = true, ["np.clampTarget"] = true }
 local function Row(def)
     def.apply = def.apply or Refresh
     if def.tab == "visibility" and not FLAREUI_ONLY[def.key] and def.ignoreModule == nil then def.ignoreModule = true end
@@ -733,14 +733,38 @@ Row{ key = "np.underName", kind = "dropdown", tab = "style", section = "np.nameO
 -- Show Level (off) beside Show Target's Plate
 Row{ key = "np.nameOnlyLevel", path = "nameOnlyLevel", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff }
 Row{ key = "np.nameOnlyTarget", path = "nameOnlyTarget", tab = "style", section = "np.nameOnlySection", half = true, disabled = NameOnlyOff }
--- Show Plates in Combat (shared: one list of types) on the Visibility tab's Plates section
-Row{ key = "np.combatPlates", kind = "dropdown", tab = "visibility", section = "np.which",
-    choices = { "none", { divider = true }, "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" },
-    toggles = { exclusive = { "none" }, tokens = { "enemyPlayer", "enemyNpc", "friendlyPlayer", "friendlyNpc", "minor" }, empty = "none" },
-    get = function() return S:GetPath("nameplates.combatPlates") or "none" end,
-    set = function(v) S:SetPath("nameplates.combatPlates", v) end,
-    resetValue = function() return "none" end,
-    apply = function() Refresh() if ns.SettingsPanel and ns.SettingsPanel.Refresh then ns.SettingsPanel:Refresh() end end }
+-- Show Whole Plate (Malkkav 11-27): when this type leaves Name Only Mode. Was Show Plates in Combat on the
+-- Visibility tab, a list of types; it sat among Blizzard's plate switches and confused. Now per type, in
+-- this section: When You Fight (nameplates.combatPlates) and When It Fights (nameplates.fightingPlates),
+-- both still lists of types, so the saved settings stay as they were.
+local WHOLE_LISTS = { you = "nameplates.combatPlates", it = "nameplates.fightingPlates" }
+local WHOLE_SPEC = { exclusive = { "none" }, tokens = { "you", "it" }, empty = "none" }
+local function InList(path, kind)
+    for token in tostring(S:GetPath(path) or "none"):gmatch("[^,]+") do if token == kind then return true end end
+    return false
+end
+local function SetInList(path, kind, on)
+    local out = {}
+    for token in tostring(S:GetPath(path) or "none"):gmatch("[^,]+") do
+        if token ~= "none" and token ~= kind then out[#out + 1] = token end
+    end
+    if on then out[#out + 1] = kind end
+    S:SetPath(path, #out > 0 and table.concat(out, ",") or "none")
+end
+Row{ key = "np.wholePlate", kind = "dropdown", tab = "style", section = "np.nameOnlySection", disabled = NameOnlyOff,
+    toggles = WHOLE_SPEC, choices = { "none", { divider = true }, "you", "it" },
+    get = function()
+        local on = {}
+        if InList(WHOLE_LISTS.you, PIN.kind) then on[#on + 1] = "you" end
+        if InList(WHOLE_LISTS.it, PIN.kind) then on[#on + 1] = "it" end
+        return #on > 0 and table.concat(on, ",") or "none"
+    end,
+    set = function(v)
+        local on = ns.Conditions.Set(v, WHOLE_SPEC)
+        SetInList(WHOLE_LISTS.you, PIN.kind, on.you)
+        SetInList(WHOLE_LISTS.it, PIN.kind, on.it)
+    end,
+    resetValue = function() return "none" end }
 
 -- TARGETING: size and opacity in three states (no target, your target, the others while you have
 -- one), out of range, and how your target stands out
@@ -993,12 +1017,13 @@ Row{ key = "np.castBorder", kind = "choice", tab = "cast", section = "np.castFra
 Row{ key = "np.castHeight", kind = "range", path = "castHeight", choices = Steps(6, 40, 1), tab = "cast", section = "np.castFrame", disabled = NoCast }
 Row{ key = "np.castIcon", path = "castIcon", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 Row{ key = "np.castTimer", path = "castTimer", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
-Row{ key = "np.castTarget", path = "castTarget", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 -- Edge Glow (per type): on for new players only (Core.lua ns.CastGlowOn)
 Row{ key = "np.castGlow", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast,
     get = function() return ns.CastGlowOn(TV("castGlow")) end,
     set = function(on) local np = NP() if np then np.TypeSet(PIN.kind, "castGlow", on and true or false) end end,
     resetValue = function() return ns.CastGlowDefault() end }
+-- (Show Cast Target after Edge Glow: Malkkav 11-27)
+Row{ key = "np.castTarget", path = "castTarget", tab = "cast", section = "np.castFrame", half = true, disabled = NoCast }
 -- Kick Ready: Colour (kickReady) and Mark (castKickMark), each the type's own switch, as toggles
 do
     local KICK = { { "colour", "kickReady" }, { "mark", "castKickMark" } }
@@ -1045,8 +1070,17 @@ Row{ key = "np.auraRows", kind = "choice", path = "auraRows", choices = { "one",
 -- crowd control right)
 Row{ key = "np.defensives", path = "defensives", tab = "auras", section = "np.ccSection", half = true, lead = true }
 Row{ key = "np.cc", path = "cc", tab = "auras", section = "np.ccSection", half = true, lead = true }
--- (their look is the Auras section's: their own shape, swipe and timer rows were removed 11-26)
 local function NoBigAuras() return not (TV("cc") or TV("defensives")) end
+-- their own shape, swipe and timer; until picked they follow the Auras section's (removed 11-26, back 11-27)
+local function BigAuraRow(key, path, follows, default, choices)
+    Row{ key = key, kind = "choice", tab = "auras", section = "np.ccSection", choices = choices, disabled = NoBigAuras,
+        get = function() return TV(path) or TV(follows) or default end,
+        set = function(v) local np = NP() if np then np.TypeSet(PIN.kind, path, v) end end,
+        resetValue = function() return TV(follows) or default end }
+end
+BigAuraRow("np.ccStyle", "ccStyle", "auraStyle", "square", { "square", "round" })
+BigAuraRow("np.ccSwipe", "ccSwipe", "auraSwipe", "both", { "none", "icon", "border", "both" })
+BigAuraRow("np.ccTimer", "ccTimer", "auraTimer", "none", { "none", "below", "bottom", "middle" })
 Row{ key = "np.ccSize", kind = "range", path = "ccSize", choices = Steps(16, 60, 2), tab = "auras", section = "np.ccSection",
     disabled = NoBigAuras }
 

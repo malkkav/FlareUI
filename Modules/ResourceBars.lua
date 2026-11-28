@@ -2179,6 +2179,8 @@ local function BuildContainer(holder)
     local ok, container = pcall(CreateFrame, "AuraContainer", nil, holder, "CustomAuraContainerTemplate")
     if not (ok and type(container) == "table" and container.AddAuraGroup) then Seal.failed = true return end
     Seal.container = container
+    -- (it reads the seal, nothing shows from it: no Blizzard Edit Mode sample auras, 11-28)
+    pcall(container.SetEditModePreviewEnabled, container, false)
     container:SetUnit("player")
     container:SetSize(1, 1)
     container:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)

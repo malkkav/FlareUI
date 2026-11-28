@@ -129,13 +129,14 @@ local function Quests(key, path, invert)
     S:Row{ key = "qt." .. key, path = "objectivetracker." .. path, invert = invert, apply = Refresh, section = "qt.quests", half = true,
         tab = "behaviour" }
 end
--- the order (Completed Last | Focused Quest First), then the two about completed quests
+-- (Malkkav 11-27) in pairs by job: the order (Completed Last | Focused Quest First), what the tracker lists
+-- (Show Untracked Quests | Show Completed Objectives), how quests behave (Collapse Completed | Keep Quest Focus)
 Quests("completedLast", "completedLast")
 Quests("focusedFirst", "focusedFirst")
-Quests("collapseCompleted", "collapseCompleted")
-Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
 S:Row{ key = "qt.untracked", path = "objectivetracker.showUntracked", apply = Refresh, section = "qt.quests", half = true, tab = "behaviour" }
--- (Archy) a newly accepted quest gives the focus back; paired with Show Untracked Quests
+Quests("hideFinished", "hideFinished", true)   -- Show Completed Objectives
+Quests("collapseCompleted", "collapseCompleted")
+-- (Archy) a newly accepted quest gives the focus back
 Quests("keepFocus", "keepFocus")
 -- Minimize: one switch sets every instance type
 local INSTANCES = { "dungeon", "raid", "pvp", "arena" }

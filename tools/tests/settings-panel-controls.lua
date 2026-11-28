@@ -34,6 +34,9 @@ row("buttons", "buttons", { fitButtonsWidth = 180, buttons = {
     { text = "Action", onClick = function() action = action + 1 end },
     { text = "Unavailable", disabled = function() return true end },
 } })
+-- (Malkkav 11-27) a half-row button is as wide as a half-row dropdown
+row("halfButton", "button", { half = true, buttonText = "Pick Your Colours" })
+row("halfChoice", "choice", { half = true, path = "test.choice", choices = { "a", "b" } })
 row("note", "text", { noTitle = true, textFn = function() return "* First note\n* Second note with `code`" end })
 ns.SettingsPreview.renderers.font = function(canvas, spec)
     painted = painted + 1
@@ -48,6 +51,7 @@ local function rowFrame(key)
     return assert(ui:find(function(w) return w.row and w.row.key == "about." .. key and w:IsVisible() end), key)
 end
 
+assert(rowFrame("halfButton").control:GetWidth() == 150, "half button: " .. rowFrame("halfButton").control:GetWidth())
 local cards = rowFrame("styles").cards
 assert(cards[1].tick:IsShown() and not cards[2].tick:IsShown() and painted >= 2)
 cards[2]:Click()

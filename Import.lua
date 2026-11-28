@@ -230,3 +230,117 @@ function ns.ImportOldSettings(defaults)
         table.insert(db.global.errors, ("%s | 1.x import | %s"):format(date("%Y-%m-%d %H:%M"), tostring(err)))
     end
 end
+
+--------------------------------------------------
+-- 5. NEW DEFAULTS FOR NEW PLAYERS ONLY (Malkkav 11-27, defaults pass 2)
+-- The defaults below changed for new installs. Runs once, before AceDB opens FlareUI2_DB (there a setting
+-- the player never touched is missing; once open, AceDB fills in every default and they look alike).
+-- An account that used FlareUI before gets each old value written where it has nothing saved, in every
+-- profile, so nothing changes for it. A new install writes nothing and gets the new defaults.
+--------------------------------------------------
+-- path = the old default
+ns.OLD_DEFAULTS_V2 = {
+    -- Unit Frames
+    ["unitframes.units.player.buffs"] = "TOPLEFT", ["unitframes.units.player.debuffs"] = "TOPRIGHT",
+    ["unitframes.units.targettarget.enabled"] = true, ["unitframes.units.focustarget.enabled"] = true,
+    ["unitframes.party.showPlayer"] = true,
+    ["unitframes.raid.powerHeight"] = 10, ["unitframes.raid.mainTanks.enabled"] = false,
+    ["unitframes.auraTimer"] = "none", ["unitframes.totems.timer"] = "none",
+    ["unitframes.legacyStyle"] = true,   -- a profile not started yet starts in FlareUI Style (UnitFramesRing.lua Ring.StartStyle)
+    -- Cooldowns, Action Bars
+    ["cooldownmanager.skin"] = false,
+    ["actionbars.equippedBorder"] = false, ["actionbars.procGlow"] = false, ["actionbars.activeHighlight"] = false,
+    ["actionbars.stopAutoAddSpells"] = false, ["actionbars.autoRanks"] = false,
+    ["actionbars.xpbar.questXP"] = false, ["actionbars.xpbar.textMode"] = "HOVER",
+    -- Minimap
+    ["minimap.finderEye"] = false, ["minimap.durability"] = false, ["minimap.vehicleExit"] = false,
+    -- Quest Tracker
+    ["objectivetracker.hideScrollBar"] = false, ["objectivetracker.playButtons"] = false,
+    ["objectivetracker.colorNames"] = false, ["objectivetracker.hideFinished"] = false,
+    -- Chat
+    ["chat.unreadGlow"] = "say,yell,party,raid,guild,whisper,channel", ["chat.whisperSound"] = "off",
+    ["chat.shortChannels"] = false, ["chat.formatPlayer"] = false, ["chat.formatNPC"] = false,
+    ["chat.whisperMarkers"] = false,
+    -- Tooltips
+    ["tooltips.corner"] = "auto",
+    -- Bags & Looting
+    ["tweaks.bagGaps"] = false, ["tweaks.bagKeyring"] = false, ["tweaks.bagReverse"] = false,
+    ["tweaks.bagButtons"] = false, ["tweaks.bagReagent"] = false, ["tweaks.bagCombineEmpty"] = false,
+    ["tweaks.bagJunkIcon"] = false, ["tweaks.bagUncollected"] = false, ["tweaks.bagBoE"] = false,
+    ["tweaks.bagItemLevel"] = false, ["tweaks.petFood"] = false, ["tweaks.bagPlainEmpty"] = false,
+    ["tweaks.fasterLoot"] = false, ["tweaks.lootRolls"] = false, ["tweaks.lootWindow"] = false,
+    ["tweaks.lootFeed"] = false, ["tweaks.lootFeedIcons"] = "square", ["tweaks.lootFeedSkills"] = false,
+    ["tweaks.bankGaps"] = false, ["tweaks.bankTight"] = false,
+    -- Nameplates (shared); the per-type values are the old tables, kept in Nameplates.lua (legacyBase)
+    ["nameplates.questMarks"] = false, ["nameplates.peacefulNames"] = false,
+    ["nameplates.combatPlates"] = "none", ["nameplates.fightingPlates"] = "none",
+    ["nameplates.legacyBase"] = true,
+}
+-- (11-28, defaults pass 3: Malkkav's Edit Mode setup) the shared ones; the two styles' own setups only reach a
+-- profile on its first start or switch (UnitFramesRing.lua Ring.STYLE_SETUP), so they need nothing here
+ns.OLD_DEFAULTS_V3 = {
+    ["unitframes.raid.spacing"] = 10, ["unitframes.raid.groupSpacing"] = 10, ["unitframes.raid.mainTanks.spacing"] = 10,
+    ["unitframes.resource.bars.health.smoothBars"] = false, ["unitframes.resource.bars.health.barEdgeGlow"] = false,
+    ["unitframes.resource.bars.power.smoothBars"] = false, ["unitframes.resource.bars.power.barEdgeGlow"] = false,
+    ["unitframes.resource.bars.mana.smoothBars"] = false, ["unitframes.resource.bars.mana.barEdgeGlow"] = false,
+    ["objectivetracker.width"] = 250, ["objectivetracker.maxHeight"] = 300, ["objectivetracker.questGap"] = 9,
+}
+-- each pass: its table and the flag that it ran (both run once; a new install skips both)
+ns.DEFAULTS_PASSES = { { flag = "defaultsV2", old = ns.OLD_DEFAULTS_V2 }, { flag = "defaultsV3", old = ns.OLD_DEFAULTS_V3 } }
+-- each unit frame style keeps its own setup of these (UnitFramesRing.lua styleProfiles)
+local PER_STYLE = { units = true, party = true, totems = true }
+
+-- writes value at path inside t where nothing is saved yet
+local function WriteOld(t, path, value)
+    local keys = {}
+    for key in path:gmatch("[^%.]+") do keys[#keys + 1] = key end
+    for i = 1, #keys - 1 do
+        local nextT = t[keys[i]]
+        if nextT == nil then nextT = {} t[keys[i]] = nextT end
+        if type(nextT) ~= "table" then return end
+        t = nextT
+    end
+    if t[keys[#keys]] == nil then t[keys[#keys]] = value end
+end
+
+-- Runs before AceDB opens FlareUI2_DB. Returns true for a new install (nothing was written).
+function ns.NewPlayerDefaults()
+    local sv = _G.FlareUI2_DB
+    if type(sv) ~= "table" then return true end
+    sv.global = sv.global or {}
+    local passes = {}
+    for _, pass in ipairs(ns.DEFAULTS_PASSES) do
+        if not sv.global[pass.flag] then passes[#passes + 1] = pass end
+    end
+    if #passes == 0 then return false end
+    for _, pass in ipairs(passes) do sv.global[pass.flag] = true end
+    local profiles = type(sv.profiles) == "table" and sv.profiles or {}
+    local used = sv.global.whatsNewSeen ~= nil or sv.global.welcomeSeen ~= nil
+    for _, profile in pairs(profiles) do
+        if type(profile) == "table" and next(profile) then used = true end
+    end
+    if not used then return true end
+    local ok, err = pcall(function()
+        for _, profile in pairs(profiles) do
+            if type(profile) == "table" then
+                for _, pass in ipairs(passes) do
+                    for path, value in pairs(pass.old) do
+                        WriteOld(profile, path, value)
+                        -- the other styles' stored setups too: a switch back brings theirs, not the new default
+                        local inner = path:match("^unitframes%.(.+)$")
+                        local slots = inner and PER_STYLE[inner:match("^[^%.]+")] and type(profile.unitframes) == "table"
+                            and type(profile.unitframes.styleProfiles) == "table" and profile.unitframes.styleProfiles
+                        for _, slot in pairs(slots or {}) do
+                            if type(slot) == "table" then WriteOld(slot, inner, value) end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if not ok then
+        sv.global.errors = sv.global.errors or {}
+        table.insert(sv.global.errors, ("%s | new defaults | %s"):format(date("%Y-%m-%d %H:%M"), tostring(err)))
+    end
+    return false
+end

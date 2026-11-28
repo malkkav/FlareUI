@@ -729,6 +729,12 @@ ns.Copy = {
             section = "bl.tools",
             tags = { "auto-type \"delete\"" },
         },
+        ["bl.deleteJunkFull"] = {
+            desc = L["With your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room."],
+            label = L["Delete Junk When Full"],
+            section = "bl.tools",
+            tip = L["It only happens when you click, never by itself. Chat tells you what was deleted."],
+        },
         ["bl.fastLoot"] = {
             desc = L["Loots everything at once, without the loot window."],
             label = L["Faster Auto Loot"],
@@ -1386,11 +1392,11 @@ ns.Copy = {
             tip = L["The same number as the unit frames' and nameplates' Threat Text."],
         },
         ["dm.threatMode"] = {
-            choices = { L["Off"], L["Separate Window"], L["In the Meter in Combat"] },
-            desc = L["Where threat shows besides the meter's Threat tab:\n* Off: only on the Threat tab\n* Separate Window: in its own window. Move and size it in Edit Mode\n* In the Meter in Combat: the meter shows threat during fights, damage after"],
+            choices = { L["Meters Tab"], L["Separate Window"], L["Auto-Switch in Combat"] },
+            desc = L["Where threat shows:\n* Meters Tab: only on the meter's Threat tab\n* Separate Window: in its own window too. Move and size it in Edit Mode\n* Auto-Switch in Combat: the meter shows threat during fights, damage after"],
             label = L["Threat Window"],
             section = "dm.threat",
-            tags = { "threat window", "threat meter", "separate threat", "threat view in combat" },
+            tags = { "threat window", "threat meter", "separate threat", "threat view in combat", "in the meter in combat" },
         },
         ["dm.threatValue"] = {
             choices = { L["Value and Percent"], L["Percent"], L["Value"] },
@@ -1489,14 +1495,15 @@ ns.Copy = {
         },
         ["mm.bagHover"] = {
             desc = L["Opens the drawer while you point at the sundial and closes it when you move away. Clicking still works. **[check]** whether it also works on the Blizzard drawer button."],
-            label = L["Open on Mouseover"],
+            label = L["Open Drawer on Mouseover"],
             section = "mm.addonButtons",
         },
         ["mm.barBelow"] = {
-            desc = L["The Info Bar sits under the minimap instead of over its bottom edge."],
-            label = L["Below the Map"],
+            choices = { L["On the Map"], L["Below the Map"] },
+            desc = L["Where the Info Bar sits:\n* On the Map: over the minimap's bottom edge\n* Below the Map: under the minimap"],
+            label = L["Position"],
             section = "mm.infoBar",
-            tags = { "info bar position", "info bar under map", "quest arrow" },
+            tags = { "info bar position", "below the map", "info bar under map", "quest arrow" },
             tip = L["Over the map, the bar can hide the quest arrow when it points down."],
         },
         ["mm.barBox"] = {
@@ -1535,7 +1542,7 @@ ns.Copy = {
         },
         ["mm.buttonsHover"] = {
             desc = L["Hides the addon buttons on the minimap's edge until you point at the minimap or at one of them."],
-            label = L["Only on Mouseover"],
+            label = L["Addon Buttons Only on Mouseover"],
             section = "mm.addonButtons",
             tags = { "minimap buttons", "hide buttons", "addon buttons", "mouseover", "show on hover" },
             tip = L["Buttons in the drawer aren't affected. Use Addons in the Drawer to pick which stay on the edge."],
@@ -1774,6 +1781,24 @@ ns.Copy = {
             label = L["Crowd Control Size"],
             section = "np.ccSection",
         },
+        ["np.ccStyle"] = {
+            choices = { L["Square"], L["Round"] },
+            desc = L["The shape of the crowd control and defensive icons."],
+            label = L["Aura Icon Shape"],
+            section = "np.ccSection",
+        },
+        ["np.ccSwipe"] = {
+            choices = { L["Off"], L["Over the Icon"], L["Around the Border"], L["Both"] },
+            desc = L["How the crowd control and defensive icons show their time left."],
+            label = L["Aura Swipe"],
+            section = "np.ccSection",
+        },
+        ["np.ccTimer"] = {
+            choices = { L["Off"], L["Under the Icon"], L["Bottom of the Icon"], L["Centre of the Icon"] },
+            desc = L["Where the time left shows on the crowd control and defensive icons."],
+            label = L["Aura Timer"],
+            section = "np.ccSection",
+        },
         ["np.clampTarget"] = {
             desc = L["Your target's plate stays at the edge of the screen when the unit moves off it."],
             label = L["Keep Target on Screen"],
@@ -1790,13 +1815,6 @@ ns.Copy = {
             desc = L["Your focus gets its own colour."],
             label = L["Focus Colour"],
             section = "np.highlights",
-        },
-        ["np.combatPlates"] = {
-            choices = { L["None"], L["Enemy Player"], L["Enemy NPC"], L["Friendly Player"], L["Friendly NPC"], L["Minor"] },
-            desc = L["The units picked here leave Name Only Mode while you are in a fight and show their whole plate."],
-            label = L["Show Plates in Combat"],
-            section = "np.which",
-            tags = { "combat plates", "name only combat", "show bars in combat" },
         },
         ["np.comboPoints"] = {
             desc = L["Combo point gems under your target's plate, below its cast bar while it casts."],
@@ -2004,7 +2022,7 @@ ns.Copy = {
             label = L["Name Only Mode"],
             section = "np.nameOnlySection",
             tags = { "name only", "names only", "no bar", "name only preset" },
-            tip = L["Its other options stay open: Show Target's Plate and Show Plates in Combat bring the whole plate back."],
+            tip = L["Its other options stay open: Show Whole Plate and Show Target's Plate bring the whole plate back."],
         },
         ["np.nameOnlySize"] = {
             desc = L["How big this unit's name is in Name Only Mode, in % of the Name Only font's size (Fonts tab)."],
@@ -2172,6 +2190,13 @@ ns.Copy = {
             tags = { "title", "npc title", "player title", "rank", "guild", "guild name", "show titles", "show guild name" },
             tip = L["Title starts on for NPCs, off for players and Minor."],
         },
+        ["np.wholePlate"] = {
+            choices = { L["None"], L["When You Fight"], L["When It Fights"] },
+            desc = L["When this unit leaves Name Only Mode and shows its whole plate:\n* When You Fight: while you are in a fight\n* When It Fights: while it is in a fight, with you or anyone"],
+            label = L["Show Whole Plate"],
+            section = "np.nameOnlySection",
+            tags = { "show plates in combat", "combat plates", "name only combat", "show bars in combat", "in combat", "fighting", "engaged" },
+        },
         ["np.width"] = {
             desc = L["How wide each plate's health bar is."],
             label = L["Width"],
@@ -2236,12 +2261,6 @@ ns.Copy = {
             label = L["Copy Now"],
             section = "qol.syncBlizzUi",
             tip = L["Greyed out on the source itself, and until the source has logged in with this on."],
-        },
-        ["qol.deleteJunkFull"] = {
-            desc = L["With your bags full, clicking an item in the loot window first deletes your cheapest grey item to make room."],
-            label = L["Delete Junk When Full"],
-            section = "qol.other",
-            tip = L["It only happens when you click, never by itself. Chat tells you what was deleted."],
         },
         ["qol.fishCast"] = {
             desc = L["With a fishing pole equipped, right-click the world twice quickly to cast Fishing."],

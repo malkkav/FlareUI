@@ -811,6 +811,8 @@ local function ApplyBarFont(entry, db)
         ApplyFontEffects(valueFs, fontDb)
     end
     DamageMeter.ApplyBarTexture(statusBar, db)
+    DamageMeter.ApplyRowBorder(statusBar, db)
+    DamageMeter.RowRoom(entry, statusBar, db)
 end
 
 -- A row's name font: the chosen font for a name with no Russian letters, else the Cyrillic twin.
@@ -827,14 +829,17 @@ function DamageMeter.RowNameFont(fs)
 end
 
 -- Bar Texture: a unit frame texture on the fill (its colour stays the row's); "" keeps Blizzard's
--- atlas, put back once when the choice goes back to Blizzard
+-- atlas, put back once when the choice goes back to Blizzard (the one read off the bar, or the one
+-- Blizzard_DamageMeter/DamageMeterEntry.xml gives every row when none was read: 11-27, going back to
+-- Blizzard kept the picked texture)
+DamageMeter.BLIZZARD_BAR_ATLAS = "UI-HUD-CoolDownManager-Bar"
 function DamageMeter.ApplyBarTexture(bar, db)
     local fill = bar and bar.GetStatusBarTexture and bar:GetStatusBarTexture()
     if not fill then return end
     local want = db and db.barTexture or ""
     if bar.fuiBarTexture == want then return end
     if want == "" then
-        if bar.fuiBarTexture and bar.fuiAtlas then fill:SetAtlas(bar.fuiAtlas) end
+        if bar.fuiBarTexture then fill:SetAtlas(bar.fuiAtlas or DamageMeter.BLIZZARD_BAR_ATLAS) end
     else
         if bar.fuiBarTexture == nil then bar.fuiAtlas = fill.GetAtlas and fill:GetAtlas() or nil end
         local Kit = ns.UnitFrames and ns.UnitFrames.Kit
@@ -845,12 +850,126 @@ function DamageMeter.ApplyBarTexture(bar, db)
     bar.fuiBarTexture = want
 end
 
+-- ROW BORDERS (TRIAL, Malkkav 11-27): each bar in FlareUI Thin, as the unit frames' bars, over a dark fill.
+-- Blizzard's bright edge and its shadow (or Bordered style's frame) behind the bar go: hidden by alpha, as
+-- Blizzard shows them again on every style change. The way ElvUI restyles these rows (its code is all rights
+-- reserved: nothing taken). The border reaches 4 px past the bar, as the unit frames' (FlareUI Thin's line
+-- sits 3 px into its art: on the bar's edge the fill showed past it, 11-27). Only the bar: the class icon
+-- stays beside it.
+DamageMeter.ROW_BORDER = { inset = 4, edge = 8, fill = 0.55, file = "FlareUI Thin" }
+-- The border in eight plain textures, not Blizzard's backdrop: a backdrop works its pieces out from the frame's
+-- size on every size change, and with Show Spec Icon on the row's size can be secret (11-27, an error in
+-- Backdrop.lua). Each piece is cut from the border file as Blizzard's backdrop cuts it; the edges stretch
+-- (one tile, coordEnd) instead of tiling, so nothing is measured. FlareUI Thin's edges are a plain line.
+do
+    local cs, ce = 0.0625, 0.9375
+    DamageMeter.ROW_PIECES = {
+        TopLeftCorner     = { 0.5078125, cs, 0.5078125, ce, 0.6171875, cs, 0.6171875, ce },
+        TopRightCorner    = { 0.6328125, cs, 0.6328125, ce, 0.7421875, cs, 0.7421875, ce },
+        BottomLeftCorner  = { 0.7578125, cs, 0.7578125, ce, 0.8671875, cs, 0.8671875, ce },
+        BottomRightCorner = { 0.8828125, cs, 0.8828125, ce, 0.9921875, cs, 0.9921875, ce },
+        TopEdge    = { 0.2578125, ce, 0.3671875, ce, 0.2578125, cs, 0.3671875, cs },
+        BottomEdge = { 0.3828125, ce, 0.4921875, ce, 0.3828125, cs, 0.4921875, cs },
+        LeftEdge   = { 0.0078125, cs, 0.0078125, ce, 0.1171875, cs, 0.1171875, ce },
+        RightEdge  = { 0.1328125, cs, 0.1328125, ce, 0.2421875, cs, 0.2421875, ce },
+    }
+end
+function DamageMeter.RowBorderPieces(border, file, edge, r, g, b)
+    local P = border.pieces
+    if not P then
+        P = {}
+        for name in pairs(DamageMeter.ROW_PIECES) do P[name] = border:CreateTexture(nil, "OVERLAY") end
+        border.pieces = P
+        for _, c in ipairs({ { "TopLeftCorner", "TOPLEFT" }, { "TopRightCorner", "TOPRIGHT" },
+                             { "BottomLeftCorner", "BOTTOMLEFT" }, { "BottomRightCorner", "BOTTOMRIGHT" } }) do
+            P[c[1]]:SetPoint(c[2], border, c[2])
+        end
+        P.TopEdge:SetPoint("TOPLEFT", P.TopLeftCorner, "TOPRIGHT")
+        P.TopEdge:SetPoint("BOTTOMRIGHT", P.TopRightCorner, "BOTTOMLEFT")
+        P.BottomEdge:SetPoint("TOPLEFT", P.BottomLeftCorner, "TOPRIGHT")
+        P.BottomEdge:SetPoint("BOTTOMRIGHT", P.BottomRightCorner, "BOTTOMLEFT")
+        P.LeftEdge:SetPoint("TOPLEFT", P.TopLeftCorner, "BOTTOMLEFT")
+        P.LeftEdge:SetPoint("BOTTOMRIGHT", P.BottomLeftCorner, "TOPRIGHT")
+        P.RightEdge:SetPoint("TOPLEFT", P.TopRightCorner, "BOTTOMLEFT")
+        P.RightEdge:SetPoint("BOTTOMRIGHT", P.BottomRightCorner, "TOPRIGHT")
+    end
+    for name, tex in pairs(P) do
+        tex:SetTexture(file)
+        tex:SetTexCoord(unpack(DamageMeter.ROW_PIECES[name]))
+        tex:SetVertexColor(r, g, b, 1)
+        tex:SetShown(file ~= nil)
+    end
+    for _, name in ipairs({ "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner" }) do
+        P[name]:SetSize(edge, edge)
+    end
+end
+function DamageMeter.ApplyRowBorder(bar, db)
+    if not bar or (bar.IsForbidden and bar:IsForbidden()) then return end
+    local on = db and db.enabled and true or false
+    local look = DamageMeter.ROW_BORDER
+    local border = bar.fuiRowBorder
+    if on and not border then
+        border = CreateFrame("Frame", nil, bar)
+        border:SetPoint("TOPLEFT", bar, "TOPLEFT", -look.inset, look.inset)
+        border:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", look.inset, -look.inset)
+        border.fill = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+        border.fill:SetAllPoints(bar)
+        border.fill:SetColorTexture(0, 0, 0, look.fill)
+        bar.fuiRowBorder = border
+    end
+    -- (never touched while the module is off: off leaves Blizzard's rows as they are)
+    if not border then return end
+    -- (each row is set up on every meter update: the backdrop only when it turns on)
+    if border.fuiOn ~= on then
+        border.fuiOn = on
+        if on then
+            local file = LSM:IsValid("border", look.file) and LSM:Fetch("border", look.file) or nil
+            DamageMeter.RowBorderPieces(border, file, look.edge, BORDER_TINT.r, BORDER_TINT.g, BORDER_TINT.b)
+            -- over the fill, under nothing: the name and value sit inside the edge
+            border:SetFrameLevel(bar:GetFrameLevel() + 1)
+        end
+        border:SetShown(on)
+        border.fill:SetShown(on)
+    end
+    -- Blizzard's own background and edge: gone with the border, back without it
+    for _, key in ipairs({ "Background", "BackgroundEdge" }) do
+        local tex = bar[key]
+        if tex and tex.SetAlpha then tex:SetAlpha(on and 0 or 1) end
+    end
+end
+
+-- With the class icon hidden, Blizzard starts the bar on the list's left edge, and the list cuts off what
+-- reaches past it: the border's left side went (11-27). The bar's left end moves in by the border's reach.
+-- Blizzard sets the bar's points again on every row set-up (DamageMeterEntryMixin GetIconAttachmentAnchor:
+-- LEFT on the row's LEFT, no icon), so icons back on, or the module off, undo it.
+-- The Thin style puts the bar right under the name (SetupThinStyle: its TOP on the name's BOTTOM), so the
+-- border's top ran through the text (11-27): there the bar starts the border's reach lower.
+function DamageMeter.RowRoom(entry, bar, db)
+    if not (db and db.enabled and entry and bar and entry.ShouldShowBarIcons) then return end
+    local inset = DamageMeter.ROW_BORDER.inset
+    if not entry:ShouldShowBarIcons() then bar:SetPoint("LEFT", entry, "LEFT", inset, 0) end
+    local thin = Enum.DamageMeterStyle and Enum.DamageMeterStyle.Thin
+    local name = thin and entry.GetStyle and entry:GetStyle() == thin and entry.GetName and entry:GetName()
+    if type(name) == "table" then bar:SetPoint("TOP", name, "BOTTOM", 0, -inset) end
+end
+
 -- A row whose fill is Blizzard's atlas again gets the chosen texture back (a report: it went after a while;
 -- nothing in Blizzard's code sets it again, so whatever did is undone here)
 function DamageMeter.KeepBarTexture(entry)
     local bar = entry and not entry:IsForbidden() and (entry.GetStatusBar and entry:GetStatusBar() or entry.StatusBar)
+    if bar then
+        DamageMeter.ApplyRowBorder(bar, GetDb())
+        DamageMeter.RowRoom(entry, bar, GetDb())
+    end
     local want = bar and bar.fuiBarTexture
-    if not want or want == "" then return end
+    if want == nil then return end
+    -- a row kept aside while the choice changed (the refresh only reaches shown rows): the choice now
+    local db = GetDb()
+    if db and (db.barTexture or "") ~= want then
+        DamageMeter.ApplyBarTexture(bar, db)
+        return
+    end
+    if want == "" then return end
     local fill = bar:GetStatusBarTexture()
     if not (fill and fill.GetAtlas and fill:GetAtlas()) then return end
     bar.fuiBarTexture = nil

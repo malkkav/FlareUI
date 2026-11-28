@@ -31,7 +31,8 @@ local COL_STEP, ROW_STEP, TEXT_BELOW = 31, 42, 7
 local MAX = _G.MAX_TOTEMS or 4
 local PREVIEW_ICONS = { "Spell_Nature_StoneSkinTotem", "Spell_Fire_SearingTotem",
                         "Spell_Nature_ManaRegenTotem", "Spell_Nature_GroundingTotem" }
-local PREVIEW_TIMES = { "1:45", "52", "4:10", "12" }
+-- (in the unit frames' style: bare seconds, m and h; TOT.UnitTimer)
+local PREVIEW_TIMES = { "2m", "52", "5m", "12" }
 
 local holder
 
@@ -262,6 +263,17 @@ local function ApplyMouse()
     end
 end
 
+-- The timer as the unit frames' and nameplates' (Malkkav 11-27, johnivve): bare seconds, then m and h.
+-- Blizzard writes its buff frame style ("30 s") on every frame (TotemButtonMixin:OnUpdate); this runs right
+-- after it. The time left isn't secret (Blizzard rounds it itself).
+function TOT.UnitTimer(button)
+    local text, slot = button.Duration, button.slot
+    if not (text and slot and GetTotemTimeLeft and text:IsShown()) then return end
+    local left = GetTotemTimeLeft(slot)
+    if not (canaccessvalue(left) and type(left) == "number" and left > 0) then return end
+    text:SetText(ns.FormatAuraTime(math.ceil(left), "unit"))
+end
+
 -- After Blizzard's Layout the shown buttons go back into the grid
 local active = {}
 local function ArrangeTotems()
@@ -275,6 +287,10 @@ local function ArrangeTotems()
     table_sort(active, ByLayoutIndex)
     PlaceInGrid(active, frame, perRow)
     for _, button in ipairs(active) do
+        if not button.FlareUI_TimerHooked then
+            button.FlareUI_TimerHooked = true
+            button:HookScript("OnUpdate", TOT.UnitTimer)
+        end
         local icon = button.Icon
         StyleTotem(button, icon and icon.Cooldown, button.Duration, button.Border, icon, icon and icon.Texture, icon and icon.TextureMask)
     end

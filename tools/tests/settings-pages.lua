@@ -341,4 +341,89 @@ do
     assert(S:RowMeta(row("ab.fcmSetup")) == nil, "buttons have no meta line")
 end
 
+-- the rows a page shows, in order, whose keys match pattern ("|" after a half row)
+local function PageOrder(module, tab, pattern, sectionKey)
+    local got = {}
+    for _, section in ipairs(S.modules[module]:Sections(tab)) do
+        for _, r in ipairs(section.rows) do
+            if r.key:find(pattern) and (not sectionKey or section.key == sectionKey) then got[#got + 1] = r.key .. (r.half and "|" or "") end
+        end
+    end
+    return table.concat(got, " ")
+end
+-- (Malkkav 11-27) Action Bars: Stop Auto-Add Spells before Update Spell Ranks
+do
+    local got = PageOrder("ab", "settings", "^ab%.[sa][tu][ot][po]")
+    assert(got:find("ab.stopAutoAdd| ab.autoRanks|", 1, true), got)
+end
+-- (Malkkav 11-27) XP Bar: Bar Style; Bar Texture | Border; Quest XP | XP Text; Separators | XP Bar Colours; Show Tooltip
+do
+    local got = PageOrder("ab", "xp", "^ab%.xp")
+    assert(got == "ab.xpBar ab.xpTexture| ab.xpBorder| ab.xpQuest| ab.xpText| ab.xpBubbles| ab.xpColors| ab.xpTooltip", got)
+end
+-- (Malkkav 11-27) Minimap: FPS/Latency on Clock, then Middle-Click Menu
+do
+    local tab = S.modules.mm.tabs and S.modules.mm.tabs[1].key
+    local got = PageOrder("mm", tab, "^mm%.[cm][li][oc][cr]")
+    assert(got:find("mm.clockStats| mm.microMenu|", 1, true), got)
+end
+-- (Malkkav 11-27) Minimap > Addon Buttons: FlareUI Minimap Button whole, the two mouseover switches paired below
+do
+    local got = PageOrder("mm", "buttons", "^mm%.[fbu][lau][agt]")
+    assert(got:find("mm.flareButton mm.bagHover| mm.buttonsHover|", 1, true), got)
+end
+-- (Malkkav 11-27) Minimap > Info Bar: Position a whole row, Show Box | Only on Mouseover below; same saved switch
+do
+    local got = PageOrder("mm", "settings", "^mm%.bar[BH]")
+    assert(got == "mm.barBelow mm.barBox| mm.barHover|", got)
+    local saved = setting("minimap.infoBarBelow")
+    set("mm.barBelow", "below")
+    assert(setting("minimap.infoBarBelow") == true and row("mm.barBelow"):Get() == "below")
+    set("mm.barBelow", "map")
+    assert(setting("minimap.infoBarBelow") == false and row("mm.barBelow"):Get() == "map")
+    set("mm.barBelow", saved and "below" or "map")
+end
+-- (Malkkav 11-27) Quest Tracker > Quests: order | order, Show | Show, Collapse Completed | Keep Quest Focus
+do
+    local got = PageOrder("qt", "behaviour", "^qt%.", "qt.quests")
+    assert(got == "qt.sort qt.completedLast| qt.focusedFirst| qt.untracked| qt.hideFinished| qt.collapseCompleted| qt.keepFocus|", got)
+end
+-- (Malkkav 11-27) Meters > Tweaks: Combat Timer before Match Chat Size
+do
+    local tab = S.modules.dm.tabs and S.modules.dm.tabs[1].key
+    local got = PageOrder("dm", tab, "^dm%.", "dm.tweaks")
+    assert(got:find("dm.combatTimer| dm.matchChat|", 1, true), got)
+end
+-- (Malkkav 11-27) Tooltips > Tweaks: Healing and Damage a whole row, after the switches
+do
+    local got = PageOrder("tt", "tweaks", "^tt%.")
+    assert(got:find("tt.healingDamage$") and not got:find("tt.healingDamage|", 1, true), got)
+end
+-- (Malkkav 11-27) Delete Junk When Full moved to Bags > Tweaks, Auto Type "delete"'s partner; same saved switch
+do
+    assert(S.rows["qol.deleteJunkFull"] == nil and S.rows["bl.deleteJunkFull"].path == "tweaks.deleteJunkWhenFull")
+    local got = PageOrder("bl", "bags", "^bl%.", "bl.tools")
+    assert(got == "bl.delete| bl.deleteJunkFull| bl.bagAutoSort| bl.bagAutoOpen|", got)
+end
+-- (Malkkav 11-27) Quality of Life > Map & Mail: Open Flight Map at Once last
+do
+    local got = PageOrder("qol", "gameplay", "^qol%.", "qol.mapMail")
+    assert(got:find("qol.taxiMap|$"), got)
+end
+-- (Malkkav 11-27) Quality of Life > Convenience: Alert Sounds before Double Click to Fish, Fishing Sounds after it
+do
+    local got = PageOrder("qol", "gameplay", "^qol%.", "qol.other")
+    assert(got:find("qol.keyDown| qol.alerts| qol.fishCast| qol.fishSound| qol.acceptRes| qol.acceptSummon|", 1, true), got)
+end
+-- (Malkkav 11-27) Quality of Life > Hide Clutter: messages, group frames, screen announcements
+do
+    local got = PageOrder("qol", "interface", "%.", "qol.hideClutter")
+    assert(got == "qol.gryphons qol.hideErrors| qol.hideTips| ab.hideRaidManager| qol.hideFrameNumbers| qol.hideZoneText| qol.hideLootAlerts|", got)
+end
+-- (Malkkav 11-27) Unit Frames > Frames: Target of Target | Target of Focus on the bottom line
+do
+    local got = PageOrder("uf", "settings", "^uf%.%a+$")
+    assert(got:find("uf.boss| uf.flagCarriers| uf.tot| uf.tof|", 1, true), got)
+end
+
 print("PASS: settings pages preserve saved values, dependencies and live callbacks")

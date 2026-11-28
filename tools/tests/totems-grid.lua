@@ -1,5 +1,6 @@
 local ui = dofile("tools/tests/fixtures/settings-ui.lua").new()
 local env = ui.env
+env.canaccessvalue = env.canaccessvalue or function() return true end
 local db = {
     enabled = true, units = { player = { enabled = true } },
     totems = { size = 110, perRow = 2, swipe = "border", timer = "below" },
@@ -16,6 +17,13 @@ local ns = {
     SetFont = function(widget, ...) widget:SetFont(...) end,
     GetFontPath = function(face) return "Fonts/" .. face end,
     ApplyShadow = function() end,
+    -- (Core.lua's, unit style: bare seconds, m and h)
+    FormatAuraTime = function(seconds, kind)
+        assert(kind == "unit")
+        if seconds >= 3600 then return math.ceil(seconds / 3600) .. "h" end
+        if seconds >= 60 then return math.ceil(seconds / 60) .. "m" end
+        return tostring(seconds)
+    end,
 }
 local edit = { SettingType = { Slider = 1 } }
 function edit:GetActiveLayoutName() return "Modern" end
@@ -67,6 +75,19 @@ assert(select(2, cooldown:GetPoint()) == all[1].Border and cooldown:GetWidth() =
 assert(cooldown.drawSwipe and not cooldown.drawEdge and duration:GetParent() == all[1].FlareUI_TextLayer)
 local font, size, flags = duration:GetFont()
 assert(font == "Fonts/Timer" and size == 10 and flags == "")
+-- (Malkkav 11-27, johnivve) the timer as the unit frames' and nameplates': no "s", only m and h
+do
+    local left = 29.2
+    env.GetTotemTimeLeft = function(slot) assert(slot == 1); return left end
+    all[1].slot = 1
+    duration:SetText("30 s")   -- (Blizzard's, each frame)
+    all[1]:RunScript("OnUpdate", 0)
+    assert(duration:GetText() == "30", "bare seconds: " .. tostring(duration:GetText()))
+    left = 150
+    all[1]:RunScript("OnUpdate", 0)
+    assert(duration:GetText() == "3m")
+    env.GetTotemTimeLeft = nil
+end
 gameTotems:SetParent(parent)
 gameTotems:SetPoint("BOTTOM", parent, "BOTTOM", 10, 20)
 assert(gameTotems:GetParent() == holder and gameTotems:GetPoint() == "TOPLEFT")
@@ -130,7 +151,7 @@ end
 ui.editing = true
 edit.enter()
 assert(holder.preview:IsShown() and #holder.preview.buttons == 4 and gameTotems:GetAlpha() == 0)
-assert(not all[1]:IsMouseEnabled() and holder.preview.buttons[3].Duration:GetText() == "4:10")
+assert(not all[1]:IsMouseEnabled() and holder.preview.buttons[3].Duration:GetText() == "5m")
 ui.combat = true
 ui.editFight()
 assert(not holder.preview:IsShown() and gameTotems:GetAlpha() == 1 and all[1]:IsMouseEnabled())

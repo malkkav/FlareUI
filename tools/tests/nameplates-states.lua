@@ -80,7 +80,12 @@ assert(plates.PresetOf("enemyNpc") == "compact", "a no-op setting keeps its pres
 plates.TypeSet("enemyNpc", "width", 112)
 assert(plates.PresetOf("enemyNpc") == "custom" and plates.TypeDB("enemyNpc").debuffs == "off")
 plates.SetPreset("enemyNpc", "name")
+-- (11-27) new players: Name Only keeps the type's own cast bar for the whole plate; an account that used
+-- FlareUI before keeps the old preset, which turned it off (nameplates.legacyBase, Import.lua 5)
+assert(plates.TypeDB("enemyNpc").plate == "name" and plates.TypeDB("enemyNpc").castbar)
+db.legacyBase = true
 assert(plates.TypeDB("enemyNpc").plate == "name" and not plates.TypeDB("enemyNpc").castbar)
+db.legacyBase = nil
 plates.SetPreset("enemyNpc", "custom")
 assert(plates.TypeDB("enemyNpc").width == 112 and plates.TypeDB("enemyPlayer").width == 165)
 
@@ -163,11 +168,16 @@ do
     ns.AuraLook = { ForUnit = function(_, _, _, style, _, timer, _, opts) return { style = style, timer = timer, swipe = opts.swipe } end }
     local db = plates.TypeDB("enemyNpc")
     local base = plates.AuraLook(24, true, db)
+    -- (11-27) new players: the big icons start round, both swipes, the timer in the middle
     local same = plates.AuraLook(24, true, db, true)
-    assert(same.timer == base.timer and same.swipe == base.swipe)
-    -- (11-26) the big icons use the Auras look: their own three rows are gone
+    assert(same.style == "round" and same.swipe == "both" and same.timer == "middle")
+    -- (back 11-27) once picked, the big icons draw their own; the rows keep the plate's
+    db.ccStyle, db.ccSwipe, db.ccTimer = "round", "border", "middle"
     local big = plates.AuraLook(24, true, db, true)
-    assert(big.timer == base.timer and big.swipe == base.swipe and big.style == base.style)
+    assert(big.timer == "middle" and big.swipe == "border" and big.style == "round")
+    local rows = plates.AuraLook(24, true, db)
+    assert(rows.timer == base.timer and rows.swipe == base.swipe and rows.style == base.style)
+    db.ccStyle, db.ccSwipe, db.ccTimer = nil, nil, nil
     ns.AuraLook = old
 end
 -- the arrow's bounce: from rest, 3 px towards the plate half way, back at rest after both ways
@@ -1183,9 +1193,23 @@ questRelated = false
 plates.TestMode(true, nil)
 plates.TestTick()
 assert(live.cast:IsShown() and live.questText:GetText() == "3/8")
+-- (Malkkav 11-27) the test draws sample auras, crowd control and defensives in place of the unit's own
+do
+    local tdb = plates.TypeDB(live.kind)
+    local saved = { tdb.debuffs, tdb.buffs, tdb.cc, tdb.defensives }
+    tdb.debuffs, tdb.buffs, tdb.cc, tdb.defensives = "all", "all", true, true
+    live.testAuras = nil
+    plates.TestTick()
+    local shown = 0
+    for _, icon in ipairs(live.sampleIcons or {}) do if icon:IsShown() then shown = shown + 1 end end
+    assert(shown >= 4 and live.ccIcon and live.defIcon, "sample auras on the live plate: " .. shown)
+    for _, entry in pairs(live.auras or {}) do assert(not entry.container:IsShown(), "the unit's own auras wait") end
+    tdb.debuffs, tdb.buffs, tdb.cc, tdb.defensives = saved[1], saved[2], saved[3], saved[4]
+end
 ui.time = 22
 plates.TestTick()
 assert(not plates.testing and not live.cast:IsShown() and not live.questText:IsShown())
+for _, icon in ipairs(live.sampleIcons or {}) do assert(not icon:IsShown(), "the sample auras go with the test") end
 
 -- (11-23, Rex / saamor) PET THREAT: your pet holding the mob reads as another tank having it
 local petThreat
@@ -1838,6 +1862,21 @@ do
     assert(plates.ZoomBackupFor("perChar", global, char) == char and char.perChar == "0.8" and global.perChar == nil)
     assert(plates.ZoomBackupFor("shared", global, char) == global and global.shared == "1.2")
     ns.Tweaks = tweaks
+end
+-- (11-27) Show Whole Plate > When It Fights: a picked type shows its whole plate while the unit fights
+do
+    local db = ns.db.profile.nameplates
+    local was, combat, fighting = db.fightingPlates, env.UnitAffectingCombat, true
+    env.UnitAffectingCombat = function() return fighting end
+    db.fightingPlates = "enemyNpc"
+    pcall(plates.Refresh, plates)
+    assert(plates.FightList().enemyNpc, "the picked type is in the list")
+    assert(plates.FightFull("enemyNpc", { unit = "nameplate1" }), "a fighting unit of a picked type")
+    assert(not plates.FightFull("enemyPlayer", { unit = "nameplate1" }), "a type not picked")
+    assert(not plates.FightFull("enemyNpc", { unit = "nameplate1", sample = true }), "samples stay Name Only")
+    fighting = false
+    assert(not plates.FightFull("enemyNpc", { unit = "nameplate1" }), "out of its fight")
+    db.fightingPlates, env.UnitAffectingCombat = was, combat
 end
 
 print("PASS: nameplates migrate presets, draw preview states and claim, update and release live plates")

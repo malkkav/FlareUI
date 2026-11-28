@@ -463,6 +463,17 @@ eb:SetAlpha(1)
 chat.IdleIMBox(eb, db)
 assert(eb:GetAlpha() == 1, "a GM whisper box is Blizzard's")
 eb.isGM = nil
+-- (Malkkav 11-27) the Modern backdrop hugs its line: EDIT_BG_IN px inside Blizzard's box at top and bottom, and the
+-- box moves so that edge stays EDIT_BOX_GAP (1 px) from the window; Blizzard art keeps 2 px outside
+chat:StyleEditBox(trade, db)
+local _, _, _, bgX, bgY = eb.FlareUI_Backdrop:GetPoint(1)
+assert(bgX == -2 and bgY == -chat.EDIT_BG_IN, "Modern backdrop: " .. tostring(bgY))
+assert(select(5, eb:GetPoint(1)) == -1 + chat.EDIT_BG_IN, "Below: the visible edge 1 px under the window")
+db.editBoxStyle = "flareui"
+chat:StyleEditBox(trade, db)
+assert(select(5, eb:GetPoint(1)) == -3, "Blizzard art: as before")
+db.editBoxStyle = "modern"
+chat:StyleEditBox(trade, db)
 db.editBoxPosition = "inside"
 
 cv.chatStyle = "classic"
@@ -665,6 +676,20 @@ do
     chat.WindowFontSizePicked(general, 16)
     chat.WindowFontSizeCopied(trade)               -- a reset
     assert(db.windowFontSize == nil and select(2, trade:GetFont()) == 16)
+    -- (sheet.ghost) a new size in the Fonts tab reaches every window, one with its own size too; a pick
+    -- made after that sticks again
+    chat.FollowFontsTab(db)                         -- (the size last seen: 16)
+    chat.WindowFontSizePicked(general, 10)
+    local was = db.chatFont.size
+    db.chatFont.size = 18
+    chat:RefreshAll()
+    assert(db.windowFontSize == nil and select(2, general:GetFont()) == 18, "the Fonts tab's new size wins")
+    chat.WindowFontSizePicked(general, 10)
+    chat:RefreshAll()
+    assert(db.windowFontSize[general:GetID()] == 10, "an unchanged Fonts size keeps the pick")
+    db.chatFont.size = was
+    db.windowFontSize = nil
+    chat:RefreshAll()
 end
 -- (pkecerski) FlareUI's own tab menu has Blizzard's Font Size too
 do

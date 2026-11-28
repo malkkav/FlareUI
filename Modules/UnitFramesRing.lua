@@ -267,6 +267,562 @@ local FOREVER_TILES = {
               buffs = "ABOVE", debuffs = "ABOVE_RIGHT", auraSize = 18 },
 }
 
+-- MALKKAV'S SETUP (11-28): what a style's frames look like when a profile starts in it, on top of its preset
+-- (taken from his saved FlareUI Style and Forever Style setups; positions are in the POSITIONS tables). A new
+-- profile starts in Forever Style (Ring.StartStyle); a profile's first switch to a style gets that style's
+-- too. Existing setups are never touched: a preset only runs on a profile's first start or first switch.
+-- (the pet and target-of frames' sizes are left out: they follow the player frame, Ring.SyncPetSetup)
+Ring.STYLE_SETUP = {
+    flareui = {
+        boss = {
+            auraSize = 18,
+            barEdgeGlow = true,
+            barText = {
+                health = {
+                    left = {
+                        name = true,
+                    },
+                    right = {
+                        percent = true,
+                    },
+                },
+                power = {
+                    right = {
+                        value = true,
+                    },
+                },
+            },
+            border = "FlareUI Thin",
+            buffAmount = 6,
+            buffs = "ABOVE",
+            castHeight = 15,
+            debuffAmount = 6,
+            debuffs = "ABOVE_RIGHT",
+            height = 50,
+            powerHeight = 10,
+            ringSize = 66,
+            smoothBars = true,
+            width = 164,
+        },
+        flagCarriers = {
+            barEdgeGlow = true,
+            barText = {
+                health = {
+                    left = {
+                        name = true,
+                    },
+                    right = {
+                        percent = true,
+                    },
+                },
+                power = {
+                    right = {
+                        value = true,
+                    },
+                },
+            },
+            rangeCheck = true,
+            smoothBars = true,
+            width = 164,
+        },
+        party = {
+            classic = {
+                auraSize = 18,
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffAmount = 4,
+                buffs = "ABOVE",
+                castHeight = 15,
+                debuffAmount = 4,
+                debuffs = "ABOVE_RIGHT",
+                dispellableOnly = true,
+                height = 50,
+                hideBuffs = "PERMANENT",
+                portrait = "class",
+                powerHeight = 10,
+                ringSize = 66,
+                smoothBars = true,
+                width = 198,
+            },
+            raid = {
+                barEdgeGlow = true,
+                smoothBars = true,
+            },
+        },
+        playerCastbar = {
+            width = 300,
+            widthWithIcon = true,
+        },
+        totems = {
+            perRow = 2,
+        },
+        units = {
+            focus = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffAmount = 4,
+                buffSize = 20,
+                debuffSize = 20,
+                hideBuffs = "PERMANENT",
+                portrait = "class",
+                powerHeight = 6,
+                ringSize = 47,
+                smoothBars = true,
+                width = 120,
+            },
+            focustarget = {
+                absorbTexture = "FlareUI Striped",
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                healthText = "percent",
+                portrait = "class",
+                rangeCheck = true,
+                smoothBars = true,
+            },
+            pet = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                healthText = "percent",
+                showLevel = true,
+                smoothBars = true,
+            },
+            player = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    mana = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffSize = 28,
+                debuffAmount = 12,
+                debuffSize = 28,
+                portrait = "class",
+                powerHeight = 12,
+                ringSize = 80,
+                smoothBars = true,
+                width = 200,
+            },
+            target = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffSize = 28,
+                debuffSize = 28,
+                hideBuffs = "PERMANENT",
+                portrait = "class",
+                powerHeight = 12,
+                ringSize = 80,
+                smoothBars = true,
+                width = 200,
+            },
+            targettarget = {
+                absorbTexture = "FlareUI Striped",
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        right = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        right = {
+                            value = true,
+                        },
+                    },
+                },
+                healthText = "percent",
+                portrait = "class",
+                rangeCheck = true,
+                smoothBars = true,
+            },
+        },
+    },
+    forever = {
+        boss = {
+            auraSize = 18,
+            barEdgeGlow = true,
+            barText = {
+                health = {
+                    left = {
+                        name = true,
+                    },
+                    middle = {
+                        percent = 1,
+                    },
+                },
+                power = {
+                    middle = {
+                        value = 1,
+                    },
+                },
+            },
+            border = "FlareUI Thin",
+            buffAmount = 6,
+            buffSize = 18,
+            buffs = "ABOVE",
+            castHeight = 15,
+            debuffAmount = 6,
+            debuffSize = 18,
+            debuffs = "ABOVE_RIGHT",
+            height = 49,
+            platePower = 8,
+            plateScale = 100,
+            powerHeight = 10,
+            ringSize = 62,
+            smoothBars = true,
+            width = 164,
+        },
+        flagCarriers = {
+            barEdgeGlow = true,
+            barText = {
+                health = {
+                    middle = {
+                        percent = true,
+                    },
+                },
+                power = {
+                    middle = {
+                        value = true,
+                    },
+                },
+            },
+            height = 49,
+            plateScale = 100,
+            ringSize = 62,
+            smoothBars = true,
+        },
+        party = {
+            classic = {
+                auraSize = 18,
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        left = {
+                            name = true,
+                        },
+                        middle = {
+                            percent = 1,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = 1,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffSize = 18,
+                buffs = "ABOVE",
+                castHeight = 15,
+                debuffAmount = 4,
+                debuffSize = 18,
+                debuffs = "ABOVE_RIGHT",
+                dispellableOnly = true,
+                height = 49,
+                icons = {
+                    pvp = {
+                        shown = false,
+                    },
+                },
+                platePower = 8,
+                plateScale = 100,
+                portrait = "class",
+                powerHeight = 10,
+                powerManaOnly = false,
+                ringSize = 62,
+                smoothBars = true,
+                width = 186,
+            },
+            raid = {
+                barEdgeGlow = true,
+                smoothBars = true,
+            },
+        },
+        playerCastbar = {
+            width = 300,
+            widthWithIcon = true,
+        },
+        totems = {
+            perRow = 2,
+            size = 95,
+        },
+        units = {
+            focus = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        middle = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffAmount = 6,
+                buffSize = 20,
+                debuffAmount = 6,
+                debuffSize = 20,
+                height = 49,
+                platePower = 8,
+                plateScale = 100,
+                portrait = "class",
+                ringSize = 62,
+                smoothBars = true,
+                width = 146,
+            },
+            focustarget = {
+                absorbTexture = "FlareUI Striped",
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        middle = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                },
+                healthText = "percent",
+                platePower = 8,
+                portrait = "class",
+                smoothBars = true,
+            },
+            pet = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        middle = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                },
+                healthText = "percent",
+                showLevel = true,
+                smoothBars = true,
+            },
+            player = {
+                auraSort = "applied",
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        middle = {
+                            percent = true,
+                        },
+                    },
+                    mana = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffAmount = 6,
+                buffSize = 28,
+                combatText = false,
+                debuffAmount = 12,
+                debuffSize = 28,
+                dispelHighlight = "mine",
+                healthColor = "off",
+                height = 64,
+                platePower = 8,
+                plateScale = 130,
+                portrait = "class",
+                ringSize = 80,
+                shiftMana = true,
+                smoothBars = true,
+                valuesOnHover = false,
+                width = 200,
+            },
+            target = {
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        middle = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                },
+                border = "FlareUI Thin",
+                buffSize = 28,
+                debuffAmount = 6,
+                debuffSize = 28,
+                height = 64,
+                platePower = 8,
+                plateScale = 130,
+                portrait = "class",
+                ringSize = 80,
+                smoothBars = true,
+                threatPercent = false,
+                valuesOnHover = false,
+                width = 200,
+            },
+            targettarget = {
+                absorbTexture = "FlareUI Striped",
+                barEdgeGlow = true,
+                barText = {
+                    health = {
+                        middle = {
+                            percent = true,
+                        },
+                    },
+                    power = {
+                        middle = {
+                            value = true,
+                        },
+                    },
+                },
+                healthText = "percent",
+                platePower = 8,
+                portrait = "class",
+                smoothBars = true,
+            },
+        },
+    },
+}
+-- the style's setup written over the profile's frames (tables merged, values replaced)
+function Ring.ApplySetup(db, style)
+    local function Fill(dst, src)
+        for k, v in pairs(src) do
+            if type(v) == "table" then
+                if type(dst[k]) ~= "table" then dst[k] = {} end
+                Fill(dst[k], v)
+            else
+                dst[k] = v
+            end
+        end
+    end
+    local setup = Ring.STYLE_SETUP[style]
+    if db and setup then Fill(db, setup) end
+end
+-- A new profile only: Forever Style is built on FlareUI Style's setup, so what FlareUI Style's setup sets and
+-- Forever Style's doesn't goes back to the default first (Malkkav's Forever setup has the default there)
+function Ring.ClearFlareUISetupOnly(db)
+    local function Clear(dst, a, b)
+        for k, v in pairs(a) do
+            local other = b and b[k]
+            if type(v) == "table" then
+                if type(dst[k]) == "table" then Clear(dst[k], v, type(other) == "table" and other or nil) end
+            elseif other == nil then
+                dst[k] = nil
+            end
+        end
+    end
+    if db then Clear(db, Ring.STYLE_SETUP.flareui, Ring.STYLE_SETUP.forever) end
+end
+
 -- Edit Mode's defaults for the party or boss frames in the ring styles; nil in Addon Style
 function Ring.TileDefaults(kind)
     if Ring.Style() == "addon" then return nil end
@@ -278,12 +834,12 @@ end
 Ring.TILE_POSITIONS = {
     party = { point = "LEFT",  x = 64,  y = 0 },
     boss  = { point = "RIGHT", x = -88, y = 10 },
-    flag  = { point = "RIGHT", x = -88, y = 204 },
+    flag  = { point = "RIGHT", x = -88, y = 208 },
 }
 -- Forever Style's
 Ring.PLATE_TILE_POSITIONS = {
     party = { point = "LEFT",  x = 75,  y = 0 },
-    boss  = { point = "RIGHT", x = -93, y = 10 },
+    boss  = { point = "RIGHT", x = -93, y = 11 },
     flag  = { point = "RIGHT", x = -93, y = 203 },
 }
 function Ring.TilePosition(kind)
@@ -294,22 +850,22 @@ end
 Ring.POSITIONS = {
     player        = { point = "CENTER",      x = -286, y = -270 },
     target        = { point = "CENTER",      x = 286,  y = -270 },
-    targettarget  = { point = "BOTTOM",      x = 236,  y = 240 },
-    focus         = { point = "RIGHT",       x = -459, y = -256 },
-    focustarget   = { point = "BOTTOMRIGHT", x = -495, y = 266 },
-    pet           = { point = "BOTTOM",      x = -236, y = 258 },
+    targettarget  = { point = "BOTTOM",      x = 236,  y = 238 },
+    focus         = { point = "RIGHT",       x = -479, y = -256 },   -- (Malkkav's, 11-28)
+    focustarget   = { point = "BOTTOMRIGHT", x = -499, y = 264 },
+    pet           = { point = "BOTTOM",      x = -236, y = 256 },
     playercastbar = { point = "CENTER",      x = 0,    y = -221 },
 }
-Ring.TOTEM_POSITION = { point = "BOTTOM", x = -357, y = 241 }
+Ring.TOTEM_POSITION = { point = "BOTTOM", x = -354, y = 242 }
 -- the styled pet's size: FlareUI Style's height, Forever Style's Scale
 Ring.PET_RING_HEIGHT, Ring.PET_PLATE_SCALE = 35, 75
 -- the styled pet's (Simple Pet Frame off; the simple one keeps POSITIONS' pet)
-Ring.PET_POSITION = { point = "BOTTOM", x = -236, y = 258 }
+Ring.PET_POSITION = { point = "BOTTOM", x = -236, y = 256 }
 
 -- the styled target of target and target of focus (Simple "Target Of" off; the simple ones keep POSITIONS')
 Ring.TARGET_OF_POSITIONS = {
-    targettarget = { point = "BOTTOM",      x = 236,  y = 240 },
-    focustarget  = { point = "BOTTOMRIGHT", x = -495, y = 266 },
+    targettarget = { point = "BOTTOM",      x = 236,  y = 238 },
+    focustarget  = { point = "BOTTOMRIGHT", x = -499, y = 264 },
 }
 
 -- The Forever Style preset, on top of the FlareUI Style setup it starts from
@@ -2038,6 +2594,7 @@ local function ApplyForeverPreset(db)
     if db.totems then for key, value in pairs(FOREVER_TOTEMS) do db.totems[key] = value end end
     db.layouts = {}
     db.totemLayouts = {}
+    Ring.ApplySetup(db, "flareui")
 end
 
 -- A styled small frame's sizes: half the frame it follows as that stands, with its look
@@ -2162,12 +2719,19 @@ function Ring.StartTileStyle(db)
     if db.foreverStyle and not db.plateStyle then ApplyTilePreset(db, "untouched") end
 end
 
--- A new profile starts in the Forever style with its preset (once: db.styleStart)
+-- A new profile starts in Forever Style (Malkkav 11-27), built as a switch from FlareUI Style's preset, so
+-- FlareUI Style keeps that preset for a later switch (once: db.styleStart). A profile of an account that
+-- used FlareUI before 11-27 (legacyStyle, Import.lua 5) starts in FlareUI Style, as before.
 function Ring.StartStyle(db)
     db.styleStart = true
     db.tileStyle = true
     ApplyForeverPreset(db)
     db.foreverStyle = true
+    if not db.legacyStyle then
+        Ring.SetStyle("forever")
+        Ring.ClearFlareUISetupOnly(db)
+        Ring.ApplySetup(db, "forever")
+    end
 end
 
 -- Every "enabled" below the unit frames table survives a switch
@@ -2214,6 +2778,7 @@ local function ApplyPlatePreset(db)
     -- the stored positions go, so the style's defaults apply
     db.layouts = {}
     db.totemLayouts = {}
+    Ring.ApplySetup(db, "forever")
 end
 
 -- A style's setup as stored: only what differs from the defaults, so a later change of a default

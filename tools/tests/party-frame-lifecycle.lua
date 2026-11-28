@@ -45,6 +45,13 @@ ui:emit("PLAYER_REGEN_DISABLED")
 assert(not auraButton.mouseMotion)
 ui:emit("PLAYER_REGEN_ENABLED")
 assert(auraButton.mouseMotion)
+-- (Malkkav 11-27) the Tooltips module off: the icons show their tooltips, as on Blizzard's frames, in a fight too
+tooltipSettings.enabled = false
+ui:emit("PLAYER_REGEN_DISABLED")
+assert(auraButton.mouseMotion, "Tooltips off: Blizzard's way, always")
+ui:emit("PLAYER_REGEN_ENABLED")
+tooltipSettings.enabled = true
+pf.ApplyAuraMouse()
 local highlight = a.AuraHighlight.container
 local highlightKey, highlightSlot = next(highlight.auraSlots)
 assert(highlightSlot.filter == "HARMFUL|RAID" and highlightSlot.enabled)

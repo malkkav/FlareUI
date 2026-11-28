@@ -3161,6 +3161,10 @@ end
 --   lays its lines out from the bottom up, so only the first is moved.
 --------------------------------------------------
 local EDIT_BOX_GAP = 1   -- px between the chat window's border and an edit box below / above it
+-- Modern: the backdrop's top and bottom this far inside Blizzard's 32 px box, so it hugs one line of
+-- text (Malkkav 11-27: it sat 2 px outside, too tall). Blizzard art: 2 px outside, as its art.
+Chat.EDIT_BG_IN = 1   -- (30 px tall, Malkkav 11-27)
+function Chat.EditBoxEdgeIn(db) return Chat.EditBoxStyle(db) == "flareui" and -2 or Chat.EDIT_BG_IN end
 local EditExtras = { SENT_MAX = 200, PUSH_GAP = 2 }
 
 function EditExtras.Sent()
@@ -3516,17 +3520,18 @@ function Chat:StyleEditBox(chatFrame, db)
     end
     if eb ~= ACTIVE_CHAT_EDIT_BOX then Chat.IdleIMBox(eb, db) end
 
-    -- Edit Box Position. Outside the window it is as wide as the border, EDIT_BOX_GAP away (its
-    -- backdrop reaches 2 px past the box).
+    -- Edit Box Position. Outside the window it is as wide as the border, its visible edge EDIT_BOX_GAP
+    -- away (the edge: edgeIn px inside the box, Chat.EditBoxEdgeIn).
     eb:ClearAllPoints()
     local position = db.editBoxPosition or "inside"
     local skin = chatFrame.FlareUI_Skin
+    local edgeIn = Chat.EditBoxEdgeIn(db)
     if position == "below" and skin then
-        eb:SetPoint("TOPLEFT", skin, "BOTTOMLEFT", 2, -(EDIT_BOX_GAP + 2))
-        eb:SetPoint("TOPRIGHT", skin, "BOTTOMRIGHT", -2, -(EDIT_BOX_GAP + 2))
+        eb:SetPoint("TOPLEFT", skin, "BOTTOMLEFT", 2, -EDIT_BOX_GAP + edgeIn)
+        eb:SetPoint("TOPRIGHT", skin, "BOTTOMRIGHT", -2, -EDIT_BOX_GAP + edgeIn)
     elseif position == "above" and skin then
-        eb:SetPoint("BOTTOMLEFT", skin, "TOPLEFT", 2, EDIT_BOX_GAP + 2)
-        eb:SetPoint("BOTTOMRIGHT", skin, "TOPRIGHT", -2, EDIT_BOX_GAP + 2)
+        eb:SetPoint("BOTTOMLEFT", skin, "TOPLEFT", 2, EDIT_BOX_GAP - edgeIn)
+        eb:SetPoint("BOTTOMRIGHT", skin, "TOPRIGHT", -2, EDIT_BOX_GAP - edgeIn)
     else
         -- over the window's last lines
         eb:SetPoint("TOPLEFT", chatFrame, "BOTTOMLEFT", -2, 30)
@@ -3540,9 +3545,10 @@ function Chat:StyleEditBox(chatFrame, db)
         -- DIALOG, where the opened box draws
         bg:SetFrameStrata("DIALOG")
         bg:SetFrameLevel(math_max((eb:GetFrameLevel() or 1) - 1, 0))
-        bg:SetPoint("TOPLEFT", eb, "TOPLEFT", -2, 2)
-        bg:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 2, -2)
     end
+    bg:ClearAllPoints()
+    bg:SetPoint("TOPLEFT", eb, "TOPLEFT", -2, -Chat.EDIT_BG_IN)
+    bg:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 2, Chat.EDIT_BG_IN)
 
     Chat.EditBoxBackdrop(bg, db)
     bg:SetShown(not blizzardArt)
@@ -3816,6 +3822,17 @@ function Chat.WindowFontSizePicked(chatFrame, size)
     db.windowFontSize[id] = math_abs(size - shared) > 0.1 and size or nil
     if not next(db.windowFontSize) then db.windowFontSize = nil end
     Chat:ApplyMessageFont(chatFrame, db)
+end
+-- (sheet.ghost 11-27) A new size in Settings > Chat > Fonts reaches every window, the ones with a size of
+-- their own too: the change of the Fonts tab's size clears their picks (db.windowFontBase: the size last seen).
+-- A tab's Font Size picked after that still sticks for its window.
+function Chat.FollowFontsTab(db)
+    if not db then return end
+    local _, shared = GetFontData(db.chatFont)
+    if type(shared) ~= "number" then return end
+    local base = db.windowFontBase
+    if base ~= nil and math_abs(base - shared) > 0.1 then db.windowFontSize = nil end
+    db.windowFontBase = shared
 end
 -- (pkecerski 11-27) Blizzard sets a size itself too: a new or whisper window copies another's
 -- settings (FCF_CopyChatSettings), and a reset puts the default back. Those are no pick: the window
@@ -5229,6 +5246,7 @@ end
 function Chat:RefreshAll()
     local db = GetDb()
     if not db or not db.enabled then return end
+    Chat.FollowFontsTab(db)
     Chat:Apply(db)
     HandleCombatLog(db)
     Chat:SetupImprovements()
@@ -5477,7 +5495,8 @@ function Chat.DrawSample(f)
 
     -- Edit Box Position: outside the window it is EDIT_BOX_GAP away, its backdrop 2 px past it
     local position = db.editBoxPosition or "inside"
-    local outside = (position == "above" or position == "below") and (EDIT_BOX_GAP + 2 + look.EDIT_HEIGHT + 2) or 0
+    local edgeIn = Chat.EditBoxEdgeIn(db)
+    local outside = (position == "above" or position == "below") and (EDIT_BOX_GAP + look.EDIT_HEIGHT - 2 * edgeIn) or 0
     local top = position == "above" and outside or 0
 
     f.Window:ClearAllPoints()
@@ -5530,15 +5549,18 @@ function Chat.DrawSample(f)
     eb:ClearAllPoints()
     eb:SetHeight(look.EDIT_HEIGHT)
     if position == "below" then
-        eb:SetPoint("TOPLEFT", f.Window, "BOTTOMLEFT", 2, -(EDIT_BOX_GAP + 2))
-        eb:SetPoint("TOPRIGHT", f.Window, "BOTTOMRIGHT", -2, -(EDIT_BOX_GAP + 2))
+        eb:SetPoint("TOPLEFT", f.Window, "BOTTOMLEFT", 2, -EDIT_BOX_GAP + edgeIn)
+        eb:SetPoint("TOPRIGHT", f.Window, "BOTTOMRIGHT", -2, -EDIT_BOX_GAP + edgeIn)
     elseif position == "above" then
-        eb:SetPoint("BOTTOMLEFT", f.Window, "TOPLEFT", 2, EDIT_BOX_GAP + 2)
-        eb:SetPoint("BOTTOMRIGHT", f.Window, "TOPRIGHT", -2, EDIT_BOX_GAP + 2)
+        eb:SetPoint("BOTTOMLEFT", f.Window, "TOPLEFT", 2, EDIT_BOX_GAP - edgeIn)
+        eb:SetPoint("BOTTOMRIGHT", f.Window, "TOPRIGHT", -2, EDIT_BOX_GAP - edgeIn)
     else
         eb:SetPoint("TOPLEFT", text, "BOTTOMLEFT", -2, 30)
         eb:SetPoint("TOPRIGHT", text, "BOTTOMRIGHT", 2, 30)
     end
+    eb.Bg:ClearAllPoints()
+    eb.Bg:SetPoint("TOPLEFT", eb, "TOPLEFT", -2, -Chat.EDIT_BG_IN)
+    eb.Bg:SetPoint("BOTTOMRIGHT", eb, "BOTTOMRIGHT", 2, Chat.EDIT_BG_IN)
     Chat.EditBoxBackdrop(eb.Bg, db)
     if eb.Bg and Chat.SampleEditArt then Chat.SampleEditArt(eb, db) end
     local ePath, eSize, eFlags = GetFontData(db.editBoxFont)
