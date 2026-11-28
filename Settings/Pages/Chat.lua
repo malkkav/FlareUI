@@ -79,7 +79,7 @@ S:Row{ key = "ch.chatStyle", kind = "choice", choices = { "im", "classic" }, rel
         global.chatStyleWanted = v ~= now and v or nil
     end,
     disabled = function() return ns.IsGamepadUI() end,
-    resetValue = function() return "im" end }
+    resetValue = function() return "classic" end }
 S:Row{ key = "ch.editBoxStyle", kind = "choice", path = "chat.editBoxStyle", choices = { "flareui", "modern" },
     apply = Refresh, section = "ch.editBoxSection" }
 S:Row{ key = "ch.editBoxBorder", kind = "choice", choices = { "none", "thin", "thick" }, apply = Refresh, section = "ch.editBoxSection",

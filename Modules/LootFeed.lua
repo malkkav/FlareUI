@@ -86,7 +86,28 @@ local function NewLine(parent)
     line.text = line:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     line.text:SetPoint("LEFT", line.icon, "RIGHT", 5, 0)
     line.text:SetJustifyH("LEFT")
+    -- Show > Owned Count: how many of the item are in your bags, in the icon's corner as a stack count
+    line.owned = line:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    line.owned:SetPoint("BOTTOMRIGHT", line.icon, "BOTTOMRIGHT", 2, -2)
+    line.owned:Hide()
     return line
+end
+
+-- (arpeks 11-28, on by default) an item line's owned count, read from your bags: again on BAG_UPDATE_DELAYED,
+-- so the item just looted counts too
+function LF.UpdateOwned(line)
+    local db = GetDb()
+    local id = type(line.key) == "number" and line.key or nil
+    local n = 0
+    if id and db and db.lootFeedOwned ~= false and C_Item and C_Item.GetItemCount and line.icon:IsShown() then
+        local ok, count = pcall(C_Item.GetItemCount, id)
+        if ok and type(count) == "number" then n = count end
+    end
+    line.owned:SetText(n > 0 and n or "")
+    line.owned:SetShown(n > 0)
+end
+function LF.UpdateAllOwned()
+    for _, line in ipairs(lines) do LF.UpdateOwned(line) end
 end
 
 -- Quality of Life > Fonts > Loot Feed
@@ -212,6 +233,7 @@ local function Add(key, icon, label, count, r, g, b, plain)
             line.count = line.count + count
             line.age = math_min(line.age, FADE_IN)
             Fill(line, icon, plain and label or ItemText(line.count, label), r or 1, g or 1, b or 1)
+            LF.UpdateOwned(line)
             return
         end
     end
@@ -232,6 +254,7 @@ local function Add(key, icon, label, count, r, g, b, plain)
     local line = tremove(pool) or NewLine(holder)
     line.key, line.count, line.age, line.y = key, count, 0, 0
     Fill(line, icon, (key and not plain) and ItemText(count, label) or label, r or 1, g or 1, b or 1)
+    LF.UpdateOwned(line)
     line:ClearAllPoints()
     line:SetPoint(line.anchor or "BOTTOMLEFT", holder, line.anchor or "BOTTOMLEFT", 0, 0)
     line.placedAt = line.anchor or "BOTTOMLEFT"
@@ -517,8 +540,11 @@ function LF:Init()
     events:RegisterEvent("CHAT_MSG_MONEY")
     events:RegisterEvent("PLAYER_MONEY")
     events:RegisterEvent("CHAT_MSG_SKILL")
+    events:RegisterEvent("BAG_UPDATE_DELAYED")
     events:SetScript("OnEvent", function(_, event, text, ...)
-        if event == "CHAT_MSG_LOOT" then
+        if event == "BAG_UPDATE_DELAYED" then
+            if lines[1] then LF.UpdateAllOwned() end
+        elseif event == "CHAT_MSG_LOOT" then
             OnLoot(text, (select(11, ...)))   -- the 12th argument: the looter's GUID
         elseif event == "CHAT_MSG_SKILL" then
             OnSkill(text)

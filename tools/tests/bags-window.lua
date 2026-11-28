@@ -75,6 +75,7 @@ env.C_Container = {
     GetContainerNumSlots = function(id) return id == 0 and 8 or 0 end,
     GetContainerItemInfo = function(bag, slot) if bag == 0 then return contents[slot] end end,
     GetContainerItemQuestInfo = function(_, slot) return { isQuestItem = slot == 4 } end,
+    GetContainerItemEquipmentSetInfo = function(bag, slot) return bag == 0 and slot == 1, "PvP" end,
     ContainerIDToInventoryID = function(id) return 20 + id end,
     SortBags = function() sorts = sorts + 1 end,
     UseContainerItem = function(bag, slot)
@@ -176,7 +177,7 @@ env.C_PaperDollInfo = { GetInspectItemLevel = function(unit) assert(unit == "tar
 
 local db = {
     bagView = "all", bagFilters = "buttons", bagAutoSort = true, bagAutoOpen = true, bagButtons = true,
-    bagJunkIcon = true, bagItemLevel = true, bagUncollected = true, bagBoE = true, bagPlainEmpty = true,
+    bagJunkIcon = true, bagItemLevel = true, bagUncollected = true, bagBoE = true, bagPlainEmpty = true, bagSetIcon = true,
     bankColumns = 10, bankGaps = true, bankTight = true,
     bagItemFont = { face = "Test", flags = "NONE", size = 15 },
     bagMoneyFont = { face = "Test", size = 13 },
@@ -208,6 +209,8 @@ local function overlay(slot)
 end
 local weapon, junk, empty = overlay(1), overlay(2), overlay(5)
 assert(weapon.ilvl:GetText() == "39" and weapon.ilvl:IsShown() and weapon.eye:IsShown() and weapon.boe:IsShown())
+-- Equipment Set Icon: the shield on the item in a set only
+assert(weapon.set:IsShown() and not junk.set:IsShown() and not empty.set:IsShown())
 -- Reverse Bag Fill in a category section: the rows turned round, the short one at the bottom, left to right
 do
     local placed, spots = {}, {}

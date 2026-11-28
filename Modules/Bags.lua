@@ -1633,6 +1633,13 @@ local function GetOverlay(button)
     ov.boe:SetPoint("TOPLEFT", 2, -2)
     ov.boe:SetText(L["BoE"])
     ov.boe:Hide()
+    -- Equipment Set Icon (squishydew 11-28): Blizzard's small padlock (a marker only: the item still sells), top left too (set items are never grey
+    -- and never unbound)
+    ov.set = ov:CreateTexture(nil, "OVERLAY", nil, 7)
+    ov.set:SetAtlas("QuestSharing-Padlock")
+    ov.set:SetSize(12, 14)
+    ov.set:SetPoint("TOPLEFT", 2, -2)
+    ov.set:Hide()
     ov.plain = ov:CreateTexture(nil, "BACKGROUND")
     ov.plain:SetAllPoints()
     ov.plain:SetAtlas("bags-item-slot64")
@@ -1743,6 +1750,15 @@ local function Uncollected(link)
     return known
 end
 Bags.Uncollected = Uncollected
+
+-- Equipment Set Icon: is this bag slot's item in one of the Equipment Manager's sets
+function Bags.InEquipmentSet(bagID, slotID)
+    local api = C_Container and C_Container.GetContainerItemEquipmentSetInfo
+    if not (api and bagID and slotID) then return false end
+    local ok, inSet = pcall(api, bagID, slotID)
+    if not ok or (issecretvalue and issecretvalue(inSet)) then return false end
+    return inSet == true
+end
 
 local function ShowItemLevel(ov, level, quality)
     ov.ilvl:SetText(level)
@@ -1954,6 +1970,7 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
     ov.ilvl:Hide()
     ov.eye:Hide()
     ov.boe:Hide()
+    ov.set:Hide()
     -- (the padlock of an account without an authenticator stays)
     local locked = not info and button.IsExtended and button:IsExtended() and IsAccountSecured and not IsAccountSecured()
     ov.plain:SetShown(db.bagPlainEmpty and not info and not locked or false)
@@ -1974,6 +1991,9 @@ function Bags.DecorateButton(button, db, info, bagID, slotID)
 
     if not info then return end
     if junk and quality == Enum.ItemQuality.Poor and not info.hasNoValue then ov.junk:Show() end
+    if db.bagSetIcon and (button.fuiSample and info.sampleInSet or not button.fuiSample and Bags.InEquipmentSet(bagID, slotID)) then
+        ov.set:Show()
+    end
     if button.fuiSample then
         if db.bagItemLevel and info.sampleItemLevel then
             StyleIconText(ov.ilvl, db.bagItemLevelFont)
@@ -2521,6 +2541,12 @@ function Bags:Init()
         if event == "EQUIPMENT_SETS_CHANGED" then
             local backpack = db and Bags.View(db) == "rowsSets" and Combined()
             if backpack and backpack:IsShown() then Relayout(backpack) end
+            -- (the Equipment Set Icon comes and goes with the set)
+            if db and db.bagSetIcon then
+                for _, frame in ipairs(BagFrames()) do
+                    if frame:IsShown() then UpdateFrameItems(frame) end
+                end
+            end
             return
         end
         local contentsChanged = event == "BAG_UPDATE_DELAYED" or event == "PLAYER_REGEN_ENABLED"
@@ -2756,7 +2782,7 @@ do
         } },
         { bag = 0, slots = 16, items = {
             [1] = { icon = ICON .. "INV_Misc_Rune_01", category = "quest", quality = 1 },
-            [2] = { icon = ICON .. "INV_Sword_04", category = "equipment", quality = 2, ilvl = 24 },
+            [2] = { icon = ICON .. "INV_Sword_04", category = "equipment", quality = 2, ilvl = 24, inSet = true },
             [3] = { icon = ICON .. "INV_Chest_Cloth_17", category = "equipment", quality = 3, ilvl = 31, uncollected = true },
             [4] = { icon = ICON .. "INV_Jewelry_Ring_15", category = "equipment", quality = 4, ilvl = 40 },
             [5] = { icon = ICON .. "INV_Misc_Food_15", category = "consumables", quality = 1, count = 20, petFood = true },
@@ -2822,7 +2848,8 @@ do
         SetItemButtonTexture(b, item and item.icon)
         SetItemButtonCount(b, item and item.count)
         local info = item and { quality = item.quality,
-                                sampleItemLevel = item.ilvl, sampleUncollected = item.uncollected } or nil
+                                sampleItemLevel = item.ilvl, sampleUncollected = item.uncollected,
+                                sampleInSet = item.inSet } or nil
         Bags.DecorateButton(b, db, info)
         b.paw:SetShown(item and item.petFood and db.petFood and true or false)
         b:SetSize(SLOT_SIZE, SLOT_SIZE)

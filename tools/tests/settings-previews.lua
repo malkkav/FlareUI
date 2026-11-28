@@ -156,8 +156,11 @@ assert(not shown(o.bagIlvl) and not shown(o.bagBoE) and not shown(o.bagEye), "th
 assert(o.bagBorder1:GetBackdrop().edgeFile == "border/FlareUI Thick")
 assert(text(o["tweaks.bagKeyringTitle"], "Keyring") and text(o["tweaks.bagReagentTitle"], "Crafting Bag") and shown(o.bagButton4))
 profile.tweaks.bagItemLevel, profile.tweaks.bagBoE, profile.tweaks.bagUncollected = true, true, true
-draw("bags", "bl.bagItemLevel")
+profile.tweaks.bagSetIcon = true
+draw("bags", "bl.bagItemIcons")
 assert(text(o.bagIlvl, "18") and text(o.bagBoE, "BoE") and shown(o.bagEye), "the sword shows its marks")
+assert(shown(o.bagSet), "the Equipment Set Icon")
+profile.tweaks.bagSetIcon = nil
 profile.tweaks.bagCombineEmpty = true
 draw("bags", "bl.bagCombineEmpty")
 assert(shown(o.bagEmpty17) and not shown(o.bagEmpty18) and text(o.bagFree, "2"), "one combined empty slot with the free count")

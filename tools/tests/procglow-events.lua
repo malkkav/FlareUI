@@ -251,6 +251,10 @@ local function stormstrike()
     t.advance(2.9)
     cd[17364] = { isActive = true, isOnGCD = true }           -- reset at 3 s: only the global cooldown left
     t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
+    assert(not t.shown(1), "(judged once it is ready: a global cooldown can stand in for its own)")
+    t.advance(1)
+    cd[17364] = { isActive = false }                          -- the global cooldown ends at 4 s: ready
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
     assert(t.shown(1), "a reset lights it")
     cd[17364] = { isActive = true, isOnGCD = false }          -- cast again: spent
     t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
@@ -259,6 +263,14 @@ local function stormstrike()
     cd[17364] = { isActive = false }                          -- runs out on its own at 7.6 s: no reset
     t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
     assert(not t.shown(1), "a cooldown running out is not a reset")
+    -- (cellander 11-28) another spell's global cooldown, longer than the second left: no reset
+    cd[17364] = { isActive = true, isOnGCD = false }
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(7)
+    cd[17364] = { isActive = true, isOnGCD = true }           -- Lightning Shield at 7 s: its 1.5 s global shows
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(1.5)
+    cd[17364] = { isActive = false }                          -- ready at 8.5 s
+    t.send("SPELL_UPDATE_COOLDOWN"); t.advance(0)
+    assert(not t.shown(1), "a global cooldown over its last second is not a reset")
     cd[17364] = { isActive = true, isOnGCD = false }
     t.send("SPELL_UPDATE_COOLDOWN"); t.advance(1)
     cd[17364] = { isActive = false }

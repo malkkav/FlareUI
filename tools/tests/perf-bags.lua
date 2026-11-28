@@ -7,7 +7,7 @@ local function GetTime() return time end
 local info = {hyperlink = 'A', itemID = 1, quality = 2}
 local button = {GetBagID = function() return 0 end, GetID = function() return 1 end}
 local db = {bagItemLevel = true, bagSkinSlots = false}
-local ov = {Show = noop, border = {Hide = noop}, junk = {Hide = noop}, ilvl = {Hide = noop}, eye = {Hide = noop}, boe = {Hide = noop}, plain = {SetShown = noop}}
+local ov = {Show = noop, border = {Hide = noop}, junk = {Hide = noop}, ilvl = {Hide = noop}, eye = {Hide = noop}, boe = {Hide = noop}, set = {Hide = noop}, plain = {SetShown = noop}}
 local function GetOverlay() return ov end
 local Bags = {StyleIconTexts = noop}
 local UpdateItemFilter, UpdateItemBorder, StyleIconText = noop, noop, noop

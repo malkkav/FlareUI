@@ -81,36 +81,59 @@ S:Row{ key = "bl.bagView", kind = "choice", tab = "bags", path = "tweaks.bagView
 -- Skin Item Slots (one choice): Off (Blizzard's slots), Thin Borders or Thick
 -- Borders. A skinned slot always takes its item's quality colour.
 -- Skin Item Slots: Off, Thin or Thick Borders, and under a line Colour by Rarity (tweaks.bagRarity,
--- on). Saved as before: tweaks.bagSkinSlots and tweaks.bagThickBorders.
-local SKIN_SPEC = { exclusive = { "off" }, tokens = { "thin", "thick", "rarity" }, rivals = { thin = "thick", thick = "thin" }, empty = "off" }
+-- on) and Plain Empty Slots (tweaks.bagPlainEmpty, on: works with the skin off too). Saved as before:
+-- tweaks.bagSkinSlots and tweaks.bagThickBorders.
+local SKIN_SPEC = { exclusive = { "off" }, tokens = { "thin", "thick", "rarity", "plain" }, rivals = { thin = "thick", thick = "thin" }, empty = "off" }
+local function SkinValue(read)
+    local list = {}
+    if read("tweaks.bagSkinSlots") ~= false then
+        list[1] = read("tweaks.bagThickBorders") and "thick" or "thin"
+        if read("tweaks.bagRarity") ~= false then list[#list + 1] = "rarity" end
+    end
+    if read("tweaks.bagPlainEmpty") then list[#list + 1] = "plain" end
+    return #list > 0 and table.concat(list, ",") or "off"
+end
 S:Row{ key = "bl.bagSkinSlots", kind = "dropdown", tab = "bags", toggles = SKIN_SPEC,
-    choices = { "off", "thin", "thick", { divider = true }, "rarity" },
+    choices = { "off", "thin", "thick", { divider = true }, "rarity", "plain" },
     apply = RefreshBags, disabled = BagAddon,
-    get = function()
-        if S:GetPath("tweaks.bagSkinSlots") == false then return "off" end
-        local list = { S:GetPath("tweaks.bagThickBorders") and "thick" or "thin" }
-        if S:GetPath("tweaks.bagRarity") ~= false then list[#list + 1] = "rarity" end
-        return table.concat(list, ",")
-    end,
+    get = function() return SkinValue(function(p) return S:GetPath(p) end) end,
     set = function(value)
-        if value == nil or value == "off" or value == "" then S:SetPath("tweaks.bagSkinSlots", false) return end
-        local set = ns.Conditions.Set(value, SKIN_SPEC)
-        S:SetPath("tweaks.bagSkinSlots", true)
+        local set = (value == nil or value == "") and {} or ns.Conditions.Set(value, SKIN_SPEC)
+        S:SetPath("tweaks.bagPlainEmpty", set.plain and true or false)
         -- (Colour by Rarity alone keeps a border: thin, the default)
+        local skin = set.thin or set.thick or set.rarity
+        S:SetPath("tweaks.bagSkinSlots", skin and true or false)
+        if not skin then return end
         S:SetPath("tweaks.bagThickBorders", set.thick and true or false)
         S:SetPath("tweaks.bagRarity", set.rarity and true or false)
     end,
-    resetValue = function() return "thin,rarity" end }
-S:Row{ key = "bl.bagJunkIcon", half = true, tab = "bags", path = "tweaks.bagJunkIcon", apply = RefreshBags, disabled = BagAddon }
--- (not greyed beside a bag addon: the character sheet's item levels are its own, Bags.lua)
-S:Row{ key = "bl.bagItemLevel", half = true, tab = "bags", path = "tweaks.bagItemLevel",
-    apply = function() RefreshBags(); if ns.Bags and ns.Bags.UpdateCharacterLevels then ns.Bags.UpdateCharacterLevels() end end }
-S:Row{ key = "bl.bagUncollected", half = true, tab = "bags", path = "tweaks.bagUncollected", apply = RefreshBags, disabled = BagAddon }
--- (Tweaks.lua's, so no bag addon greys it)
-S:Row{ key = "bl.petFood", half = true, tab = "bags", path = "tweaks.petFood", apply = Refresh }
--- the last pair of Item Slots
-S:Row{ key = "bl.bagBoE", half = true, tab = "bags", path = "tweaks.bagBoE", apply = RefreshBags, disabled = BagAddon }
-S:Row{ key = "bl.bagPlainEmpty", half = true, tab = "bags", path = "tweaks.bagPlainEmpty", apply = RefreshBags, disabled = BagAddon }
+    resetValue = function() return SkinValue(function(p) return S:DefaultPath(p) end) end }
+-- Item Icons (11-28, was six switches): Junk Coin, Item Level, Uncollected Appearances, Pet Food Marker,
+-- BoE Text and Equipment Set Icon as toggles, saved as before. Not greyed beside a bag addon: Item Level
+-- (the character sheet) and Pet Food Marker (Tweaks.lua) work without FlareUI's bags.
+local ITEM_ICONS = {
+    { "junk", "tweaks.bagJunkIcon" }, { "itemLevel", "tweaks.bagItemLevel" }, { "uncollected", "tweaks.bagUncollected" },
+    { "petFood", "tweaks.petFood" }, { "boe", "tweaks.bagBoE" }, { "set", "tweaks.bagSetIcon" },
+}
+local ITEM_ICONS_SPEC = { exclusive = { "none" }, tokens = { "junk", "itemLevel", "uncollected", "petFood", "boe", "set" }, empty = "none" }
+local function ItemIconsValue(read)
+    local on = {}
+    for _, t in ipairs(ITEM_ICONS) do if read(t[2]) then on[#on + 1] = t[1] end end
+    return #on > 0 and table.concat(on, ",") or "none"
+end
+S:Row{ key = "bl.bagItemIcons", kind = "dropdown", tab = "bags", toggles = ITEM_ICONS_SPEC,
+    choices = { "none", { divider = true }, "junk", "itemLevel", "uncollected", "petFood", "boe", "set" },
+    get = function() return ItemIconsValue(function(p) return S:GetPath(p) end) end,
+    set = function(value)
+        local on = ns.Conditions.Set(value, ITEM_ICONS_SPEC)
+        for _, t in ipairs(ITEM_ICONS) do S:SetPath(t[2], on[t[1]] and true or false) end
+    end,
+    resetValue = function() return ItemIconsValue(function(p) return S:DefaultPath(p) end) end,
+    apply = function()
+        RefreshBags()
+        Refresh()
+        if ns.Bags and ns.Bags.UpdateCharacterLevels then ns.Bags.UpdateCharacterLevels() end
+    end }
 
 -- BAGS: tweaks -----------------------------------
 S:Row{ key = "bl.delete", half = true, tab = "bags", path = "tweaks.autoDelete", apply = Refresh }
@@ -182,8 +205,24 @@ end
 local function NoFeed() return not S:GetPath("tweaks.lootFeed") end
 S:Row{ key = "bl.lootFeedQuality", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedQuality",
     choices = LOOT_QUALITY, disabled = NoFeed }
-S:Row{ key = "bl.lootFeedMoney", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedMoney", disabled = NoFeed }
-S:Row{ key = "bl.lootFeedSkills", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedSkills", disabled = NoFeed }
+-- Show: Money, Skill-Ups and Owned Count (the count in your bags on each item icon) as toggles,
+-- saved as before in tweaks.lootFeedMoney / lootFeedSkills / lootFeedOwned
+local FEED_SHOW = { { "money", "tweaks.lootFeedMoney" }, { "skills", "tweaks.lootFeedSkills" }, { "owned", "tweaks.lootFeedOwned" } }
+local FEED_SHOW_SPEC = { exclusive = { "none" }, tokens = { "money", "skills", "owned" }, empty = "none" }
+local function FeedShowValue(read)
+    local on = {}
+    for _, t in ipairs(FEED_SHOW) do if read(t[2]) then on[#on + 1] = t[1] end end
+    return #on > 0 and table.concat(on, ",") or "none"
+end
+S:Row{ key = "bl.lootFeedShow", kind = "dropdown", tab = "looting", parent = "bl.lootFeed", toggles = FEED_SHOW_SPEC,
+    choices = { "none", { divider = true }, "money", "skills", "owned" }, disabled = NoFeed,
+    get = function() return FeedShowValue(function(p) return S:GetPath(p) end) end,
+    set = function(value)
+        local on = ns.Conditions.Set(value, FEED_SHOW_SPEC)
+        for _, t in ipairs(FEED_SHOW) do S:SetPath(t[2], on[t[1]] and true or false) end
+    end,
+    apply = function() if ns.LootFeed and ns.LootFeed.UpdateAllOwned then ns.LootFeed.UpdateAllOwned() end end,
+    resetValue = function() return FeedShowValue(function(p) return S:DefaultPath(p) end) end }
 S:Row{ key = "bl.lootFeedPosition", kind = "choice", tab = "looting", parent = "bl.lootFeed", path = "tweaks.lootFeedPosition",
     choices = { "cursor", "placed" }, disabled = NoFeed,
     apply = function() if ns.LootFeed and ns.LootFeed.Refresh then ns.LootFeed:Refresh() end end }

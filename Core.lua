@@ -1119,6 +1119,7 @@ local defaults = {
             lootFeedIcons = "round",    -- Loot Feed's icons: round | square (unset was square)
             lootFeedAlign = "center",   -- Alignment: left | center (the default) | right (icon on the right, text before it)
             lootFeedSkills = true,      -- skill-ups too ("Mining 76")
+            lootFeedOwned = true,       -- how many you own, on each item icon
             lootFeedFont = { face = "__global", size = 14, flags = "OUTLINE", enableShadow = false, shadowX = 1, shadowY = -1 },
             zoneTextFont = { face = "" },  -- Zone Text font (ZoneText.lua): "" keeps Blizzard's; face only
             -- Bags & Looting (its own module, Settings/Pages/BagsLooting.lua): its switch
@@ -1151,6 +1152,7 @@ local defaults = {
             bagUncollected = true,     -- Uncollected Appearance: an eye, top right
             bagBoE = true,             -- BoE Text: "BoE" top left on items that bind when equipped, until bound
             bagPlainEmpty = true,      -- Plain Empty Slots: one plain look for every empty slot, not its bag's picture
+            bagSetIcon = false,        -- Equipment Set Icon: a small padlock top left on items in an equipment set
             hideErrors = false,
             hideZoneText = false,
             hidePortraitNumbers = false,
@@ -3923,6 +3925,11 @@ f:SetScript("OnEvent", function(self, event, ...)
         -- in the game menu on (account-wide, Settings > General)
         db.global.defaultsV2, db.global.defaultsV3 = true, true
         if freshInstall and db.global.escMenuButton == nil then db.global.escMenuButton = true end
+        -- (Malkkav 11-28) a new install starts on Blizzard's Classic chat style: written by Chat:ShouldLoad
+        -- before the chat runs, never live (Chat.ApplyWantedChatStyle)
+        if freshInstall and db.global.chatStyleWanted == nil and C_CVar and C_CVar.GetCVar("chatStyle") ~= "classic" then
+            db.global.chatStyleWanted = "classic"
+        end
         ns.CastGlowDefault()   -- (decided before What's New marks this install as seen)
 
         -- the bar textures FlareUI Forever and FlareUI Forever (Light) became FlareUI Dark and

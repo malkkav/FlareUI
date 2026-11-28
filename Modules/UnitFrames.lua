@@ -3122,7 +3122,7 @@ local function ConfigureAuraCorner(f, corner, lanes, alone)
     end
     ns.AuraGroups.Finish(container, entry)
 
-    -- grow away from the corner (Top / Bottom: from the left, the container centred: PositionAuraContainers)
+    -- grow away from the corner (Top / Bottom: from the left)
     local isTop, isLeft = corner:find("^TOP") ~= nil, AURA.FULL[corner] or corner:find("LEFT$") ~= nil
     pcall(container.SetFlowLayoutAxis, container, AnchorUtil.FlowLayoutAxis.Horizontal)
     pcall(container.SetFlowLayoutAnchorPoint, container, (isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"))
@@ -3220,8 +3220,6 @@ function UF.PlaceEnchants(f)
     local step = (lead.size + AURA_SPACING) * (isLeft and 1 or -1)
     -- Above / Below the Frame: the row is centred, so the enchants take the first cells of its container
     local anchor = f
-    local entry = AURA.FULL[lead.corner] and f.Auras and f.Auras[lead.corner]
-    if entry then anchor, relative, x, y = entry.container, point, 0, 0 end
     local n = 0
     for _, b in ipairs(holder.enchants or {}) do
         if b.enchant then
@@ -3370,19 +3368,15 @@ function UF.RestackAuras(f)
     end
 end
 
--- Above / Below the Frame (TOP, BOTTOM): centred on the frame, as Blizzard's nameplate auras (Malkkav 11-27).
--- The container takes its icons' size, so its middle is theirs; pinned by its middle, half of the ring's
--- room on that side moves it over (AURA.Placement's x is INSET plus that room)
-function AURA.CentreX(x) return (x - INSET) / 2 end
+-- (Above / Below the Frame start from the left again: the centred rows of 11-27 were rolled back on 11-28)
 local function PositionAuraContainers(f)
     if not f.Auras then return end
     for corner, entry in pairs(f.Auras) do
         local c = entry.container
         local isTop, isLeft, x, y = AURA.Placement(f, corner)
-        local side = AURA.FULL[corner] and "" or (isLeft and "LEFT" or "RIGHT")
-        if AURA.FULL[corner] then x = AURA.CentreX(x) end
         c:ClearAllPoints()
-        c:SetPoint((isTop and "BOTTOM" or "TOP") .. side, f, (isTop and "TOP" or "BOTTOM") .. side, x, y)
+        c:SetPoint((isTop and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT"), f,
+            (isTop and "TOP" or "BOTTOM") .. (isLeft and "LEFT" or "RIGHT"), x, y)
         -- (FlareUI Style lifts them over the ring's art: f.auraLift, UnitFramesRing.lua Ring.Layout)
         c:SetFrameLevel(f:GetFrameLevel() + (f.auraLift or 4))
     end
@@ -3395,11 +3389,7 @@ local function PositionAuraContainers(f)
     if near and nearCorner ~= farCorner and f.Auras[nearCorner] and f.Auras[farCorner] then
         local inner, outer = f.Auras[nearCorner].container, f.Auras[farCorner].container
         local isTop, isLeft, x = AURA.Placement(f, farCorner)
-        if AURA.FULL[farCorner] then
-            ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, "", AURA.CentreX(x), AURA_SPACING)
-        else
-            ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, isLeft and "LEFT" or "RIGHT", x, AURA_SPACING)
-        end
+        ns.AuraPolicy.HangPast(f, outer, inner, f, isTop, isLeft and "LEFT" or "RIGHT", x, AURA_SPACING)
     end
     if f.enchantLead then UF.PlaceEnchants(f) end
 end

@@ -471,24 +471,37 @@ function RS.OwnCooldown(id)
     if not (ok and type(info) == "table") then return nil end
     return info.isActive == true and info.isOnGCD ~= true
 end
+-- what the button shows: "own" (its own cooldown), "gcd" (only a global cooldown) or "none" (ready)
+function RS.CooldownState(id)
+    local ok, info = pcall(C_Spell.GetSpellCooldown, id)
+    if not (ok and type(info) == "table") then return nil end
+    if info.isActive ~= true then return "none" end
+    return info.isOnGCD == true and "gcd" or "own"
+end
 
+-- A reset is judged only once the spell is ready again: a global cooldown longer than what was left of its own
+-- one shows in its place, and that switch is no reset (cellander 11-28: Lightning Shield cast in Stormstrike's
+-- last second lit it). Ready well before its full length = reset; a reset during a global cooldown lights as
+-- that ends.
 function RS.OnCooldowns()
     local now, changed = GetTime(), false
     for _, s in ipairs(RS.spells) do
-        local own = RS.OwnCooldown(s.data.id)
-        if own ~= nil then
-            if own and not s.own then
-                s.startedAt = now
+        local state = RS.CooldownState(s.data.id)
+        if state then
+            if state == "own" and not s.running then
+                s.running, s.startedAt = true, now
                 if RS.lit[s.name] then RS.lit[s.name] = nil; changed = true end
-            elseif not own and s.own and s.startedAt and now - s.startedAt < s.data.cooldown - RS.EARLY then
-                local token = {}
-                RS.lit[s.name] = token
-                changed = true
-                C_Timer.After(s.data.cooldown, function()
-                    if RS.lit[s.name] == token then RS.lit[s.name] = nil; ScheduleNow() end
-                end)
+            elseif state == "none" and s.running then
+                s.running = nil
+                if s.startedAt and now - s.startedAt < s.data.cooldown - RS.EARLY then
+                    local token = {}
+                    RS.lit[s.name] = token
+                    changed = true
+                    C_Timer.After(s.data.cooldown, function()
+                        if RS.lit[s.name] == token then RS.lit[s.name] = nil; ScheduleNow() end
+                    end)
+                end
             end
-            s.own = own
         end
     end
     if changed then ScheduleNow() end
@@ -496,7 +509,7 @@ end
 
 function RS.Stop()
     wipe(RS.lit)
-    for _, s in ipairs(RS.spells) do s.own, s.startedAt = nil, nil end
+    for _, s in ipairs(RS.spells) do s.running, s.startedAt = nil, nil end
 end
 
 --------------------------------------------------

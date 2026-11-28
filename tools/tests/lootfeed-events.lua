@@ -18,6 +18,7 @@ env.ITEM_QUALITY_COLORS = { [3] = { r = 0, g = 0.5, b = 1 } }
 env.C_Item = {
     GetItemQualityByID = function(id) return id == 1 and 3 or id == 2 and 0 or nil end,
     GetItemIconByID = function(id) return id + 100 end,
+    GetItemCount = function(id) return ({ [1] = 12 })[id] or 0 end,
     GetItemNameByID = function(id) return ({ [2589] = "Linen Cloth", [2770] = "Copper Ore", [2447] = "Peacebloom" })[id] end,
 }
 env.C_Spell = { GetSpellTexture = function(name) return name == "Mining" and 300 end }
@@ -65,6 +66,16 @@ assert(holder:GetPoint() == "BOTTOM" and select(4, holder:GetPoint()) == 500 and
 ui.cursorX, ui.cursorY = 100, 200
 loot("Received " .. linen .. ".")
 assert(textIs("Linen Cloth x3") == cloth and select(4, holder:GetPoint()) == 500)
+-- Owned Count (on by default): how many you have, on the icon; again after the bags update
+assert(cloth.owned:IsShown() and tostring(cloth.owned:GetText()) == "12")
+assert(cloth.owned:IsShown() and tostring(cloth.owned:GetText()) == "12")
+env.C_Item.GetItemCount = function(id) return id == 1 and 15 or 0 end
+ui:emit("BAG_UPDATE_DELAYED")
+assert(tostring(cloth.owned:GetText()) == "15")
+db.lootFeedOwned = false
+feed.UpdateAllOwned()
+assert(not cloth.owned:IsShown(), "Owned Count off hides it")
+db.lootFeedOwned = nil
 loot("Received |Hitem:2|h[Junk]|h.")
 assert(not textIs("Junk"))
 loot("Different locale " .. rare .. " × 4", "Other")
@@ -83,7 +94,7 @@ ui:emit("PLAYER_MONEY")
 assert(not textIs("1200c"), "money waits for a loot chat event")
 ui:emit("CHAT_MSG_MONEY")
 local money = assert(textIs("1200c"))
-assert(not money.icon:IsShown() and not money.border:IsShown())
+assert(not money.icon:IsShown() and not money.border:IsShown() and not money.owned:IsShown())
 ui.time = 102
 ui:emit("CHAT_MSG_MONEY")
 cash = 11240

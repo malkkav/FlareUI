@@ -1259,8 +1259,12 @@ do
     assert(at() == 0.5, "far")
     near = true
     assert(at() == 1, "in the gap")
+    -- (dstro7 11-28) no Wing Clip yet (level 9): far still fades; up close the item check keeps it bright
     near, answers.spell2974 = false, nil
-    assert(at() == 1, "no Wing Clip yet")
+    assert(at() == 0.5, "no Wing Clip yet, far: fades")
+    near = true
+    assert(at() == 1, "no Wing Clip yet, close: bright")
+    near = false
     answers.spell75 = true
     assert(at() == 1)
     plates.SetRangeAlpha, live.tdb, ns.HunterClose = set, tdb, close

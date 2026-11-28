@@ -1,3 +1,38 @@
+# FlareUI 7.1.4
+
+Your bags can now mark the gear in your equipment sets, and the Loot Feed shows how many of each item you already have. Auras above and below the unit frames go back to the corner.
+
+**We need your help testing:**
+- **Bags, Equipment Set Icon:** turn it on in **Item Icons**. Items in any of your equipment sets should show a small padlock in the top left corner, and nothing else should.
+- **Loot Feed, Owned Count:** loot an item you already carry. Its icon should show your new total.
+
+## Heads up
+Some things change even if you change nothing:
+- **Unit frames, auras Above the Frame and Below the Frame:** back in the corner, as before 7.1.3.
+- **Loot Feed:** item icons now show how many you have in your bags. Turn it off under **Show**.
+- **Bags & Looting, Item Slots:** six switches became one **Item Icons** dropdown, and **Plain Empty Slots** moved into **Skin Item Slots**. What you picked is kept.
+- **New players only:** **Chat Style** starts on **Classic Style**. Your setup stays as it is.
+
+## New
+
+### Bags & Looting
+- **Equipment Set Icon** (off): a small padlock on bag items in one of your equipment sets. It's only a marker: you can still sell the item.
+- **Loot Feed, Owned Count** (on): how many you have in your bags, on each item's icon.
+
+## Changed
+- **Bags & Looting, Item Icons:** one dropdown in place of **Junk Coin**, **Item Level**, **Uncollected Appearances**, **Pet Food Marker** and **BoE Text**, with the new **Equipment Set Icon**.
+- **Bags & Looting, Skin Item Slots:** **Plain Empty Slots** is now a choice here. It works with the skin **Off** too.
+- **Loot Feed, Show:** one dropdown in place of **Show Money** and **Show Skill-Ups**, with the new **Owned Count**.
+- **Chat Style:** **Reset** goes to **Classic Style**.
+
+## Fixed
+- **Proc glows:** Stormstrike and other spells with their own cooldown glowed as if their cooldown had reset.
+- **Nameplates, hunters below level 12:** plates out of range didn't fade.
+
+### Translations
+- French updated for 7.1.3. By Brainc3ll.
+- Simplified and Traditional Chinese updated for 7.1.3. By AreChen.
+
 # FlareUI 7.1.3
 
 Raid frames you can set up per raid size, nameplates that show the whole plate when the unit itself starts a fight, and borders on the meter's bars. New players now start with a ready-made setup, and yours stays as it is.
@@ -303,51 +338,3 @@ Some things change even if you change nothing:
 ### Edit Mode
 - Raid: two rows were called Sort By.
 - Loot Rolls: **Faded Opacity** showed above the switch that turns it on.
-
-# FlareUI 7.0.18
-
-Dragons for Modern frames, and the end of blocked bag items (we hope, for real this time).
-
-**Restart the game fully after updating.** This version brings new art files, and a /reload doesn't load them.
-
-**We need your help testing:**
-- **Bags:** visit the guild bank, then your bank. Afterwards, right-click a potion or a recipe in your bags. It should work.
-- **Druids:** fly from Moonglade to Rut'theran twice. The second flight should count down.
-- **Portrait > Class Icon:** target an enemy player. You should see their class icon, not their face.
-- **Cast bar with Edge Glow:** get a cast interrupted. The glow should go away with the cast.
-
-## Heads up
-Some things change even if you change nothing:
-- **Bags:** FlareUI no longer opens your bags with the guild bank. Press B to open them there.
-- **Open with Character Window** is gone from Bags & Looting. Your bags no longer open with the character window.
-- **Modern frames:** elites, rares and bosses no longer get a gold or silver border. The border stays bronze, and a dragon shows instead (see Changed).
-- **Modern boss frames and flag carriers** start a few pixels further left. Only if you never moved them.
-
-## New
-
-### Unit Frames
-- Target of Target and Target of Focus: **Portrait** (2D or Class Icon) in Edit Mode, in FlareUI Style and Forever Style, with **Simple Target of Target** off.
-
-## Changed
-
-### Unit Frames
-- Modern, **Elite & Rare** icon: Blizzard's dragon now wraps around the outer end of the target, focus and boss frames, instead of the skull.
-  - Gold for elites
-  - Silver for rares
-  - Gold with wings for bosses
-
-## Fixed
-
-### Bags & Looting
-- Items in your bags could not be used after a bank visit, until you typed /reload. The cause was FlareUI opening your bags for the guild bank or the character window.
-- Buying a bank tab or a guild bank tab was blocked after the same visits.
-
-### Unit Frames
-- **Portrait > Class Icon** showed the 2D picture on enemy players.
-- Cast bars: **Edge Glow** stayed on the bar after a cast was interrupted or failed.
-
-### Chat
-- IM chat style: with **Edit Box Position** Above or Below, the chat box disappeared when you stopped typing. It now stays, faint and clickable, as in Blizzard's IM style. Inside works as before.
-
-### Resource Bars
-- **Flight Timer:** the druid flight from Moonglade never counted down. It is now learned like any other flight.

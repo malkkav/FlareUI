@@ -881,6 +881,11 @@ function R.bags(c)
             c:Texture('petFood', P.MEDIA .. 'Previews\\Focus.tga', x, y, size * 0.45, size * 0.45, true)
         end
         if i == 3 then c:Text('bagStack', '5', x + size * 0.55, y + size * 0.5, size * 0.45, { size = math.max(8, size * 0.4) }) end
+        -- Equipment Set Icon: the padlock, top left
+        if i == 2 and Get('tweaks.bagSetIcon') then
+            local shield = c:Texture('bagSet', nil, x + 2, y + 2, size * 0.32, size * 0.38, true)
+            if C_Texture.GetAtlasInfo('QuestSharing-Padlock') then shield:SetAtlas('QuestSharing-Padlock') end
+        end
         if i == 1 and Get('tweaks.bagJunkIcon') then c:Texture('junk', P.MEDIA .. 'Previews\\Coin.tga', x, y, size * 0.5, size * 0.5, true) end
         -- the sword's marks, where the bags put them: item level bottom left in its quality
         -- colour, BoE top left, the uncollected eye top right
@@ -1156,7 +1161,7 @@ function R.lootFeed(c, spec)
     if atCursor then c:Texture('feedCursor',P.MEDIA..'Previews\\Cursor.tga',8,98,24,32,true) end
     local entries={}
     local quality=Get('tweaks.lootFeedQuality',0)
-    if quality<=1 then entries[#entries+1]={icon='INV_Fabric_Linen_01',r=1,g=1,b=1,text='|cffffffff'..L["Linen Cloth"]..' x2|r'} end
+    if quality<=1 then entries[#entries+1]={icon='INV_Fabric_Linen_01',r=1,g=1,b=1,owned=14,text='|cffffffff'..L["Linen Cloth"]..' x2|r'} end
     if quality<=2 then entries[#entries+1]={icon='INV_Sword_04',r=0.12,g=1,b=0,text='|cff1eff00'..L["Sword"]..'|r'} end
     if quality>=3 then entries[#entries+1]={icon='INV_Chest_Cloth_25',r=0.64,g=0.21,b=0.93,text='|cffa335ee'..L["Robes of the Archmage"]..'|r'} end
     local itemCount = #entries
@@ -1180,7 +1185,12 @@ function R.lootFeed(c, spec)
             line.mask = line:CreateMaskTexture(); line.mask:SetAllPoints(line.icon)
             line.icon:AddMaskTexture(line.mask)
             line.border = line:CreateTexture(nil, 'OVERLAY')
+            line.owned = line:CreateFontString(nil, 'OVERLAY', 'NumberFontNormalSmall')
+            line.owned:SetPoint('BOTTOMRIGHT', line.icon, 'BOTTOMRIGHT', 2, -2)
         end
+        -- Owned Count: how many are in the bags
+        line.owned:SetText(e.owned or '')
+        line.owned:SetShown(e.owned and Get('tweaks.lootFeedOwned', true) and true or false)
         line.icon:SetTexture('Interface\\Icons\\' .. e.icon)
         if ns.LootFeed and ns.LootFeed.Shape then ns.LootFeed.Shape(line.icon, line.mask, line.border, shape == 'round', 20) end
         line.border:SetVertexColor(e.r, e.g, e.b)

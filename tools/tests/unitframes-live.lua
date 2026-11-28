@@ -556,9 +556,9 @@ do
     UF:Refresh()
     local narrow = Value("TOP")
     assert(Max() == 3 and narrow > target:GetWidth() / 2, "Max Buffs, on the whole width")
-    -- (Malkkav 11-27) Above the Frame is centred on the frame; a corner keeps its side
+    -- (Malkkav 11-28) Above the Frame starts from the left again (the 11-27 centring was rolled back)
     local point, rel, relPoint = target.Auras.TOP.container:GetPoint(1)
-    assert(point == "BOTTOM" and rel == target and relPoint == "TOP", "Above the Frame: centred, " .. tostring(point))
+    assert(point == "BOTTOMLEFT" and rel == target and relPoint == "TOPLEFT", "Above the Frame: from the left, " .. tostring(point))
     assert(target.Auras.BOTTOMRIGHT.container:GetPoint(1) == "TOPRIGHT", "a corner: its own side")
     targetDb.width, targetDb.buffAmount = target:GetWidth() + 120, 12
     UF:Refresh()

@@ -600,12 +600,6 @@ ns.Copy = {
             tags = { "auto sort", "clean up bags", "tidy", "sort bags" },
             tip = L["Not in combat, and not at a vendor, mailbox, bank, auction house or in a trade."],
         },
-        ["bl.bagBoE"] = {
-            desc = L["Items that bind when equipped show BoE in the top left corner, until they're bound."],
-            label = L["BoE Text"],
-            section = "bl.itemSlots",
-            tags = { "bind on equip", "boe", "soulbound" },
-        },
         ["bl.bagButtons"] = {
             desc = L["Your bag slots down the side of the combined backpack:\n* Drag bags in and out\n* Point at one to highlight its items"],
             label = L["Integrated Bag Buttons"],
@@ -634,29 +628,19 @@ ns.Copy = {
             label = L["Gaps Between Bags"],
             section = "bl.bagWindow",
         },
-        ["bl.bagItemLevel"] = {
-            desc = L["Shows the item level on weapons and armour in your bags, on the character sheet and when you inspect, in the item's quality colour. Inspect also shows the player's average."],
-            label = L["Item Level"],
+        ["bl.bagItemIcons"] = {
+            choices = { L["None"], L["Junk Coin"], L["Item Level"], L["Uncollected Appearances"], L["Pet Food Marker"], L["BoE Text"], L["Equipment Set Icon"] },
+            desc = L["Marks on your bag items:\n* Junk Coin: a coin on grey items worth money, not only at a vendor\n* Item Level: on gear, in its quality colour\n* Uncollected Appearances: an eye on gear you can still learn\n* Pet Food Marker: a paw on food your hunter pet eats\n* BoE Text: on items that bind when equipped\n* Equipment Set Icon: a padlock on items in an equipment set. It's only a marker: you can still sell them"],
+            label = L["Item Icons"],
             section = "bl.itemSlots",
-            tags = { "ilvl", "gear score", "inspect item level", "average item level" },
-            tip = L["The character sheet and inspect still work with another bag addon."],
-        },
-        ["bl.bagJunkIcon"] = {
-            desc = L["Grey items worth money show a coin all the time, not only at a vendor."],
-            label = L["Junk Coin"],
-            section = "bl.itemSlots",
+            tags = { "junk coin", "ilvl", "item level", "gear score", "uncollected appearances", "transmog", "pet food", "bind on equip", "boe", "soulbound", "equipment set", "gear set", "equipment manager", "lock", "padlock" },
+            tip = L["Item Level also shows on the character sheet and when you inspect, even with another bag addon."],
         },
         ["bl.bagKeyring"] = {
             desc = L["Your keys sit at the bottom of the combined backpack instead of in a keyring window."],
             label = L["Keyring in Backpack"],
             section = "bl.bagWindow",
             tip = L["Shows once you've had a key."],
-        },
-        ["bl.bagPlainEmpty"] = {
-            desc = L["Every empty slot in the combined backpack looks the same, instead of showing its bag's picture."],
-            label = L["Plain Empty Slots"],
-            section = "bl.itemSlots",
-            tags = { "empty slots", "bag icon", "uniform slots" },
         },
         ["bl.bagReagent"] = {
             desc = L["Your crafting material bag sits at the bottom of the combined backpack instead of in its own window."],
@@ -672,17 +656,12 @@ ns.Copy = {
             tip = L["With Category Rows, each section fills this way under its header."],
         },
         ["bl.bagSkinSlots"] = {
-            choices = { L["Off"], L["Thin Borders"], L["Thick Borders"], L["Colour by Rarity"] },
-            desc = L["Puts FlareUI's border around each bag slot:\n* Off: Blizzard's slots, for example when another addon skins your bags\n* Thin Borders: a thin border\n* Thick Borders: a thicker frame\n* Colour by Rarity: the border in the item's quality colour"],
+            choices = { L["Off"], L["Thin Borders"], L["Thick Borders"], L["Colour by Rarity"], L["Plain Empty Slots"] },
+            desc = L["Puts FlareUI's border around each bag slot:\n* Off: Blizzard's slots, for example when another addon skins your bags\n* Thin Borders: a thin border\n* Thick Borders: a thicker frame\n* Colour by Rarity: the border in the item's quality colour\n* Plain Empty Slots: every empty slot looks the same, not like its bag"],
             label = L["Skin Item Slots"],
             section = "bl.itemSlots",
-            tags = { "rarity colours", "quality colours", "thicker borders", "slot border" },
+            tags = { "rarity colours", "quality colours", "thicker borders", "slot border", "plain empty slots", "empty slots", "uniform slots" },
             tip = L["Colour by Rarity starts at green: grey and white items and empty slots stay bronze."],
-        },
-        ["bl.bagUncollected"] = {
-            desc = L["An eye in the top right corner marks gear whose appearance you haven't collected yet and can learn."],
-            label = L["Uncollected Appearances"],
-            section = "bl.itemSlots",
         },
         ["bl.bagView"] = {
             choices = { L["All Items"], L["Category Filters"], L["Category Rows"], L["Category Rows + Sets"] },
@@ -786,11 +765,6 @@ ns.Copy = {
             label = L["Alignment"],
             section = "bl.lootFeedSection",
         },
-        ["bl.lootFeedMoney"] = {
-            desc = L["Looted money shows too."],
-            label = L["Show Money"],
-            section = "bl.lootFeedSection",
-        },
         ["bl.lootFeedPosition"] = {
             choices = { L["At the Cursor"], L["Where Placed"] },
             desc = L["Where the feed appears:\n* At the Cursor: beside the pointer, where you looted\n* Where Placed: where you put it in Edit Mode"],
@@ -802,10 +776,12 @@ ns.Copy = {
             label = L["Minimum Quality"],
             section = "bl.lootFeedSection",
         },
-        ["bl.lootFeedSkills"] = {
-            desc = L["Skill gains show too, such as \"Mining 76\"."],
-            label = L["Show Skill-Ups"],
+        ["bl.lootFeedShow"] = {
+            choices = { L["None"], L["Money"], L["Skill-Ups"], L["Owned Count"] },
+            desc = L["What else the feed shows:\n* Money: the money you loot\n* Skill-Ups: skill gains, like \"Mining 76\"\n* Owned Count: how many you have in your bags, on each item's icon"],
+            label = L["Show"],
             section = "bl.lootFeedSection",
+            tags = { "show money", "show skill-ups", "owned count", "item count", "how many" },
         },
         ["bl.lootRolls"] = {
             desc = L["Swaps Blizzard's roll frames for one FlareUI loot roll window:\n* Need, Greed and Pass for each item\n* Everyone's choice and roll as they come in\n* Who leads, then who won"],
@@ -834,11 +810,6 @@ ns.Copy = {
             desc = L["Where the loot starts:\n* Top to Bottom: the first item at the top, the next below it\n* Bottom to Top: the first item at the bottom, the next above it"],
             label = L["Row Order"],
             section = "bl.lootWindowSection",
-        },
-        ["bl.petFood"] = {
-            desc = L["A paw marks the food your hunter pet eats."],
-            label = L["Pet Food Marker"],
-            section = "bl.itemSlots",
         },
         ["bl.skipLoot"] = {
             desc = L["No \"will bind to you\" question when you:\n* Loot an item\n* Roll Need or Greed"],

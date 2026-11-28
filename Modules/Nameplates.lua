@@ -3242,7 +3242,7 @@ function NP.UpdateRange(p)
     local list = C.RANGE[class]
     if class == "DRUID" and C.MELEE_FORMS[GetShapeshiftFormID and GetShapeshiftFormID() or 0] then list = C.RANGE.DRUID_MELEE end
     if not list then NP.SetRangeAlpha(p, 1) return end
-    local out, hasSecret, secret, unknown = false, false, nil, false
+    local out, hasSecret, secret = false, false, nil
     for _, id in ipairs(list) do
         -- (spell names by ID never change: looked up once)
         local name = C.RANGE_NAMES[id]
@@ -3260,13 +3260,13 @@ function NP.UpdateRange(p)
                 return
             elseif r == false then
                 out = true
-            else
-                unknown = true
             end
         end
     end
-    -- a hunter up close: no answer from Wing Clip (before level 12) or between it and the shots' reach
-    if out and class == "HUNTER" and (unknown or ns.HunterClose(p.unit)) then out = false end
+    -- a hunter up close, between Wing Clip and the shots' reach: measured with items, as the unit frames do
+    -- (dstro7 11-28: "no answer from Wing Clip" counted as close too, and below level 12, with no Wing Clip,
+    -- plates never faded)
+    if out and class == "HUNTER" and ns.HunterClose(p.unit) then out = false end
     if hasSecret and pcall(p.holder.SetAlphaFromBoolean, p.holder, secret, 1, alpha) then p.rangeAlphaNow = nil return end
     NP.SetRangeAlpha(p, out and alpha or 1)
 end
