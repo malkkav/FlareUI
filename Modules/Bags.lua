@@ -693,28 +693,32 @@ end
 -- list: { key, name } per set; where: bag -> slot -> its set's key (bags only, not the bank)
 Bags.SetCategories = {}
 
-function Bags.SetCategories.Read()
-    local list, where = {}, {}
+function Bags.SetCategories.ForEach(visit)
     local api = C_EquipmentSet
     if not (api and api.GetEquipmentSetIDs and api.GetEquipmentSetInfo and api.GetItemLocations
-        and EquipmentManager_GetLocationData) then return list, where end
+        and EquipmentManager_GetLocationData) then return end
     for _, setID in ipairs(api.GetEquipmentSetIDs() or {}) do
         local name = api.GetEquipmentSetInfo(setID)
         local locations = name and api.GetItemLocations(setID)
-        if locations then
-            local key = "set:" .. setID
-            list[#list + 1] = { key = key, name = name }
-            -- (empty, ignored and missing slots are small numbers without the bags bit)
-            for _, location in pairs(locations) do
-                local data = type(location) == "number" and EquipmentManager_GetLocationData(location)
-                if data and data.isBags and not data.isBank and data.bag and data.slot then
-                    local bag = where[data.bag] or {}
-                    where[data.bag] = bag
-                    bag[data.slot] = bag[data.slot] or key
-                end
+        if locations then visit(setID, name, locations) end
+    end
+end
+
+function Bags.SetCategories.Read()
+    local list, where = {}, {}
+    Bags.SetCategories.ForEach(function(setID, name, locations)
+        local key = "set:" .. setID
+        list[#list + 1] = { key = key, name = name }
+        -- (empty, ignored and missing slots are small numbers without the bags bit)
+        for _, location in pairs(locations) do
+            local data = type(location) == "number" and EquipmentManager_GetLocationData(location)
+            if data and data.isBags and not data.isBank and data.bag and data.slot then
+                local bag = where[data.bag] or {}
+                where[data.bag] = bag
+                bag[data.slot] = bag[data.slot] or key
             end
         end
-    end
+    end)
     return list, where
 end
 
@@ -2022,6 +2026,340 @@ local function BagFrames()
         if type(frame) == "table" and frame.EnumerateValidItems then list[#list + 1] = frame end
     end
     return list
+end
+
+--------------------------------------------------
+-- 4a. VENDOR: SALE WARNINGS FOR SET GEAR AND QUEST ITEMS
+-- Catch the input on FlareUI-owned frames. Replacing a Blizzard bag script can leave it tainted
+-- even after restoring the original function, blocking native item use after leaving the vendor.
+--------------------------------------------------
+do
+    local Sale = {}
+    Bags.VendorSaleWarning = Sale
+    ns.modules["VendorSaleWarning"] = Sale
+
+    local dialog = "FLAREUI_CONFIRM_VENDOR_SALE"
+    local watcher, bagCatcher
+    local bagTarget, bagGUID
+    local dropCatchers = {}
+    local dropGUID, dropTab, dropPageSize, dropWarn
+    local pending
+
+    local function Active()
+        local db = GetDb()
+        return db and (db.warnSellSetGear or db.warnSellQuestItems) and ns.BagModuleOn()
+            and MerchantFrame and MerchantFrame:IsShown()
+    end
+
+    local function SlotLocation(button)
+        return ItemLocation:CreateFromBagAndSlot(button:GetBagID(), button:GetID())
+    end
+
+    local function CursorLocation()
+        if GetCursorInfo() == "item" then return C_Cursor.GetCursorItem() end
+    end
+
+    local function ItemGUID(location)
+        if location and location:IsValid() then
+            return C_Item.GetItemGUID(location)
+        end
+    end
+
+    local function SetNames(location)
+        local bag, slot = location:GetBagAndSlot()
+        if not bag then slot = location:GetEquipmentSlot() end
+        local names = {}
+        -- Match the item's current location so two copies of the same item can be sold independently.
+        Bags.SetCategories.ForEach(function(_, name, locations)
+            for _, packed in pairs(locations) do
+                local item = type(packed) == "number" and EquipmentManager_GetLocationData(packed)
+                if item and not item.isBank and item.slot == slot then
+                    local sameBag = bag and item.isBags and item.bag == bag
+                    local equipped = not bag and item.isPlayer and not item.isBags
+                    if sameBag or equipped then
+                        names[#names + 1] = name
+                        return
+                    end
+                end
+            end
+        end)
+        if #names > 0 then return table.concat(names, ", ") end
+    end
+
+    local function QuestNeedsItem(questID, itemName)
+        if not (questID and itemName and C_QuestLog.GetQuestObjectives) then return false end
+        -- A crafted turn-in can lack a bag flag. Forever supplies localized objective text
+        -- without an item ID. Compare the entire localized line, including legacy count layouts.
+        -- Keep completed objectives protected until the quest leaves the log.
+        for _, objective in ipairs(C_QuestLog.GetQuestObjectives(questID) or {}) do
+            if objective.type == "item" then
+                local text, have, need = objective.text, objective.numFulfilled, objective.numRequired
+                if text == itemName then return true end
+                if have and need then
+                    local count = ("%d/%d"):format(have, need)
+                    if text == itemName .. ": " .. count or text == count .. " " .. itemName
+                        or (QUEST_ITEMS_NEEDED and text == QUEST_ITEMS_NEEDED:format(itemName, have, need)) then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    local function QuestLogMatchesItem(logIndex, questID, itemID, itemName)
+        local link = logIndex and GetQuestLogSpecialItemInfo and GetQuestLogSpecialItemInfo(logIndex)
+        return (type(link) == "string" and tonumber(link:match("item:(%d+)")) == itemID)
+            or QuestNeedsItem(questID, itemName)
+    end
+
+    local function FindQuestLogItem(location)
+        if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo) then return end
+        local itemID = C_Item.GetItemID(location)
+        if not itemID then return end
+        local itemName = C_Item.GetItemName and C_Item.GetItemName(location)
+        local seen = {}
+        for logIndex = 1, C_QuestLog.GetNumQuestLogEntries() do
+            local quest = C_QuestLog.GetInfo(logIndex)
+            if quest and not quest.isHeader then
+                if quest.questID then seen[quest.questID] = true end
+                if QuestLogMatchesItem(logIndex, quest.questID, itemID, itemName) then
+                    return true, quest.title
+                end
+            end
+        end
+        -- Tracked quests also supply their IDs when a collapsed header hides their log entries.
+        if not (C_QuestLog.GetNumQuestWatches and C_QuestLog.GetQuestIDForQuestWatchIndex) then return end
+        for watchIndex = 1, C_QuestLog.GetNumQuestWatches() do
+            local questID = C_QuestLog.GetQuestIDForQuestWatchIndex(watchIndex)
+            if questID and not seen[questID] then
+                local logIndex = C_QuestLog.GetLogIndexForQuestID(questID)
+                if QuestLogMatchesItem(logIndex, questID, itemID, itemName) then
+                    return true, C_QuestLog.GetTitleForQuestID(questID)
+                end
+            end
+        end
+    end
+
+    local function QuestReason(location)
+        local bag, slot = location:GetBagAndSlot()
+        local info = bag and C_Container and C_Container.GetContainerItemQuestInfo
+            and C_Container.GetContainerItemQuestInfo(bag, slot)
+        local questID = info and info.questID
+        local title = questID and C_QuestLog and C_QuestLog.GetTitleForQuestID(questID)
+        -- Blizzard shows its quest-starter icon when a slot has a quest ID and the quest isn't active.
+        if questID and not info.isActive then
+            return title and title ~= "" and L["This item starts %s."]:format(title) or L["This item starts a quest."]
+        end
+
+        local inQuestLog
+        if not title or title == "" then inQuestLog, title = FindQuestLogItem(location) end
+        if title and title ~= "" then return L["This item is used for %s."]:format(title) end
+        -- Some quest items have a bag marker without a matching quest ID or title.
+        if questID or inQuestLog or (info and info.isQuestItem) then return L["This is a quest item."] end
+    end
+
+    local function WarningText(location)
+        local db = GetDb()
+        local sets = db.warnSellSetGear and SetNames(location)
+        local quest = db.warnSellQuestItems and QuestReason(location)
+        if not (sets or quest) then return end
+
+        local item = C_Item.GetItemLink(location) or L["Item"]
+        local text = sets and L["Sell %s? This item is saved in %s."]:format(item, sets) or L["Sell %s?"]:format(item)
+        if quest then text = text .. " " .. quest end
+        return text
+    end
+
+    local function Confirm(frame, script, fromCursor, location)
+        if not Active() or InCombatLockdown() or not frame or frame:IsForbidden() then return end
+        local guid = ItemGUID(location)
+        if not guid then return end
+        -- The same release can raise both drag receipt and mouse-up.
+        if pending and pending.guid == guid and (not ns.AnyDialogShown or ns.AnyDialogShown()) then return end
+        local text, click = WarningText(location), frame:GetScript(script)
+        if not (text and click) then return end
+        pending = { guid = guid, fromCursor = fromCursor, tab = MerchantFrame.selectedTab, frame = frame, click = click }
+        ns.ShowDialog(dialog, text, pending)
+    end
+
+    local function ClickBagCatcher(_, button)
+        if button ~= "RightButton" or MerchantFrame.selectedTab ~= 1 or IsModifiedClick() or not bagTarget then return end
+        Confirm(bagTarget, "OnClick", false, SlotLocation(bagTarget))
+    end
+
+    local function DropOnCatcher()
+        -- The merchant background's original handler runs the native refund check before selling.
+        Confirm(MerchantFrame, "OnMouseUp", true, CursorLocation())
+    end
+
+    local function ConfigureCatcher(frame)
+        frame:Hide()
+        frame:EnableMouse(true)
+        frame:SetPropagateMouseMotion(true)
+    end
+
+    local function MakeDropCatcher(parent, index)
+        local name = "FlareUIVendorDropCatcher" .. (index == 0 and "" or index)
+        local frame = CreateFrame("Frame", name, parent)
+        ConfigureCatcher(frame)
+        frame:SetAllPoints(parent)
+        frame:SetFrameLevel(parent:GetFrameLevel() + 1)
+        if index ~= 0 then frame:SetPassThroughButtons("RightButton", "MiddleButton", "Button4", "Button5") end
+        frame:SetScript("OnReceiveDrag", DropOnCatcher)
+        frame:SetScript("OnMouseUp", DropOnCatcher)
+        dropCatchers[index] = frame
+    end
+
+    local function FocusedBagSlot(foci)
+        for _, focus in ipairs(foci) do
+            if focus == bagCatcher then
+                if bagTarget and bagTarget:IsVisible() then return bagTarget end
+            elseif not focus:IsForbidden() and focus.buttonContext == "ButtonContext_ContainerFrameItemButton"
+                and focus.GetBagID and focus.GetID then
+                return focus
+            end
+        end
+    end
+
+    local function HideBagCatcher()
+        bagTarget, bagGUID = nil, nil
+        if bagCatcher then bagCatcher:Hide() end
+    end
+
+    local function UpdateBagCatcher(target)
+        if MerchantFrame.selectedTab ~= 1 or IsModifiedClick() then target = nil end
+        local location = target and SlotLocation(target)
+        local guid = ItemGUID(location)
+        if target == bagTarget and guid == bagGUID then return end
+        bagTarget, bagGUID = target, guid
+        if guid and WarningText(location) then
+            if not bagCatcher then
+                bagCatcher = CreateFrame("Frame", "FlareUIVendorBagSaleCatcher", target)
+                ConfigureCatcher(bagCatcher)
+                bagCatcher:SetPassThroughButtons("LeftButton", "MiddleButton", "Button4", "Button5")
+                bagCatcher:SetScript("OnMouseUp", ClickBagCatcher)
+            elseif bagCatcher:GetParent() ~= target then
+                bagCatcher:SetParent(target)
+            end
+            -- Follow the slot's scale and window order, including in pooled replacement bags.
+            bagCatcher:ClearAllPoints()
+            bagCatcher:SetAllPoints(target)
+            bagCatcher:SetHitRectInsets(target:GetHitRectInsets())
+            bagCatcher:SetFrameStrata(target:GetFrameStrata())
+            bagCatcher:SetFrameLevel(target:GetFrameLevel() + 10)
+            bagCatcher:Show()
+        elseif bagCatcher then
+            bagCatcher:Hide()
+        end
+    end
+
+    local function UpdateDropCatchers(foci)
+        local location = CursorLocation()
+        local guid, tab, pageSize = ItemGUID(location), MerchantFrame.selectedTab, MERCHANT_ITEMS_PER_PAGE or 10
+        if guid ~= dropGUID or tab ~= dropTab or pageSize ~= dropPageSize then
+            dropGUID, dropTab, dropPageSize = guid, tab, pageSize
+            dropWarn = guid and WarningText(location) ~= nil or false
+            if dropWarn then
+                if not dropCatchers[0] then MakeDropCatcher(MerchantFrame, 0) end
+                if tab == 1 then
+                    for i = 1, pageSize do
+                        local button = _G["MerchantItem" .. i .. "ItemButton"]
+                        if button and not dropCatchers[i] then MakeDropCatcher(button, i) end
+                    end
+                end
+            end
+            for index, frame in pairs(dropCatchers) do
+                if index ~= 0 then frame:SetShown(dropWarn and tab == 1 and index <= pageSize) end
+            end
+        end
+        local background = dropCatchers[0]
+        if background then
+            -- Sit above the panel only over its background. Independent controls keep their clicks.
+            local focus = foci[1] == background and foci[2] or foci[1]
+            background:SetShown(dropWarn and focus == MerchantFrame)
+        end
+    end
+
+    local function UpdateCatchers()
+        if InCombatLockdown() then return end
+        local foci = GetMouseFoci()
+        UpdateBagCatcher(FocusedBagSlot(foci))
+        UpdateDropCatchers(foci)
+    end
+
+    function Sale.Refresh()
+        if not Sale.started then return end
+        bagGUID, dropPageSize = false, nil
+        local active = Active() and not InCombatLockdown()
+        watcher:SetShown(active and true or false)
+        if active then
+            UpdateCatchers()
+        else
+            HideBagCatcher()
+            for _, frame in pairs(dropCatchers) do frame:Hide() end
+            ns.CancelDialog(dialog)
+            pending = nil
+        end
+    end
+
+    function Sale.Init()
+        if Sale.started or not (MerchantFrame and ns.Dialogs) then return end
+        Sale.started = true
+        ns.Dialogs[dialog] = {
+            text = "%s", button1 = SELL, button2 = CANCEL, hideOnEscape = true, showAlert = true,
+            OnAccept = function(request)
+                pending = nil
+                if not Active() or InCombatLockdown() or MerchantFrame.selectedTab ~= request.tab then return end
+                local frame = request.frame
+                if frame:IsForbidden() or not frame:IsVisible() then return end
+                -- Bag buttons are pooled and a new item can occupy the slot while the dialog is up.
+                local location
+                if request.fromCursor then
+                    location = CursorLocation()
+                elseif not GetCursorInfo() and not IsModifiedClick() then
+                    location = SlotLocation(frame)
+                end
+                if ItemGUID(location) == request.guid then
+                    request.click(frame, request.fromCursor and "LeftButton" or "RightButton")
+                end
+            end,
+            OnCancel = function(request)
+                pending = nil
+                if request.fromCursor and ItemGUID(CursorLocation()) == request.guid then ClearCursor() end
+            end,
+        }
+        watcher = CreateFrame("Frame", "FlareUIVendorSaleWatcher", UIParent)
+        watcher:SetScript("OnUpdate", UpdateCatchers)
+        for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "CURSOR_CHANGED",
+            "BAG_UPDATE_DELAYED", "EQUIPMENT_SETS_CHANGED", "QUEST_LOG_UPDATE", "MODIFIER_STATE_CHANGED" }) do
+            watcher:RegisterEvent(event)
+        end
+        watcher:SetScript("OnEvent", function(self, event)
+            if self:IsShown() or event == "PLAYER_REGEN_ENABLED" then Sale.Refresh() end
+        end)
+        if EventRegistry then
+            -- Blizzard and Baganator fire these when moving onto a slot. Arm before its first click,
+            -- even if the mouse has moved since the last OnUpdate.
+            EventRegistry:RegisterCallback("ContainerFrameItemButton.EnterButton", function(_, button)
+                if watcher:IsShown() and not InCombatLockdown() then UpdateBagCatcher(button) end
+            end, Sale)
+            EventRegistry:RegisterCallback("ContainerFrameItemButton.ExitButton", function(_, button)
+                if button == bagTarget then HideBagCatcher() end
+            end, Sale)
+        end
+        MerchantFrame:HookScript("OnShow", Sale.Refresh)
+        MerchantFrame:HookScript("OnHide", Sale.Refresh)
+        -- A release can arrive before the next OnUpdate when the cursor enters the panel.
+        MerchantFrame:HookScript("OnEnter", function()
+            if watcher:IsShown() and not InCombatLockdown() then UpdateDropCatchers(GetMouseFoci()) end
+        end)
+        MerchantFrame:HookScript("OnLeave", function()
+            if dropCatchers[0] then dropCatchers[0]:Hide() end
+        end)
+        if MerchantFrame_UpdateMerchantInfo then hooksecurefunc("MerchantFrame_UpdateMerchantInfo", Sale.Refresh) end
+        Sale.Refresh()
+    end
 end
 
 --------------------------------------------------
